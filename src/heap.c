@@ -84,6 +84,11 @@ int32_t heap_alloc_slot(enum vm_pointer_type type)
 	}
 
 	int32_t slot = heap_free_stack[heap_free_ptr++];
+	/* A recycled slot must not retain a dangling pointer from its previous
+	 * lifetime: callers that only allocate a slot (without heap_set_page)
+	 * would otherwise observe a stale page and corrupt object identity. */
+	heap[slot].page = NULL;
+	heap[slot].s = NULL;
 	heap[slot].ref = 1;
 	heap[slot].seq = heap_next_seq++;
 	heap[slot].type = type;
@@ -164,6 +169,11 @@ void heap_unref(int slot)
 		break;
 	}
 	heap[slot].ref = 0;
+	/* Ownership of the payload has been released above; keep the slot
+	 * pointer-free so any use-after-free fails loudly instead of silently
+	 * reusing the old object. */
+	heap[slot].page = NULL;
+	heap[slot].s = NULL;
 	heap_free_slot(slot);
 }
 
@@ -339,6 +349,10 @@ static void describe_page(struct page *page)
 	case DELEGATE_PAGE:
 		// TODO: list function names
 		sys_message("DELEGATE_PAGE\n");
+		break;
+	case IFACE_PAGE:
+		sys_message("IFACE_PAGE: [struct=%d vtable=%d]\n",
+			    page->values[0].i, page->values[1].i);
 		break;
 	}
 }
