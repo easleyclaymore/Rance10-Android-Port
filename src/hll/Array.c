@@ -462,7 +462,7 @@ static void Array_Realloc_(struct page **a, int size)
 	if (size < 0)
 		size = 0;
 	if (!*a) {
-		struct page *p = alloc_page(ARRAY_PAGE, AIN_INT, size);
+		struct page *p = alloc_page(ARRAY_PAGE, AIN_ARRAY_INT, size);
 		p->array.rank = 1;
 		p->array.struct_type = -1;
 		*a = p;

@@ -348,7 +348,7 @@ void hll_call(int libno, int fno)
 			if (heap_slots[i] <= 0) {
 				/* 调用者的数组变量是 null：先给它一个空数组对象，
 				 * 否则 HLL 函数无法把新建的数组写回（ref 只给了值，没给变量位置） */
-				struct page *p = alloc_page(ARRAY_PAGE, AIN_INT, 0);
+				struct page *p = alloc_page(ARRAY_PAGE, AIN_ARRAY_INT, 0);
 				p->array.rank = 1;
 				p->array.struct_type = -1;
 				heap_slots[i] = heap_alloc_page(p);
