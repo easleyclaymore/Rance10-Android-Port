@@ -425,6 +425,21 @@ static int _function_call(int fno, int return_address)
 
 static void function_call(int fno, int return_address)
 {
+	/* AIN reserves fno 0 / address 0 for the NULL function. A call to it
+	 * is a no-op: consume its arguments (there are none) without creating
+	 * a frame or jumping to address 0. The caller's instruction pointer
+	 * then advances by the normal ip_inc of CALLFUNC/CALLMETHOD. */
+	if (fno == 0 && ain->functions[0].address == 0) {
+		struct ain_function *nf = &ain->functions[0];
+		for (int i = 0; i < nf->nr_args; i++)
+			stack_pop();
+		/* CALLMETHOD/CALLFUNC are JMP opcodes with ip_inc == 0; the normal
+		 * path advances instr_ptr inside _function_call. Since we skip that,
+		 * advance to the caller's return address ourselves. */
+		instr_ptr = return_address;
+		return;
+	}
+
 	int slot = _function_call(fno, return_address);
 
 	// pop arguments, store in local page
@@ -459,14 +474,6 @@ static void method_call(int nargs, int return_address)
 	function_call(fno, return_address);   /* 弹掉 nargs 个 args */
 	stack_pop();                          /* 弹掉 fno */
 	int struct_page = stack_pop().i;      /* 弹 obj */
-	/* D12 (validation-only hack): AIN_IFACE's two-value layout is not
-	 * implemented yet, so an interface member can surface a vtable index
-	 * instead of a heap slot. Fall back to the caller's `this` to see what
-	 * the next blocker is. MUST be replaced by a proper AIN_IFACE impl. */
-	if (struct_page < 0 || struct_page >= heap_size) {
-		struct_page = call_stack_ptr > 1
-			? call_stack[call_stack_ptr-2].struct_page : -1;
-	}
 	set_struct_page(struct_page);
 	heap[call_stack[call_stack_ptr-1].page_slot].page->local.struct_ptr = struct_page;
 }
@@ -908,9 +915,9 @@ static enum opcode execute_instruction(enum opcode opcode)
 		int32_t a = stack_ptr > 0 ? stack[stack_ptr-1].i : 0;
 		int32_t b = stack_ptr > 1 ? stack[stack_ptr-2].i : 0;
 		int32_t c = stack_ptr > 2 ? stack[stack_ptr-3].i : 0;
-		NOTICE("[trace] 0x%08zx %-20s sp=%d top=%d,%d,%d",
+		NOTICE("[trace] 0x%08zx %-20s sp=%d top=%d,%d,%d arg0=%d",
 			instr_ptr, instructions[opcode].name ? instructions[opcode].name : "?",
-			stack_ptr, a, b, c);
+			stack_ptr, a, b, c, get_argument(0));
 	}
 	switch (opcode) {
 	//
@@ -1122,15 +1129,13 @@ static enum opcode execute_instruction(enum opcode opcode)
 		break;
 	}
 	case CALLMETHOD: {
-		/* 操作数有两种含义（见 alice-tools compile.c / get_alloc_fun）：
-		 *  - 普通调用：参数个数 nargs，栈布局 [obj, fno, args...]
-		 *  - 构造函数里的对象分配：直接是函数编号 alloc_no（几千） */
+		/* libsys4 initialize_instructions(): version >= 11 marks the
+		 * operand as T_INT (nargs); older AIN uses a function index. */
 		int arg = get_argument(0);
-		if (arg > 100) {
-			method_call_fno(arg, instr_ptr + instruction_width(CALLMETHOD));
-		} else {
+		if (ain->version >= 11)
 			method_call(arg, instr_ptr + instruction_width(CALLMETHOD));
-		}
+		else
+			method_call_fno(arg, instr_ptr + instruction_width(CALLMETHOD));
 		break;
 	}
 	case CALLHLL: {
