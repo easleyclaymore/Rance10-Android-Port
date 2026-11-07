@@ -861,6 +861,22 @@ static void echo_message(int i)
 
 static enum opcode execute_instruction(enum opcode opcode)
 {
+	/* XSYS4_TRACE=start:end (hex): runtime instruction trace with stack top */
+	static uint32_t ts = 0, te = 0;
+	static int trace_ready = 0;
+	if (!trace_ready) {
+		const char *t = getenv("XSYS4_TRACE");
+		if (t) sscanf(t, "%x:%x", &ts, &te);
+		trace_ready = 1;
+	}
+	if (ts && instr_ptr >= ts && instr_ptr < te) {
+		int32_t a = stack_ptr > 0 ? stack[stack_ptr-1].i : 0;
+		int32_t b = stack_ptr > 1 ? stack[stack_ptr-2].i : 0;
+		int32_t c = stack_ptr > 2 ? stack[stack_ptr-3].i : 0;
+		NOTICE("[trace] 0x%08zx %-20s sp=%d top=%d,%d,%d",
+			instr_ptr, instructions[opcode].name ? instructions[opcode].name : "?",
+			stack_ptr, a, b, c);
+	}
 	switch (opcode) {
 	//
 	// --- Stack Management ---
@@ -1028,8 +1044,19 @@ static enum opcode execute_instruction(enum opcode opcode)
 		break;
 	}
 	case NEW: {
+		/* AIN v12: struct no and constructor fno are immediate arguments.
+		 * No stack value is consumed here; constructor args stay on the
+		 * stack for init_struct -> vm_call -> function_call to pop. */
+		int struct_no = get_argument(0);
+		int ctor_fno = get_argument(1);
 		union vm_value v;
-		create_struct(stack_pop().i, &v);
+		if (struct_no < 0 || struct_no >= ain->nr_structures)
+			VM_ERROR("NEW: invalid struct no %d", struct_no);
+		int saved_ctor = ain->structures[struct_no].constructor;
+		if (ctor_fno > 0)
+			ain->structures[struct_no].constructor = ctor_fno;
+		create_struct(struct_no, &v);
+		ain->structures[struct_no].constructor = saved_ctor;
 		stack_push(v);
 		break;
 	}
