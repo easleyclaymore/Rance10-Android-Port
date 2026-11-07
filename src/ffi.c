@@ -309,6 +309,7 @@ void hll_call(int libno, int fno)
 	// reallocation during HLL calls.
 	void *heap_ptrs[HLL_MAX_ARGS];
 	int heap_slots[HLL_MAX_ARGS];
+	memset(heap_slots, 0, sizeof(heap_slots));
 
 	for (int i = f->nr_arguments - 1; i >= 0; i--) {
 		switch (f->arguments[i].type.data) {
@@ -419,34 +420,37 @@ void hll_call(int libno, int fno)
 		stack_push(*(bool*)&r);
 #pragma GCC diagnostic pop
 		break;
-	case AIN_REF_HLL_PARAM: {
-		/* ref hll_param 返回元素引用。VM 的 REF 指令用 stack_pop_var()
-		 * 从栈上取两个值 (heap_index, page_index)，所以这里要把
-		 * C 函数返回的裸地址反查回编码，压两个值。 */
-		void *addr = r.ref;
-		int32_t hi = -1, pi = -1;
-		for (int32_t i = 1; i < heap_size; i++) {
-			if (heap[i].type != VM_PAGE)   /* STRING/DELEGATE 的 .page 是垃圾 */
-				continue;
-			struct page *pg = heap[i].page;
-			if (!pg)
-				continue;
-			union vm_value *base = pg->values;
-			if ((union vm_value *)addr >= base &&
-			    (union vm_value *)addr < base + pg->nr_vars) {
-				hi = i;
-				pi = (int32_t)((union vm_value *)addr - base);
-				break;
-			}
-		}
-		if (hi < 0) {
-			stack_push(r);
-			break;
-		}
-		stack_push((union vm_value){ .i = hi });
-		stack_push((union vm_value){ .i = pi });
-		break;
-	}
+    case AIN_REF_HLL_PARAM: {
+        /* ref hll_param returns an element reference; the VM's REF takes
+         * (page_index, heap_index) as two stack values. Look up only among
+         * THIS call's argument slots: scanning the entire heap can match a
+         * stale/aliased slot and create a dangling reference. */
+        void *addr = r.ref;
+        int32_t hi = -1, pi = -1;
+        if (addr) {
+            for (int i = 0; i < f->nr_arguments; i++) {
+                int slot = heap_slots[i];
+                if (slot <= 0 || slot >= heap_size)
+                    continue;
+                if (heap[slot].type != VM_PAGE)
+                    continue;
+                struct page *pg = heap[slot].page;
+                if (!pg)
+                    continue;
+                union vm_value *base = pg->values;
+                if ((union vm_value *)addr >= base &&
+                    (union vm_value *)addr < base + pg->nr_vars) {
+                    hi = slot;
+                    pi = (int32_t)((union vm_value *)addr - base);
+                    break;
+                }
+            }
+        }
+        /* Always push two values so the VM stack stays balanced. */
+        stack_push((union vm_value){ .i = hi });
+        stack_push((union vm_value){ .i = pi });
+        break;
+    }
 	default:
 		stack_push(r);
 		break;

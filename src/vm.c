@@ -320,15 +320,28 @@ static int alloc_scenario_page(const char *fname)
 
 static void set_struct_page(int slot)
 {
-	call_stack[call_stack_ptr-1].struct_page = slot;
-	// Keep `this` alive during the call (from Rance9 onwards).
-	if (AIN_VERSION_GTE(ain, 6, 1))
+	struct function_call *frame = &call_stack[call_stack_ptr-1];
+	frame->struct_page = slot;
+	frame->struct_page_refed = 0;
+	/* Keep `this` alive during the call (from Rance9 onwards).
+	 * A destructor is invoked while unref'ing an object whose ref already
+	 * reached 0; taking a ref there would resurrect it and cause a double
+	 * free when the frame is torn down. Only take ownership if still live. */
+	/* Reject non-heap values (e.g. AIN_IFACE vtable indices that have been
+	 * misread as an object slot). Never dereference heap[slot] out of range. */
+	if (slot < 0 || slot >= heap_size)
+		slot = -1;
+	frame->struct_page = slot;
+	if (AIN_VERSION_GTE(ain, 6, 1) && slot > 0 && heap[slot].ref > 0) {
 		heap_ref(slot);
+		frame->struct_page_refed = 1;
+	}
 }
 
 static void unref_call_frame(struct function_call *frame)
 {
-	if (frame->struct_page >= 0 && AIN_VERSION_GTE(ain, 6, 1))
+	/* Release `this` only if set_struct_page actually took a reference. */
+	if (frame->struct_page_refed)
 		heap_unref(frame->struct_page);
 	heap_unref(frame->page_slot);
 }
@@ -356,6 +369,7 @@ static void scenario_call(int slot)
 		.return_address = VM_RETURN,
 		.page_slot = slot,
 		.struct_page = -1,
+		.struct_page_refed = 0,
 	};
 	call_stack_ptr = 1;
 	instr_ptr = ain->functions[fno].address;
@@ -445,6 +459,14 @@ static void method_call(int nargs, int return_address)
 	function_call(fno, return_address);   /* 弹掉 nargs 个 args */
 	stack_pop();                          /* 弹掉 fno */
 	int struct_page = stack_pop().i;      /* 弹 obj */
+	/* D12 (validation-only hack): AIN_IFACE's two-value layout is not
+	 * implemented yet, so an interface member can surface a vtable index
+	 * instead of a heap slot. Fall back to the caller's `this` to see what
+	 * the next blocker is. MUST be replaced by a proper AIN_IFACE impl. */
+	if (struct_page < 0 || struct_page >= heap_size) {
+		struct_page = call_stack_ptr > 1
+			? call_stack[call_stack_ptr-2].struct_page : -1;
+	}
 	set_struct_page(struct_page);
 	heap[call_stack[call_stack_ptr-1].page_slot].page->local.struct_ptr = struct_page;
 }
@@ -511,7 +533,20 @@ void vm_call(int fno, int struct_page)
 	if (struct_page < 0) {
 		function_call(fno, VM_RETURN);
 	} else {
+		/* AIN v12: constructor arguments are already on the stack.
+		 * method_call_fno expects [this, args...] (this BELOW arguments),
+		 * so insert this below nr_args arguments instead of pushing on top. */
+		if (fno < 0 || fno >= ain->nr_functions)
+			VM_ERROR("vm_call: invalid function index %d", fno);
+		int nargs = ain->functions[fno].nr_args;
+		if (nargs > 32)
+			VM_ERROR("vm_call: too many arguments %d", nargs);
+		union vm_value args[32];
+		for (int i = nargs - 1; i >= 0; i--)
+			args[i] = stack_pop();
 		stack_push(struct_page);
+		for (int i = 0; i < nargs; i++)
+			stack_push(args[i]);
 		method_call_fno(fno, VM_RETURN);
 	}
 	vm_execute();
@@ -1044,19 +1079,14 @@ static enum opcode execute_instruction(enum opcode opcode)
 		break;
 	}
 	case NEW: {
-		/* AIN v12: struct no and constructor fno are immediate arguments.
-		 * No stack value is consumed here; constructor args stay on the
-		 * stack for init_struct -> vm_call -> function_call to pop. */
+		/* AIN v12: struct no and constructor fno are immediate arguments;
+		 * constructor arguments are on the stack below. */
 		int struct_no = get_argument(0);
 		int ctor_fno = get_argument(1);
 		union vm_value v;
 		if (struct_no < 0 || struct_no >= ain->nr_structures)
 			VM_ERROR("NEW: invalid struct no %d", struct_no);
-		int saved_ctor = ain->structures[struct_no].constructor;
-		if (ctor_fno > 0)
-			ain->structures[struct_no].constructor = ctor_fno;
-		create_struct(struct_no, &v);
-		ain->structures[struct_no].constructor = saved_ctor;
+		create_struct_with_ctor(struct_no, ctor_fno, &v);
 		stack_push(v);
 		break;
 	}

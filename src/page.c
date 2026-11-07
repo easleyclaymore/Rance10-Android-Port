@@ -251,7 +251,14 @@ int alloc_struct(int no)
 	return slot;
 }
 
+static void init_struct_with_ctor(int no, int slot, int ctor_fno);
+
 void init_struct(int no, int slot)
+{
+	init_struct_with_ctor(no, slot, -1);
+}
+
+static void init_struct_with_ctor(int no, int slot, int ctor_fno)
 {
 	struct ain_struct *s = &ain->structures[no];
 	for (int i = 0; i < s->nr_members; i++) {
@@ -259,22 +266,17 @@ void init_struct(int no, int slot)
 			init_struct(s->members[i].type.struc, heap[slot].page->values[i].i);
 		}
 	}
-	if (s->constructor > 0) {
-		static int dbg = 0;
-		if (dbg < 25) {
-			NOTICE("init_struct: %s -> ctor fno=%d slot=%d",
-			       s->name ? s->name : "?", s->constructor, slot);
-			dbg++;
-		}
-		vm_call(s->constructor, slot);
-	} else {
-		static int dbg2 = 0;
-		if (dbg2 < 15) {
-			NOTICE("init_struct: %s 无构造函数 (ctor=%d)",
-			       s->name ? s->name : "?", s->constructor);
-			dbg2++;
-		}
-	}
+	/* ctor_fno >= 0: AIN v12 NEW passes the constructor as an immediate.
+	 * Otherwise use the struct's own constructor (no global state mutation). */
+	int fno = ctor_fno >= 0 ? ctor_fno : s->constructor;
+	if (fno > 0)
+		vm_call(fno, slot);
+}
+
+void create_struct_with_ctor(int no, int ctor_fno, union vm_value *var)
+{
+	var->i = alloc_struct(no);
+	init_struct_with_ctor(no, var->i, ctor_fno);
 }
 
 void delete_struct(int no, int slot)

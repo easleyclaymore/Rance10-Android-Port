@@ -332,6 +332,17 @@ static bool Array_Empty_(struct page **a)
 
 
 /* At(ref array, int index) -> ref <any>：返回元素引用（可读可写） */
+static void *Array_Last_(struct page **a)
+{
+	NOTICE("[Array] Last");
+	if (!a || !*a)
+		return NULL;
+	struct page *p = *a;
+	if (p->nr_vars == 0)
+		return NULL;
+	return &p->values[p->nr_vars - 1];
+}
+
 static void *Array_At_(struct page **a, int index)
 {
 	NOTICE("[Array] At(%d)", index);
@@ -513,6 +524,7 @@ static void Array_Reverse_(struct page **a)
 
 HLL_LIBRARY(Array,
 	    HLL_EXPORT(At, Array_At_),
+    HLL_EXPORT(Last, Array_Last_),
 	    HLL_EXPORT(Find, Array_Find_),
 	    HLL_EXPORT(FindLast, Array_FindLast_),
 	    HLL_EXPORT(IsExist, Array_IsExist_),

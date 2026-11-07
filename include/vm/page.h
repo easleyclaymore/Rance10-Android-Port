@@ -119,6 +119,7 @@ int alloc_struct(int no);
 void init_struct(int no, int slot);
 void delete_struct(int no, int slot);
 void create_struct(int no, union vm_value *var);
+void create_struct_with_ctor(int no, int ctor_fno, union vm_value *var);
 
 // arrays
 enum ain_data_type array_type(enum ain_data_type type);

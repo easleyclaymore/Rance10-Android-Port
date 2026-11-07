@@ -155,6 +155,7 @@ struct function_call {
 	uint32_t return_address;
 	int32_t page_slot;
 	int32_t struct_page;
+	int32_t struct_page_refed;  /* true only if set_struct_page actually took a ref */
 };
 
 extern struct function_call call_stack[4096];
