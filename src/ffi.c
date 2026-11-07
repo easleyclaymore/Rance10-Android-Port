@@ -342,9 +342,19 @@ void hll_call(int libno, int fno)
 			break;
 		case AIN_REF_STRUCT:
 		case AIN_REF_ARRAY_TYPE:
+		case AIN_REF_ARRAY:   /* 80: null 时预分配一个空数组，否则沿用原 slot */
 			stack_ptr--;
 			heap_slots[i] = stack[stack_ptr].i;
-			heap_ptrs[i] = heap[stack[stack_ptr].i].page;
+			if (heap_slots[i] <= 0) {
+				/* 调用者的数组变量是 null：先给它一个空数组对象，
+				 * 否则 HLL 函数无法把新建的数组写回（ref 只给了值，没给变量位置） */
+				struct page *p = alloc_page(ARRAY_PAGE, AIN_INT, 0);
+				p->array.rank = 1;
+				p->array.struct_type = -1;
+				heap_slots[i] = heap_alloc_page(p);
+				stack[stack_ptr].i = heap_slots[i];
+			}
+			heap_ptrs[i] = heap[heap_slots[i]].page;
 			ptrs[i] = &heap_ptrs[i];
 			args[i] = &ptrs[i];
 			break;
@@ -378,6 +388,7 @@ void hll_call(int libno, int fno)
 			break;
 		case AIN_REF_STRUCT:
 		case AIN_REF_ARRAY_TYPE:
+		case AIN_REF_ARRAY:   /* 80 */
 			heap[heap_slots[i]].page = heap_ptrs[i];
 			break;
 		case AIN_REF_FUNC_TYPE:
@@ -408,6 +419,34 @@ void hll_call(int libno, int fno)
 		stack_push(*(bool*)&r);
 #pragma GCC diagnostic pop
 		break;
+	case AIN_REF_HLL_PARAM: {
+		/* ref hll_param 返回元素引用。VM 的 REF 指令用 stack_pop_var()
+		 * 从栈上取两个值 (heap_index, page_index)，所以这里要把
+		 * C 函数返回的裸地址反查回编码，压两个值。 */
+		void *addr = r.ref;
+		int32_t hi = -1, pi = -1;
+		for (int32_t i = 1; i < heap_size; i++) {
+			if (heap[i].type != VM_PAGE)   /* STRING/DELEGATE 的 .page 是垃圾 */
+				continue;
+			struct page *pg = heap[i].page;
+			if (!pg)
+				continue;
+			union vm_value *base = pg->values;
+			if ((union vm_value *)addr >= base &&
+			    (union vm_value *)addr < base + pg->nr_vars) {
+				hi = i;
+				pi = (int32_t)((union vm_value *)addr - base);
+				break;
+			}
+		}
+		if (hi < 0) {
+			stack_push(r);
+			break;
+		}
+		stack_push((union vm_value){ .i = hi });
+		stack_push((union vm_value){ .i = pi });
+		break;
+	}
 	default:
 		stack_push(r);
 		break;
@@ -424,6 +463,20 @@ extern struct static_library lib_AliceLogo3;
 extern struct static_library lib_AliceLogo4;
 extern struct static_library lib_AliceLogo5;
 extern struct static_library lib_AnteaterADVEngine;
+extern struct static_library lib_Clipboard;
+extern struct static_library lib_Delegate;
+extern struct static_library lib_system;
+extern struct static_library lib_EXWriter;
+extern struct static_library lib_ADVEngine;
+extern struct static_library lib_String;
+extern struct static_library lib_InstallInfo;
+extern struct static_library lib_Sys43VM;
+extern struct static_library lib_TextFile;
+extern struct static_library lib_TextSurfaceManager;
+extern struct static_library lib_Int;
+extern struct static_library lib_Float;
+extern struct static_library lib_FileDialog;
+extern struct static_library lib_PCInfo;
 extern struct static_library lib_Array;
 extern struct static_library lib_BanMisc;
 extern struct static_library lib_Bitarray;
@@ -536,6 +589,14 @@ extern struct static_library lib_vmTimer;
 extern struct static_library lib_ValueEncryption;
 extern struct static_library lib_VSFile;
 
+static bool library_alias(const char *ain_name, const char *lib_name)
+{
+	/* Rance X 及之后的游戏把 AnteaterADVEngine 改名为 AnteaterADVLogList */
+	if (!strcmp(ain_name, "AnteaterADVLogList") && !strcmp(lib_name, "AnteaterADVEngine"))
+		return true;
+	return false;
+}
+
 static struct static_library *static_libraries[] = {
 	&lib_ACXLoader,
 	&lib_ACXLoaderP2,
@@ -547,6 +608,20 @@ static struct static_library *static_libraries[] = {
 	&lib_AliceLogo4,
 	&lib_AliceLogo5,
 	&lib_AnteaterADVEngine,
+	&lib_Clipboard,
+	&lib_Delegate,
+	&lib_system,
+	&lib_EXWriter,
+	&lib_ADVEngine,
+	&lib_String,
+	&lib_InstallInfo,
+	&lib_Sys43VM,
+	&lib_TextFile,
+	&lib_TextSurfaceManager,
+	&lib_Int,
+	&lib_Float,
+	&lib_FileDialog,
+	&lib_PCInfo,
 	&lib_Array,
 	&lib_BanMisc,
 	&lib_Bitarray,
@@ -673,12 +748,17 @@ static ffi_type *ain_to_ffi_type(enum ain_data_type type)
 		return &ffi_type_sint64;
 	case AIN_FLOAT:
 		return &ffi_type_float;
+	case AIN_HLL_PARAM:     // 74: 泛型参数，按 8 字节值传递（不是指针！）
+		return &ffi_type_uint64;
 	case AIN_STRING:
 	case AIN_STRUCT:
 	case AIN_FUNC_TYPE:
 	case AIN_DELEGATE:
 	case AIN_ARRAY_TYPE:
 	case AIN_REF_TYPE:
+	case AIN_REF_HLL_PARAM: // 75: ref generic param（返回引用，按指针）
+	case AIN_HLL_FUNC:      // 95: predicate function type (needs pointer)
+	case AIN_ARRAY:         // 79: generic array
 	case AIN_IMAIN_SYSTEM: // ???
 		return &ffi_type_pointer;
 	default:
@@ -738,7 +818,8 @@ static void library_run_all(const char *name)
 {
 	for (int i = 0; i < ain->nr_libraries; i++) {
 		for (int j = 0; static_libraries[j]; j++) {
-			if (!strcmp(ain->libraries[i].name, static_libraries[j]->name)) {
+			if (!strcmp(ain->libraries[i].name, static_libraries[j]->name) ||
+			    library_alias(ain->libraries[i].name, static_libraries[j]->name)) {
 				library_run(static_libraries[j], name);
 				break;
 			}
@@ -755,7 +836,8 @@ static void link_libraries(void)
 
 	for (int i = 0; i < ain->nr_libraries; i++) {
 		for (int j = 0; static_libraries[j]; j++) {
-			if (!strcmp(ain->libraries[i].name, static_libraries[j]->name)) {
+			if (!strcmp(ain->libraries[i].name, static_libraries[j]->name) ||
+			    library_alias(ain->libraries[i].name, static_libraries[j]->name)) {
 				libraries[i] = link_static_library(&ain->libraries[i], static_libraries[j]);
 				break;
 			}

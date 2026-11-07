@@ -14,8 +14,13 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
+#include <stdlib.h>
+#include <string.h>
+
 #include "hll.h"
+#include "system4/string.h"
 #include "vm/page.h"
+#include "vm/heap.h"
 
 static void check_array(struct page *array)
 {
@@ -280,7 +285,247 @@ static int Array_NV_sceq(struct page *array, int index, int num, int *out_index)
 //int Array_VS_and(struct page *sArray, int nMember);
 //int Array_VS_or(struct page *sArray, int nMember);
 
+
+/* ---- System 4.3 generic array API (Rance X) ----
+ * Alloc(ref array, type, struct_type, rank, size): allocate the array object.
+ * The exact meaning of the 4 ints is inferred; adjust after observing calls.
+ */
+static enum ain_data_type elem_to_array_type(enum ain_data_type t);
+
+static void Array_Alloc_(struct page **out, int size, int type, int a, int b)
+{
+	WARNING("Array.Alloc: size=%d type=%d a=%d b=%d (out=%p -> %p)",
+		size, type, a, b, (void*)out, out ? (void*)*out : NULL);
+	if (!out || !*out)
+		return;
+	if (type < 0 || type > 100)
+		type = AIN_INT;
+	int n = (size > 0 && size < (1 << 20)) ? size : 0;
+	/* ARRAY_PAGE 的 a_type 必须存【数组类型】（AIN_ARRAY_INT），
+	 * 不是元素类型；否则 variable_type()/variable_fini() 会拿错类型 */
+	struct page *p = alloc_page(ARRAY_PAGE, elem_to_array_type(type), n);
+	p->array.rank = 1;
+	p->array.struct_type = -1;
+	*out = p;
+	WARNING("Array.Alloc: 已填充 page=%p nr_vars=%d", (void*)p, p->nr_vars);
+}
+
+static void Array_Free_(struct page **a)
+{
+	/* 数组对象由 VM 的引用计数管理（variable_fini -> heap_unref）。
+	 * 这里若把参数置 NULL 或直接释放，会和 VM 打架导致 double free。
+	 * 保持空实现，让 GC 自己处理。 */
+	(void)a;
+}
+
+static int Array_Numof_(struct page **a)
+{
+	if (!a || !*a)
+		return 0;
+	return (*a)->nr_vars;
+}
+
+static bool Array_Empty_(struct page **a)
+{
+	return Array_Numof_(a) == 0;
+}
+
+
+/* At(ref array, int index) -> ref <any>：返回元素引用（可读可写） */
+static void *Array_At_(struct page **a, int index)
+{
+	NOTICE("[Array] At(%d)", index);
+	if (!a || !*a)
+		return NULL;
+	struct page *p = *a;
+	if (index < 0 || index >= p->nr_vars)
+		return NULL;
+	return &p->values[index];
+}
+
+
+
+/* a_type 存的是元素类型，而 realloc_array 要的是数组类型 */
+static enum ain_data_type elem_to_array_type(enum ain_data_type t)
+{
+	switch (t) {
+	case AIN_FLOAT:  return AIN_ARRAY_FLOAT;
+	case AIN_STRING: return AIN_ARRAY_STRING;
+	case AIN_STRUCT: return AIN_ARRAY_STRUCT;
+	case AIN_BOOL:   return AIN_ARRAY_BOOL;
+	default:         return AIN_ARRAY_INT;
+	}
+}
+
+/* ---- 通用元素比较：t74 在 ffi 里是 void*（值的地址） ---- */
+static bool elem_eq(struct page *p, int i, void *v)
+{
+	if (!v)
+		return false;
+	switch (p->a_type) {
+	case AIN_FLOAT:
+		return p->values[i].f == *(float *)v;
+	case AIN_STRING: {
+		struct string *a = heap_get_string(p->values[i].i);
+		struct string *b = *(struct string **)v;
+		if (!a || !b)
+			return a == b;
+		return !strcmp(a->text, b->text);
+	}
+	default:
+		return p->values[i].i == *(int *)v;
+	}
+}
+
+static int Array_Find_(struct page **a, uint64_t value)
+{
+	NOTICE("[Array] Find");
+	if (!a || !*a)
+		return -1;
+	struct page *p = *a;
+	for (int i = 0; i < p->nr_vars; i++)
+		if (elem_eq(p, i, &value))
+			return i;
+	return -1;
+}
+
+static int Array_FindLast_(struct page **a, uint64_t value)
+{
+	NOTICE("[Array] FindLast");
+	if (!a || !*a)
+		return -1;
+	struct page *p = *a;
+	for (int i = p->nr_vars - 1; i >= 0; i--)
+		if (elem_eq(p, i, &value))
+			return i;
+	return -1;
+}
+
+static bool Array_IsExist_(struct page **a, uint64_t value)
+{
+	NOTICE("[Array] IsExist");
+	return Array_Find_(a, value) >= 0;
+}
+
+static void Array_PushBack_(struct page **a, uint64_t value)
+{
+	NOTICE("[Array] PushBack");
+	if (!a || !*a || !value)
+		return;
+	struct page *p = *a;
+	/* realloc_array 用 xrealloc 原地重分配，p 调用后立刻失效，
+	 * 所以长度和类型必须先在参数求值阶段取出 */
+	int old_n = p->nr_vars;
+	enum ain_data_type at = elem_to_array_type(p->a_type);
+	int st = p->array.struct_type;
+	NOTICE("PushBack: p=%p n=%d at=%d st=%d", (void*)p, old_n, at, st);
+	union vm_value dim = { .i = old_n + 1 };
+	struct page *np = realloc_array(p, 1, &dim, at, st, false);
+	NOTICE("PushBack: np=%p", (void*)np);
+	if (!np)
+		return;
+	np->values[old_n] = *(union vm_value *)&value;
+	NOTICE("PushBack: 写入完成, *a 将更新");
+	*a = np;
+}
+
+static void Array_PopBack_(struct page **a)
+{
+	NOTICE("[Array] PopBack");
+	if (!a || !*a)
+		return;
+	struct page *p = *a;
+	if (p->nr_vars > 0)
+		p->nr_vars--;
+}
+
+
+static int Array_Numof_(struct page **a);
+
+static void *Array_EmplaceBack_(struct page **a, uint64_t value)
+{
+	NOTICE("[Array] EmplaceBack");
+	if (!a || !*a)
+		return NULL;
+	Array_PushBack_(a, value);
+	struct page *p = *a;
+	if (!p || p->nr_vars == 0)
+		return NULL;
+	return &p->values[p->nr_vars - 1];
+}
+
+static void Array_Realloc_(struct page **a, int size)
+{
+	NOTICE("[Array] Realloc(%d)", size);
+	if (!a)
+		return;
+	if (size < 0)
+		size = 0;
+	if (!*a) {
+		struct page *p = alloc_page(ARRAY_PAGE, AIN_INT, size);
+		p->array.rank = 1;
+		p->array.struct_type = -1;
+		*a = p;
+		return;
+	}
+	struct page *p = *a;
+	union vm_value dim = { .i = size };
+	struct page *np = realloc_array(p, 1, &dim, elem_to_array_type(p->a_type), p->array.struct_type, false);
+	if (np)
+		*a = np;
+}
+
+static void Array_ReallocInit_(struct page **a, int size, uint64_t value)
+{
+	Array_Realloc_(a, size);
+	if (!a || !*a || !value)
+		return;
+	struct page *p = *a;
+	for (int i = 0; i < p->nr_vars; i++)
+		p->values[i] = *(union vm_value *)&value;
+}
+
+static bool Array_Erase_(struct page **a, int index)
+{
+	NOTICE("[Array] Erase(%d)", index);
+	if (!a || !*a)
+		return false;
+	struct page *p = *a;
+	if (index < 0 || index >= p->nr_vars)
+		return false;
+	memmove(&p->values[index], &p->values[index + 1],
+		(p->nr_vars - index - 1) * sizeof(union vm_value));
+	p->nr_vars--;
+	return true;
+}
+
+static void Array_Reverse_(struct page **a)
+{
+	if (!a || !*a)
+		return;
+	struct page *p = *a;
+	for (int i = 0, j = p->nr_vars - 1; i < j; i++, j--) {
+		union vm_value t = p->values[i];
+		p->values[i] = p->values[j];
+		p->values[j] = t;
+	}
+}
+
 HLL_LIBRARY(Array,
+	    HLL_EXPORT(At, Array_At_),
+	    HLL_EXPORT(Find, Array_Find_),
+	    HLL_EXPORT(FindLast, Array_FindLast_),
+	    HLL_EXPORT(IsExist, Array_IsExist_),
+	    HLL_EXPORT(PushBack, Array_PushBack_),
+	    HLL_EXPORT(PopBack, Array_PopBack_),
+	    HLL_EXPORT(EmplaceBack, Array_EmplaceBack_),
+	    HLL_EXPORT(Realloc, Array_Realloc_),
+	    HLL_EXPORT(Erase, Array_Erase_),
+	    HLL_EXPORT(Reverse, Array_Reverse_),
+	    HLL_EXPORT(Alloc, Array_Alloc_),
+	    HLL_EXPORT(Free, Array_Free_),
+	    HLL_EXPORT(Numof, Array_Numof_),
+	    HLL_EXPORT(Empty, Array_Empty_),
 	    HLL_TODO_EXPORT(NV_copy, Array_NV_copy),
 	    HLL_TODO_EXPORT(NV_add, Array_NV_add),
 	    HLL_TODO_EXPORT(NV_sub, Array_NV_sub),

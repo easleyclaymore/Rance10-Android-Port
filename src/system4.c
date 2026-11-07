@@ -342,6 +342,88 @@ static void config_init_with_ain(const char *ain_path)
 	config_init();
 }
 
+/* 统计 CALLMETHOD / CALLFUNC 的参数分布，判断其语义 */
+static void ain_stat_method(FILE *f, struct ain *ain)
+{
+	int total = 0, invalid = 0;
+	long hist[32] = {0};
+	int maxarg = 0;
+
+	size_t last_addr = 0;
+	for (size_t addr = 0; addr < ain->code_size;) {
+		uint16_t opcode = LittleEndian_getW(ain->code, addr);
+		if (opcode >= NR_OPCODES) {
+			fprintf(f, "!! 扫描中断于 0x%08zx: 非法 opcode 0x%04x\n", addr, opcode);
+			break;
+		}
+		last_addr = addr;
+		if (opcode == CALLMETHOD) {
+			uint32_t fno = LittleEndian_getDW(ain->code, addr + 2);
+			total++;
+			if (fno < 32) { hist[fno]++; if ((int)fno > maxarg) maxarg = fno; }
+			if (fno >= (uint32_t)ain->nr_functions || !ain->functions[fno].name) {
+				invalid++;
+				if (invalid <= 5)
+					fprintf(f, "  invalid CALLMETHOD arg=%u at 0x%08zx\n", fno, addr);
+			}
+		}
+		addr += instruction_width(opcode);
+	}
+
+	fprintf(f, "扫描至 0x%08zx / code_size=0x%08zx\n", last_addr, ain->code_size);
+	fprintf(f, "CALLMETHOD total=%d  invalid(空函数/越界)=%d\n", total, invalid);
+	for (int i = 0; i <= maxarg && i < 32; i++)
+		if (hist[i]) fprintf(f, "  arg=%-3d count=%ld\n", i, hist[i]);
+	fflush(f);
+}
+
+/* 按地址范围反汇编；CALLHLL / CALLFUNC 会还原出符号名，用于定位 NULL 调用 */
+static void ain_disasm(FILE *f, struct ain *ain, size_t start, size_t len)
+{
+	size_t end = (start + len > ain->code_size) ? ain->code_size : start + len;
+
+	for (size_t addr = start; addr < end;) {
+		uint16_t opcode = LittleEndian_getW(ain->code, addr);
+		if (opcode >= NR_OPCODES) {
+			fprintf(f, "0x%08zx: <invalid opcode 0x%04x>\n", addr, opcode);
+			break;
+		}
+		const struct instruction *instr = &instructions[opcode];
+		{
+			int w = instruction_width(opcode);
+			unsigned int raw = 0;
+			if (w >= 6)
+				raw = LittleEndian_getDW(ain->code, addr + 2);
+			fprintf(f, "0x%08zx: %-18s", addr, instr->name);
+			if (w >= 6)
+				fprintf(f, " arg=%-8u(0x%x)", raw, raw);
+		}
+
+		if (opcode == CALLHLL) {
+			uint32_t lib = LittleEndian_getDW(ain->code, addr + 2);
+			uint32_t fun = LittleEndian_getDW(ain->code, addr + 6);
+			if (lib < (uint32_t)ain->nr_libraries &&
+			    fun < (uint32_t)ain->libraries[lib].nr_functions) {
+				fprintf(f, "%s.%s", ain->libraries[lib].name,
+					ain->libraries[lib].functions[fun].name);
+			} else {
+				fprintf(f, "lib=%u fun=%u <out of range>", lib, fun);
+			}
+		} else if (opcode == CALLFUNC || opcode == CALLMETHOD) {
+			uint32_t fun = LittleEndian_getDW(ain->code, addr + 2);
+			if (fun < (uint32_t)ain->nr_functions) {
+				fprintf(f, "[%u] %s @0x%08x", fun, ain->functions[fun].name,
+					ain->functions[fun].address);
+			} else {
+				fprintf(f, "[%u] <OUT OF RANGE, nr_functions=%d>", fun, ain->nr_functions);
+			}
+		}
+		fprintf(f, "\n");
+		addr += instruction_width(opcode);
+	}
+	fflush(f);
+}
+
 static void ain_audit(FILE *f, struct ain *ain)
 {
 	init_libraries();
@@ -423,6 +505,8 @@ enum {
 	LOPT_HELP = 256,
 	LOPT_VERSION,
 	LOPT_AUDIT,
+	LOPT_DISASM,
+	LOPT_STAT_METHOD,
 	LOPT_ECHO_MESSAGE,
 	LOPT_ENCODING,
 	LOPT_FONT_MINCHO,
@@ -453,6 +537,9 @@ int main(int argc, char *argv[])
 	char *ainfile;
 	int err = AIN_SUCCESS;
 	bool audit = false;
+	bool disasm = false;
+	bool stat_method = false;
+	size_t disasm_start = 0, disasm_len = 0x400;
 	char *encoding = NULL;
 
 	char *font_mincho = NULL;
@@ -467,6 +554,8 @@ int main(int argc, char *argv[])
 			{ "help",          no_argument,       0, LOPT_HELP },
 			{ "version",       no_argument,       0, LOPT_VERSION },
 			{ "audit",         no_argument,       0, LOPT_AUDIT },
+			{ "disasm",        required_argument, 0, LOPT_DISASM },
+			{ "stat-method",    no_argument,       0, LOPT_STAT_METHOD },
 			{ "echo-message",  no_argument,       0, LOPT_ECHO_MESSAGE },
 			{ "encoding",      required_argument, 0, LOPT_ENCODING },
 			{ "font-mincho",   required_argument, 0, LOPT_FONT_MINCHO },
@@ -503,6 +592,17 @@ int main(int argc, char *argv[])
 		case LOPT_AUDIT:
 			audit = true;
 			break;
+		case LOPT_STAT_METHOD:
+			stat_method = true;
+			break;
+		case LOPT_DISASM: {
+			unsigned long ds = 0, dl = 0x400;
+			sscanf(optarg, "%lx:%lx", &ds, &dl);
+			disasm_start = ds;
+			disasm_len = dl ? dl : 0x400;
+			disasm = true;
+			break;
+		}
 		case 'e':
 		case LOPT_ECHO_MESSAGE:
 			config.echo = true;
@@ -623,6 +723,23 @@ int main(int argc, char *argv[])
 
 	if (!(ain = ain_open(ainfile, &err))) {
 		ERROR("%s", ain_strerror(err));
+	}
+
+	/* functions[0] hack 已移除：CALLMETHOD 语义修正后不再需要 */
+
+	if (stat_method) {
+		NOTICE("stat-method");
+		ain_stat_method(stdout, ain);
+		ain_free(ain);
+		return 0;
+	}
+
+	if (disasm) {
+		/* 反汇编只读 ain 结构，不需要 init_libraries()（那会连带加载 .ex 文件） */
+		NOTICE("disasm 0x%08zx..0x%08zx", disasm_start, disasm_start + disasm_len);
+		ain_disasm(stdout, ain, disasm_start, disasm_len);
+		ain_free(ain);
+		return 0;
 	}
 
 	if (audit) {

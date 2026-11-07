@@ -198,7 +198,7 @@ static union vm_value *stack_pop_var(void)
 	int32_t page_index = stack_pop().i;
 	int32_t heap_index = stack_pop().i;
 	if (unlikely(!heap_index_valid(heap_index)))
-		VM_ERROR("Out of bounds heap index: %d/%d", heap_index, page_index);
+		VM_ERROR("Out of bounds heap index: %d/%d (heap_size=%zu)", heap_index, page_index, heap_size);
 	if (unlikely(!heap[heap_index].page || page_index >= heap[heap_index].page->nr_vars))
 		VM_ERROR("Out of bounds page index: %d/%d", heap_index, page_index);
 	return &heap[heap_index].page->values[page_index];
@@ -371,6 +371,20 @@ static void scenario_call(int slot)
 static int _function_call(int fno, int return_address)
 {
 	struct ain_function *f = &ain->functions[fno];
+	if (fno == 147) {
+		NOTICE(">>> CASTimer@0 构造函数被调用 (ptr=%d)", call_stack_ptr);
+	}
+	if (f->address == 0) {
+		NOTICE("_function_call: fno=%d (%s) address=0, ret=0x%x, ptr=%d",
+		       fno, f->name ? f->name : "?", return_address, call_stack_ptr);
+	}
+	{
+		static int dbg2 = 0;
+		if (dbg2 < 30 && f->name && (strstr(f->name, "Create") || strstr(f->name, "Release"))) {
+			NOTICE("_function_call: [ctor] fno=%d %s @0x%x", fno, f->name, f->address);
+			dbg2++;
+		}
+	}
 	int slot = heap_alloc_slot(VM_PAGE);
 	heap_set_page(slot, alloc_page(LOCAL_PAGE, fno, f->nr_vars));
 	heap[slot].page->local.struct_ptr = -1;
@@ -413,10 +427,24 @@ static void function_call(int fno, int return_address)
 	}
 }
 
-static void method_call(int fno, int return_address)
+/* vm_call 用：fno 由参数给出，栈上只有 [struct_page] */
+static void method_call_fno(int fno, int return_address)
 {
 	function_call(fno, return_address);
 	int struct_page = stack_pop().i;
+	set_struct_page(struct_page);
+	heap[call_stack[call_stack_ptr-1].page_slot].page->local.struct_ptr = struct_page;
+}
+
+/* CALLMETHOD 用：栈布局 [obj, fno, args...]，fno 在 args 下面一层 */
+static void method_call(int nargs, int return_address)
+{
+	int fno = stack_peek(nargs).i;
+	if (fno < 0 || fno >= ain->nr_functions)
+		VM_ERROR("CALLMETHOD: invalid function index %d", fno);
+	function_call(fno, return_address);   /* 弹掉 nargs 个 args */
+	stack_pop();                          /* 弹掉 fno */
+	int struct_page = stack_pop().i;      /* 弹 obj */
 	set_struct_page(struct_page);
 	heap[call_stack[call_stack_ptr-1].page_slot].page->local.struct_ptr = struct_page;
 }
@@ -484,7 +512,7 @@ void vm_call(int fno, int struct_page)
 		function_call(fno, VM_RETURN);
 	} else {
 		stack_push(struct_page);
-		method_call(fno, VM_RETURN);
+		method_call_fno(fno, VM_RETURN);
 	}
 	vm_execute();
 	instr_ptr = saved_ip;
@@ -492,8 +520,20 @@ void vm_call(int fno, int struct_page)
 
 static void function_return(void)
 {
-	unref_call_frame(&call_stack[call_stack_ptr-1]);
-	instr_ptr = call_stack[call_stack_ptr-1].return_address;
+	if (call_stack_ptr <= 0) {
+		NOTICE("RET: 调用栈已空，VM 退出");
+		vm_exit(0);
+		return;
+	}
+	struct function_call *cf = &call_stack[call_stack_ptr - 1];
+	if (cf->return_address == 0) {
+		const char *nm = "?";
+		if (cf->fno >= 0 && cf->fno < ain->nr_functions && ain->functions[cf->fno].name)
+			nm = ain->functions[cf->fno].name;
+		NOTICE("RET 异常: fno=%d (%s) return_address=0, ptr=%d", cf->fno, nm, call_stack_ptr);
+	}
+	unref_call_frame(cf);
+	instr_ptr = cf->return_address;
 	call_stack_ptr--;
 }
 
@@ -1025,7 +1065,15 @@ static enum opcode execute_instruction(enum opcode opcode)
 		break;
 	}
 	case CALLMETHOD: {
-		method_call(get_argument(0), instr_ptr + instruction_width(CALLMETHOD));
+		/* 操作数有两种含义（见 alice-tools compile.c / get_alloc_fun）：
+		 *  - 普通调用：参数个数 nargs，栈布局 [obj, fno, args...]
+		 *  - 构造函数里的对象分配：直接是函数编号 alloc_no（几千） */
+		int arg = get_argument(0);
+		if (arg > 100) {
+			method_call_fno(arg, instr_ptr + instruction_width(CALLMETHOD));
+		} else {
+			method_call(arg, instr_ptr + instruction_width(CALLMETHOD));
+		}
 		break;
 	}
 	case CALLHLL: {
@@ -2372,6 +2420,19 @@ static enum opcode execute_instruction(enum opcode opcode)
 	return opcode;
 }
 
+/* 供 HLL（system.Error）打印调用栈用 */
+void vm_dump_call_stack(int max)
+{
+	for (int i = 0; i < max; i++) {
+		int idx = call_stack_ptr - (1 + i);
+		if (idx < 0)
+			break;
+		int fno = call_stack[idx].fno;
+		if (fno >= 0 && fno < ain->nr_functions && ain->functions[fno].name)
+			fprintf(stderr, "  #%d %s\n", i, ain->functions[fno].name);
+	}
+}
+
 static void vm_execute(void)
 {
 	for (;;) {
@@ -2456,7 +2517,9 @@ int vm_execute_ain(struct ain *program)
 		if (ain->globals[i].type.data == AIN_STRUCT) {
 			// XXX: need to allocate storage for global structs BEFORE calling
 			//      constructors.
-			heap[0].page->values[i].i = alloc_struct(ain->globals[i].type.struc);
+			/* 原来只 alloc_struct，不调构造函数 → 全局结构体的成员
+			 * （如 g_ASTimerManager 的数组）永远不初始化 */
+			create_struct(ain->globals[i].type.struc, &heap[0].page->values[i]);
 		} else {
 			heap[0].page->values[i] = variable_initval(ain->globals[i].type.data);
 		}

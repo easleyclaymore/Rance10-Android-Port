@@ -90,6 +90,8 @@ union vm_value variable_initval(enum ain_data_type type)
 		return (union vm_value) { .i = -1 };
 	case AIN_ARRAY_TYPE:
 	case AIN_DELEGATE:
+	case AIN_IFACE:        /* 接口：按引用处理，分配一个 2 值 page 承载
+	                        * [0]=struct page, [1]=vtable offset */
 		slot = heap_alloc_slot(VM_PAGE);
 		heap_set_page(slot, NULL);
 		return (union vm_value) { .i = slot };
@@ -146,7 +148,7 @@ enum ain_data_type array_type(enum ain_data_type type)
 	case AIN_REF_ARRAY_DELEGATE:
 		return AIN_DELEGATE;
 	default:
-		WARNING("Unknown/invalid array type: %d", type);
+		WARNING("Unknown/invalid array type: %d from %p", type, __builtin_return_address(0));
 		return type;
 	}
 }
@@ -229,6 +231,13 @@ struct page *copy_page(struct page *src)
 
 int alloc_struct(int no)
 {
+	{
+		static int dbg = 0;
+		if (dbg < 20 && ain->structures[no].name && strstr(ain->structures[no].name, "Timer")) {
+			NOTICE("alloc_struct: %s (no=%d)", ain->structures[no].name, no);
+			dbg++;
+		}
+	}
 	struct ain_struct *s = &ain->structures[no];
 	int slot = heap_alloc_slot(VM_PAGE);
 	heap_set_page(slot, alloc_page(STRUCT_PAGE, no, s->nr_members));
@@ -251,7 +260,20 @@ void init_struct(int no, int slot)
 		}
 	}
 	if (s->constructor > 0) {
+		static int dbg = 0;
+		if (dbg < 25) {
+			NOTICE("init_struct: %s -> ctor fno=%d slot=%d",
+			       s->name ? s->name : "?", s->constructor, slot);
+			dbg++;
+		}
 		vm_call(s->constructor, slot);
+	} else {
+		static int dbg2 = 0;
+		if (dbg2 < 15) {
+			NOTICE("init_struct: %s 无构造函数 (ctor=%d)",
+			       s->name ? s->name : "?", s->constructor);
+			dbg2++;
+		}
 	}
 }
 

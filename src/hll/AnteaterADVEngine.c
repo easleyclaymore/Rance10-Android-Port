@@ -564,7 +564,10 @@ static void AnteaterADVEngine_PreLink(void)
 {
 	struct ain_hll_function *fun;
 	int libno = ain_get_library(ain, "AnteaterADVEngine");
-	assert(libno >= 0);
+	if (libno < 0)
+		libno = ain_get_library(ain, "AnteaterADVLogList");
+	if (libno < 0)
+		return;
 
 	fun = get_fun(libno, "ADVLogList_AddText");
 	if (fun && fun->nr_arguments == 2) {

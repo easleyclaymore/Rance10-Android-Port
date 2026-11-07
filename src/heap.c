@@ -127,6 +127,18 @@ void heap_ref(int32_t slot)
 
 void heap_unref(int slot)
 {
+	/* slot 0 是保留的无效槽；若某个 page 成员的值是 0（未初始化的引用），
+	 * 这里会 unref 到 slot 0 并触发 delete_page(0) -> 遍历成员 -> 又是 0，
+	 * 形成无限递归（gdb backtrace 已确认）。必须挡掉。 */
+	if (slot <= 0)
+		return;
+	if (slot == 255) {
+		static int n = 0;
+		if (n < 8) {
+			NOTICE("heap_unref(255): ref=%d -> %d", heap[slot].ref, heap[slot].ref - 1);
+			n++;
+		}
+	}
 	if (unlikely(heap[slot].ref <= 0)) {
 		heap_double_free(slot);
 		VM_ERROR("double free");
