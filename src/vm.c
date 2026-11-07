@@ -1065,6 +1065,32 @@ static enum opcode execute_instruction(enum opcode opcode)
 		stack_push(local_get(get_argument(0)).i);
 		break;
 	}
+	/* AIN v12 0x10x extension: interface cast.
+	 * The operand is the target interface struct number. An AIN_IFACE value
+	 * is a 2-value reference [struct page, vtable offset]; the surrounding
+	 * bytecode keeps that reference on the stack and only consumes the
+	 * single cast result (compared against -1 for a null interface).
+	 * Stage 1: dereference to the implementing object by page shape.
+	 * Stage 2 (D3): verify the target interface via ain_interface and
+	 * function_types before accepting the cast. */
+	case X_ICAST: {
+		int iface_no = get_argument(0);
+		(void)iface_no; /* target-interface check is still TODO (D3) */
+		union vm_value ref = stack_peek(0);
+		int32_t obj = -1;
+		if (ref.i > 0 && ref.i < heap_size) {
+			struct page *p = heap[ref.i].page;
+			if (p && p->nr_vars >= 2) {
+				int32_t impl = p->values[0].i;
+				if (impl > 0 && impl < heap_size && heap[impl].page)
+					obj = impl;
+			} else if (p && p->type == STRUCT_PAGE) {
+				obj = ref.i;
+			}
+		}
+		stack_push((union vm_value){ .i = obj });
+		break;
+	}
 	case _EOF: // In Ain v0, opcode 0x62 is not EOF but SH_STRUCTREF
 		if (ain->version != 0)
 			VM_ERROR("Illegal opcode: 0x%04x", opcode);
