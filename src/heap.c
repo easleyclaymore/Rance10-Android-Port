@@ -261,6 +261,11 @@ struct string *heap_get_string(int index)
 
 struct page *heap_get_delegate_page(int index)
 {
+	/* AIN v12 uses -1 as the empty-delegate sentinel. delegate_append()
+	 * already treats a NULL destination as "create lazily", so map the
+	 * sentinel here instead of indexing heap[-1]. */
+	if (index < 0)
+		return NULL;
 	struct page *page = heap_get_page(index);
 	if (unlikely(page && page->type != DELEGATE_PAGE))
 		VM_ERROR("Not a delegate page: %d", index);
@@ -269,6 +274,8 @@ struct page *heap_get_delegate_page(int index)
 
 void heap_set_page(int slot, struct page *page)
 {
+	if (slot < 0)
+		return; /* empty-delegate sentinel: nothing to write back yet */
 #ifdef DEBUG_HEAP
 	if (unlikely(!page_index_valid(slot)))
 		VM_ERROR("Invalid page index: %d", index);

@@ -308,7 +308,13 @@ static void Array_Alloc_(struct page **out, int size, int type, int a, int b)
 	/* Keep the struct type declared by the AIN variable: struct arrays
 	 * need it to construct elements in Array.EmplaceBack. */
 	int struct_type = (*out)->array.struct_type;
-	/* ARRAY_PAGE 的 a_type 必须存【数组类型】（AIN_ARRAY_INT），
+	/* A container declared with a struct_type holds struct objects, even
+	 * when the generic Alloc argument carries no element type (-1).
+	 * Without this, struct arrays degenerate to AIN_ARRAY_INT and their
+	 * elements never get reference-counted (D21). */
+	if (struct_type >= 0)
+		type = AIN_STRUCT;
+	/* ARRAY_PAGE 的 a_type 必须存【数组类型】（AIN_ARRAY_STRUCT 等），
 	 * 不是元素类型；否则 variable_type()/variable_fini() 会拿错类型 */
 	struct page *p = alloc_page(ARRAY_PAGE, elem_to_array_type(type), n);
 	p->array.rank = 1;
@@ -447,6 +453,15 @@ static void Array_PushBack_(struct page **a, uint64_t value)
 	if (!np)
 		return;
 	np->values[old_n] = *(union vm_value *)&value;
+	/* The container becomes an independent owner of a heap object.
+	 * Take a reference for it: the caller still owns its own reference
+	 * and will release it with DELETE. Without this, DELETE drops the
+	 * last ref and the container is left holding a dead slot (D21). */
+	enum ain_data_type elem = array_type(at);
+	if ((elem == AIN_STRUCT || elem == AIN_STRING || elem == AIN_DELEGATE ||
+	     elem == AIN_ARRAY) && value > 0 && value < heap_size &&
+	    heap[value].ref > 0)
+		heap_ref((int)value);
 	NOTICE("PushBack: 写入完成, *a 将更新");
 	*a = np;
 }

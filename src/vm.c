@@ -1056,6 +1056,7 @@ static enum opcode execute_instruction(enum opcode opcode)
 		stack_push(val);
 		break;
 	}
+
 	case SH_GLOBALREF: { // VARNO
 		stack_push(global_get(get_argument(0)).i);
 		break;

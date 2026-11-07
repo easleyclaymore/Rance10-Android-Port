@@ -85,7 +85,11 @@ struct page *alloc_page(enum page_type type, int type_index, int nr_vars)
 union vm_value variable_initval_typed(const struct ain_type *type)
 {
 	if (type->data == AIN_ARRAY || type->data == AIN_REF_ARRAY) {
-		struct page *p = alloc_page(ARRAY_PAGE, AIN_ARRAY_INT, 0);
+		/* AIN declares struct arrays as AIN_ARRAY with type.struc set.
+		 * Preserve the element kind in a_type so Array.PushBack can
+		 * reference-count inserted objects (D21). */
+		enum ain_data_type at = type->struc >= 0 ? AIN_ARRAY_STRUCT : AIN_ARRAY_INT;
+		struct page *p = alloc_page(ARRAY_PAGE, at, 0);
 		p->array.rank = type->rank > 0 ? type->rank : 1;
 		p->array.struct_type = type->struc;
 		int slot = heap_alloc_slot(VM_PAGE);
