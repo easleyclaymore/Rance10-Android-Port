@@ -2032,6 +2032,10 @@ void PE_SetComponentType(int parts_no, int type, int state)
 	case 16: pt = PARTS_NUMERAL; break;
 	case 17: pt = PARTS_RECT_DETECTION; break;
 	case 18: pt = PARTS_CONSTRUCTION_PROCESS; break;
+	/* Rance10 uses component type 19. It is the only unmapped numeric slot
+	 * between 18 and 20, and PARTS_FLASH is the only enum member without a
+	 * numeric mapping (PE_GetComponentType used to break on it). */
+	case 19: pt = PARTS_FLASH; break;
 	case 20: pt = PARTS_FLAT; break;
 	case 21: pt = PARTS_3DLAYER; break;
 	case 22: pt = PARTS_MOVIE; break;
@@ -2065,8 +2069,7 @@ int PE_GetComponentType(int parts_no, int state)
 	case PARTS_FLAT: return 20;
 	case PARTS_3DLAYER: return 21;
 	case PARTS_MOVIE: return 22;
-	case PARTS_FLASH:
-		break;
+	case PARTS_FLASH: return 19;
 	}
 	VM_ERROR("unsupported component type %d", parts->states[state].type);
 }
