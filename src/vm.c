@@ -198,9 +198,15 @@ static union vm_value *stack_pop_var(void)
 	int32_t page_index = stack_pop().i;
 	int32_t heap_index = stack_pop().i;
 	if (unlikely(!heap_index_valid(heap_index)))
-		VM_ERROR("Out of bounds heap index: %d/%d (heap_size=%zu)", heap_index, page_index, heap_size);
-	if (unlikely(!heap[heap_index].page || page_index >= heap[heap_index].page->nr_vars))
-		VM_ERROR("Out of bounds page index: %d/%d", heap_index, page_index);
+		VM_ERROR("Out of bounds heap index: %d/%d", heap_index, page_index);
+	if (unlikely(!heap[heap_index].page || page_index >= heap[heap_index].page->nr_vars)) {
+		struct page *pg = heap[heap_index].page;
+		VM_ERROR("Out of bounds page index: %d/%d (type=%d nr_vars=%d ref=%d v0=%d v1=%d)",
+			 heap_index, page_index,
+			 pg ? pg->type : -1, pg ? pg->nr_vars : -1, heap[heap_index].ref,
+			 pg && pg->nr_vars > 0 ? pg->values[0].i : -9999,
+			 pg && pg->nr_vars > 1 ? pg->values[1].i : -9999);
+	}
 	return &heap[heap_index].page->values[page_index];
 }
 
@@ -327,8 +333,17 @@ static void set_struct_page(int slot)
 	 * A destructor is invoked while unref'ing an object whose ref already
 	 * reached 0; taking a ref there would resurrect it and cause a double
 	 * free when the frame is torn down. Only take ownership if still live. */
-	/* Reject non-heap values (e.g. AIN_IFACE vtable indices that have been
-	 * misread as an object slot). Never dereference heap[slot] out of range. */
+	/* AIN v12: an AIN_IFACE value is 2 values [struct page, vtable offset]
+	 * held in an IFACE_PAGE. When an interface reference is used as `this`,
+	 * dispatch must target the implementing struct, not the 2-slot wrapper.
+	 * This is a type-driven dereference, not a numeric heuristic. */
+	if (slot > 0 && slot < heap_size && heap[slot].page &&
+	    heap[slot].page->type == IFACE_PAGE) {
+		int impl = heap[slot].page->values[0].i;
+		if (impl > 0 && impl < heap_size && heap[impl].page)
+			slot = impl;
+	}
+	/* Reject non-heap values. Never dereference heap[slot] out of range. */
 	if (slot < 0 || slot >= heap_size)
 		slot = -1;
 	frame->struct_page = slot;

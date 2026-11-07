@@ -77,7 +77,7 @@ static GLchar *read_shader_file(const char *path)
 	GLchar *source = SDL_LoadFile(path, NULL);
 	if (!source) {
 		char full_path[PATH_MAX];
-		snprintf(full_path, PATH_MAX, XSYS4_DATA_DIR "/%s", path);
+		snprintf(full_path, PATH_MAX, "%s/%s", xsys4_data_dir(), path);
 		source = SDL_LoadFile(full_path, NULL);
 		if (!source)
 			ERROR("Failed to load shader file %s", full_path, strerror(errno));

@@ -208,8 +208,11 @@ void dbg_scm_init(void)
 
 	if (file_exists("./debugger.scm"))
 		sexp_eval_string(dbg_ctx, "(load \"./debugger.scm\")", -1, NULL);
-	else
-		sexp_eval_string(dbg_ctx, "(load \"" XSYS4_DATA_DIR "/debugger.scm\")", -1, NULL);
+	else {
+		char expr[1024];
+		snprintf(expr, sizeof(expr), "(load \"%s/debugger.scm\")", xsys4_data_dir());
+		sexp_eval_string(dbg_ctx, expr, -1, NULL);
+	}
 }
 
 void dbg_scm_fini(void)

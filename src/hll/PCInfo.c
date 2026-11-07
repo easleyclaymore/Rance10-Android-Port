@@ -3,7 +3,7 @@
  */
 #include <stdio.h>
 #include <string.h>
-#include <sys/utsname.h>
+#include "pal.h"
 
 #include "hll.h"
 #include "vm.h"
@@ -11,15 +11,8 @@
 
 static void PCInfo_GetOSInfo(struct string **info)
 {
-	struct utsname u;
-	char buf[512];
-
-	if (uname(&u) != 0) {
-		*info = string_dup(&EMPTY_STRING);
-		return;
-	}
-	snprintf(buf, sizeof(buf), "%s %s %s", u.sysname, u.release, u.machine);
-	*info = make_string(buf, strlen(buf));
+	const char *desc = pal_get()->info->os_description();
+	*info = make_string(desc, strlen(desc));
 }
 
 HLL_LIBRARY(PCInfo,

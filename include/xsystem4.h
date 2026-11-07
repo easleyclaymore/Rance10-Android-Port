@@ -83,9 +83,10 @@ void get_time(int *hour, int *min, int *sec, int *ms);
 
 void screenshot_save(void);
 
-#ifndef XSYS4_DATA_DIR
-#define XSYS4_DATA_DIR "/usr/local/share/xsystem4"
-#endif
+/* Data directory is injected at startup, via XSYS4_DATA_DIR, or from the
+ * build-time default supplied by meson. Never hardcoded in source. */
+const char *xsys4_data_dir(void);
+void xsys4_set_data_dir(const char *dir);
 
 #define MMAP_IF_64BIT (sizeof(void*) >= 8 ? ARCHIVE_MMAP : 0)
 

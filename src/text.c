@@ -53,10 +53,6 @@ static struct font *load_font(enum font_face type)
 		[FONT_GOTHIC] = DEFAULT_FONT_GOTHIC,
 		[FONT_MINCHO] = DEFAULT_FONT_MINCHO
 	};
-	static const char *default_font_paths[] = {
-		[FONT_GOTHIC] = XSYS4_DATA_DIR "/" DEFAULT_FONT_GOTHIC,
-		[FONT_MINCHO] = XSYS4_DATA_DIR "/" DEFAULT_FONT_MINCHO
-	};
 
 	struct font *font;
 	// user specified font
@@ -66,7 +62,10 @@ static struct font *load_font(enum font_face type)
 		WARNING("Failed to load font '%s'; using the default font", config.font_paths[type]);
 	}
 	// installed default font
-	if ((font = ft_font_load(default_font_paths[type])))
+	char default_path[1024];
+	snprintf(default_path, sizeof(default_path), "%s/%s", xsys4_data_dir(),
+	         local_font_paths[type]);
+	if ((font = ft_font_load(default_path)))
 		return font;
 	// local default font
 	if ((font = ft_font_load(local_font_paths[type])))

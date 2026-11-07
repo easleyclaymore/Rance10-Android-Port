@@ -434,7 +434,11 @@ static void Array_PushBack_(struct page **a, uint64_t value)
 	/* realloc_array 用 xrealloc 原地重分配，p 调用后立刻失效，
 	 * 所以长度和类型必须先在参数求值阶段取出 */
 	int old_n = p->nr_vars;
-	enum ain_data_type at = elem_to_array_type(p->a_type);
+	/* p->a_type is already an ARRAY type (AIN_ARRAY_STRUCT, ...).
+	 * realloc_array() expects that array type, not the element type:
+	 * elem_to_array_type() on an array type falls through to AIN_ARRAY_INT
+	 * and silently turns struct arrays into int arrays. */
+	enum ain_data_type at = p->a_type;
 	int st = p->array.struct_type;
 	NOTICE("PushBack: p=%p n=%d at=%d st=%d", (void*)p, old_n, at, st);
 	union vm_value dim = { .i = old_n + 1 };
@@ -473,7 +477,7 @@ static void *Array_EmplaceBack_(struct page **a)
 	int old_n = p->nr_vars;
 	int st = p->array.struct_type;
 	union vm_value dim = { .i = old_n + 1 };
-	struct page *np = realloc_array(p, 1, &dim, elem_to_array_type(p->a_type), st, false);
+	struct page *np = realloc_array(p, 1, &dim, p->a_type, st, false);
 	if (!np)
 		return NULL;
 	*a = np;

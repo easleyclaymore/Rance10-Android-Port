@@ -442,18 +442,9 @@ void hll_call(int libno, int fno, int result_tag)
 #pragma GCC diagnostic pop
 		break;
     case AIN_REF_HLL_PARAM: {
-        /* AIN v12 CALLHLL carries the concrete result type in its third
-         * immediate. With a concrete type the caller expects the value
-         * itself (one stack slot); without it the caller expects a
-         * two-value [page, var] reference for REF/REFREF. */
-        if (r.ref && result_tag >= 0) {
-            stack_push(*(union vm_value *)r.ref);
-            break;
-        }
-        /* ref hll_param returns an element reference; the VM's REF takes
-         * (page_index, heap_index) as two stack values. Look up only among
-         * THIS call's argument slots: scanning the entire heap can match a
-         * stale/aliased slot and create a dangling reference. */
+        /* A HLL ref-param returns an element address. Resolve it only
+         * against THIS call's argument slots: scanning the whole heap can
+         * match a stale/aliased slot and create a dangling reference. */
         void *addr = r.ref;
         int32_t hi = -1, pi = -1;
         if (addr) {
@@ -475,9 +466,19 @@ void hll_call(int libno, int fno, int result_tag)
                 }
             }
         }
-        /* Always push two values so the VM stack stays balanced. */
-        stack_push((union vm_value){ .i = hi });
-        stack_push((union vm_value){ .i = pi });
+        /* AIN v12 CALLHLL carries the concrete result type in its third
+         * immediate. A typed generic result yields the pair
+         * (element index, element value): the value is consumed by the
+         * following ASSIGN / method call, and the index stays as the
+         * expression result. Without a tag the caller expects a two-value
+         * [page, var] reference for REF / REFREF. Both forms take 2 slots. */
+        if (result_tag >= 0 && addr && hi > 0) {
+            stack_push((union vm_value){ .i = pi });
+            stack_push(*(union vm_value *)addr);
+        } else {
+            stack_push((union vm_value){ .i = hi });
+            stack_push((union vm_value){ .i = pi });
+        }
         break;
     }
 	default:
