@@ -298,14 +298,21 @@ static void Array_Alloc_(struct page **out, int size, int type, int a, int b)
 		size, type, a, b, (void*)out, out ? (void*)*out : NULL);
 	if (!out || !*out)
 		return;
-	if (type < 0 || type > 100)
-		type = AIN_INT;
+	if (type < 0 || type > 100) {
+		/* AIN v12: CALLHLL's third immediate carries the element type
+		 * for generic Array calls; the HLL arguments themselves are -1. */
+		int tag = hll_generic_result_type();
+		type = tag >= 0 ? tag : AIN_INT;
+	}
 	int n = (size > 0 && size < (1 << 20)) ? size : 0;
+	/* Keep the struct type declared by the AIN variable: struct arrays
+	 * need it to construct elements in Array.EmplaceBack. */
+	int struct_type = (*out)->array.struct_type;
 	/* ARRAY_PAGE 的 a_type 必须存【数组类型】（AIN_ARRAY_INT），
 	 * 不是元素类型；否则 variable_type()/variable_fini() 会拿错类型 */
 	struct page *p = alloc_page(ARRAY_PAGE, elem_to_array_type(type), n);
 	p->array.rank = 1;
-	p->array.struct_type = -1;
+	p->array.struct_type = struct_type;
 	*out = p;
 	WARNING("Array.Alloc: 已填充 page=%p nr_vars=%d", (void*)p, p->nr_vars);
 }
@@ -453,16 +460,29 @@ static void Array_PopBack_(struct page **a)
 
 static int Array_Numof_(struct page **a);
 
-static void *Array_EmplaceBack_(struct page **a, uint64_t value)
+/* AIN declares EmplaceBack(ref array) with ONE argument. The old
+ * two-argument C stub read an extra uninitialised register and wrote it
+ * into the new element, producing a garbage "this" for CALLMETHOD.
+ * The element is value-initialised according to the CALLHLL type tag. */
+static void *Array_EmplaceBack_(struct page **a)
 {
 	NOTICE("[Array] EmplaceBack");
 	if (!a || !*a)
 		return NULL;
-	Array_PushBack_(a, value);
 	struct page *p = *a;
-	if (!p || p->nr_vars == 0)
+	int old_n = p->nr_vars;
+	int st = p->array.struct_type;
+	union vm_value dim = { .i = old_n + 1 };
+	struct page *np = realloc_array(p, 1, &dim, elem_to_array_type(p->a_type), st, false);
+	if (!np)
 		return NULL;
-	return &p->values[p->nr_vars - 1];
+	*a = np;
+	int tag = hll_generic_result_type();
+	if (tag == AIN_STRUCT && st >= 0)
+		create_struct(st, &np->values[old_n]);
+	else
+		np->values[old_n] = variable_initval(tag >= 0 ? tag : AIN_INT);
+	return &np->values[old_n];
 }
 
 static void Array_Realloc_(struct page **a, int size)

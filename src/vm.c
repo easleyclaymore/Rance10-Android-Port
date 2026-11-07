@@ -474,11 +474,6 @@ static void method_call(int nargs, int return_address)
 	function_call(fno, return_address);   /* 弹掉 nargs 个 args */
 	stack_pop();                          /* 弹掉 fno */
 	int obj = stack_pop().i;              /* 弹 obj */
-	/* [HACK][D16] PoC: AIN_IFACE is a two-value reference
-	 * [struct_page, method/vtable]; when the first popped value is not a
-	 * live heap slot, pop the real object. */
-	if (obj <= 0 || obj >= heap_size || heap[obj].ref <= 0)
-		obj = stack_pop().i;
 	set_struct_page(obj);
 	heap[call_stack[call_stack_ptr-1].page_slot].page->local.struct_ptr = obj;
 }
@@ -924,6 +919,31 @@ static enum opcode execute_instruction(enum opcode opcode)
 			instr_ptr, instructions[opcode].name ? instructions[opcode].name : "?",
 			stack_ptr, a, b, c, get_argument(0));
 	}
+	/* XSYS4_DUMP_AT=hex: one-shot VM stack + heap slot dump at one ip.
+	 * Diagnostic facility: env-gated, address-gated, no effect on execution. */
+	static uint32_t dump_ip = 0;
+	static int dump_ready = 0, dumped = 0;
+	if (!dump_ready) {
+		const char *d = getenv("XSYS4_DUMP_AT");
+		if (d) sscanf(d, "%x", &dump_ip);
+		dump_ready = 1;
+	}
+	if (dump_ip && !dumped && instr_ptr == dump_ip) {
+		dumped = 1;
+		NOTICE("[dump] ip=0x%08zx sp=%d heap_size=%d", instr_ptr, stack_ptr, heap_size);
+		for (int i = stack_ptr - 1; i >= 0 && i >= stack_ptr - 10; i--) {
+			int32_t v = stack[i].i;
+			if (v > 0 && v < heap_size) {
+				struct page *p = heap[v].page;
+				NOTICE("[dump]  st[%d]=%d ref=%d nr_vars=%d type=%d v0=%d v1=%d", i, v,
+					heap[v].ref, p ? p->nr_vars : -1, p ? p->type : -1,
+					p && p->nr_vars > 0 ? p->values[0].i : -9999,
+					p && p->nr_vars > 1 ? p->values[1].i : -9999);
+			} else {
+				NOTICE("[dump]  st[%d]=%d (nonheap)", i, v);
+			}
+		}
+	}
 	switch (opcode) {
 	//
 	// --- Stack Management ---
@@ -1144,7 +1164,12 @@ static enum opcode execute_instruction(enum opcode opcode)
 		break;
 	}
 	case CALLHLL: {
-		hll_call(get_argument(0), get_argument(1));
+		/* AIN v12 (initialize_instructions): CALLHLL has 3 immediates.
+		 * The third is the concrete ain_data_type of the generic result
+		 * (or -1 when untyped). Pass it to the FFI layer so that
+		 * AIN_REF_HLL_PARAM results can be materialised by type. */
+		int tag = ain->version >= 11 ? get_argument(2) : -1;
+		hll_call(get_argument(0), get_argument(1), tag);
 		break;
 	}
 	case RETURN: {

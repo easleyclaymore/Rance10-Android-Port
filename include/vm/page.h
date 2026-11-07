@@ -31,9 +31,10 @@ enum page_type {
 	STRUCT_PAGE,
 	ARRAY_PAGE,
 	DELEGATE_PAGE,
+	IFACE_PAGE,
 };
 
-#define NR_PAGE_TYPES (ARRAY_PAGE+1)
+#define NR_PAGE_TYPES (IFACE_PAGE+1)
 
 /*
  * A page is an ordered collection of variables. Pages are used to implement
@@ -52,6 +53,9 @@ enum page_type {
  *
  * Delegates: each delegate object is backed by a page storing (object,
  * function, seq) triples.
+ *
+ * Interfaces: an AIN_IFACE value is 2 values [struct page, vtable offset];
+ * backed by a dedicated 2-slot IFACE_PAGE so REF/REFREF can dereference it.
  */
 struct page {
 	enum page_type type;
@@ -103,6 +107,8 @@ static inline void _page_set_var(struct page *page, int i, union vm_value v)
 
 // variables
 union vm_value variable_initval(enum ain_data_type type);
+/* Initialise a variable with its full AIN type (carries array element struct type). */
+union vm_value variable_initval_typed(const struct ain_type *type);
 void variable_fini(union vm_value v, enum ain_data_type type, bool call_dtor);
 enum ain_data_type variable_type(struct page *page, int varno, int *struct_type, int *array_rank);
 void variable_set(struct page *page, int varno, enum ain_data_type type, union vm_value val);

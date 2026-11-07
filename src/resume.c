@@ -43,7 +43,8 @@ static const char * const page_type_strtab[] = {
 	[LOCAL_PAGE]    = "locals",
 	[STRUCT_PAGE]   = "struct",
 	[ARRAY_PAGE]    = "array",
-	[DELEGATE_PAGE] = "delegate"
+	[DELEGATE_PAGE] = "delegate",
+	[IFACE_PAGE]    = "iface"
 };
 
 static enum page_type string_to_page_type(const char *str)
@@ -53,6 +54,7 @@ static enum page_type string_to_page_type(const char *str)
 	if (!strcmp(str, "struct"))   return STRUCT_PAGE;
 	if (!strcmp(str, "array"))    return ARRAY_PAGE;
 	if (!strcmp(str, "delegate")) return DELEGATE_PAGE;
+	if (!strcmp(str, "iface"))    return IFACE_PAGE;
 	VM_ERROR("Invalid page type: %s", str);
 }
 

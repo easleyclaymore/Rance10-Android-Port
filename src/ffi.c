@@ -292,9 +292,28 @@ static void trace_hll_call(struct ain_library *lib, struct ain_hll_function *f,
 }
 #endif /* TRACE_HLL */
 
-void hll_call(int libno, int fno)
+/* Type tag of the CALLHLL whose HLL body is currently executing.
+ * Exposed to HLL implementations through hll_generic_result_type() so that
+ * generic Array/Container calls can materialise correctly typed elements. */
+static int hll_result_tag = -1;
+
+int hll_generic_result_type(void)
+{
+	return hll_result_tag;
+}
+
+void hll_call(int libno, int fno, int result_tag)
 {
 	struct ain_hll_function *f = &ain->libraries[libno].functions[fno];
+	static int hll_trace = -1;
+	if (hll_trace < 0) {
+		const char *t = getenv("XSYS4_HLL_TRACE");
+		hll_trace = t ? 1 : 0;
+	}
+	if (hll_trace)
+		NOTICE("[hll] lib=%d fno=%d tag=%d nr_args=%d sp=%d ret=%d %s.%s",
+		       libno, fno, result_tag, f->nr_arguments, stack_ptr,
+		       f->return_type.data, ain->libraries[libno].name, f->name);
 
 	if (!libraries[libno])
 		VM_ERROR("Unimplemented HLL function: %s.%s", ain->libraries[libno].name, f->name);
@@ -367,11 +386,13 @@ void hll_call(int libno, int fno)
 	}
 
 	union vm_value r;
+	hll_result_tag = result_tag;
 #ifdef TRACE_HLL
 	trace_hll_call(&ain->libraries[libno], f, fun, &r, args);
 #else
 	ffi_call(&fun->cif, (void*)fun->fun, &r, args);
 #endif
+	hll_result_tag = -1;
 
 
 	for (int i = 0, j = 0; i < f->nr_arguments; i++, j++) {
@@ -421,6 +442,14 @@ void hll_call(int libno, int fno)
 #pragma GCC diagnostic pop
 		break;
     case AIN_REF_HLL_PARAM: {
+        /* AIN v12 CALLHLL carries the concrete result type in its third
+         * immediate. With a concrete type the caller expects the value
+         * itself (one stack slot); without it the caller expects a
+         * two-value [page, var] reference for REF/REFREF. */
+        if (r.ref && result_tag >= 0) {
+            stack_push(*(union vm_value *)r.ref);
+            break;
+        }
         /* ref hll_param returns an element reference; the VM's REF takes
          * (page_index, heap_index) as two stack values. Look up only among
          * THIS call's argument slots: scanning the entire heap can match a

@@ -31,6 +31,7 @@ static const char *pagetype_strtab[] = {
 	[STRUCT_PAGE] = "STRUCT_PAGE",
 	[ARRAY_PAGE] = "ARRAY_PAGE",
 	[DELEGATE_PAGE] = "DELEGATE_PAGE",
+	[IFACE_PAGE]    = "IFACE_PAGE",
 };
 
 const char *pagetype_string(enum page_type type)
@@ -77,6 +78,23 @@ struct page *alloc_page(enum page_type type, int type_index, int nr_vars)
 	return page;
 }
 
+/* AIN v12 declares struct arrays as AIN_ARRAY with type.struc set to the
+ * element struct number. A plain -1 initialiser loses that information, so
+ * Array.EmplaceBack cannot construct the element object. Keep an empty
+ * ARRAY_PAGE that carries the declared struct type. */
+union vm_value variable_initval_typed(const struct ain_type *type)
+{
+	if (type->data == AIN_ARRAY || type->data == AIN_REF_ARRAY) {
+		struct page *p = alloc_page(ARRAY_PAGE, AIN_ARRAY_INT, 0);
+		p->array.rank = type->rank > 0 ? type->rank : 1;
+		p->array.struct_type = type->struc;
+		int slot = heap_alloc_slot(VM_PAGE);
+		heap_set_page(slot, p);
+		return (union vm_value) { .i = slot };
+	}
+	return variable_initval(type->data);
+}
+
 union vm_value variable_initval(enum ain_data_type type)
 {
 	int slot;
@@ -90,11 +108,18 @@ union vm_value variable_initval(enum ain_data_type type)
 		return (union vm_value) { .i = -1 };
 	case AIN_ARRAY_TYPE:
 	case AIN_DELEGATE:
-	case AIN_IFACE:        /* 接口：按引用处理，分配一个 2 值 page 承载
-	                        * [0]=struct page, [1]=vtable offset */
+		return (union vm_value) { .i = -1 };
+	case AIN_IFACE: {
+		/* ain.h: AIN_IFACE is 2 values:
+		 * [0] = struct page, [1] = vtable offset to interface methods.
+		 * Allocate a real 2-slot page so REF/REFREF/CALLMETHOD can
+		 * dereference it; a NULL page caused "Out of bounds page index". */
 		slot = heap_alloc_slot(VM_PAGE);
-		heap_set_page(slot, NULL);
+		heap_set_page(slot, alloc_page(IFACE_PAGE, -1, 2));
+		heap[slot].page->values[0].i = -1;
+		heap[slot].page->values[1].i = 0;
 		return (union vm_value) { .i = slot };
+	}
 	default:
 		return (union vm_value) { .i = 0 };
 	}
@@ -245,7 +270,7 @@ int alloc_struct(int no)
 		if (s->members[i].type.data == AIN_STRUCT) {
 			heap[slot].page->values[i].i = alloc_struct(s->members[i].type.struc);
 		} else {
-			heap[slot].page->values[i] = variable_initval(s->members[i].type.data);
+			heap[slot].page->values[i] = variable_initval_typed(&s->members[i].type);
 		}
 	}
 	return slot;
