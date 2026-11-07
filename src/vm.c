@@ -1893,7 +1893,11 @@ static enum opcode execute_instruction(enum opcode opcode)
 		break;
 	}
 	case SR_ASSIGN: {
-		if (ain->version > 1)
+		/* AIN v12 no longer pushes a separate struct-type operand for
+		 * SR_ASSIGN (same simplification as CALLMETHOD/NEW). Popping it
+		 * underflowed the stack and produced garbage page indices like
+		 * 0x8011. Older AIN versions still carry it. */
+		if (ain->version > 1 && ain->version < 12)
 			stack_pop(); // struct type
 		int rval = stack_pop().i;
 		int lval = stack_pop().i;
