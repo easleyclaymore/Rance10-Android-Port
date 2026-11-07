@@ -1,3 +1,5 @@
+> **Rance10 Android 原生移植专用 fork** —— 项目说明见 [PROJECT.md](PROJECT.md)；开发文档见阿林笔记。
+
 xsystem4
 ========
 
