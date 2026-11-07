@@ -494,6 +494,10 @@ void hll_call(int libno, int fno, int result_tag)
                  result_tag == AIN_IFACE) &&
                 v.i > 0 && v.i < heap_size && heap[v.i].ref > 0)
                 heap_ref(v.i);
+            /* [D31] Leading slot of the typed ref-param result. The raw
+             * element index is known to be wrong (it is later DELETEd as a
+             * heap reference), but -1 breaks the following ASSIGN. The real
+             * reference-pair protocol still needs to be derived from AIN. */
             stack_push((union vm_value){ .i = pi });
             stack_push(v);
         } else {
