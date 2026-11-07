@@ -473,9 +473,14 @@ static void method_call(int nargs, int return_address)
 		VM_ERROR("CALLMETHOD: invalid function index %d", fno);
 	function_call(fno, return_address);   /* 弹掉 nargs 个 args */
 	stack_pop();                          /* 弹掉 fno */
-	int struct_page = stack_pop().i;      /* 弹 obj */
-	set_struct_page(struct_page);
-	heap[call_stack[call_stack_ptr-1].page_slot].page->local.struct_ptr = struct_page;
+	int obj = stack_pop().i;              /* 弹 obj */
+	/* [HACK][D16] PoC: AIN_IFACE is a two-value reference
+	 * [struct_page, method/vtable]; when the first popped value is not a
+	 * live heap slot, pop the real object. */
+	if (obj <= 0 || obj >= heap_size || heap[obj].ref <= 0)
+		obj = stack_pop().i;
+	set_struct_page(obj);
+	heap[call_stack[call_stack_ptr-1].page_slot].page->local.struct_ptr = obj;
 }
 
 static void vm_execute(void);
