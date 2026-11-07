@@ -374,6 +374,15 @@ HLL_WARN_UNIMPLEMENTED(, void, PartsEngine, StopSoundWithoutSystemSound);
 
 static void PartsEngine_PreLink(void);
 
+/* Parts_SetComment(int, string) -> void: debug-only annotation attached to
+ * a parts object. The PE backend exposes no comment slot and game logic
+ * never reads it back, so this is a deliberate no-op. */
+static void PartsEngine_SetComment(int parts_no, struct string *comment)
+{
+	(void)parts_no;
+	(void)comment;
+}
+
 HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(_PreLink, PartsEngine_PreLink),
 	    // for versions without PartsEngine.Init
@@ -556,7 +565,9 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Parts_SetThumbnailMode, PE_SetThumbnailMode),
 	    HLL_EXPORT(GetClickNumber, PE_GetClickPartsNumber),
 	    HLL_EXPORT(StopSoundWithoutSystemSound, PartsEngine_StopSoundWithoutSystemSound),
-	    HLL_TODO_EXPORT(ReleaseActivity, PartsEngine_ReleaseActivity),
+	    /* Rance10.ain f[177] = Parts_SetComment. This table is indexed by
+	     * fno, not by name; see TECH_DEBT D26 (table rebuild pending). */
+	    HLL_EXPORT(Parts_SetComment, PartsEngine_SetComment),
 	    HLL_TODO_EXPORT(CrateActivityBinary, PartsEngine_CrateActivityBinary),
 	    HLL_TODO_EXPORT(ReadActivityBinary, PartsEngine_ReadActivityBinary),
 	    HLL_EXPORT(ReleaseMessage, PE_ReleaseMessage),
