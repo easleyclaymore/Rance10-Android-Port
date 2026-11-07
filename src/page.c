@@ -114,10 +114,10 @@ union vm_value variable_initval(enum ain_data_type type)
 	case AIN_DELEGATE:
 		return (union vm_value) { .i = -1 };
 	case AIN_IFACE: {
-		/* ain.h: AIN_IFACE is 2 values:
-		 * [0] = struct page, [1] = vtable offset to interface methods.
-		 * Allocate a real 2-slot page so REF/REFREF/CALLMETHOD can
-		 * dereference it; a NULL page caused "Out of bounds page index". */
+		/* AIN_IFACE occupies ONE variable slot holding a reference to a
+		 * 2-value wrapper [struct page, vtable offset]. A two-plain-slot
+		 * layout was tried and disproved: it shifted every later variable
+		 * index and made Array.PushBack receive garbage. */
 		slot = heap_alloc_slot(VM_PAGE);
 		heap_set_page(slot, alloc_page(IFACE_PAGE, -1, 2));
 		heap[slot].page->values[0].i = -1;
