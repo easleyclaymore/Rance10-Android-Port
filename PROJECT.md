@@ -34,7 +34,7 @@
 `libsys4` 是 submodule，必须递归拉取：
 
 ```sh
-git clone --recurse-submodules <this-repo-url>
+git clone --recurse-submodules https://github.com/easleyclaymore/Rance10-Android-Port.git
 ```
 
 ## 构建（Linux / chroot Debian 13，aarch64）
