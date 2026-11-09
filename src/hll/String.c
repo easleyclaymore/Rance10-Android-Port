@@ -272,26 +272,23 @@ static struct string *String_GetPart(struct string **s, int pos)
 
 static struct string *String_GetPartLen(struct string **s, int pos, int count)
 {
-	struct string *full = String_GetPart(s, pos);
-	if (count <= 0) {
-		free_string(full);
+	/* D63: the old implementation broke out of the copy loop before advancing
+	 * p, so count==1 always returned an empty string. main() uses
+	 * GetPart(s,6,1) -> Int() as a loop condition and spun forever. */
+	if (!s || !*s || count <= 0)
 		return string_dup(&EMPTY_STRING);
-	}
-	const unsigned char *p = (const unsigned char *)full->text;
-	const unsigned char *st = p;
-	int i = 0;
-	while (*p && i < count) {
-		if ((*p & 0xC0) != 0x80)
-			i++;
-		if (i == count)
-			break;
+	const unsigned char *p = (const unsigned char *)(*s)->text;
+	for (int i = 0; i < pos && *p; i++) {
 		p++;
+		while (*p && (*p & 0xC0) == 0x80) p++;
 	}
-	struct string *r = make_string((const char *)st, (size_t)(p - st));
-	free_string(full);
-	return r;
+	const unsigned char *st = p;
+	for (int i = 0; i < count && *p; i++) {
+		p++;
+		while (*p && (*p & 0xC0) == 0x80) p++;
+	}
+	return make_string((const char *)st, (size_t)(p - st));
 }
-
 static struct string *String_PadLeft(struct string **s, int width)
 {
 	return String_PadLeftEx(s, width, ' ');
