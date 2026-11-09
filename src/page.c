@@ -113,17 +113,15 @@ union vm_value variable_initval(enum ain_data_type type)
 	case AIN_ARRAY_TYPE:
 	case AIN_DELEGATE:
 		return (union vm_value) { .i = -1 };
-	case AIN_IFACE: {
-		/* AIN_IFACE occupies ONE variable slot holding a reference to a
-		 * 2-value wrapper [struct page, vtable offset]. A two-plain-slot
-		 * layout was tried and disproved: it shifted every later variable
-		 * index and made Array.PushBack receive garbage. */
-		slot = heap_alloc_slot(VM_PAGE);
-		heap_set_page(slot, alloc_page(IFACE_PAGE, -1, 2));
-		heap[slot].page->values[0].i = -1;
-		heap[slot].page->values[1].i = 0;
-		return (union vm_value) { .i = slot };
-	}
+	case AIN_IFACE:
+		/* AIN v12 stores an interface in two consecutive variable slots:
+		 * [0] = struct page (-1 when null), [1] = vtable offset. The
+		 * following AIN_VOID placeholder slot IS the second value
+		 * (logs/ain_spec_slots.txt: 5336/5336 IFACE followed by VOID).
+		 * The old IFACE_PAGE wrapper put a positive heap slot in [0], so
+		 * the generated "REF; PUSH -1; EQUALE" null check never fired and
+		 * interface dispatch dereferenced -1 (D35). */
+		return (union vm_value) { .i = -1 };
 	default:
 		return (union vm_value) { .i = 0 };
 	}

@@ -2040,6 +2040,10 @@ void PE_SetComponentType(int parts_no, int type, int state)
 	case 20: pt = PARTS_FLAT; break;
 	case 21: pt = PARTS_3DLAYER; break;
 	case 22: pt = PARTS_MOVIE; break;
+	/* Rance10-only numeric type used by AFL_Parts_CreateConstruction /
+	 * ISpriteParts@GetConstruction. Upstream has no matching enum;
+	 * reuse the construction-process state for now (D36). */
+	case 24: pt = PARTS_CONSTRUCTION_PROCESS; break;
 	default:
 		VM_ERROR("unknown component type %d", type);
 	}
