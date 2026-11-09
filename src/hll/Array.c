@@ -517,6 +517,40 @@ static int Array_Fill_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 	for (int i = 0; i < count; i++) pg->values[from + i] = *(union vm_value *)&value;
 	return count < 0 ? 0 : count;
 }
+/* AIN f[54]/f[55]: void Unique(ref array[, predicate]) - dedupe in place.
+ * Predicate overload falls back to raw-value comparison (D63). */
+static void Array_Unique_(struct page **a, uintptr_t predicate)
+{
+	(void)predicate;
+	if (!a || !*a || (*a)->type != ARRAY_PAGE) return;
+	struct page *p = *a;
+	int n = p->nr_vars, w = 0;
+	for (int i = 0; i < n; i++) {
+		bool dup = false;
+		for (int j = 0; j < w; j++)
+			if (p->values[j].i == p->values[i].i) { dup = true; break; }
+		if (!dup) p->values[w++] = p->values[i];
+	}
+	if (w == n) return;
+	union vm_value dim = { .i = w };
+	enum ain_data_type at = p->a_type;
+	int st = p->array.struct_type;
+	struct page *np = realloc_array(p, 1, &dim, at, st, false);
+	if (np) *a = np;
+}
+/* AIN f[51]: array Where(ref array, predicate) -> array.
+ * Full predicate dispatch needs vm_call (D63); stage 1 returns a shallow
+ * copy of the whole array so the caller has a valid array to iterate. */
+static int Array_Where_(struct page **a, uintptr_t predicate)
+{
+	(void)predicate;
+	if (!a || !*a || (*a)->type != ARRAY_PAGE) return -1;
+	struct page *src = *a;
+	struct page *np = alloc_page(ARRAY_PAGE, src->a_type, src->nr_vars);
+	np->array = src->array;
+	for (int i = 0; i < src->nr_vars; i++) np->values[i] = src->values[i];
+	return heap_alloc_page(np);
+}
 static int Array_Find_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
 	int fno = hll_current_fno();
@@ -709,6 +743,8 @@ HLL_LIBRARY(Array,
 	    HLL_EXPORT(BinarySearch, Array_BinarySearch_),
 	    HLL_EXPORT(Insert, Array_Insert_),
 	    HLL_EXPORT(Copy, Array_Copy_),
+	    HLL_EXPORT(Where, Array_Where_),
+	    HLL_EXPORT(Unique, Array_Unique_),
 	    HLL_EXPORT(Fill, Array_Fill_),
 	    HLL_EXPORT(LowerBound, Array_LowerBound_),
 	    HLL_EXPORT(UpperBound, Array_UpperBound_),

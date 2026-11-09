@@ -13,6 +13,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <system4/ain.h>
+#include <system4/string.h>
 #include <system4/instructions.h>
 static uint16_t r16(const uint8_t*p){return (uint16_t)(p[0]|(p[1]<<8));}
 static int32_t r32(const uint8_t*p){return (int32_t)((uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24));}
@@ -125,5 +126,10 @@ int main(int argc,char**argv){
 			print_function(a,i);
 			disasm_at(a,f->address,count);return 0;}
 		printf("func not found: %s\n",want);return 1;}
+	if(!strncmp(spec,"str:",4)){
+		int n=atoi(spec+4);
+		if(n<0||n>=(int)a->nr_strings){fprintf(stderr,"str index out of range\n");return 1;}
+		printf("STR[%d] = [%s]\n",n,(a->strings[n]&&a->strings[n]->text)?a->strings[n]->text:"(null)");
+		return 0;}
 	fprintf(stderr,"bad spec %s\n",spec);return 1;
 }
