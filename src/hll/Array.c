@@ -316,7 +316,16 @@ static void Array_Alloc_(struct page **out, int size, int type, int a, int b)
 		type = AIN_STRUCT;
 	/* ARRAY_PAGE 的 a_type 必须存【数组类型】（AIN_ARRAY_STRUCT 等），
 	 * 不是元素类型；否则 variable_type()/variable_fini() 会拿错类型 */
-	struct page *p = alloc_page(ARRAY_PAGE, elem_to_array_type(type), n);
+	/* AIN v12: an AIN_IFACE element is two consecutive value slots
+	 * ([struct page, vtable offset]) and bytecode indexes them with i*2
+	 * (CDebugFPSGraph@Create @0xb238e). size counts ELEMENTS. Use plain
+	 * AIN_ARRAY_INT storage so variable_fini() does not unref the second
+	 * slot of each element as if it were an object handle. */
+	int iface_array = (hll_generic_result_type() == AIN_IFACE);
+	if (iface_array)
+		n *= 2;
+	struct page *p = alloc_page(ARRAY_PAGE,
+	                            iface_array ? AIN_ARRAY_INT : elem_to_array_type(type), n);
 	p->array.rank = 1;
 	p->array.struct_type = struct_type;
 	*out = p;
@@ -399,6 +408,21 @@ static bool elem_eq(struct page *p, int i, void *v)
 	default:
 		return p->values[i].i == *(int *)v;
 	}
+}
+
+/* AIN f[47]/f[48] BinarySearch(ref array, key) -> int.
+ * f[48] passes an AIN comparison-function number (t95) rather than a raw
+ * key; a proper predicate dispatch needs vm_call (D39). Fall back to a
+ * linear find with the same "not found = -1" contract as Array_Find_. */
+static int Array_BinarySearch_(struct page **a, uint64_t key)
+{
+	if (!a || !*a)
+		return -1;
+	struct page *p = *a;
+	for (int i = 0; i < p->nr_vars; i++)
+		if (elem_eq(p, i, &key))
+			return i;
+	return -1;
 }
 
 static int Array_Find_(struct page **a, uint64_t value)
@@ -565,6 +589,7 @@ HLL_LIBRARY(Array,
 	    HLL_EXPORT(At, Array_At_),
     HLL_EXPORT(Last, Array_Last_),
 	    HLL_EXPORT(Find, Array_Find_),
+	    HLL_EXPORT(BinarySearch, Array_BinarySearch_),
 	    HLL_EXPORT(FindLast, Array_FindLast_),
 	    HLL_EXPORT(IsExist, Array_IsExist_),
 	    HLL_EXPORT(PushBack, Array_PushBack_),

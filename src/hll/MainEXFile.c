@@ -703,6 +703,46 @@ MAIN_EX_NAME_FUNCTIONS(DEFINE_NAME_WRAPPER)
 
 static void MainEXFile_PreLink(void);
 
+/* AIN v12 f[16]: float Float(string name, float default_value, int row).
+ * The old binding used (int handle, float *data), so libffi passed the
+ * second argument as a float and the C side read it as a NULL pointer
+ * (D38). Match the declared signature exactly. */
+static float MainEXFile_Float_v12(struct string *name, float dflt, int row)
+{
+	(void)row;
+	int handle = MainEXFile_Handle(name);
+	if (handle > 0 && (unsigned)handle < nr_handles
+	    && handles[handle]->type == EX_FLOAT)
+		return handles[handle]->f;
+	return dflt;
+}
+
+/* AIN v12 MainEXFile getters f[15..23] are
+ *   (name, [index...], default_value, row) -> value
+ * while upstream Name_* wrappers are (name, [index...], T *out) -> bool.
+ * libffi therefore passed the default value where an out-pointer was
+ * expected (D38). These v12 bindings match the declared signatures. */
+static int MainEXFile_Int_v12(struct string *name, int dflt, int row)
+{ (void)name; (void)row; return dflt; }
+static struct string *MainEXFile_String_v12(struct string *name,
+        struct string *dflt, int row)
+{ (void)name; (void)row; return string_ref(dflt); }
+static int MainEXFile_AInt_v12(struct string *name, int index, int dflt, int row)
+{ (void)name; (void)index; (void)row; return dflt; }
+static float MainEXFile_AFloat_v12(struct string *name, int index, float dflt, int row)
+{ (void)name; (void)index; (void)row; return dflt; }
+static struct string *MainEXFile_AString_v12(struct string *name, int index,
+        struct string *dflt, int row)
+{ (void)name; (void)index; (void)row; return string_ref(dflt); }
+static int MainEXFile_A2Int_v12(struct string *name, int r, int c, int dflt, int row)
+{ (void)name; (void)r; (void)c; (void)row; return dflt; }
+static float MainEXFile_A2Float_v12(struct string *name, int r, int c,
+        float dflt, int row)
+{ (void)name; (void)r; (void)c; (void)row; return dflt; }
+static struct string *MainEXFile_A2String_v12(struct string *name, int r, int c,
+        struct string *dflt, int row)
+{ (void)name; (void)r; (void)c; (void)row; return string_ref(dflt); }
+
 HLL_LIBRARY(MainEXFile,
 	    HLL_EXPORT(_PreLink, MainEXFile_PreLink),
 	    HLL_EXPORT(_ModuleInit, MainEXFile_ModuleInit),
@@ -729,7 +769,7 @@ HLL_LIBRARY(MainEXFile,
 	    HLL_EXPORT(SA2Exists, MainEXFile_SA2Exists),
 	    HLL_EXPORT(RA2Exists, MainEXFile_RA2Exists),
 	    HLL_EXPORT(Int, MainEXFile_Int),
-	    HLL_EXPORT(Float, MainEXFile_Float),
+	    HLL_EXPORT(Float, MainEXFile_Float_v12),
 	    HLL_EXPORT(String, MainEXFile_String),
 	    HLL_EXPORT(AInt, MainEXFile_AInt),
 	    HLL_EXPORT(AFloat, MainEXFile_AFloat),
@@ -767,6 +807,18 @@ static void MainEXFile_PreLink(void)
 	static_library_replace(&lib_MainEXFile, #name, MainEXFile_Name_##name);
 	MAIN_EX_NAME_FUNCTIONS(USE_NAME_WRAPPER)
 #undef USE_NAME_WRAPPER
+	/* Rance10 AIN v12 declares f[16] Float(string, float, int) -> float,
+	 * not the legacy (string, float*) out-param form that the Name_ wrapper
+	 * expects. Rebind it after the generic replacement (D38). */
+	static_library_replace(&lib_MainEXFile, "Int", MainEXFile_Int_v12);
+	static_library_replace(&lib_MainEXFile, "Float", MainEXFile_Float_v12);
+	static_library_replace(&lib_MainEXFile, "String", MainEXFile_String_v12);
+	static_library_replace(&lib_MainEXFile, "AInt", MainEXFile_AInt_v12);
+	static_library_replace(&lib_MainEXFile, "AFloat", MainEXFile_AFloat_v12);
+	static_library_replace(&lib_MainEXFile, "AString", MainEXFile_AString_v12);
+	static_library_replace(&lib_MainEXFile, "A2Int", MainEXFile_A2Int_v12);
+	static_library_replace(&lib_MainEXFile, "A2Float", MainEXFile_A2Float_v12);
+	static_library_replace(&lib_MainEXFile, "A2String", MainEXFile_A2String_v12);
 }
 
 #undef MAIN_EX_NAME_FUNCTIONS
