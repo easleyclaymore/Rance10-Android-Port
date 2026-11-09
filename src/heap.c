@@ -285,6 +285,11 @@ void heap_set_page(int slot, struct page *page)
 
 void heap_string_assign(int slot, struct string *string)
 {
+	/* Slot 0 is the reserved invalid slot (see heap_unref). S_ASSIGN can
+	 * reach it with an uninitialised string lvalue in Rance10 v12; freeing
+	 * heap[0].s produced "Double free of string object" (D43). */
+	if (slot <= 0)
+		return;
 #ifdef DEBUG_HEAP
 	if (unlikely(!string_index_valid(slot)))
 		VM_ERROR("Tried to assign string to non-string slot");

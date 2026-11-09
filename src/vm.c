@@ -1085,6 +1085,16 @@ static enum opcode execute_instruction(enum opcode opcode)
 	 * gives the vtable_offset for the requested target. A concrete-struct
 	 * operand is a downcast; with no inheritance table in the AIN we keep
 	 * the offset stored in the reference (D28). */
+	/* Stage 1 (D44): X_SET (0x104) is unimplemented in libsys4.
+	 * Observed form at MapPair@... @0xd918f2: [member_ref, copy] -> one
+	 * value left for the following DELETE. Full semantics over all 300
+	 * call sites still needs a static census. */
+	case X_SET: {
+		int v = stack_pop().i;
+		stack_pop();
+		stack_push((union vm_value){ .i = v });
+		break;
+	}
 	case X_ICAST: {
 		static int icast_trace = -1;
 		static int icast_trace_count = 0;
@@ -1876,7 +1886,11 @@ static enum opcode execute_instruction(enum opcode opcode)
 		break;
 	}
 	case S_MOD: {
-		int type = stack_pop().i;
+		/* libsys4::initialize_instructions gives S_MOD one T_INT immediate
+		 * from AIN v11 onwards; the format type no longer lives on the stack.
+		 * Popping it here consumed one value too many per call and drove
+		 * stack_ptr negative in CardConstructProcessCacheFront (D42). */
+		int type = ain->version >= 11 ? get_argument(0) : stack_pop().i;
 		union vm_value val = stack_pop();
 		int fmt = stack_pop().i;
 		int dst = heap_alloc_slot(VM_STRING);

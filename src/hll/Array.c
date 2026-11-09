@@ -418,11 +418,54 @@ static int Array_BinarySearch_(struct page **a, uint64_t key)
 {
 	if (!a || !*a)
 		return -1;
-	struct page *p = *a;
-	for (int i = 0; i < p->nr_vars; i++)
-		if (elem_eq(p, i, &key))
-			return i;
+	/* f[48] passes an AIN comparison-function number, not a value key;
+	 * elem_eq() would dereference it as a heap object. Predicate dispatch
+	 * is still TODO (D39), so report "not found" and let the caller use
+	 * its FindInsertPos path. */
+	(void)key;
 	return -1;
+}
+
+/* AIN f[43..46] LowerBound/UpperBound(ref array, key|predicate) -> int.
+ * Predicate overloads (t95) pass an AIN comparison-function number, which
+ * is not a comparable value; full predicate dispatch is D39. Return a
+ * valid insertion position (0) so the caller's Insert path stays in
+ * bounds. The t74 overloads should do a real ordered lookup (D39). */
+static int Array_LowerBound_(struct page **a, uint64_t key)
+{
+	(void)a; (void)key;
+	return 0;
+}
+
+static int Array_UpperBound_(struct page **a, uint64_t key)
+{
+	(void)a; (void)key;
+	return 0;
+}
+
+/* AIN f[11]: void Insert(ref array, int index, generic value). */
+static void Array_Insert_(struct page **a, int index, uint64_t value)
+{
+	if (!a || !*a)
+		return;
+	struct page *p = *a;
+	if (p->type != ARRAY_PAGE) {
+		WARNING("[Array] Insert: invalid ref-array page type=%d, skipped", p->type);
+		return;
+	}
+	int n = p->nr_vars;
+	if (index < 0) index = 0;
+	if (index > n) index = n;
+	enum ain_data_type at = p->a_type;
+	int st = p->array.struct_type;
+	union vm_value dim = { .i = n + 1 };
+	struct page *np = realloc_array(p, 1, &dim, at, st, false);
+	if (!np)
+		return;
+	for (int i = n; i > index; i--)
+		np->values[i] = np->values[i - 1];
+	np->values[index] = *(union vm_value *)&value;
+	*a = np;
 }
 
 static int Array_Find_(struct page **a, uint64_t value)
@@ -461,6 +504,14 @@ static void Array_PushBack_(struct page **a, uint64_t value)
 	if (!a || !*a || !value)
 		return;
 	struct page *p = *a;
+	/* D41: Rance10's card-construct cache can pass a ref-array slot whose
+	 * payload is not a page at all (observed: &ffi_type_void from libffi).
+	 * Do not touch the slot - the HLL cleanup writes heap_ptrs back into it -
+	 * just skip the append. */
+	if (p->type != ARRAY_PAGE) {
+		WARNING("[Array] PushBack: invalid ref-array page type=%d, skipped", p->type);
+		return;
+	}
 	/* realloc_array 用 xrealloc 原地重分配，p 调用后立刻失效，
 	 * 所以长度和类型必须先在参数求值阶段取出 */
 	int old_n = p->nr_vars;
@@ -590,6 +641,9 @@ HLL_LIBRARY(Array,
     HLL_EXPORT(Last, Array_Last_),
 	    HLL_EXPORT(Find, Array_Find_),
 	    HLL_EXPORT(BinarySearch, Array_BinarySearch_),
+	    HLL_EXPORT(Insert, Array_Insert_),
+	    HLL_EXPORT(LowerBound, Array_LowerBound_),
+	    HLL_EXPORT(UpperBound, Array_UpperBound_),
 	    HLL_EXPORT(FindLast, Array_FindLast_),
 	    HLL_EXPORT(IsExist, Array_IsExist_),
 	    HLL_EXPORT(PushBack, Array_PushBack_),

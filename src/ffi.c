@@ -436,6 +436,13 @@ void hll_call(int libno, int fno, int result_tag)
 			hll_values[i] = (uint32_t)stack[stack_ptr].i;
 			args[i] = &hll_values[i];
 			break;
+		case AIN_HLL_FUNC:
+			/* v12 function-type args are [page, fno] (KeyValueMap.Find
+			 * @0xd91e3e). Consume both; pass only the fno. */
+			stack_ptr -= 2;
+			hll_values[i] = (uint32_t)stack[stack_ptr + 1].i;
+			args[i] = &hll_values[i];
+			break;
 		default:
 			stack_ptr--;
 			args[i] = &stack[stack_ptr];
@@ -461,6 +468,7 @@ void hll_call(int libno, int fno, int result_tag)
 		case AIN_REF_LONG_INT:
 		case AIN_REF_BOOL:
 		case AIN_REF_FLOAT:
+		case AIN_HLL_FUNC:   /* two slots, fno is not heap-owned */
 			j++;
 			break;
 		case AIN_REF_STRING:
