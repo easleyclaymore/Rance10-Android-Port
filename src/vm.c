@@ -2633,8 +2633,18 @@ static enum opcode execute_instruction(enum opcode opcode)
 		break;
 	}
 	case DG_STR_TO_METHOD: {
-		int dg_no = stack_pop().i;
-		int str = stack_pop().i;
+		int dg_no, str;
+		/* libsys4 initialize_instructions(v>=11) gives DG_STR_TO_METHOD one
+		 * T_DLG immediate and only ONE stack argument (T_STRING). The legacy
+		 * form popped [str, dg_no]; on v12 that consumed an extra value and made
+		 * str = -1, so "game_main" was never registered (D66). */
+		if (ain->version >= 11) {
+			dg_no = get_argument(0);
+			str = stack_pop().i;
+		} else {
+			dg_no = stack_pop().i;
+			str = stack_pop().i;
+		}
 		/* A null string slot means "no named method": resolve to fno 0
 		 * instead of dereferencing heap[-1] (D58). */
 		if (str < 0) {
