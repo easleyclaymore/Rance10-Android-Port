@@ -443,7 +443,9 @@ HLL_LIBRARY(String,
 	HLL_EXPORT(StartsWith, String_StartsWith),
 	HLL_EXPORT(EndsWith, String_EndsWith),
 	HLL_EXPORT(Replace, String_Replace),
-	HLL_EXPORT(GetPart, String_GetPart),
+/* AIN v12 f[22] GetPart(ref string,int,int)->string is 3-arg;
+	 * String_GetPart is the legacy 2-arg form (D62). */
+	HLL_EXPORT(GetPart, String_GetPartLen),
 	HLL_EXPORT(GetPartLen, String_GetPartLen),
 	HLL_EXPORT(PadLeft, String_PadLeft),
 	HLL_EXPORT(PadLeftEx, String_PadLeftEx),
