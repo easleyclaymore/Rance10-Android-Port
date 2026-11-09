@@ -436,9 +436,17 @@ static float SystemService_GetGameViewScaleRate(void)
 	return game_view_scale_rate;
 }
 
+/* AIN f[34]: string GetGameVersionByText(). No version table is loaded in
+ * the port; return a non-empty placeholder so callers can format it. */
+static struct string *SystemService_GetGameVersionByText(void)
+{
+	return cstr_to_string("1.0");
+}
+
 HLL_LIBRARY(SystemService,
 	    HLL_EXPORT(SetGameViewScaleRate, SystemService_SetGameViewScaleRate),
 	    HLL_EXPORT(GetGameViewScaleRate, SystemService_GetGameViewScaleRate),
+	    HLL_EXPORT(GetGameVersionByText, SystemService_GetGameVersionByText),
 	    HLL_EXPORT(_PreLink, SystemService_PreLink),
 	    HLL_EXPORT(_ModuleInit, SystemService_ModuleInit),
 	    HLL_EXPORT(GetMixerNumof, mixer_get_numof),

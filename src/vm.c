@@ -197,8 +197,17 @@ static union vm_value *stack_pop_var(void)
 {
 	int32_t page_index = stack_pop().i;
 	int32_t heap_index = stack_pop().i;
+	/* D52: tolerate null / never-allocated references during Rance10's
+	 * Parts UI init (e.g. ResetPartsUpdateEventLayerID @0x1f16f4).
+	 * Both a bad heap_index and a 0-slot ARRAY_PAGE yield a -1 sentinel
+	 * instead of aborting startup; owning objects still need proper
+	 * initialisation (TECH_DEBT). */
+	static union vm_value null_ref_slot = { .i = -1 };
 	if (unlikely(!heap_index_valid(heap_index)))
-		VM_ERROR("Out of bounds heap index: %d/%d", heap_index, page_index);
+		return &null_ref_slot;
+	if (heap[heap_index].page && heap[heap_index].page->type == ARRAY_PAGE
+	    && heap[heap_index].page->nr_vars == 0 && page_index == 0)
+		return &null_ref_slot;
 	if (unlikely(!heap[heap_index].page || page_index >= heap[heap_index].page->nr_vars)) {
 		struct page *pg = heap[heap_index].page;
 		VM_ERROR("Out of bounds page index: %d/%d (type=%d nr_vars=%d ref=%d v0=%d v1=%d)",
@@ -2559,7 +2568,11 @@ static enum opcode execute_instruction(enum opcode opcode)
 		int dst_i = stack_pop().i;
 		struct page *set = heap_get_delegate_page(set_i);
 		struct page *new_dg = copy_page(set);
-		delete_page(dst_i);
+		/* dst_i == -1 is an empty delegate target; delete_page(-1) would
+		 * call heap_get_page on an invalid slot (D57). heap_set_page()
+		 * already ignores negative slots. */
+		if (dst_i > 0)
+			delete_page(dst_i);
 		heap_set_page(dst_i, new_dg);
 		stack_push(set_i);
 		break;
@@ -2622,6 +2635,12 @@ static enum opcode execute_instruction(enum opcode opcode)
 	case DG_STR_TO_METHOD: {
 		int dg_no = stack_pop().i;
 		int str = stack_pop().i;
+		/* A null string slot means "no named method": resolve to fno 0
+		 * instead of dereferencing heap[-1] (D58). */
+		if (str < 0) {
+			stack_push((union vm_value){ .i = 0 });
+			break;
+		}
 		int fno = get_function_by_name(heap_get_string(str)->text);
 		stack_push(function_matches_delegate(dg_no, fno) ? fno : 0);
 		heap_unref(str);

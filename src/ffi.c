@@ -437,11 +437,24 @@ void hll_call(int libno, int fno, int result_tag)
 			args[i] = &hll_values[i];
 			break;
 		case AIN_HLL_FUNC:
-			/* v12 function-type args are [page, fno] (KeyValueMap.Find
-			 * @0xd91e3e). Consume both; pass only the fno. */
-			stack_ptr -= 2;
-			hll_values[i] = (uint32_t)stack[stack_ptr + 1].i;
+			/* D59: most t95 args are one fno; only BinarySearch predicate is [page, fno]. */
+			if (libno == 5) {
+				stack_ptr -= 2;
+				hll_values[i] = (uint32_t)stack[stack_ptr + 1].i;
+			} else {
+				stack_ptr--;
+				hll_values[i] = (uint32_t)stack[stack_ptr].i;
+			}
 			args[i] = &hll_values[i];
+			break;
+		case AIN_REF_DELEGATE:
+		case AIN_DELEGATE:
+			/* Delegate.Set expects a delegate PAGE pointer (D59). */
+			stack_ptr--;
+			heap_slots[i] = stack[stack_ptr].i;
+			heap_ptrs[i] = (heap_slots[i] > 0 && heap_slots[i] < heap_size) ? heap[heap_slots[i]].page : NULL;
+			ptrs[i] = &heap_ptrs[i];
+			args[i] = &ptrs[i];
 			break;
 		default:
 			stack_ptr--;
@@ -468,8 +481,9 @@ void hll_call(int libno, int fno, int result_tag)
 		case AIN_REF_LONG_INT:
 		case AIN_REF_BOOL:
 		case AIN_REF_FLOAT:
-		case AIN_HLL_FUNC:   /* two slots, fno is not heap-owned */
-			j++;
+		case AIN_HLL_FUNC:
+			if (libno == 5)
+				j++;
 			break;
 		case AIN_REF_STRING:
 			heap[heap_slots[i]].s = heap_ptrs[i];
@@ -480,6 +494,8 @@ void hll_call(int libno, int fno, int result_tag)
 			heap[heap_slots[i]].page = heap_ptrs[i];
 			break;
 		case AIN_REF_FUNC_TYPE:
+		case AIN_REF_DELEGATE:
+		case AIN_DELEGATE:
 			break;
 		case AIN_ARRAY_TYPE:
 			// Sys41VM doesn't make a copy when passing an array by value.
