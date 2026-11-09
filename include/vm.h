@@ -116,6 +116,7 @@ void vm_sleep(int ms);
 void hll_call(int libno, int fno, int result_tag);
 /* ain_data_type of the generic result of the CALLHLL currently executing, or -1 */
 int hll_generic_result_type(void);
+int hll_current_fno(void);
 bool library_exists(int libno);
 bool library_function_exists(int libno, int fno);
 void init_libraries(void);

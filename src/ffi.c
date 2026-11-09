@@ -296,10 +296,16 @@ static void trace_hll_call(struct ain_library *lib, struct ain_hll_function *f,
  * Exposed to HLL implementations through hll_generic_result_type() so that
  * generic Array/Container calls can materialise correctly typed elements. */
 static int hll_result_tag = -1;
+static int hll_call_fno = -1;
 
 int hll_generic_result_type(void)
 {
 	return hll_result_tag;
+}
+
+int hll_current_fno(void)
+{
+	return hll_call_fno;
 }
 
 /* A reference to a heap-owned object is just the object's handle (one stack
@@ -352,6 +358,7 @@ static int hll_ref_result_is_single_value(int tag)
 
 void hll_call(int libno, int fno, int result_tag)
 {
+	hll_call_fno = fno;
 	struct ain_hll_function *f = &ain->libraries[libno].functions[fno];
 	static int hll_trace = -1;
 	if (hll_trace < 0) {
