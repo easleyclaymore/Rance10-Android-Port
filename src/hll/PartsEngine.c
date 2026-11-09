@@ -407,6 +407,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(_ModuleFini, PartsEngine_ModuleFini),
 	    // Oyako Rankan
 	    HLL_EXPORT(SetWantSaveBackScene, PE_SetWantSaveBackScene),
+	    HLL_EXPORT(GetActiveController, PE_get_active_controller),
 	    HLL_EXPORT(AddPartsConstructionProcess, PE_AddPartsConstructionProcess),
 	    HLL_EXPORT(Init, PE_Init),
 	    HLL_EXPORT(Update, PartsEngine_Update),

@@ -267,8 +267,11 @@ struct page *heap_get_delegate_page(int index)
 	if (index < 0)
 		return NULL;
 	struct page *page = heap_get_page(index);
+	/* Rance10 passes not-yet-materialised delegate slots (e.g. 7) to DG_*
+	 * instructions. Treat them exactly like the existing index<0 empty
+	 * sentinel instead of aborting (D49). */
 	if (unlikely(page && page->type != DELEGATE_PAGE))
-		VM_ERROR("Not a delegate page: %d", index);
+		return NULL;
 	return page;
 }
 

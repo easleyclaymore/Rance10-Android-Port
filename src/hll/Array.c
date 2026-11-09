@@ -344,7 +344,13 @@ static int Array_Numof_(struct page **a)
 {
 	if (!a || !*a)
 		return 0;
-	return (*a)->nr_vars;
+	int n = (*a)->nr_vars;
+	/* Numof returns the ELEMENT count. #43 allocates 2 slots per
+	 * AIN_IFACE element (bytecode indexes with i*2), so divide the slot
+	 * count back for that tag (D46). */
+	if (hll_generic_result_type() == AIN_IFACE)
+		n /= 2;
+	return n;
 }
 
 static bool Array_Empty_(struct page **a)

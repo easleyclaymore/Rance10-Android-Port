@@ -489,6 +489,12 @@ static void method_call(int nargs, int return_address)
 	function_call(fno, return_address);   /* 弹掉 nargs 个 args */
 	stack_pop();                          /* 弹掉 fno */
 	int obj = stack_pop().i;              /* 弹 obj */
+	/* D48: Rance10 calls member methods through struct-like globals whose
+	 * ref members default to -1. The AIN function declares its owning
+	 * struct, so materialise one for `this` instead of dereferencing -1. */
+	if (obj <= 0 && ain->functions[fno].struct_type >= 0
+	    && ain->functions[fno].struct_type < ain->nr_structures)
+		obj = alloc_struct(ain->functions[fno].struct_type);
 	set_struct_page(obj);
 	heap[call_stack[call_stack_ptr-1].page_slot].page->local.struct_ptr = obj;
 }
@@ -2793,8 +2799,19 @@ int vm_execute_ain(struct ain *program)
 	// XXX: global constructors must be called AFTER initializing non-struct variables
 	//      otherwise a global set in a constructor will be clobbered by its initval
 	for (int i = 0; i < ain->nr_globals; i++) {
-		if (ain->globals[i].type.data == AIN_STRUCT)
-			init_struct(ain->globals[i].type.struc, heap[0].page->values[i].i);
+		struct ain_type *gt = &ain->globals[i].type;
+		if (gt->data != AIN_STRUCT && gt->data != AIN_REF_STRUCT)
+			continue;
+		/* variable_initval for struct-like globals is -1. Every global that
+		 * names a struct must own an object before member methods use it as
+		 * `this` (D45: CASConstructionProcess, D47: CASBGM@InitChannel). */
+		int slot = heap[0].page->values[i].i;
+		if (slot <= 0 && gt->struc >= 0 && gt->struc < ain->nr_structures) {
+			slot = alloc_struct(gt->struc);
+			heap[0].page->values[i].i = slot;
+		}
+		if (gt->data == AIN_STRUCT && slot > 0)
+			init_struct(gt->struc, slot);
 	}
 
 	vm_call(ain->main, -1);
