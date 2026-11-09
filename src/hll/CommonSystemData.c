@@ -59,7 +59,13 @@ static void CommonSystemData_SetFullPathSaveFileName(struct string *filename)
 	NOTICE("SetFullPathSaveFileName(%s)", filename->text);
 }
 
-HLL_WARN_UNIMPLEMENTED(false, bool, CommonSystemData, LoadAtStartup);
+/* AIN f[0]: bool LoadAtStartup(). _system::detail::Init does
+ * CALLHLL 9 0; NOT; IFNZ - returning false took the load-failed branch.
+ * The port has no persisted system data, so report success (D64). */
+static bool CommonSystemData_LoadAtStartup(void)
+{
+	return true;
+}
 //static bool CommonSystemData_LoadAtStartup(void);
 
 static bool CommonSystemData_SetDataInt(struct string *name, int value)
