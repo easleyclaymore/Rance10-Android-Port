@@ -1065,30 +1065,82 @@ static enum opcode execute_instruction(enum opcode opcode)
 		stack_push(local_get(get_argument(0)).i);
 		break;
 	}
-	/* AIN v12 0x10x extension: interface cast.
-	 * The operand is the target interface struct number. An AIN_IFACE value
-	 * is a 2-value reference [struct page, vtable offset]; the surrounding
-	 * bytecode keeps that reference on the stack and only consumes the
-	 * single cast result (compared against -1 for a null interface).
-	 * Stage 1: dereference to the implementing object by page shape.
-	 * Stage 2 (D3): verify the target interface via ain_interface and
-	 * function_types before accepting the cast. */
+	/* AIN v12 0x10x extension: interface / downcast assertion.
+	 *
+	 * Stack contract, established by tools/ain_icast.c over all 607 call
+	 * sites (379 POP-discarded, 223 compared with -1, 5 before RETURN) and
+	 * by controlled traces of CTextParts@Core::get @0x2637f0:
+	 *   in:  [..., iface_ref]
+	 *   out: [..., iface_ref, vtable_offset, impl_or_-1]     (net +2)
+	 * The last value is the cast result (compared with -1 or POPped); the
+	 * two values left behind are the AIN_IFACE value the caller returns or
+	 * stores with R_ASSIGN. Returning a single value makes DUP_U2 read
+	 * outside the stack and produces the well-known 0x8011 garbage (D32).
+	 *
+	 * vtable_offset is not a constant: the AIN declares 278 ain_interface
+	 * entries, and IParts alone has offsets 0/12/38/41/47/50/54/67/70/72/
+	 * 82/103 depending on the implementation (logs/ain_icast.txt). The
+	 * interface reference on the stack IS the implementing object: its
+	 * STRUCT_PAGE.index is the AIN struct number, whose interfaces[] row
+	 * gives the vtable_offset for the requested target. A concrete-struct
+	 * operand is a downcast; with no inheritance table in the AIN we keep
+	 * the offset stored in the reference (D28). */
 	case X_ICAST: {
+		static int icast_trace = -1;
+		static int icast_trace_count = 0;
+		if (icast_trace < 0) {
+			const char *t = getenv("XSYS4_ICAST_TRACE");
+			icast_trace = t ? 1 : 0;
+		}
 		int iface_no = get_argument(0);
-		(void)iface_no; /* target-interface check is still TODO (D3) */
-		union vm_value ref = stack_peek(0);
-		int32_t obj = -1;
-		if (ref.i > 0 && ref.i < heap_size) {
-			struct page *p = heap[ref.i].page;
-			if (p && p->nr_vars >= 2) {
-				int32_t impl = p->values[0].i;
-				if (impl > 0 && impl < heap_size && heap[impl].page)
-					obj = impl;
-			} else if (p && p->type == STRUCT_PAGE) {
-				obj = ref.i;
+		int32_t ref_slot = stack_peek(0).i;
+		int32_t impl = -1;
+		int32_t vtable_offset = 0;
+		int32_t sno = -1;
+		int matched = 0;
+		int target_is_iface = iface_no >= 0 && iface_no < ain->nr_structures
+			&& ain->structures[iface_no].is_interface;
+
+		if (ref_slot > 0 && ref_slot < heap_size && heap[ref_slot].page) {
+			struct page *p = heap[ref_slot].page;
+			if (p->type == STRUCT_PAGE && p->index >= 0
+			    && p->index < ain->nr_structures) {
+				/* The reference IS the implementing object. Its struct
+				 * index selects the row in ain_interface; e.g.
+				 * CSpriteParts(329) declares IParts(358)->0 and
+				 * ISpriteParts(363)->309. */
+				sno = p->index;
+				struct ain_struct *st = &ain->structures[sno];
+				for (int j = 0; j < st->nr_interfaces; j++) {
+					if (st->interfaces[j].struct_type == iface_no) {
+						vtable_offset = st->interfaces[j].vtable_offset;
+						matched = 1;
+						break;
+					}
+				}
+				if (!matched && sno == iface_no) matched = 1;
+				/* A concrete-class operand (is_interface=0) is a
+				 * downcast: the AIN carries no inheritance table, so only
+				 * object validity can be checked here. Keep the offset
+				 * already stored in the reference (D28). */
+				if (!matched && !target_is_iface && p->nr_vars >= 2) {
+					vtable_offset = p->values[1].i;
+					matched = 1;
+				}
+				if (matched) impl = ref_slot;
+			} else if (p->type == IFACE_PAGE && p->nr_vars >= 2
+			           && p->values[0].i > 0) {
+				/* Populated 2-slot interface wrapper. */
+				vtable_offset = p->values[1].i;
+				impl = ref_slot;
+				matched = 1;
 			}
 		}
-		stack_push((union vm_value){ .i = obj });
+		if (icast_trace && icast_trace_count++ < 200)
+			NOTICE("[icast] target=%d ref=%d sno=%d matched=%d off=%d impl=%d",
+			       iface_no, ref_slot, sno, matched, vtable_offset, impl);
+		stack_push((union vm_value){ .i = vtable_offset });
+		stack_push((union vm_value){ .i = impl });
 		break;
 	}
 	case _EOF: // In Ain v0, opcode 0x62 is not EOF but SH_STRUCTREF

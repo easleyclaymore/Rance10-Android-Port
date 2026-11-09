@@ -133,6 +133,7 @@ int PE_get_active_controller(void);
 int PE_get_system_controller(void);
 int PE_get_nr_controllers(void);
 void PE_parts_set_want_save(int parts_no, bool want_save);
+void PE_parts_set_want_save_back_scene(int parts_no, bool want);
 bool PE_save_thumbnail(struct string *filename, int reduction_factor);
 bool PE_init_parts_movie(int parts_no, int width, int height, int bg_r, int bg_g, int bg_b, int state);
 int PE_get_movie_sprite(int parts_no, int state);

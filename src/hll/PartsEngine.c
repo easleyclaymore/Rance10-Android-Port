@@ -383,12 +383,20 @@ static void PartsEngine_SetComment(int parts_no, struct string *comment)
 	(void)comment;
 }
 
+/* AIN f[70]: void SetWantSaveBackScene(int parts_no, bool want).
+ * AIN_BOOL is marshalled as ffi_type_sint32, so the C side takes int. */
+static void PE_SetWantSaveBackScene(int parts_no, int want)
+{
+	PE_parts_set_want_save_back_scene(parts_no, !!want);
+}
+
 HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(_PreLink, PartsEngine_PreLink),
 	    // for versions without PartsEngine.Init
 	    HLL_EXPORT(_ModuleInit, PartsEngine_ModuleInit),
 	    HLL_EXPORT(_ModuleFini, PartsEngine_ModuleFini),
 	    // Oyako Rankan
+	    HLL_EXPORT(SetWantSaveBackScene, PE_SetWantSaveBackScene),
 	    HLL_EXPORT(Init, PE_Init),
 	    HLL_EXPORT(Update, PartsEngine_Update),
 	    HLL_TODO_EXPORT(UpdateGUIController, PartsEngine_UpdateGUIController),
