@@ -474,6 +474,23 @@ static void Array_Insert_(struct page **a, int index, uint64_t value)
 	*a = np;
 }
 
+/* AIN f[25..28] Array.Copy share one name but have 2/3/4/5 parameters
+ * in different positions, so a single C prototype cannot serve all of
+ * them. Stage 1 (D53): parameter-agnostic no-op keeps startup moving;
+ * each overload needs its own binding by fno. */
+static int Array_Copy_(void)
+{
+	return 0;
+}
+
+/* AIN Array.Fill overloads take (ref array, value[, from, count]) and
+ * return void/int. Stage 1 (D55): parameter-agnostic no-op keeps the
+ * input init chain moving; real element fill still to be implemented. */
+static int Array_Fill_(void)
+{
+	return 0;
+}
+
 static int Array_Find_(struct page **a, uint64_t value)
 {
 	NOTICE("[Array] Find");
@@ -648,6 +665,8 @@ HLL_LIBRARY(Array,
 	    HLL_EXPORT(Find, Array_Find_),
 	    HLL_EXPORT(BinarySearch, Array_BinarySearch_),
 	    HLL_EXPORT(Insert, Array_Insert_),
+	    HLL_EXPORT(Copy, Array_Copy_),
+	    HLL_EXPORT(Fill, Array_Fill_),
 	    HLL_EXPORT(LowerBound, Array_LowerBound_),
 	    HLL_EXPORT(UpperBound, Array_UpperBound_),
 	    HLL_EXPORT(FindLast, Array_FindLast_),

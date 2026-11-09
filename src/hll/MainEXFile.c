@@ -743,8 +743,19 @@ static struct string *MainEXFile_A2String_v12(struct string *name, int r, int c,
         struct string *dflt, int row)
 { (void)name; (void)r; (void)c; (void)row; return string_ref(dflt); }
 
+/* AIN f[26]: int GetColAtFormatName(string name, string format, int row).
+ * Stage 1 (D56): EX table column lookup is not ported; return 0 so the
+ * button-assignment init chain can continue. */
+static int MainEXFile_GetColAtFormatName_v12(struct string *name,
+        struct string *format, int row)
+{
+	(void)name; (void)format; (void)row;
+	return 0;
+}
+
 HLL_LIBRARY(MainEXFile,
 	    HLL_EXPORT(_PreLink, MainEXFile_PreLink),
+	    HLL_EXPORT(GetColAtFormatName, MainEXFile_GetColAtFormatName_v12),
 	    HLL_EXPORT(_ModuleInit, MainEXFile_ModuleInit),
 	    HLL_EXPORT(_ModuleFini, MainEXFile_ModuleFini),
 	    HLL_EXPORT(ReloadDebugEXFile, MainEXFile_ReloadDebugEXFile),

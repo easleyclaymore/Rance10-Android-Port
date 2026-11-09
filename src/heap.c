@@ -84,6 +84,14 @@ int32_t heap_alloc_slot(enum vm_pointer_type type)
 	}
 
 	int32_t slot = heap_free_stack[heap_free_ptr++];
+	/* Slot 0 is the global variable page (PUSHGLOBALPAGE pushes literal 0).
+	 * Never recycle it for ordinary allocations, otherwise heap[0].page is
+	 * overwritten by a struct/array and global reads go wild (D54). */
+	while (slot == 0) {
+		if (heap_free_ptr >= heap_size)
+			heap_grow(heap_size + HEAP_ALLOC_STEP);
+		slot = heap_free_stack[heap_free_ptr++];
+	}
 	/* A recycled slot must not retain a dangling pointer from its previous
 	 * lifetime: callers that only allocate a slot (without heap_set_page)
 	 * would otherwise observe a stale page and corrupt object identity. */
@@ -305,9 +313,18 @@ void heap_string_assign(int slot, struct string *string)
 
 void heap_struct_assign(int lval, int rval)
 {
-	if (unlikely(lval == -1))
-		VM_ERROR("Assignment to null-pointer");
+	/* Slot 0 is the global variable page. SR_ASSIGN can arrive with an
+	 * uninitialised struct lvalue of 0; writing through it replaced the
+	 * whole global page with a struct (gdb: heap_struct_assign(0,1573)).
+	 * Drop that write; -1 remains the real null-pointer error (D54). */
+	if (unlikely(lval <= 0))
+		return;   /* 0 = global page slot, -1 = null struct lvalue (D54) */
 	if (lval == rval)
+		return;
+	/* Rance10 reaches SR_ASSIGN with stale/non-page slots (e.g. 6 holding
+	 * a string). Guard in release builds too - the DEBUG_HEAP checks below
+	 * otherwise let heap_get_page() abort startup (D54). */
+	if (unlikely(!page_index_valid(lval) || !page_index_valid(rval)))
 		return;
 #ifdef DEBUG_HEAP
 	if (unlikely(!page_index_valid(lval)))
