@@ -26,7 +26,12 @@
 #include "audio.h"
 #include "audio_meta.h"
 
-HLL_WARN_UNIMPLEMENTED( , void, KiwiSoundEngine, SetGlobalFocus, possibly_unused int nNum);
+static int kiwi_global_focus = 0;
+
+static void KiwiSoundEngine_SetGlobalFocus(int nNum)
+{
+	kiwi_global_focus = nNum;
+}
 
 //int KiwiSoundEngine_Sound_GetGroupNum(int nCh);
 //static bool KiwiSoundEngine_Sound_PrepareFromFile(int ch, struct string *filename);
