@@ -422,7 +422,23 @@ static void SystemService_ModuleInit(void)
 	load_window_settings();
 }
 
+/* AIN f[11]/f[12]: game view scale rate. xsystem4 has a single fixed
+ * game view, so keep the value written by SetGameViewScaleRate. */
+static float game_view_scale_rate = 1.0f;
+
+static void SystemService_SetGameViewScaleRate(float rate)
+{
+	game_view_scale_rate = rate;
+}
+
+static float SystemService_GetGameViewScaleRate(void)
+{
+	return game_view_scale_rate;
+}
+
 HLL_LIBRARY(SystemService,
+	    HLL_EXPORT(SetGameViewScaleRate, SystemService_SetGameViewScaleRate),
+	    HLL_EXPORT(GetGameViewScaleRate, SystemService_GetGameViewScaleRate),
 	    HLL_EXPORT(_PreLink, SystemService_PreLink),
 	    HLL_EXPORT(_ModuleInit, SystemService_ModuleInit),
 	    HLL_EXPORT(GetMixerNumof, mixer_get_numof),

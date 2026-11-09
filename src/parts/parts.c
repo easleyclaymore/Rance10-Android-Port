@@ -2150,13 +2150,20 @@ int PE_AddController(int index)
 // degenerates to a simple pop.
 void PE_RemoveController(struct page **erase_number_list, int index)
 {
-	if (index != -1)
-		VM_ERROR("index != -1 not supported (got %d)", index);
-	if (ctrl_stack.nr_controllers == 0 ||
-			ctrl_stack.active != ctrl_stack.nr_controllers - 1)
-		VM_ERROR("active controller is not at the top of the stack");
-
-	int ctrl_no = ctrl_stack.active;
+	/* index == -1 means "active controller"; Rance10 also passes an
+	 * explicit controller number (e.g. 0) from SceneStack@EraseLayer.
+	 * Accept both; the parts collection below is keyed by ctrl_no. (D50) */
+	int nr = ctrl_stack.nr_controllers;
+	if (nr == 0)
+		return;
+	int ctrl_no;
+	if (index == -1) {
+		ctrl_no = ctrl_stack.active;
+	} else {
+		if (index < 0 || index >= nr)
+			VM_ERROR("Invalid controller index %d", index);
+		ctrl_no = index;
+	}
 
 	// Collect and release parts belonging to this controller
 	struct parts *p = TAILQ_FIRST(&parts_list);
