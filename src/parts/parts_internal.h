@@ -418,6 +418,7 @@ struct parts {
 	bool pass_cursor;
 	bool lock_input_state;
 	bool want_save;
+	bool want_save_back_scene;
 	bool draggable;
 	int on_cursor_sound;
 	int on_click_sound;

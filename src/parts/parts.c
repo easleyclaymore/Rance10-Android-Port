@@ -65,6 +65,7 @@ static void parts_init(struct parts *parts)
 	parts->global = PARTS_PARAMS_INITIALIZER(1);
 	parts->delegate_index = -1;
 	parts->want_save = true;
+	parts->want_save_back_scene = false;
 	parts->on_cursor_sound = -1;
 	parts->on_click_sound = -1;
 	parts->origin_mode = 1;
@@ -2200,6 +2201,11 @@ int PE_get_nr_controllers(void)
 void PE_parts_set_want_save(int parts_no, bool want_save)
 {
 	parts_get(parts_no)->want_save = want_save;
+}
+
+void PE_parts_set_want_save_back_scene(int parts_no, bool want)
+{
+	parts_get(parts_no)->want_save_back_scene = want;
 }
 
 float PE_parts_get_absolute_x(int parts_no)
