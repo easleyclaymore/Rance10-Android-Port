@@ -1995,11 +1995,23 @@ static enum opcode execute_instruction(enum opcode opcode)
 		}
 		break;
 	}
+	/* libsys4 declares A_REF as (T_PAGE)->(). T_PAGE means any heap-backed
+	 * object, and vm_pointer stores page* / string* in the same union. The
+	 * upstream code always called copy_page(), so a string argument was
+	 * read as a page header: copy_page() then looped over a garbage
+	 * nr_vars and segfaulted (D34, AFL_Parts_CreateText @0x1d106e).
+	 * Dispatch on the slot type; vm_copy_page / vm_string_ref are symmetric
+	 * helpers that allocate a fresh slot and take a reference for the callee. */
 	case A_REF: {
 		int array = stack_pop().i;
-		int slot = heap_alloc_slot(VM_PAGE);
-		heap_set_page(slot, copy_page(heap[array].page));
-		stack_push(slot);
+		int slot = -1;
+		if (array > 0 && array < heap_size) {
+			if (heap[array].type == VM_PAGE && heap[array].page)
+				slot = vm_copy_page(heap[array].page);
+			else if (heap[array].type == VM_STRING && heap[array].s)
+				slot = vm_string_ref(heap[array].s);
+		}
+		stack_push((union vm_value){ .i = slot >= 0 ? slot : array });
 		break;
 	}
 	case A_NUMOF: {
