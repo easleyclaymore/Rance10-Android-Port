@@ -340,7 +340,7 @@ static void Array_Free_(struct page **a)
 	(void)a;
 }
 
-static int Array_Numof_(struct page **a)
+static int Array_Numof_(struct page **a, int rank)
 {
 	if (!a || !*a)
 		return 0;
@@ -348,6 +348,7 @@ static int Array_Numof_(struct page **a)
 	/* Numof returns the ELEMENT count. #43 allocates 2 slots per
 	 * AIN_IFACE element (bytecode indexes with i*2), so divide the slot
 	 * count back for that tag (D46). */
+	(void)rank;
 	if (hll_generic_result_type() == AIN_IFACE)
 		n /= 2;
 	return n;
@@ -355,13 +356,14 @@ static int Array_Numof_(struct page **a)
 
 static bool Array_Empty_(struct page **a)
 {
-	return Array_Numof_(a) == 0;
+	return Array_Numof_(a, 0) == 0;
 }
 
 
 /* At(ref array, int index) -> ref <any>：返回元素引用（可读可写） */
-static void *Array_Last_(struct page **a)
+static void *Array_Last_(struct page **a, uintptr_t out)
 {
+	(void)out;
 	NOTICE("[Array] Last");
 	if (!a || !*a)
 		return NULL;
@@ -474,42 +476,82 @@ static void Array_Insert_(struct page **a, int index, uint64_t value)
 	*a = np;
 }
 
-/* AIN f[25..28] Array.Copy share one name but have 2/3/4/5 parameters
- * in different positions, so a single C prototype cannot serve all of
- * them. Stage 1 (D53): parameter-agnostic no-op keeps startup moving;
- * each overload needs its own binding by fno. */
-static int Array_Copy_(void)
+/* AIN v12 exposes several same-named overloads with different arities.
+ * link_static_library binds them all to one C symbol, so dispatch on the
+ * current fno (ffi.c) and read the arguments positionally. All scalars are
+ * passed in 64-bit registers on AArch64, hence uintptr_t. (D62) */
+static int Array_Copy_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4)
 {
-	return 0;
+	struct page **dst = NULL, **src = NULL;
+	int dpos = 0, spos = 0, count = -1;
+	switch (hll_current_fno()) {
+	case 25: dst=(void*)p0; src=(void*)p1; break;
+	case 26: dst=(void*)p0; dpos=(int)p1; src=(void*)p2; break;
+	case 27: dst=(void*)p0; src=(void*)p1; spos=(int)p2; count=(int)p3; break;
+	case 28: dst=(void*)p0; dpos=(int)p1; src=(void*)p2; spos=(int)p3; count=(int)p4; break;
+	default: return 0;
+	}
+	if (!dst || !src || !*src || (*src)->type != ARRAY_PAGE) return 0;
+	struct page *sp = *src;
+	if (spos < 0) spos = 0;
+	if (count < 0 || spos + count > sp->nr_vars) count = sp->nr_vars - spos;
+	if (count <= 0) return 0;
+	for (int i = 0; i < count; i++) {
+		if (dpos + i >= (*dst)->nr_vars) break;
+		(*dst)->values[dpos + i] = sp->values[spos + i];
+	}
+	return count;
 }
 
-/* AIN Array.Fill overloads take (ref array, value[, from, count]) and
- * return void/int. Stage 1 (D55): parameter-agnostic no-op keeps the
- * input init chain moving; real element fill still to be implemented. */
-static int Array_Fill_(void)
+static int Array_Fill_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
-	return 0;
+	struct page **a = (void*)p0;
+	int from = 0, count = -1;
+	uint64_t value;
+	if (hll_current_fno() == 24) { from=(int)p1; count=(int)p2; value=(uint64_t)p3; }
+	else { value = (uint64_t)p1; }
+	if (!a || !*a || (*a)->type != ARRAY_PAGE) return 0;
+	struct page *pg = *a;
+	if (from < 0) from = 0;
+	if (count < 0 || from + count > pg->nr_vars) count = pg->nr_vars - from;
+	for (int i = 0; i < count; i++) pg->values[from + i] = *(union vm_value *)&value;
+	return count < 0 ? 0 : count;
 }
-
-static int Array_Find_(struct page **a, uint64_t value)
+static int Array_Find_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
+	int fno = hll_current_fno();
+	bool ranged = (fno == 37 || fno == 41);
+	struct page **a = (void*)p0;
+	uint64_t value = ranged ? p3 : p1;
+	int from = ranged ? (int)p1 : 0;
+	int to = ranged ? (int)p2 : 0;
 	NOTICE("[Array] Find");
 	if (!a || !*a)
 		return -1;
 	struct page *p = *a;
-	for (int i = 0; i < p->nr_vars; i++)
+	if (ranged && (from < 0 || to > p->nr_vars || to < from)) return -1;
+	int begin = ranged ? from : 0, end = ranged ? to : p->nr_vars;
+	for (int i = begin; i < end; i++)
 		if (elem_eq(p, i, &value))
 			return i;
 	return -1;
 }
 
-static int Array_FindLast_(struct page **a, uint64_t value)
+static int Array_FindLast_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
+	int fno = hll_current_fno();
+	bool ranged = (fno == 38 || fno == 42);
+	struct page **a = (void*)p0;
+	uint64_t value = ranged ? p3 : p1;
+	int from = ranged ? (int)p1 : 0;
+	int to = ranged ? (int)p2 : 0;
 	NOTICE("[Array] FindLast");
 	if (!a || !*a)
 		return -1;
 	struct page *p = *a;
-	for (int i = p->nr_vars - 1; i >= 0; i--)
+	if (ranged && (from < 0 || to > p->nr_vars || to < from)) return -1;
+	int begin = ranged ? from : 0, end = ranged ? to : p->nr_vars;
+	for (int i = end - 1; i >= begin; i--)
 		if (elem_eq(p, i, &value))
 			return i;
 	return -1;
@@ -518,7 +560,7 @@ static int Array_FindLast_(struct page **a, uint64_t value)
 static bool Array_IsExist_(struct page **a, uint64_t value)
 {
 	NOTICE("[Array] IsExist");
-	return Array_Find_(a, value) >= 0;
+	return Array_Find_((uintptr_t)a, value, 0, 0) >= 0;
 }
 
 static void Array_PushBack_(struct page **a, uint64_t value)
@@ -575,7 +617,7 @@ static void Array_PopBack_(struct page **a)
 }
 
 
-static int Array_Numof_(struct page **a);
+static int Array_Numof_(struct page **a, int rank);
 
 /* AIN declares EmplaceBack(ref array) with ONE argument. The old
  * two-argument C stub read an extra uninitialised register and wrote it
@@ -602,8 +644,9 @@ static void *Array_EmplaceBack_(struct page **a)
 	return &np->values[old_n];
 }
 
-static void Array_Realloc_(struct page **a, int size)
+static void Array_Realloc_(struct page **a, int size, uintptr_t extra)
 {
+	(void)extra;
 	NOTICE("[Array] Realloc(%d)", size);
 	if (!a)
 		return;
@@ -625,7 +668,7 @@ static void Array_Realloc_(struct page **a, int size)
 
 static void Array_ReallocInit_(struct page **a, int size, uint64_t value)
 {
-	Array_Realloc_(a, size);
+	Array_Realloc_(a, size, 0);
 	if (!a || !*a || !value)
 		return;
 	struct page *p = *a;

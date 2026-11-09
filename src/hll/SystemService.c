@@ -58,11 +58,11 @@ static int SystemService_GetGameVersion(void)
 	return ain->game_version;
 }
 
-static void SystemService_GetGameName(struct string **game_name)
+/* AIN f[1]: string GetGameName() - v12 returns the string, the old
+ * out-parameter form is legacy (D62). */
+static struct string *SystemService_GetGameName(void)
 {
-	if (*game_name)
-		free_string(*game_name);
-	*game_name = cstr_to_string(config.game_name);
+	return cstr_to_string(config.game_name ? config.game_name : "");
 }
 
 HLL_WARN_UNIMPLEMENTED(false, bool, SystemService, AddURLMenu, struct string *title, struct string *url);

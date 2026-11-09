@@ -400,6 +400,12 @@ static void PE_AddPartsConstructionProcess(int parts_no, struct page **ints,
 	(void)parts_no; (void)ints; (void)floats; (void)strings; (void)state;
 }
 
+/* AIN f[12]: void UpdateComponent(int, int, bool, float, float).
+ * The old binding pointed at the 3-arg PartsEngine_Update (D62). */
+static void PartsEngine_UpdateComponent(int parts_no, int component_no, int flag, float f1, float f2)
+{
+	(void)parts_no; (void)component_no; (void)flag; (void)f1; (void)f2;
+}
 HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(_PreLink, PartsEngine_PreLink),
 	    // for versions without PartsEngine.Init
@@ -580,7 +586,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(IsExist, PE_IsExist),
 	    HLL_EXPORT(AddController, PE_AddController),
 	    HLL_EXPORT(RemoveController, PE_RemoveController),
-	    HLL_EXPORT(UpdateComponent, PartsEngine_Update),
+	    HLL_EXPORT(UpdateComponent, PartsEngine_UpdateComponent),
 	    HLL_EXPORT(Parts_SetThumbnailReductionSize, PE_SetThumbnailReductionSize),
 	    HLL_EXPORT(Parts_SetThumbnailMode, PE_SetThumbnailMode),
 	    HLL_EXPORT(GetClickNumber, PE_GetClickPartsNumber),
