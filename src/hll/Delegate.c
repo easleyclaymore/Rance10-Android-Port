@@ -34,7 +34,6 @@ static void ensure(void *p)
 
 static void Delegate_Set(void *delegate, int func)
 {
-	WARNING("DBG_DELEGATE Set(delegate=%p, func=%d)", delegate, func);
 	struct xs4_delegate *d = as_delegate(delegate);
 	if (!d)
 		return;

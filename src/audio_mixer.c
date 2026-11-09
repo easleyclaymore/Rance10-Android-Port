@@ -701,8 +701,11 @@ void mixer_init(void)
 		.samples = CHUNK_SIZE,
 		.callback = audio_callback,
 	};
-	audio_device = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
-	SDL_PauseAudioDevice(audio_device, 0);
+	/* XSYS4_NO_AUDIO: skip the SDL/ALSA device in headless setups. */
+	if (!SDL_getenv("XSYS4_NO_AUDIO"))
+		audio_device = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+	if (audio_device > 0)
+		SDL_PauseAudioDevice(audio_device, 0);
 }
 
 int mixer_get_numof(void)
