@@ -439,7 +439,10 @@ void hll_call(int libno, int fno, int result_tag)
 			 * Parts UI globals hold a 0-slot placeholder instead; Array.PushBack
 			 * skipped them so the array never grew. Normalise to an empty array. */
 			struct page *cur = (struct page *)heap_ptrs[i];
-			if (cur && cur->type != ARRAY_PAGE) {
+			/* [FIX D99] A live slot whose page is NULL must also be normalised:
+			 * the old `cur &&` guard skipped that case and passed NULL to the
+			 * HLL, so Array.Numof() returned 0 and CreateHandle produced -1. */
+			if (!cur || cur->type != ARRAY_PAGE) {
 				struct page *np = alloc_page(ARRAY_PAGE, AIN_ARRAY_INT, 0);
 				np->array.rank = 1;
 				np->array.struct_type = -1;
