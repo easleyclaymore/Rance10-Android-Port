@@ -10,6 +10,7 @@
 
 #include "hll.h"
 #include "vm.h"
+#include "vm/page.h"
 
 struct xs4_delegate {
 	int *funcs;
@@ -32,20 +33,19 @@ static void ensure(void *p)
 	}
 }
 
-static void Delegate_Set(void *delegate, int func)
+/* D69: Delegate.Set must write into the real DELEGATE_PAGE that DG_CALL
+ * reads. The old xs4_delegate placeholder wrote into a stack address and
+ * the registration was invisible to the VM. */
+static void Delegate_Set(struct page **delegate, int func)
 {
-	struct xs4_delegate *d = as_delegate(delegate);
-	if (!d)
+	struct page *p = delegate ? *delegate : NULL;
+	if (!p || p->type != DELEGATE_PAGE)
 		return;
-	ensure(delegate);
-	d->nr = 0;
-	if (d->cap < 1) {
-		d->cap = 4;
-		d->funcs = realloc(d->funcs, d->cap * sizeof(int));
-	}
-	d->funcs[d->nr++] = func;
+	p = delegate_clear(p);
+	if (func > 0)
+		p = delegate_append(p, -1, func);
+	*delegate = p;
 }
-
 static void Delegate_Add(void *delegate, int func)
 {
 	WARNING("DBG_DELEGATE Add(delegate=%p, func=%d)", delegate, func);

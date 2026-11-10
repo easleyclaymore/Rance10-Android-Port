@@ -328,7 +328,13 @@ static int alloc_scenario_page(const char *fname)
 	slot = heap_alloc_slot(VM_PAGE);
 	heap_set_page(slot, alloc_page(LOCAL_PAGE, fno, f->nr_vars));
 	for (int i = 0; i < f->nr_vars; i++) {
-		heap[slot].page->values[i] = variable_initval(f->vars[i].type.data);
+		if (f->vars[i].type.data == AIN_DELEGATE) {
+			/* D67: delegate locals need a real page slot before DG_ASSIGN
+			 * can copy into them; -1 silently discarded the copy. */
+			heap[slot].page->values[i].i = heap_alloc_page(alloc_page(DELEGATE_PAGE, 0, 0));
+		} else {
+			heap[slot].page->values[i] = variable_initval(f->vars[i].type.data);
+		}
 	}
 	return slot;
 }
@@ -436,7 +442,13 @@ static int _function_call(int fno, int return_address)
 	};
 	// initialize local variables
 	for (int i = f->nr_args; i < f->nr_vars; i++) {
-		heap[slot].page->values[i] = variable_initval(f->vars[i].type.data);
+		if (f->vars[i].type.data == AIN_DELEGATE) {
+			/* D67: delegate locals need a real page slot before DG_ASSIGN
+			 * can copy into them; -1 silently discarded the copy. */
+			heap[slot].page->values[i].i = heap_alloc_page(alloc_page(DELEGATE_PAGE, 0, 0));
+		} else {
+			heap[slot].page->values[i] = variable_initval(f->vars[i].type.data);
+		}
 		if (ain->version <= 1 && f->vars[i].type.data == AIN_STRUCT) {
 			create_struct(f->vars[i].type.struc, &heap[slot].page->values[i]);
 		}

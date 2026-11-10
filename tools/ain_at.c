@@ -131,5 +131,16 @@ int main(int argc,char**argv){
 		if(n<0||n>=(int)a->nr_strings){fprintf(stderr,"str index out of range\n");return 1;}
 		printf("STR[%d] = [%s]\n",n,(a->strings[n]&&a->strings[n]->text)?a->strings[n]->text:"(null)");
 		return 0;}
+	if(!strncmp(spec,"dno:",4)){
+		int n=atoi(spec+4);
+		if(n<0||n>=(int)a->nr_delegates){fprintf(stderr,"dno out of range\n");return 1;}
+		printf("DELEGATE [%d] nr_args=%d ret=%d/%d\n",n,a->delegates[n].nr_arguments,
+			a->delegates[n].return_type.data,a->delegates[n].return_type.struc);
+		for(int i=0;i<a->delegates[n].nr_arguments;i++)
+			printf("  arg[%d] type=%d struc=%d rank=%d\n",i,
+				a->delegates[n].variables[i].type.data,
+				a->delegates[n].variables[i].type.struc,
+				a->delegates[n].variables[i].type.rank);
+		return 0;}
 	fprintf(stderr,"bad spec %s\n",spec);return 1;
 }
