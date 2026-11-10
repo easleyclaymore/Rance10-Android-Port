@@ -443,6 +443,13 @@ static struct string *SystemService_GetGameVersionByText(void)
 	return cstr_to_string("00sdf00000f29fo0000000sdhf1");
 }
 
+/* AIN SystemService.GameVariable_*: stage 1. No persisted game variables
+ * in the port, so IsExist is always false and Get* return defaults (D80). */
+static bool SystemService_GameVariable_IsExist(uintptr_t a, uintptr_t b)
+{
+	(void)a; (void)b;
+	return false;
+}
 /* AIN f[50]: void ShowWaitMessage(bool). The port draws no wait overlay. */
 static void SystemService_ShowWaitMessage(int show)
 {
@@ -453,6 +460,7 @@ HLL_LIBRARY(SystemService,
 	    HLL_EXPORT(GetGameViewScaleRate, SystemService_GetGameViewScaleRate),
 	    HLL_EXPORT(GetGameVersionByText, SystemService_GetGameVersionByText),
 	    HLL_EXPORT(ShowWaitMessage, SystemService_ShowWaitMessage),
+	    HLL_EXPORT(GameVariable_IsExist, SystemService_GameVariable_IsExist),
 	    HLL_EXPORT(_PreLink, SystemService_PreLink),
 	    HLL_EXPORT(_ModuleInit, SystemService_ModuleInit),
 	    HLL_EXPORT(GetMixerNumof, mixer_get_numof),

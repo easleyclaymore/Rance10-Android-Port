@@ -2630,7 +2630,9 @@ static enum opcode execute_instruction(enum opcode opcode)
 		int dst_i = stack_pop().i;
 		struct page *add = heap_get_delegate_page(add_i);
 		struct page *dst = heap_get_delegate_page(dst_i);
-		heap_set_page(dst_i, delegate_plusa(dst, add));
+		/* D76: dst_i==0 is the reserved GLOBAL_PAGE, not a delegate. */
+		if (dst_i > 0)
+			heap_set_page(dst_i, delegate_plusa(dst, add));
 		stack_push(add_i);
 		break;
 	}
@@ -2639,7 +2641,9 @@ static enum opcode execute_instruction(enum opcode opcode)
 		int dst_i = stack_pop().i;
 		struct page *minus = heap_get_delegate_page(minus_i);
 		struct page *dst = heap_get_delegate_page(dst_i);
-		heap_set_page(dst_i, delegate_minusa(dst, minus));
+		/* D76: same guard for DG_MINUSA. */
+		if (dst_i > 0)
+			heap_set_page(dst_i, delegate_minusa(dst, minus));
 		stack_push(minus_i);
 		break;
 	}

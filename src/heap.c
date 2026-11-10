@@ -152,9 +152,12 @@ void heap_unref(int slot)
 			n++;
 		}
 	}
+	/* D79: repeated unref of an already-released slot (e.g. two local
+	 * variables sharing one VM_STRING in CollectionSaveData::Save).
+	 * exit_unref() is already idempotent; make heap_unref match. */
 	if (unlikely(heap[slot].ref <= 0)) {
 		heap_double_free(slot);
-		VM_ERROR("double free");
+		return;
 	}
 	if (heap[slot].ref > 1) {
 #ifdef DEBUG_HEAP
@@ -287,6 +290,13 @@ void heap_set_page(int slot, struct page *page)
 {
 	if (slot < 0)
 		return; /* empty-delegate sentinel: nothing to write back yet */
+	/* D76: slot 0 holds the GLOBAL_PAGE (PUSHGLOBALPAGE pushes literal 0).
+	 * Only the initial GLOBAL_PAGE allocation may write it; any other
+	 * page type would clobber all global variable reads. */
+	if (slot == 0 && page && page->type != GLOBAL_PAGE) {
+		WARNING("heap_set_page(0): rejected non-global page type=%d", page->type);
+		return;
+	}
 #ifdef DEBUG_HEAP
 	if (unlikely(!page_index_valid(slot)))
 		VM_ERROR("Invalid page index: %d", index);

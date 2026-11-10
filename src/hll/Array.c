@@ -541,6 +541,45 @@ static void Array_Unique_(struct page **a, uintptr_t predicate)
 /* AIN f[51]: array Where(ref array, predicate) -> array.
  * Full predicate dispatch needs vm_call (D63); stage 1 returns a shallow
  * copy of the whole array so the caller has a valid array to iterate. */
+/* AIN f[29..34]: Sort/AscSort/DescSort/QuickSort(ref array[, cmp]) -> ref array.
+ * Stage 1: sort a shallow copy by raw int values and return its slot.
+ * Predicate overloads (t95) and descending order are not implemented yet;
+ * a proper cmp dispatch needs vm_call (D78). */
+/* AIN f[4]/f[5]: ShallowCopy(ref array) -> array. Stage 1: copy the page
+ * and return a fresh heap slot (D80). */
+static int Array_ShallowCopy_(struct page **a)
+{
+	struct page *src = a ? *a : NULL;
+	if (!src || src->type != ARRAY_PAGE)
+		return -1;
+	struct page *np = alloc_page(ARRAY_PAGE, src->a_type, src->nr_vars > 0 ? src->nr_vars : 1);
+	np->array = src->array;
+	np->nr_vars = src->nr_vars;
+	for (int i = 0; i < src->nr_vars; i++)
+		np->values[i] = src->values[i];
+	return heap_alloc_page(np);
+}
+static int Array_QuickSort_(struct page **a, uintptr_t predicate)
+{
+	(void)predicate;
+	struct page *src = a ? *a : NULL;
+	if (!src || src->type != ARRAY_PAGE)
+		return -1;
+	struct page *np = alloc_page(ARRAY_PAGE, src->a_type, src->nr_vars);
+	np->array = src->array;
+	for (int i = 0; i < src->nr_vars; i++)
+		np->values[i] = src->values[i];
+	for (int i = 1; i < np->nr_vars; i++) {
+		union vm_value key = np->values[i];
+		int j = i - 1;
+		while (j >= 0 && np->values[j].i > key.i) {
+			np->values[j+1] = np->values[j];
+			j--;
+		}
+		np->values[j+1] = key;
+	}
+	return heap_alloc_page(np);
+}
 static int Array_Where_(struct page **a, uintptr_t predicate)
 {
 	(void)predicate;
@@ -743,6 +782,11 @@ HLL_LIBRARY(Array,
 	    HLL_EXPORT(BinarySearch, Array_BinarySearch_),
 	    HLL_EXPORT(Insert, Array_Insert_),
 	    HLL_EXPORT(Copy, Array_Copy_),
+	    HLL_EXPORT(ShallowCopy, Array_ShallowCopy_),
+	    HLL_EXPORT(Sort, Array_QuickSort_),
+	    HLL_EXPORT(AscSort, Array_QuickSort_),
+	    HLL_EXPORT(DescSort, Array_QuickSort_),
+	    HLL_EXPORT(QuickSort, Array_QuickSort_),
 	    HLL_EXPORT(Where, Array_Where_),
 	    HLL_EXPORT(Unique, Array_Unique_),
 	    HLL_EXPORT(Fill, Array_Fill_),
