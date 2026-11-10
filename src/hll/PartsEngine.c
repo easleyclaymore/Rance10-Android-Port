@@ -406,6 +406,13 @@ static void PartsEngine_UpdateComponent(int parts_no, int component_no, int flag
 {
 	(void)parts_no; (void)component_no; (void)flag; (void)f1; (void)f2;
 }
+/* AIN PartsEngine.Parts_GetParentPartsNumber: stage 1, no parent parts
+ * tracking in the port, report "none" (-1) (D80). */
+static int PartsEngine_Parts_GetParentPartsNumber(uintptr_t parts_no)
+{
+	(void)parts_no;
+	return -1;
+}
 HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(_PreLink, PartsEngine_PreLink),
 	    // for versions without PartsEngine.Init
@@ -587,6 +594,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(AddController, PE_AddController),
 	    HLL_EXPORT(RemoveController, PE_RemoveController),
 	    HLL_EXPORT(UpdateComponent, PartsEngine_UpdateComponent),
+	    HLL_EXPORT(Parts_GetParentPartsNumber, PartsEngine_Parts_GetParentPartsNumber),
 	    HLL_EXPORT(Parts_SetThumbnailReductionSize, PE_SetThumbnailReductionSize),
 	    HLL_EXPORT(Parts_SetThumbnailMode, PE_SetThumbnailMode),
 	    HLL_EXPORT(GetClickNumber, PE_GetClickPartsNumber),

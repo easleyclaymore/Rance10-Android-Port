@@ -22,6 +22,8 @@
 
 #include "xsystem4.h"
 #include "hll.h"
+#include "vm/page.h"
+#include "vm/heap.h"
 
 #include "system4/utfsjis.h"
 
@@ -638,6 +640,30 @@ static bool MainEXFile_GetNodeName(struct string *tree_path, int index, struct s
 	return false;
 }
 
+/* AIN f[31]: bool GetNodeNameList(tree_path, ref array out, int flags).
+ * Stage 1: collect the non-leaf child names into a fresh string array.
+ * flags / in-place reuse are not implemented (D80). */
+static bool MainEXFile_GetNodeNameList(struct string *tree_path, struct page **out, int flags)
+{
+	(void)flags;
+	if (!out)
+		return false;
+	int count = MainEXFile_GetNodeNameCount(tree_path);
+	struct page *np = alloc_page(ARRAY_PAGE, AIN_ARRAY_STRING, count > 0 ? count : 1);
+	np->array.rank = 1;
+	np->array.struct_type = -1;
+	np->nr_vars = count;
+	for (int i = 0; i < count; i++) {
+		struct string *name = NULL;
+		if (!MainEXFile_GetNodeName(tree_path, i, &name) || !name)
+			continue;
+		int slot = heap_alloc_slot(VM_STRING);
+		heap[slot].s = name;
+		np->values[i].i = slot;
+	}
+	*out = np;
+	return true;
+}
 static bool MainEXFile_GetEXName(struct string *tree_path, int index, struct string **ex_name)
 {
 	struct ex_value *v = ex_get(ex, tree_path->text);
@@ -802,6 +828,7 @@ HLL_LIBRARY(MainEXFile,
 	    HLL_EXPORT(GetNodeNameCount, MainEXFile_GetNodeNameCount),
 	    HLL_EXPORT(GetEXNameCount, MainEXFile_GetEXNameCount),
 	    HLL_EXPORT(GetNodeName, MainEXFile_GetNodeName),
+	    HLL_EXPORT(GetNodeNameList, MainEXFile_GetNodeNameList),
 	    HLL_EXPORT(GetEXName, MainEXFile_GetEXName));
 
 static void MainEXFile_PreLink(void)
