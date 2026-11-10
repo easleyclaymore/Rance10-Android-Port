@@ -55,6 +55,15 @@ void heap_grow(size_t new_size)
 	heap_free_stack = xrealloc(heap_free_stack, sizeof(int32_t) * new_size);
 	for (size_t i = heap_size; i < new_size; i++) {
 		heap[i].ref = 0;
+		/* [FIX D100] xrealloc does not zero the new region, so heap[i].seq was
+		 * uninitialised garbage. heap_alloc_slot()'s D83 guard skips any slot
+		 * whose seq != 0, so every freshly-grown slot could be misread as "still
+		 * live", sending heap_free_ptr racing past the array and corrupting the
+		 * heap -- the observed calloc() SEGV during GlobalGameTimer construction. */
+		heap[i].seq = 0;
+		heap[i].page = NULL;
+		heap[i].s = NULL;
+		heap[i].type = 0;
 		heap_free_stack[i] = i;
 	}
 	heap_size = new_size;

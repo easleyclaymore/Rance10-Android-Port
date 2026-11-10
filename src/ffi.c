@@ -622,10 +622,21 @@ void hll_call(int libno, int fno, int result_tag)
                     heap_ref(v.i);
                 stack_push(v);
             } else {
+                /* [FIX D101] The non-single-value form returns [hi, pi] where
+                 * hi is the ARRAY page slot. AIN then R_ASSIGNs both and DELETEs
+                 * local[2] (=hi), which heap_unref()s the array page. The
+                 * container already holds its own reference, so without an extra
+                 * ref the DELETE drops it to 0 and frees the array (the observed
+                 * double free of slot 28/74315 from CreateHandle's cleanup).
+                 * Take a ref so the caller's DELETE cannot release the array. */
+                if (hi > 0 && hi < heap_size && heap[hi].ref > 0)
+                    heap_ref(hi);
                 stack_push((union vm_value){ .i = hi });
                 stack_push((union vm_value){ .i = pi });
             }
         } else {
+            if (hi > 0 && hi < heap_size && heap[hi].ref > 0)
+                heap_ref(hi);
             stack_push((union vm_value){ .i = hi });
             stack_push((union vm_value){ .i = pi });
         }
