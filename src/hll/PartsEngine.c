@@ -411,7 +411,9 @@ static void PartsEngine_UpdateComponent(int parts_no, int component_no, int flag
 static int PartsEngine_Parts_GetParentPartsNumber(uintptr_t parts_no)
 {
 	(void)parts_no;
-	return -1;
+	/* [HACK-POC D81] probe only: report 'no parent' as 0, which is what
+	 * AIN AFL_Parts_GetLayerIDByParts (fno 7260) terminates on. */
+	return 0;
 }
 HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(_PreLink, PartsEngine_PreLink),
