@@ -56,7 +56,7 @@ const char *asset_strtype(enum asset_type type)
 	return "Invalid";
 }
 
-#define MAX_ARCHIVES 8
+#define MAX_ARCHIVES 64  /* Rance10 LoadAdditionalAFAFile registers >8 archives (D70) */
 
 struct asset_manager {
 	bool (*load_archive)(struct asset_manager *manager, const char *name);

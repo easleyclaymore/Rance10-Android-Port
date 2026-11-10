@@ -444,8 +444,8 @@ void hll_call(int libno, int fno, int result_tag)
 			args[i] = &hll_values[i];
 			break;
 		case AIN_HLL_FUNC:
-			/* D59: most t95 args are one fno; only BinarySearch predicate is [page, fno]. */
-			if (libno == 5) {
+			/* D59/D68: v12 T_FUNC args are [obj, fno] pairs; lib 5 and lib 11 both push two values. */
+			if (libno == 5 || libno == 11) {
 				stack_ptr -= 2;
 				hll_values[i] = (uint32_t)stack[stack_ptr + 1].i;
 			} else {
@@ -489,7 +489,7 @@ void hll_call(int libno, int fno, int result_tag)
 		case AIN_REF_BOOL:
 		case AIN_REF_FLOAT:
 		case AIN_HLL_FUNC:
-			if (libno == 5)
+			if (libno == 5 || libno == 11)
 				j++;
 			break;
 		case AIN_REF_STRING:
@@ -503,6 +503,9 @@ void hll_call(int libno, int fno, int result_tag)
 		case AIN_REF_FUNC_TYPE:
 		case AIN_REF_DELEGATE:
 		case AIN_DELEGATE:
+			/* D69: HLL may have reallocated the delegate page; write it back. */
+			if (heap_slots[i] > 0 && heap_slots[i] < heap_size)
+				heap[heap_slots[i]].page = heap_ptrs[i];
 			break;
 		case AIN_ARRAY_TYPE:
 			// Sys41VM doesn't make a copy when passing an array by value.
