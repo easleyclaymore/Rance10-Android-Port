@@ -92,6 +92,14 @@ int PE_GetPartsUpperLeftPosY(int parts_no, int state);
 void PE_SetPartsOriginPosMode(int parts_no, int origin_pos_mode);
 int PE_GetPartsOriginPosMode(int parts_no);
 void PE_SetParentPartsNumber(int parts_no, int parent_parts_no);
+void PE_AddChild(int parts_no, int child_no);
+void PE_InsertChild(int parts_no, int child_no, int index);
+void PE_RemoveChild(int parts_no, int child_no);
+void PE_ClearChild(int parts_no);
+int PE_NumofChild(int parts_no);
+int PE_GetChild(int parts_no, int index);
+int PE_GetChildIndex(int parts_no, int child_no);
+int PE_IsExistChild(int parts_no, int child_no);
 int PE_GetParentPartsNumber(int parts_no);
 bool PE_SetPartsGroupNumber(int parts_no, int group_no);
 void PE_SetPartsMessageWindowShowLink(int parts_no, bool message_window_show_link);
@@ -313,5 +321,27 @@ int PE_get_layoutbox_padding_top(int parts_no);
 int PE_get_layoutbox_padding_bottom(int parts_no);
 int PE_get_layoutbox_padding_left(int parts_no);
 int PE_get_layoutbox_padding_right(int parts_no);
+
+// activity.c (D89)
+struct activity;
+struct activity_part;
+bool activity_exists(const char *name);
+struct activity *activity_get(const char *name);
+struct activity *activity_create(const char *name);
+bool activity_read(struct string *name, struct string *file);
+bool activity_release(const char *name);
+void activity_release_all(void);
+void activity_free(struct activity *act);
+bool activity_is_exist_file(const char *file);
+int activity_nr_parts(struct activity *act);
+struct activity_part *activity_find_parts(struct activity *act, const char *parts_name);
+int activity_find_parts_no(struct activity *act, const char *parts_name);
+int activity_part_no_at(struct activity *act, int index);
+const char *activity_part_name_at(struct activity *act, int index);
+int activity_part_cg_name_at(struct activity *act, int index, const char **out);
+bool activity_add_parts(struct string *name, struct string *parts_name, int parts_no);
+bool activity_remove_parts(struct string *name, struct string *parts_name);
+void activity_remove_all_parts(struct string *name);
+const char *activity_background(struct activity *act);
 
 #endif /* SYSTEM4_PARTS_H */

@@ -1886,6 +1886,130 @@ int PE_GetParentPartsNumber(int parts_no)
 	return -1;
 }
 
+/* --- D89: explicit child tree -------------------------------------------
+ * The AIN addresses the parts tree through PartsEngine f[165..172]
+ * (IsExistChild / ClearChild / AddChild / InsertChild / RemoveChild /
+ * NumofChild / GetChildIndex / GetChild). The activity loader already sets
+ * parents with PE_SetParentPartsNumber, but AIN asks about the tree
+ * immediately, so these operate on the live TAILQ instead of waiting for the
+ * dirty-list pass. */
+
+static void parts_detach(struct parts *child)
+{
+	if (!child->parent)
+		return;
+	TAILQ_REMOVE(&child->parent->children, child, child_list_entry);
+	child->parent = NULL;
+}
+
+static void parts_attach_after(struct parts *parent, struct parts *child, struct parts *after)
+{
+	parts_detach(child);
+	child->parent = parent;
+	child->pending_parent = -1;
+	if (after)
+		TAILQ_INSERT_AFTER(&parent->children, after, child, child_list_entry);
+	else
+		TAILQ_INSERT_TAIL(&parent->children, child, child_list_entry);
+	parts_component_dirty(child);
+	parts_dirty(parent);
+}
+
+void PE_AddChild(int parts_no, int child_no)
+{
+	struct parts *parent = parts_get(parts_no);
+	struct parts *child = parts_get(child_no);
+	parts_attach_after(parent, child, NULL);
+}
+
+void PE_InsertChild(int parts_no, int child_no, int index)
+{
+	struct parts *parent = parts_get(parts_no);
+	struct parts *child = parts_get(child_no);
+	struct parts *after = NULL;
+	int i = 0;
+	struct parts *c;
+	PARTS_FOREACH_CHILD(c, parent) {
+		if (i++ == index - 1) {
+			after = c;
+			break;
+		}
+	}
+	if (index <= 0)
+		parts_attach_after(parent, child, NULL);
+	else
+		parts_attach_after(parent, child, after);
+}
+
+void PE_RemoveChild(int parts_no, int child_no)
+{
+	struct parts *parent = parts_get(parts_no);
+	struct parts *child = parts_try_get(child_no);
+	if (!parent || !child || child->parent != parent)
+		return;
+	parts_detach(child);
+	parts_dirty(parent);
+}
+
+void PE_ClearChild(int parts_no)
+{
+	struct parts *parent = parts_get(parts_no);
+	struct parts *c = TAILQ_FIRST(&parent->children);
+	while (c) {
+		struct parts *next = TAILQ_NEXT(c, child_list_entry);
+		TAILQ_REMOVE(&parent->children, c, child_list_entry);
+		c->parent = NULL;
+		c = next;
+	}
+	parts_dirty(parent);
+}
+
+int PE_NumofChild(int parts_no)
+{
+	struct parts *parent = parts_try_get(parts_no);
+	if (!parent)
+		return 0;
+	int n = 0;
+	struct parts *c;
+	PARTS_FOREACH_CHILD(c, parent)
+		n++;
+	return n;
+}
+
+int PE_GetChild(int parts_no, int index)
+{
+	struct parts *parent = parts_try_get(parts_no);
+	if (!parent || index < 0)
+		return -1;
+	int i = 0;
+	struct parts *c;
+	PARTS_FOREACH_CHILD(c, parent) {
+		if (i++ == index)
+			return c->no;
+	}
+	return -1;
+}
+
+int PE_GetChildIndex(int parts_no, int child_no)
+{
+	struct parts *parent = parts_try_get(parts_no);
+	if (!parent)
+		return -1;
+	int i = 0;
+	struct parts *c;
+	PARTS_FOREACH_CHILD(c, parent) {
+		if (c->no == child_no)
+			return i;
+		i++;
+	}
+	return -1;
+}
+
+int PE_IsExistChild(int parts_no, int child_no)
+{
+	return PE_GetChildIndex(parts_no, child_no) >= 0;
+}
+
 bool PE_SetPartsGroupNumber(possibly_unused int PartsNumber, possibly_unused int GroupNumber)
 {
 	UNIMPLEMENTED("(%d, %d)", PartsNumber, GroupNumber);

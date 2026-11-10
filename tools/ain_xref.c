@@ -201,6 +201,24 @@ static void dis_func(struct ain *ain, int fno)
 }
 
 
+
+static int find_str(struct ain *ain, const char *needle)
+{
+	int n = 0;
+	for (int i = 0; i < ain->nr_strings; i++) {
+		struct string *st = ain->strings[i];
+		if (!st || !st->text) continue;
+		char *u = sjis2utf(st->text, strlen(st->text));
+		if ((u && strstr(u, needle)) || strstr(st->text, needle)) {
+			printf("STR[%d] = \"%s\"\n", i, u ? u : st->text);
+			n++;
+		}
+		free(u);
+	}
+	printf("== %d matches for \"%s\"\n", n, needle);
+	return 0;
+}
+
 static int hll_top(struct ain *ain, int lib_filter)
 {
 	static int count[256][1024];
@@ -338,6 +356,7 @@ int main(int argc, char **argv)
 	if (!ain) { fprintf(stderr, "ain_open failed: %d\n", err); return 1; }
 	initialize_instructions(ain->version);
 
+	if (!strcmp(argv[2], "findstr") && argc >= 4) return find_str(ain, argv[3]);
 	if (!strcmp(argv[2], "hlltop")) return hll_top(ain, argc > 3 ? atoi(argv[3]) : -1);
 	if (!strcmp(argv[2], "dis") && argc >= 4) {
 		char *p = argv[3];
