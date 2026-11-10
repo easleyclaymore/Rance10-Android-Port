@@ -15,6 +15,9 @@
  */
 
 #include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "system4/ain.h"
 #include "system4/string.h"
@@ -22,7 +25,19 @@
 #include "vm/heap.h"
 #include "vm/page.h"
 #include "parts.h"
+#include "asset_manager.h"
+#include "system4/archive.h"
+#include "system4/ex.h"
 #include "hll.h"
+
+/* [D110c] D89 手写桩的触达探针。
+ * 这类桩 .fun 非 NULL，走的是正常 HLL_EXPORT，所以既不会触发 VM_ERROR，
+ * 也不会出现在 D110 的软桩清单里 —— 它们静默返回 0，最容易查漏。
+ * XSYS4_PE_DBG=1 时每次触达打一行。 */
+#define PE_HACK_HIT(fname) do { \
+	if (getenv("XSYS4_PE_DBG")) \
+		NOTICE("[pe-hack] %s", fname); \
+} while (0)
 
 static void PartsEngine_ModuleInit(void)
 {
@@ -1947,6 +1962,9 @@ static void PE_Noop_SetVScrollbarOverrideUpFlatName(int a0, struct string * a1)
  * path instead of aborting. Real fix: activity table + file loading. */
 static int PartsEngine_IsExistActivity(struct string *name)
 {
+	PE_HACK_HIT("PartsEngine_IsExistActivity");
+	if (getenv("XSYS4_PE_DBG"))
+		NOTICE("[pe-hack]   name=%s", name ? name->text : "(null)");
 	(void)name;
 	return 0;
 }
@@ -1954,6 +1972,7 @@ static int PartsEngine_IsExistActivity(struct string *name)
 /* AIN f[23] CreateActivity. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_CreateActivity(struct string * a0)
 {
+	PE_HACK_HIT("PE_Act_CreateActivity");
 	(void)a0;
 	return 0;
 }
@@ -1961,6 +1980,7 @@ static int PE_Act_CreateActivity(struct string * a0)
 /* AIN f[24] ReleaseActivity. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_ReleaseActivity(struct string * a0, struct page ** a1)
 {
+	PE_HACK_HIT("PE_Act_ReleaseActivity");
 	(void)a0;
 	(void)a1;
 	return 0;
@@ -1969,6 +1989,7 @@ static int PE_Act_ReleaseActivity(struct string * a0, struct page ** a1)
 /* AIN f[26] LoadActivityEXText. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_LoadActivityEXText(struct string * a0, struct string * a1, int a2)
 {
+	PE_HACK_HIT("PE_Act_LoadActivityEXText");
 	(void)a0;
 	(void)a1;
 	(void)a2;
@@ -1976,8 +1997,148 @@ static int PE_Act_LoadActivityEXText(struct string * a0, struct string * a1, int
 }
 
 /* AIN f[27] ReadActivityFile. [HACK-POC D89] Activity subsystem stub. */
+/* [D110f] pactex == System4 EX 格式（HEAD/EXTF/DATA + 字节置换表 + zlib）。
+ * libsys4 的 ex_read() 已经能完整解析，这里只把结构打出来，
+ * 用来确定 Activity 需要哪些字段，再决定数据结构。
+ */
+static void pe_act_dump_value(struct ex_value *v, int d);
+
+static void pe_act_pad(char *buf, int d)
+{
+	int n = d * 2;
+	if (n > 60)
+		n = 60;
+	memset(buf, ' ', n);
+	buf[n] = 0;
+}
+
+static void pe_act_dump_tree(struct ex_tree *t, int d)
+{
+	char pad[64];
+	pe_act_pad(pad, d);
+	NOTICE("%s- '%s' leaf=%d", pad, t->name ? t->name->text : "?", t->is_leaf);
+	if (t->is_leaf) {
+		pe_act_dump_value(&t->leaf.value, d + 1);
+	} else if (d < 6) {
+		for (uint32_t i = 0; i < t->nr_children && i < 24; i++)
+			pe_act_dump_tree(&t->children[i], d + 1);
+		if (t->nr_children > 24)
+			NOTICE("%s  ... %u children total", pad, t->nr_children);
+	} else {
+		NOTICE("%s  ... %u children (depth limit)", pad, t->nr_children);
+	}
+}
+
+static void pe_act_dump_value(struct ex_value *v, int d)
+{
+	char pad[64];
+	pe_act_pad(pad, d);
+	switch (v->type) {
+	case EX_INT:
+		NOTICE("%sint %d", pad, v->i);
+		break;
+	case EX_FLOAT:
+		NOTICE("%sfloat %.4f", pad, v->f);
+		break;
+	case EX_STRING:
+		NOTICE("%sstr '%s'", pad, v->s ? v->s->text : "");
+		break;
+	case EX_TABLE: {
+		struct ex_table *t = v->t;
+		NOTICE("%stable %ux%u", pad, t->nr_rows, t->nr_columns);
+		for (uint32_t c = 0; c < t->nr_columns && c < 20; c++)
+			NOTICE("%s  col[%u] '%s' %s", pad, c,
+			       t->fields[c].name ? t->fields[c].name->text : "?",
+			       ex_strtype(t->fields[c].type));
+		if (d > 5)
+			break;
+		for (uint32_t r = 0; r < t->nr_rows && r < 6; r++) {
+			NOTICE("%s  row[%u]", pad, r);
+			for (uint32_t c = 0; c < t->nr_columns && c < 20; c++) {
+				struct ex_value *cv = ex_table_get(t, r, c);
+				if (cv)
+					pe_act_dump_value(cv, d + 2);
+			}
+		}
+		if (t->nr_rows > 6)
+			NOTICE("%s  ... %u rows total", pad, t->nr_rows);
+		break;
+	}
+	case EX_LIST: {
+		struct ex_list *l = v->list;
+		NOTICE("%slist %u", pad, l->nr_items);
+		if (d > 5)
+			break;
+		for (uint32_t i = 0; i < l->nr_items && i < 6; i++) {
+			struct ex_value *iv = ex_list_get(l, i);
+			if (iv)
+				pe_act_dump_value(iv, d + 1);
+		}
+		if (l->nr_items > 6)
+			NOTICE("%s  ... %u items total", pad, l->nr_items);
+		break;
+	}
+	case EX_TREE:
+		pe_act_dump_tree(v->tree, d);
+		break;
+	default:
+		NOTICE("%s? unknown type=%d", pad, v->type);
+		break;
+	}
+}
+
+static void pe_act_dump_ex(struct archive_data *ad)
+{
+	static int done = 0;
+	if (done)
+		return;
+	done = 1;
+	struct ex *ex = ex_read((const uint8_t *)ad->data, ad->size);
+	if (!ex) {
+		NOTICE("[pe-ex] ex_read failed");
+		return;
+	}
+	NOTICE("[pe-ex] '%s' blocks=%u", ad->name ? ad->name : "?", ex->nr_blocks);
+	for (uint32_t i = 0; i < ex->nr_blocks; i++) {
+		NOTICE("[pe-ex] block[%u] '%s'", i,
+		       ex->blocks[i].name ? ex->blocks[i].name->text : "?");
+		pe_act_dump_value(&ex->blocks[i].val, 1);
+	}
+	ex_free(ex);
+}
+
 static int PE_Act_ReadActivityFile(struct string * a0, struct string * a1, int a2)
 {
+	PE_HACK_HIT("PE_Act_ReadActivityFile");
+	/* [D110d] 一次性定位：活动文件叫什么、在哪个归档里。
+	 * a0/a1 的真实语义由调用方决定，先把两个都打出来再判。 */
+	if (getenv("XSYS4_PE_DBG")) {
+		NOTICE("[pe-hack]   args a0=%s a1=%s a2=%d",
+		       a0 ? a0->text : "(null)", a1 ? a1->text : "(null)", a2);
+		if (a0) {
+			for (int t = 0; t <= ASSET_FLASH; t++) {
+				int id = -1;
+				bool ex = asset_exists_by_name((enum asset_type)t, a0->text, &id);
+				NOTICE("[pe-hack]     asset %-5s exists=%d id=%d",
+				       asset_strtype((enum asset_type)t), ex, id);
+				/* [D110e] PACT 命中即落盘，供离线分析活动文件格式 */
+				if (ex && t == ASSET_PACT && getenv("XSYS4_PE_DUMP")) {
+					struct archive_data *ad = asset_get((enum asset_type)t, id);
+					if (ad && ad->data) {
+						FILE *df = fopen("/tmp/act_dump.bin", "wb");
+						if (df) {
+							fwrite(ad->data, 1, ad->size, df);
+							fclose(df);
+						}
+						NOTICE("[pe-hack]     dumped '%s' size=%d -> /tmp/act_dump.bin",
+						       ad->name ? ad->name : "(?)", (int)ad->size);
+						if (getenv("XSYS4_PE_DUMP_EX"))
+							pe_act_dump_ex(ad);
+					}
+				}
+			}
+		}
+	}
 	(void)a0; (void)a1; (void)a2;
 	return 0;
 }
@@ -1985,6 +2146,7 @@ static int PE_Act_ReadActivityFile(struct string * a0, struct string * a1, int a
 /* AIN f[28] WriteActivityFile. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_WriteActivityFile(struct string * a0, struct string * a1)
 {
+	PE_HACK_HIT("PE_Act_WriteActivityFile");
 	(void)a0;
 	(void)a1;
 	return 0;
@@ -1993,6 +2155,7 @@ static int PE_Act_WriteActivityFile(struct string * a0, struct string * a1)
 /* AIN f[29] IsExistActivityFile. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_IsExistActivityFile(struct string * a0)
 {
+	PE_HACK_HIT("PE_Act_IsExistActivityFile");
 	(void)a0;
 	return 0;
 }
@@ -2000,6 +2163,7 @@ static int PE_Act_IsExistActivityFile(struct string * a0)
 /* AIN f[30] AddActivityParts. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_AddActivityParts(struct string * a0, struct string * a1, int a2)
 {
+	PE_HACK_HIT("PE_Act_AddActivityParts");
 	(void)a0;
 	(void)a1;
 	(void)a2;
@@ -2009,6 +2173,7 @@ static int PE_Act_AddActivityParts(struct string * a0, struct string * a1, int a
 /* AIN f[31] RemoveActivityParts. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_RemoveActivityParts(struct string * a0, struct string * a1)
 {
+	PE_HACK_HIT("PE_Act_RemoveActivityParts");
 	(void)a0;
 	(void)a1;
 	return 0;
@@ -2017,6 +2182,7 @@ static int PE_Act_RemoveActivityParts(struct string * a0, struct string * a1)
 /* AIN f[32] RemoveAllActivityParts. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_RemoveAllActivityParts(struct string * a0)
 {
+	PE_HACK_HIT("PE_Act_RemoveAllActivityParts");
 	(void)a0;
 	return 0;
 }
@@ -2024,6 +2190,7 @@ static int PE_Act_RemoveAllActivityParts(struct string * a0)
 /* AIN f[33] NumofActivityParts. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_NumofActivityParts(struct string * a0)
 {
+	PE_HACK_HIT("PE_Act_NumofActivityParts");
 	(void)a0;
 	return -1;
 }
@@ -2031,6 +2198,7 @@ static int PE_Act_NumofActivityParts(struct string * a0)
 /* AIN f[35] IsExistActivityPartsByName. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_IsExistActivityPartsByName(struct string * a0, struct string * a1)
 {
+	PE_HACK_HIT("PE_Act_IsExistActivityPartsByName");
 	(void)a0;
 	(void)a1;
 	return 0;
@@ -2039,6 +2207,7 @@ static int PE_Act_IsExistActivityPartsByName(struct string * a0, struct string *
 /* AIN f[36] IsExistActivityPartsByNumber. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_IsExistActivityPartsByNumber(struct string * a0, int a1)
 {
+	PE_HACK_HIT("PE_Act_IsExistActivityPartsByNumber");
 	(void)a0;
 	(void)a1;
 	return 0;
@@ -2047,6 +2216,7 @@ static int PE_Act_IsExistActivityPartsByNumber(struct string * a0, int a1)
 /* AIN f[37] GetActivityPartsNumber. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_GetActivityPartsNumber(struct string * a0, struct string * a1)
 {
+	PE_HACK_HIT("PE_Act_GetActivityPartsNumber");
 	(void)a0;
 	(void)a1;
 	return -1;
@@ -2055,6 +2225,7 @@ static int PE_Act_GetActivityPartsNumber(struct string * a0, struct string * a1)
 /* AIN f[39] GetActivityEXID. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_GetActivityEXID(struct string * a0)
 {
+	PE_HACK_HIT("PE_Act_GetActivityEXID");
 	(void)a0;
 	return -1;
 }
@@ -2062,6 +2233,7 @@ static int PE_Act_GetActivityEXID(struct string * a0)
 /* AIN f[44] AddActivityCloseParts. [HACK-POC D89] Activity subsystem stub. */
 static void PE_Act_AddActivityCloseParts(struct string * a0, struct string * a1)
 {
+	PE_HACK_HIT("PE_Act_AddActivityCloseParts");
 	(void)a0;
 	(void)a1;
 }
@@ -2069,6 +2241,7 @@ static void PE_Act_AddActivityCloseParts(struct string * a0, struct string * a1)
 /* AIN f[45] IsExistActivityCloseParts. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_IsExistActivityCloseParts(struct string * a0, struct string * a1)
 {
+	PE_HACK_HIT("PE_Act_IsExistActivityCloseParts");
 	(void)a0;
 	(void)a1;
 	return 0;
@@ -2077,6 +2250,7 @@ static int PE_Act_IsExistActivityCloseParts(struct string * a0, struct string * 
 /* AIN f[46] AddActivityLockedParts. [HACK-POC D89] Activity subsystem stub. */
 static void PE_Act_AddActivityLockedParts(struct string * a0, struct string * a1)
 {
+	PE_HACK_HIT("PE_Act_AddActivityLockedParts");
 	(void)a0;
 	(void)a1;
 }
@@ -2084,6 +2258,7 @@ static void PE_Act_AddActivityLockedParts(struct string * a0, struct string * a1
 /* AIN f[47] IsExistActivityLockedParts. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_IsExistActivityLockedParts(struct string * a0, struct string * a1)
 {
+	PE_HACK_HIT("PE_Act_IsExistActivityLockedParts");
 	(void)a0;
 	(void)a1;
 	return 0;
@@ -2092,6 +2267,7 @@ static int PE_Act_IsExistActivityLockedParts(struct string * a0, struct string *
 /* AIN f[49] EraseActivityEndKey. [HACK-POC D89] Activity subsystem stub. */
 static void PE_Act_EraseActivityEndKey(struct string * a0, int a1)
 {
+	PE_HACK_HIT("PE_Act_EraseActivityEndKey");
 	(void)a0;
 	(void)a1;
 }
@@ -2099,6 +2275,7 @@ static void PE_Act_EraseActivityEndKey(struct string * a0, int a1)
 /* AIN f[50] IsExistActivityEndKey. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_IsExistActivityEndKey(struct string * a0, int a1)
 {
+	PE_HACK_HIT("PE_Act_IsExistActivityEndKey");
 	(void)a0;
 	(void)a1;
 	return 0;
@@ -2107,6 +2284,7 @@ static int PE_Act_IsExistActivityEndKey(struct string * a0, int a1)
 /* AIN f[51] NumofActivityEndKey. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_NumofActivityEndKey(struct string * a0)
 {
+	PE_HACK_HIT("PE_Act_NumofActivityEndKey");
 	(void)a0;
 	return -1;
 }
@@ -2114,6 +2292,7 @@ static int PE_Act_NumofActivityEndKey(struct string * a0)
 /* AIN f[52] GetActivityEndKey. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_GetActivityEndKey(struct string * a0, int a1)
 {
+	PE_HACK_HIT("PE_Act_GetActivityEndKey");
 	(void)a0;
 	(void)a1;
 	return -1;

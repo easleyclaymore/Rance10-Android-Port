@@ -16,6 +16,7 @@
 
 #define VM_PRIVATE
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ffi.h>
@@ -34,9 +35,134 @@ struct hll_function {
 	unsigned int nr_args;
 	ffi_type **args;
 	ffi_type *return_type;
+	int is_stub;            /* [D110] HLL_TODO_EXPORT 且已被零值桩接管 */
 };
 
 static struct hll_function **libraries = NULL;
+
+/* ---------------- [D110] 未实现 HLL 的软桩与触达清单 ----------------
+ * HLL_TODO_EXPORT 展开为 { .name=..., .fun=NULL }，hll_call() 一旦执行到
+ * 就 VM_ERROR -> sys_exit(1)，进程当场死亡：只能看到"最深的那一次"，
+ * 后面还有什么没实现永远不知道。
+ *
+ * XSYS4_SOFT_STUB=1 时把这些导出换成"按返回类型给零值"的桩：
+ *   - 参数仍走原有 ffi 编组路径，栈平衡/引用计数逻辑一字未改；
+ *   - 每个桩首次触达在清单里记一行，之后只累加计数；
+ *   - XSYS4_STUB_BT=1 时给前 32 个桩打印 VM 调用栈；
+ *   - 清单默认 /tmp/xsys4_stubs.txt，可用 XSYS4_STUB_LOG 指定。
+ * 不设 XSYS4_SOFT_STUB 时行为与以前完全一致（仍然 VM_ERROR 退出）。
+ */
+static int soft_stub_enabled(void)
+{
+	static int mode = -1;
+	if (mode < 0) {
+		const char *e = getenv("XSYS4_SOFT_STUB");
+		mode = (e && *e && strcmp(e, "0") != 0) ? 1 : 0;
+	}
+	return mode;
+}
+
+static void stub_ret_void(void) { }
+static int32_t stub_ret_i32(void) { return 0; }
+static int64_t stub_ret_i64(void) { return 0; }
+static float stub_ret_f32(void) { return 0.0f; }
+static double stub_ret_f64(void) { return 0.0; }
+static void *stub_ret_ptr(void) { return NULL; }
+
+static void *soft_stub_for(ffi_type *ret)
+{
+	if (!ret || ret == &ffi_type_void)
+		return (void *)stub_ret_void;
+	switch (ret->type) {
+	case FFI_TYPE_POINTER: return (void *)stub_ret_ptr;
+	case FFI_TYPE_FLOAT:   return (void *)stub_ret_f32;
+	case FFI_TYPE_DOUBLE:  return (void *)stub_ret_f64;
+	case FFI_TYPE_SINT64:
+	case FFI_TYPE_UINT64:  return (void *)stub_ret_i64;
+	default:               return (void *)stub_ret_i32;
+	}
+}
+
+#define STUB_MAX 512
+struct stub_hit {
+	int libno;
+	int fno;
+	unsigned long count;
+};
+static struct stub_hit stub_hits[STUB_MAX];
+static int stub_nr = 0;
+static int stub_nr_bt = 0;
+static int stub_replaced = 0;   /* [D110b] 链接期被零值桩接管的导出数 */
+
+static void stub_summary(void);
+
+static FILE *stub_log_file(void)
+{
+	static FILE *fp = NULL;
+	static int inited = 0;
+	if (!inited) {
+		inited = 1;
+		const char *p = getenv("XSYS4_STUB_LOG");
+		if (!p || !*p)
+			p = "/tmp/xsys4_stubs.txt";
+		fp = fopen(p, "w");
+		if (fp) {
+			fprintf(fp, "# xsystem4 soft-stub hit list (XSYS4_SOFT_STUB=1)\n# lib.func  args  ret\n");
+			fflush(fp);
+			atexit(stub_summary);
+		}
+	}
+	return fp;
+}
+
+static void stub_summary(void)
+{
+	FILE *fp = stub_log_file();
+	if (!fp)
+		return;
+	fprintf(fp, "\n# ===== summary: %d distinct unimplemented HLL functions hit =====\n", stub_nr);
+	for (int i = 0; i < stub_nr; i++) {
+		struct ain_library *lib = &ain->libraries[stub_hits[i].libno];
+		struct ain_hll_function *f = &lib->functions[stub_hits[i].fno];
+		fprintf(fp, "%8lu  %s.%s\n", stub_hits[i].count, lib->name, f->name);
+	}
+	fflush(fp);
+}
+
+static void stub_note(int libno, int fno)
+{
+	FILE *fp = stub_log_file();
+	if (!fp)
+		return;
+	for (int i = 0; i < stub_nr; i++) {
+		if (stub_hits[i].libno == libno && stub_hits[i].fno == fno) {
+			stub_hits[i].count++;
+			return;
+		}
+	}
+	if (stub_nr >= STUB_MAX)
+		return;
+	struct ain_library *lib = &ain->libraries[libno];
+	struct ain_hll_function *f = &lib->functions[fno];
+	stub_hits[stub_nr].libno = libno;
+	stub_hits[stub_nr].fno = fno;
+	stub_hits[stub_nr].count = 1;
+	stub_nr++;
+	fprintf(fp, "[stub %03d] %s.%s  args=%d ret=%s\n", stub_nr, lib->name, f->name,
+	        (int)f->nr_arguments, ain_strtype(ain, f->return_type.data, -1));
+	fflush(fp);
+	static int bt = -1;
+	if (bt < 0) {
+		const char *e = getenv("XSYS4_STUB_BT");
+		bt = (e && *e && strcmp(e, "0") != 0) ? 1 : 0;
+	}
+	if (bt && stub_nr_bt < 32) {
+		stub_nr_bt++;
+		NOTICE("[stub] backtrace for %s.%s:", lib->name, f->name);
+		vm_stack_trace();
+	}
+}
+
 
 bool library_exists(int libno)
 {
@@ -45,7 +171,8 @@ bool library_exists(int libno)
 
 bool library_function_exists(int libno, int fno)
 {
-	return libraries[libno] && libraries[libno][fno].fun;
+	/* [D110] 软桩只是运行期兜底，审计时仍算"未实现"。 */
+	return libraries[libno] && libraries[libno][fno].fun && !libraries[libno][fno].is_stub;
 }
 
 /*
@@ -358,6 +485,20 @@ static int hll_ref_result_is_single_value(int tag)
 
 void hll_call(int libno, int fno, int result_tag)
 {
+	/* [D110b] 首次 HLL 调用时落一次自检：清单为空时也能区分
+	 * "一路没踩到空桩" 和 "软桩机制根本没生效"。 */
+	if (soft_stub_enabled()) {
+		static int self_checked = 0;
+		if (!self_checked) {
+			self_checked = 1;
+			FILE *sfp = stub_log_file();
+			if (sfp) {
+				fprintf(sfp, "# link-time: %d unimplemented exports replaced by zero-stubs\n", stub_replaced);
+				fflush(sfp);
+			}
+			NOTICE("[stub] soft-stub active: %d unimplemented exports replaced", stub_replaced);
+		}
+	}
 	hll_call_fno = fno;
 	struct ain_hll_function *f = &ain->libraries[libno].functions[fno];
 	static int hll_trace = -1;
@@ -376,6 +517,8 @@ void hll_call(int libno, int fno, int result_tag)
 	struct hll_function *fun = &libraries[libno][fno];
 	if (!fun->fun)
 		VM_ERROR("Unimplemented HLL function: %s.%s", ain->libraries[libno].name, f->name);
+	if (fun->is_stub)
+		stub_note(libno, fno);
 
 	void *args[HLL_MAX_ARGS];
 	void *ptrs[HLL_MAX_ARGS];
@@ -982,6 +1125,14 @@ static void link_static_library_function(struct hll_function *dst, struct ain_hl
 
 	if (ffi_prep_cif(&dst->cif, FFI_DEFAULT_ABI, dst->nr_args, dst->return_type, dst->args) != FFI_OK)
 		ERROR("Failed to link HLL function");
+
+	/* [D110] 名字注册了但没有实现（HLL_TODO_EXPORT）：软桩模式下换成零值桩，
+	 * 让流程继续往下走并在清单里留下证据；默认仍然留着 NULL 走 VM_ERROR。 */
+	if (!dst->fun && soft_stub_enabled()) {
+		dst->fun = soft_stub_for(dst->return_type);
+		dst->is_stub = 1;
+		stub_replaced++;
+	}
 }
 
 /*
