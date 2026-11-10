@@ -95,6 +95,20 @@ union vm_value variable_initval_typed(const struct ain_type *type)
 	 * Typed arrays (AIN_ARRAY_INT/BOOL/STRUCT/...) were the ones still
 	 * falling through to variable_initval(); generic AIN_ARRAY was already
 	 * handled, which is why only some globals were corrupted. */
+	/* [D112] A delegate-typed variable must start life as an empty
+	 * DELEGATE_PAGE. The compiler assigns delegates into struct members with
+	 * DG_ASSIGN after taking REF of the member: when the member is -1 there is
+	 * no slot to write, the copy is dropped and later Delegate.Empty() reports
+	 * "empty". That broke parts::detail::AddPartsUpdateEvent -> the per-frame
+	 * update events never fired and SceneStack@WaitFrame spun forever.
+	 * #88 did the same for function locals only. */
+	if (type->data == AIN_DELEGATE) {
+		int slot = heap_alloc_page(alloc_page(DELEGATE_PAGE, 0, 0));
+		if (getenv("XSYS4_ARR_DBG"))
+			NOTICE("[INIT] delegate -> slot=%d", slot);
+		return (union vm_value) { .i = slot };
+	}
+
 	enum ain_data_type at = AIN_VOID;
 	switch (type->data) {
 	case AIN_ARRAY:

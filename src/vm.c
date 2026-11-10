@@ -494,8 +494,43 @@ static int _function_call(int fno, int return_address)
 	return slot;
 }
 
+/* [D111d] Per-function entry probe: XSYS4_CALL_TRACE=<fno,fno,...>
+ * Prints the first 3 hits and then every 200th, so a "does this AIN function
+ * ever run?" question can be answered without a trace window. */
+static struct { int fno; int hits; } call_trace[16];
+static int call_trace_n = -1;
+
+static void call_trace_probe(int fno)
+{
+	if (call_trace_n < 0) {
+		const char *env = getenv("XSYS4_CALL_TRACE");
+		call_trace_n = 0;
+		if (env) {
+			const char *p = env;
+			while (*p && call_trace_n < 16) {
+				call_trace[call_trace_n].fno = atoi(p);
+				call_trace[call_trace_n].hits = 0;
+				call_trace_n++;
+				while (*p && *p != ',') p++;
+				if (*p == ',') p++;
+			}
+		}
+	}
+	for (int i = 0; i < call_trace_n; i++) {
+		if (call_trace[i].fno != fno)
+			continue;
+		int n = ++call_trace[i].hits;
+		if (n <= 3 || n % 200 == 0) {
+			struct ain_function *f = &ain->functions[fno];
+			NOTICE("[call] #%d %s (%d) from 0x%zX", n, display_sjis0(f->name), fno,
+			       instr_ptr);
+		}
+	}
+}
+
 static void function_call(int fno, int return_address)
 {
+	call_trace_probe(fno);
 	/* AIN reserves fno 0 / address 0 for the NULL function. A call to it
 	 * is a no-op: consume its arguments (there are none) without creating
 	 * a frame or jumping to address 0. The caller's instruction pointer
@@ -542,8 +577,9 @@ static int struct_no_from_function(int fno);
 static void method_call(int nargs, int return_address)
 {
 	int fno = stack_peek(nargs).i;
-	if (fno < 0 || fno >= ain->nr_functions)
+	if (fno < 0 || fno >= ain->nr_functions) {
 		VM_ERROR("CALLMETHOD: invalid function index %d", fno);
+	}
 	function_call(fno, return_address);   /* 弹掉 nargs 个 args */
 	stack_pop();                          /* 弹掉 fno */
 	int obj = stack_pop().i;              /* 弹 obj */
@@ -2893,8 +2929,22 @@ void vm_dump_call_stack(int max)
 
 static void vm_execute(void)
 {
+	/* [D111e] Stack sampler: XSYS4_STACK_SAMPLE=1 prints the AIN call stack
+	 * once per second, so a busy loop can be located without a trace window. */
+	static unsigned long long _insn;
+	static time_t _last;
 	for (;;) {
 		uint16_t opcode;
+		if (((++_insn & 0x3FFFFF) == 0) && getenv("XSYS4_STACK_SAMPLE")) {
+			time_t now = time(NULL);
+			if (now != _last) {
+				_last = now;
+				union vm_value g6 = global_get(6);
+				fprintf(stderr, "[sample] ip=0x%zX g6=%d g4=%d\n", instr_ptr, g6.i,
+					global_get(4).i);
+				vm_dump_call_stack(10);
+			}
+		}
 		if (instr_ptr == VM_RETURN)
 			return;
 		if (unlikely(instr_ptr >= ain->code_size)) {

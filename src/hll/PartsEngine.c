@@ -390,13 +390,38 @@ HLL_WARN_UNIMPLEMENTED(, void, PartsEngine, StopSoundWithoutSystemSound);
 
 static void PartsEngine_PreLink(void);
 
-/* Parts_SetComment(int, string) -> void: debug-only annotation attached to
- * a parts object. The PE backend exposes no comment slot and game logic
- * never reads it back, so this is a deliberate no-op. */
+/* Parts_SetComment(int, string) / Parts_GetComment(int) -> string.
+ * Debug annotation attached to a parts object (the .pactex "批注" field).
+ * The PE backend has no comment slot, so keep a tiny side table: the editor
+ * and the debug views do read it back (f[178]). */
+#define PE_COMMENT_MAX 64
+static struct { int parts_no; char *text; } pe_comments[PE_COMMENT_MAX];
+
 static void PartsEngine_SetComment(int parts_no, struct string *comment)
 {
-	(void)parts_no;
-	(void)comment;
+	for (int i = 0; i < PE_COMMENT_MAX; i++) {
+		if (pe_comments[i].text && pe_comments[i].parts_no == parts_no) {
+			free(pe_comments[i].text);
+			pe_comments[i].text = strdup(comment ? comment->text : "");
+			return;
+		}
+	}
+	for (int i = 0; i < PE_COMMENT_MAX; i++) {
+		if (!pe_comments[i].text) {
+			pe_comments[i].parts_no = parts_no;
+			pe_comments[i].text = strdup(comment ? comment->text : "");
+			return;
+		}
+	}
+}
+
+static struct string *PartsEngine_GetComment(int parts_no)
+{
+	for (int i = 0; i < PE_COMMENT_MAX; i++) {
+		if (pe_comments[i].text && pe_comments[i].parts_no == parts_no)
+			return cstr_to_string(pe_comments[i].text);
+	}
+	return cstr_to_string("");
 }
 
 /* AIN f[70]: void SetWantSaveBackScene(int parts_no, bool want).
@@ -2054,15 +2079,28 @@ static int PE_Act_NumofActivityParts(struct string *name)
 }
 
 /* AIN f[34] GetActivityParts(index, name, ref string out_name, ref int out_no).
- * Only used by the activity editor; the game flow looks parts up by name. */
+ *
+ * ffi hands ref parameters over as pointers into the heap slot / page cell, so
+ * the C types are `struct string **` and `union vm_value *`.
+ *
+ * Activity@CreateParts walks the activity by index through this function; when
+ * it returns 0 the caller keeps its previous (empty) name and then reports
+ * "PARTS_INVALID_NUMBER" once per iteration, which is exactly the warning the
+ * startup screen used to emit seven times. */
 static int PE_Act_GetActivityParts(int index, struct string *name,
-				   struct page **out_name, struct page **out_no)
+				   struct string **out_name, union vm_value *out_no)
 {
-	(void)index;
-	(void)name;
-	(void)out_name;
-	(void)out_no;
-	return 0;
+	struct activity *act = name ? activity_get(name->text) : NULL;
+	if (!act || index < 0 || index >= activity_nr_parts(act))
+		return 0;
+	if (out_name) {
+		if (*out_name)
+			free_string(*out_name);
+		*out_name = cstr_to_string(activity_part_name_at(act, index));
+	}
+	if (out_no)
+		out_no->i = activity_part_no_at(act, index);
+	return 1;
 }
 
 static int PE_Act_IsExistActivityPartsByName(struct string *name, struct string *parts_name)
@@ -2407,6 +2445,7 @@ HLL_LIBRARY(PartsEngine,
 	    /* Rance10.ain f[177] = Parts_SetComment. This table is indexed by
 	     * fno, not by name; see TECH_DEBT D26 (table rebuild pending). */
 	    HLL_EXPORT(Parts_SetComment, PartsEngine_SetComment),
+	    HLL_EXPORT(Parts_GetComment, PartsEngine_GetComment),
 	    HLL_TODO_EXPORT(CrateActivityBinary, PartsEngine_CrateActivityBinary),
 	    HLL_TODO_EXPORT(ReadActivityBinary, PartsEngine_ReadActivityBinary),
 	    HLL_EXPORT(ReleaseMessage, PE_ReleaseMessage),

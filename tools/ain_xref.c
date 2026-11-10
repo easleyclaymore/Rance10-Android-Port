@@ -357,6 +357,28 @@ int main(int argc, char **argv)
 	initialize_instructions(ain->version);
 
 	if (!strcmp(argv[2], "findstr") && argc >= 4) return find_str(ain, argv[3]);
+	if (!strcmp(argv[2], "at") && argc >= 4) {
+		size_t ip = (size_t)strtoul(argv[3], NULL, 0);
+		int n = argc > 4 ? atoi(argv[4]) : 40;
+		while (n-- > 0 && ip < ain->code_size) {
+			struct dec d;
+			if (!decode(ain, ip, &d)) { printf("0x%08zx ???\n", ip); break; }
+			dis_print(ain, &d);
+			if (d.op == JUMP || d.op == RETURN) { /* keep printing, caller decides */ }
+			ip += d.w;
+		}
+		return 0;
+	}
+	if (!strcmp(argv[2], "globals")) {
+		for (int i = 0; i < ain->nr_globals; i++) {
+			struct ain_variable *g = &ain->globals[i];
+			char *u = sjis2utf(g->name ? g->name : "", g->name ? strlen(g->name) : 0);
+			printf("g[%d] t%d struc=%d rank=%d %s\n", i, g->type.data, g->type.struc,
+			       g->type.rank, u ? u : g->name);
+			free(u);
+		}
+		return 0;
+	}
 	if (!strcmp(argv[2], "hlltop")) return hll_top(ain, argc > 3 ? atoi(argv[3]) : -1);
 	if (!strcmp(argv[2], "dis") && argc >= 4) {
 		char *p = argv[3];

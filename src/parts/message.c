@@ -90,8 +90,14 @@ void PE_PopMessage(void)
 
 int PE_GetMessageType(void)
 {
+	/* [D112] -1, not 0, is the "queue empty" sentinel:
+	 *   CPartsMessageManager@Update: MessageType = GetMessageType();
+	 *   while (MessageType != -1) { if (!CallDelegate(t)) PopMessage(); ... }
+	 * Returning 0 on an empty queue made the loop treat "no message" as
+	 * message type 0 forever (PopMessage is a no-op when empty), which is the
+	 * busy loop that froze SceneStack@WaitFrame. */
 	struct parts_message *msg = STAILQ_FIRST(&msg_queue);
-	return msg ? msg->type : 0;
+	return msg ? msg->type : -1;
 }
 
 int PE_GetMessagePartsNumber(void)
