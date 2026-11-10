@@ -369,6 +369,29 @@ int main(int argc, char **argv)
 		}
 		return 0;
 	}
+	if (!strcmp(argv[2], "libs")) {
+		for (int i = 0; i < ain->nr_libraries; i++) {
+			struct ain_library *L = &ain->libraries[i];
+			char *u = sjis2utf(L->name ? L->name : "", L->name ? strlen(L->name) : 0);
+			printf("lib[%d] %-28s nr_funcs=%d\n", i, u ? u : L->name, L->nr_functions);
+			free(u);
+		}
+		return 0;
+	}
+	if (!strcmp(argv[2], "lib") && argc >= 4) {
+		int li = atoi(argv[3]);
+		if (li >= 0 && li < ain->nr_libraries) {
+			struct ain_library *L = &ain->libraries[li];
+			for (int f = 0; f < L->nr_functions; f++) {
+				struct ain_hll_function *F = &L->functions[f];
+				char *u = sjis2utf(F->name ? F->name : "", F->name ? strlen(F->name) : 0);
+				printf("f[%d] %-40s nr_args=%d ret=t%d\n", f, u ? u : F->name,
+				       F->nr_arguments, F->return_type.data);
+				free(u);
+			}
+		}
+		return 0;
+	}
 	if (!strcmp(argv[2], "globals")) {
 		for (int i = 0; i < ain->nr_globals; i++) {
 			struct ain_variable *g = &ain->globals[i];

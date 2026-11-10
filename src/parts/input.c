@@ -147,27 +147,56 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 		parts_set_state(parts, PARTS_STATE_HOVERED);
 	}
 
-	// click event: only if the click down event had same parts number
-	if (parts->clickable && prev_clicking && !cur_clicking
-			&& click_down_parts == parts->no) {
-		audio_play_sound(parts->on_click_sound);
+	/* [D113] GetClickNumber() reports the parts that captured this click,
+	 * independent of Parts_SetClickable. clickable only gates the CLICK/KEY_UP
+	 * messages (button callbacks). xsystem4 tied both to clickable, which
+	 * makes scenes whose parts are all 点击許可=0 -- e.g. Rance10's
+	 * "click anywhere to continue" start screen -- impossible to leave:
+	 * parts::detail::WaitForClick polls GetClickNumber() > 0 forever.
+	 * click_down_parts is only set for click_eligible parts above, so this
+	 * still respects pass_cursor / front-to-back consumption. */
+	if (prev_clicking && !cur_clicking && click_down_parts == parts->no) {
 		clicked_parts = parts->no;
-
-		parts_msg_push(parts, PARTS_MSG_MOUSE_CLICK,
-				"iii", cur_pos.x, cur_pos.y, VK_LBUTTON);
-		parts_msg_push(parts, PARTS_MSG_KEY_UP, "i", VK_LBUTTON);
+		if (parts->clickable) {
+			audio_play_sound(parts->on_click_sound);
+			parts_msg_push(parts, PARTS_MSG_MOUSE_CLICK,
+					"iii", cur_pos.x, cur_pos.y, VK_LBUTTON);
+			parts_msg_push(parts, PARTS_MSG_KEY_UP, "i", VK_LBUTTON);
+		}
 	}
 }
 
 void PE_UpdateInputState(int passed_time)
 {
 	Point cur_pos;
-	bool cur_clicking = key_is_down(VK_LBUTTON);
+	bool pulse = mouse_consume_press_pulse();
+	bool cur_clicking = key_is_down(VK_LBUTTON) || pulse;
 	mouse_get_pos(&cur_pos.x, &cur_pos.y);
+
+	/* [D113] input probe: XSYS4_INPUT_DBG=1 prints the first frames of every
+	 * update so a lost click can be attributed to coordinates, hitbox,
+	 * began_click, or the clickable flag. */
+	static int dbg_n;
+	int dbg = getenv("XSYS4_INPUT_DBG") &&
+		(dbg_n < 40 || dbg_n % 60 == 0 || cur_clicking || prev_clicking || clicked_parts);
+	if (dbg) {
+		dbg_n++;
+		NOTICE("[inp] pos=(%d,%d) clicking=%d pulse=%d began=%d prev=%d down=%d",
+		       cur_pos.x, cur_pos.y, cur_clicking, pulse, parts_began_click,
+		       prev_clicking, click_down_parts);
+	}
 
 	bool hover_consumed = false;
 	bool click_consumed = false;
 	struct parts *parts;
+	if (dbg) {
+		PARTS_LIST_FOREACH_REVERSE(parts) {
+			Rectangle hb = parts->states[PARTS_STATE_DEFAULT].common.hitbox;
+			NOTICE("[inp]   parts=%d pos=(%d,%d) hb=(%d,%d,%d,%d) clickable=%d pass=%d",
+			       parts->no, parts->local.pos.x, parts->local.pos.y,
+			       hb.x, hb.y, hb.w, hb.h, parts->clickable, parts->pass_cursor);
+		}
+	}
 	// Iterate front-to-back (highest z first) for proper cursor consumption
 	PARTS_LIST_FOREACH_REVERSE(parts) {
 		parts_update_mouse(parts, cur_pos, cur_clicking, passed_time,
@@ -239,6 +268,8 @@ void PE_UpdateInputState(int passed_time)
 		click_down_parts = 0;
 	}
 
+	if (dbg && clicked_parts)
+		NOTICE("[inp]   CLICKED parts=%d", clicked_parts);
 	prev_clicking = cur_clicking;
 	parts_prev_pos = cur_pos;
 }
@@ -323,6 +354,10 @@ void PE_BeginInput(void)
 
 void PE_EndInput(void)
 {
+	if (getenv("XSYS4_INPUT_DBG")) {
+		static int n = 0;
+		if (n++ < 30) NOTICE("[inp] EndInput (clicked=%d)", clicked_parts);
+	}
 	parts_began_click = false;
 	clicked_parts = 0;
 	drag_state_reset();
@@ -335,6 +370,12 @@ void PE_SetDrag(int parts_no, bool enable)
 
 int PE_GetClickPartsNumber(void)
 {
+	if (getenv("XSYS4_INPUT_DBG")) {
+		static int n = 0;
+		if (n < 200 && (n < 30 || clicked_parts))
+			NOTICE("[inp] GetClickNumber #%d -> %d", n, clicked_parts);
+		n++;
+	}
 	return clicked_parts;
 }
 

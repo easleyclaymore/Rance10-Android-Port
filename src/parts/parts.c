@@ -1174,6 +1174,10 @@ bool parts_message_window_show = true;
 
 void PE_Update(int passed_time, bool message_window_show)
 {
+	if (getenv("XSYS4_UPD_DBG")) {
+		static int n = 0;
+		if (n++ < 12) NOTICE("[upd] PE_Update t=%d", passed_time);
+	}
 	parts_message_window_show = message_window_show;
 	PE_UpdateComponent(passed_time);
 	audio_update();
@@ -1184,6 +1188,10 @@ void PE_Update(int passed_time, bool message_window_show)
 
 void PE_UpdateParts(int passed_time, possibly_unused bool is_skip, bool message_window_show)
 {
+	if (getenv("XSYS4_UPD_DBG")) {
+		static int n = 0;
+		if (n++ < 12) NOTICE("[upd] PE_UpdateParts t=%d", passed_time);
+	}
 	parts_message_window_show = message_window_show;
 	audio_update();
 	parts_update_animation(passed_time);

@@ -32,6 +32,19 @@
 #endif
 
 bool key_state[VK_NR_KEYCODES];
+
+/* [D113] SDL reports mouse down/up as state changes. A short click can have
+ * both events in the same event-pump, so polling key_state at frame time sees
+ * "never pressed". Remember the press as a one-shot pulse so the parts input
+ * layer still observes a press->release edge. */
+static bool mouse_press_pulse = false;
+
+bool mouse_consume_press_pulse(void)
+{
+	bool p = mouse_press_pulse;
+	mouse_press_pulse = false;
+	return p;
+}
 static enum sact_keycode sdl_keytable[] = {
 	[SDL_SCANCODE_0] = VK_0,
 	[SDL_SCANCODE_1] = VK_1,
@@ -273,6 +286,8 @@ static void key_event(SDL_KeyboardEvent *e, bool pressed)
 static void mouse_event(SDL_MouseButtonEvent *e)
 {
 	enum sact_keycode code = sdl_to_sact_button(e->button);
+	if (code == VK_LBUTTON && e->state == SDL_PRESSED)
+		mouse_press_pulse = true;
 	if (code)
 		key_state[code] = e->state == SDL_PRESSED;
 #ifdef DEBUGGER_ENABLED
@@ -285,6 +300,7 @@ static void mouse_event(SDL_MouseButtonEvent *e)
 static void synthetic_mouse_event(SDL_MouseButtonEvent *e)
 {
 	if (e->state == SDL_PRESSED) {
+		mouse_press_pulse = true;
 		// Touch outside the viewport is treated as right-click.
 		SDL_Point p = { .x = e->x, .y = e->y };
 		if (SDL_PointInRect(&p, &sdl.viewport))

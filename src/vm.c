@@ -212,6 +212,13 @@ static union vm_value *stack_pop_var(void)
 	 * uninitialised reference during Parts UI setup. */
 	if (heap[heap_index].page && heap[heap_index].page->nr_vars == 0)
 		return &null_ref_slot;
+	/* [D113] Generic HLL refs (Array.First/Last/...) can hand back an
+	 * unresolved [page, -1] pair when the callee ignored the predicate.
+	 * ASSIGN on such a pair must not abort the VM; the destination is a
+	 * compiler-generated dummy return slot that is DELETEd immediately.
+	 * Same null_ref_slot strategy as D52. */
+	if (unlikely(page_index < 0))
+		return &null_ref_slot;
 	if (unlikely(!heap[heap_index].page || page_index >= heap[heap_index].page->nr_vars)) {
 		struct page *pg = heap[heap_index].page;
 		VM_ERROR("Out of bounds page index: %d/%d (type=%d nr_vars=%d ref=%d v0=%d v1=%d)",
@@ -2971,7 +2978,7 @@ static void vm_execute(void)
 	static time_t _last;
 	for (;;) {
 		uint16_t opcode;
-		if (((++_insn & 0x3FFFFF) == 0) && getenv("XSYS4_STACK_SAMPLE")) {
+		if (((++_insn & 0xFFFF) == 0) && getenv("XSYS4_STACK_SAMPLE")) {
 			time_t now = time(NULL);
 			if (now != _last) {
 				_last = now;
