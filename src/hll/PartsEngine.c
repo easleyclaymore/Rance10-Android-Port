@@ -1978,9 +1978,7 @@ static int PE_Act_LoadActivityEXText(struct string * a0, struct string * a1, int
 /* AIN f[27] ReadActivityFile. [HACK-POC D89] Activity subsystem stub. */
 static int PE_Act_ReadActivityFile(struct string * a0, struct string * a1, int a2)
 {
-	(void)a0;
-	(void)a1;
-	(void)a2;
+	(void)a0; (void)a1; (void)a2;
 	return 0;
 }
 
