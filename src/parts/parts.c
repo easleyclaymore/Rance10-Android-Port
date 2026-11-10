@@ -2044,6 +2044,9 @@ void PE_SetComponentType(int parts_no, int type, int state)
 	 * ISpriteParts@GetConstruction. Upstream has no matching enum;
 	 * reuse the construction-process state for now (D36). */
 	case 24: pt = PARTS_CONSTRUCTION_PROCESS; break;
+	/* Rance10-only: CFlatParts@0 / CModeMark@Create use type 26. No upstream
+	 * enum exists; map to PARTS_FLAT so component creation can proceed (D74). */
+	case 26: pt = PARTS_FLAT; break;
 	default:
 		VM_ERROR("unknown component type %d", type);
 	}
