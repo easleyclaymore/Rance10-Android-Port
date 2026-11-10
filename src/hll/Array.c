@@ -22,6 +22,20 @@
 #include "vm/page.h"
 #include "vm/heap.h"
 
+/* [DBG] XSYS4_ARR_DBG=1 gates a compact page-lifecycle trace for array
+ * bugs (D102): every op prints the page pointer and element count so a
+ * container that silently gets replaced can be followed across the run. */
+static int arr_dbg_on(void)
+{
+	static int v = -1;
+	if (v < 0) {
+		const char *e = getenv("XSYS4_ARR_DBG");
+		v = (e && *e && *e != '0');
+	}
+	return v;
+}
+#define ARRDBG(...) do { if (arr_dbg_on()) NOTICE(__VA_ARGS__); } while (0)
+
 static void check_array(struct page *array)
 {
 	if (array->type != ARRAY_PAGE || array->a_type != AIN_ARRAY_INT || array->array.rank != 1)
@@ -294,8 +308,9 @@ static enum ain_data_type elem_to_array_type(enum ain_data_type t);
 
 static void Array_Alloc_(struct page **out, int size, int type, int a, int b)
 {
-	WARNING("Array.Alloc: size=%d type=%d a=%d b=%d (out=%p -> %p)",
-		size, type, a, b, (void*)out, out ? (void*)*out : NULL);
+	WARNING("Array.Alloc: size=%d type=%d a=%d b=%d tag=%d fno=%d (out=%p -> %p)",
+		size, type, a, b, hll_generic_result_type(), hll_current_fno(),
+		(void*)out, out ? (void*)*out : NULL);
 	if (!out || !*out)
 		return;
 	if (type < 0 || type > 100) {
@@ -308,6 +323,7 @@ static void Array_Alloc_(struct page **out, int size, int type, int a, int b)
 	/* Keep the struct type declared by the AIN variable: struct arrays
 	 * need it to construct elements in Array.EmplaceBack. */
 	int struct_type = (*out)->array.struct_type;
+	ARRDBG("[ARR] alloc old=%p nr=%d st=%d -> size=%d", (void*)*out, (*out)->nr_vars, struct_type, size);
 	/* A container declared with a struct_type holds struct objects, even
 	 * when the generic Alloc argument carries no element type (-1).
 	 * Without this, struct arrays degenerate to AIN_ARRAY_INT and their
@@ -330,6 +346,7 @@ static void Array_Alloc_(struct page **out, int size, int type, int a, int b)
 	p->array.struct_type = struct_type;
 	*out = p;
 	WARNING("Array.Alloc: 已填充 page=%p nr_vars=%d", (void*)p, p->nr_vars);
+	ARRDBG("[ARR] alloc new=%p nr=%d st=%d at=%d", (void*)p, p->nr_vars, p->array.struct_type, p->a_type);
 }
 
 static void Array_Free_(struct page **a)
@@ -381,6 +398,8 @@ static void *Array_At_(struct page **a, int index)
 	}
 	struct page *p = *a;
 	if (index < 0 || index >= p->nr_vars) {
+		ARRDBG("[ARR] at(%d) OOB p=%p nr=%d at=%d st=%d", index, (void*)p,
+		       p->nr_vars, p->a_type, p->array.struct_type);
 		return NULL;
 	}
 	return &p->values[index];
@@ -607,8 +626,13 @@ static int Array_Find_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 	if (ranged && (from < 0 || to > p->nr_vars || to < from)) return -1;
 	int begin = ranged ? from : 0, end = ranged ? to : p->nr_vars;
 	for (int i = begin; i < end; i++)
-		if (elem_eq(p, i, &value))
+		if (elem_eq(p, i, &value)) {
+			ARRDBG("[ARR] find p=%p nr=%d v=%llu -> %d", (void*)p, p->nr_vars,
+			       (unsigned long long)value, i);
 			return i;
+		}
+	ARRDBG("[ARR] find p=%p nr=%d v=%llu -> -1", (void*)p, p->nr_vars,
+	       (unsigned long long)value);
 	return -1;
 }
 
@@ -664,7 +688,7 @@ static void Array_PushBack_(struct page **a, uint64_t value)
 	NOTICE("PushBack: p=%p n=%d at=%d st=%d", (void*)p, old_n, at, st);
 	union vm_value dim = { .i = old_n + 1 };
 	struct page *np = realloc_array(p, 1, &dim, at, st, false);
-	NOTICE("PushBack: np=%p", (void*)np);
+	NOTICE("PushBack: np=%p nr=%d", (void*)np, np ? np->nr_vars : -1);
 	if (!np)
 		return;
 	np->values[old_n] = *(union vm_value *)&value;
@@ -706,8 +730,10 @@ static void *Array_EmplaceBack_(struct page **a)
 	struct page *p = *a;
 	int old_n = p->nr_vars;
 	int st = p->array.struct_type;
+	ARRDBG("[ARR] emp p=%p nr=%d at=%d st=%d", (void*)p, old_n, p->a_type, st);
 	union vm_value dim = { .i = old_n + 1 };
 	struct page *np = realloc_array(p, 1, &dim, p->a_type, st, false);
+	ARRDBG("[ARR] emp np=%p nr=%d", (void*)np, np ? np->nr_vars : -1);
 	if (!np)
 		return NULL;
 	*a = np;

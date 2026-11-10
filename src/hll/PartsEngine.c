@@ -2119,6 +2119,21 @@ static int PE_Act_GetActivityEndKey(struct string * a0, int a1)
 	return -1;
 }
 
+/* AIN v12 PartsEngine.GetControllerLength (lib 27 fno 10): the count that
+ * parts::detail::NumofLayer iterates over. Layers are controller indices in
+ * this port, so it is the controller count (see case 5 of PartsEngine_PartsFunc). */
+static int PE_GetControllerLength(void)
+{
+	return PE_get_nr_controllers();
+}
+
+/* Controller ids are their stack index in this port (same identity mapping the
+ * layer helpers use), so GetControllerID(i) is i. */
+static int PE_GetControllerID(int index)
+{
+	return index;
+}
+
 HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(_PreLink, PartsEngine_PreLink),
 	    // for versions without PartsEngine.Init
@@ -2297,6 +2312,8 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(ReleaseAllWithoutSystem, PE_ReleaseAllWithoutSystem),
 	    HLL_EXPORT(GetFreeNumber, PE_GetFreeNumber),
 	    HLL_EXPORT(IsExist, PE_IsExist),
+	    HLL_EXPORT(GetControllerLength, PE_GetControllerLength),
+	    HLL_EXPORT(GetControllerID, PE_GetControllerID),
 	    HLL_EXPORT(AddController, PE_AddController),
 	    HLL_EXPORT(RemoveController, PE_RemoveController),
 	    HLL_EXPORT(UpdateComponent, PartsEngine_UpdateComponent),

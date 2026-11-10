@@ -86,6 +86,8 @@ void heap_init(void)
 	heap_next_seq = 1;
 }
 
+int heap_watch_slot(void);
+
 int32_t heap_alloc_slot(enum vm_pointer_type type)
 {
 	if (heap_free_ptr >= heap_size) {
@@ -93,16 +95,20 @@ int32_t heap_alloc_slot(enum vm_pointer_type type)
 	}
 
 	int32_t slot = heap_free_stack[heap_free_ptr++];
+	if (slot > 0 && slot == heap_watch_slot())
+		NOTICE("[SLOT] alloc slot=%d type=%d ref=%d ip=0x%zX fno=%d",
+		       slot, type, heap[slot].ref, instr_ptr, hll_current_fno());
+	if (getenv("XSYS4_ARR_DBG") && slot == 400)
+		NOTICE("[ARR] slot400 alloc type=%d", type);
 	/* Slot 0 is the global variable page (PUSHGLOBALPAGE pushes literal 0).
 	 * Never recycle it for ordinary allocations, otherwise heap[0].page is
 	 * overwritten by a struct/array and global reads go wild (D54).
-	 * [HACK-POC D83] A slot must also be skipped when heap[slot].seq != 0:
-	 * that means it is still live and the free-stack holds a stale duplicate
-	 * entry (released, reallocated, then released again). Allocating such a
-	 * slot again aliases a live object -- observed as alloc_struct() handing
-	 * back the caller's own LOCAL_PAGE slot (3937) during CPartsFunctionSet
-	 * construction. Real fix is to find the unbalanced unref; see TECH_DEBT. */
-	while (slot == 0 || heap[slot].seq != 0) {
+	 * The D83 workaround that also skipped slots with seq != 0 was removed:
+	 * it was compensating for the unbalanced ownership that D104/D106 fixed
+	 * (array-typed variables starting as 0, so Array.Alloc lost its result and
+	 * the next index expression aliased the global page). Verified stable for
+	 * 25s with the skip disabled before removing it. */
+	while (slot == 0) {
 		if (heap_free_ptr >= heap_size)
 			heap_grow(heap_size + HEAP_ALLOC_STEP);
 		slot = heap_free_stack[heap_free_ptr++];
@@ -157,8 +163,26 @@ static void heap_double_free(int32_t slot)
 #endif
 }
 
+/* [DBG] XSYS4_SLOT_ID=<n> traces one heap slot end to end (alloc / set_page /
+ * ref / unref). Used to locate unbalanced unrefs without flooding the log. */
+int heap_watch_slot(void)
+{
+	static int w = -2;
+	if (w == -2) {
+		const char *e = getenv("XSYS4_SLOT_ID");
+		w = (e && *e) ? atoi(e) : -1;
+	}
+	return w;
+}
+
 void heap_ref(int32_t slot)
 {
+	if (slot > 0 && slot == heap_watch_slot())
+		NOTICE("[SLOT] ref slot=%d type=%d ref %d->%d ip=0x%zX fno=%d page=%p nr=%d",
+		       slot, heap[slot].type, heap[slot].ref, heap[slot].ref + 1,
+		       instr_ptr, hll_current_fno(),
+		       heap[slot].type == VM_PAGE ? (void*)heap[slot].page : NULL,
+		       (heap[slot].type == VM_PAGE && heap[slot].page) ? heap[slot].page->nr_vars : -1);
 	if (slot == -1)
 		return;
 	heap[slot].ref++;
@@ -169,11 +193,18 @@ void heap_ref(int32_t slot)
 
 void heap_unref(int slot)
 {
+	if (slot > 0 && slot == heap_watch_slot())
+		NOTICE("[SLOT] unref slot=%d type=%d ref=%d ip=0x%zX fno=%d page=%p nr=%d",
+		       slot, heap[slot].type, heap[slot].ref, instr_ptr, hll_current_fno(),
+		       heap[slot].type == VM_PAGE ? (void*)heap[slot].page : NULL,
+		       (heap[slot].type == VM_PAGE && heap[slot].page) ? heap[slot].page->nr_vars : -1);
 	/* slot 0 是保留的无效槽；若某个 page 成员的值是 0（未初始化的引用），
 	 * 这里会 unref 到 slot 0 并触发 delete_page(0) -> 遍历成员 -> 又是 0，
 	 * 形成无限递归（gdb backtrace 已确认）。必须挡掉。 */
 	if (slot <= 0)
 		return;
+	if (getenv("XSYS4_ARR_DBG") && slot == 400)
+		NOTICE("[ARR] slot400 unref type=%d ref=%d page=%p", heap[slot].type, heap[slot].ref, (void*)heap[slot].page);
 	if (slot == 255) {
 		static int n = 0;
 		if (n < 8) {
@@ -201,6 +232,10 @@ void heap_unref(int slot)
 	switch (heap[slot].type) {
 	case VM_PAGE:
 		if (heap[slot].page) {
+			if (getenv("XSYS4_ARR_DBG") && heap[slot].page->type == ARRAY_PAGE)
+				NOTICE("[ARR] free slot=%d p=%p nr=%d at=%d st=%d",
+				       slot, (void*)heap[slot].page, heap[slot].page->nr_vars,
+				       heap[slot].page->a_type, heap[slot].page->array.struct_type);
 			delete_page(slot);
 		}
 		break;
@@ -224,6 +259,8 @@ void exit_unref(int slot)
 		WARNING("out of bounds heap index: %d", slot);
 		return;
 	}
+	if (getenv("XSYS4_ARR_DBG") && slot == 400)
+		NOTICE("[ARR] slot400 exitunref type=%d ref=%d page=%p", heap[slot].type, heap[slot].ref, (void*)heap[slot].page);
 	if (heap[slot].ref <= 0) {
 		heap_double_free(slot);
 		return;
@@ -239,6 +276,10 @@ void exit_unref(int slot)
 	case VM_PAGE:
 		if (heap[slot].page) {
 			struct page *page = heap[slot].page;
+			if (getenv("XSYS4_ARR_DBG") && page->type == ARRAY_PAGE)
+				NOTICE("[ARR] exitfree slot=%d p=%p at=%d nr=%d st=%d",
+				       slot, (void*)page, page->a_type, page->nr_vars,
+				       page->array.struct_type);
 			for (int i = 0; i < page->nr_vars; i++) {
 				switch (variable_type(page, i, NULL, NULL)) {
 				case AIN_STRING:
@@ -337,6 +378,10 @@ void heap_set_page(int slot, struct page *page)
 	if (unlikely(!page_index_valid(slot)))
 		VM_ERROR("Invalid page index: %d", index);
 #endif
+	if (slot > 0 && slot == heap_watch_slot())
+		NOTICE("[SLOT] set_page slot=%d old=%p new=%p type=%d ref=%d ip=0x%zX fno=%d",
+		       slot, (void*)heap[slot].page, (void*)page,
+		       page ? page->type : -1, heap[slot].ref, instr_ptr, hll_current_fno());
 	heap[slot].page = page;
 }
 
@@ -401,6 +446,9 @@ int32_t heap_alloc_page(struct page *page)
 {
 	int slot = heap_alloc_slot(VM_PAGE);
 	heap[slot].page = page;
+	if (getenv("XSYS4_ARR_DBG") && page && page->type == ARRAY_PAGE)
+		NOTICE("[ARR] born slot=%d p=%p at=%d nr=%d st=%d",
+		       slot, (void*)page, page->a_type, page->nr_vars, page->array.struct_type);
 	return slot;
 }
 

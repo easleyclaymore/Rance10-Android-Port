@@ -223,6 +223,33 @@ static union vm_value *stack_pop_var(void)
 	return &heap[heap_index].page->values[page_index];
 }
 
+/*
+ * [D105] AIN v12 SR_ASSIGN is an ARRAY-ELEMENT struct assignment:
+ * the stack holds [array, index, value] (three values). The old 2-operand
+ * implementation popped (value, index) and treated the index as a heap slot,
+ * so `global[i] = copy(struct)` overwrote heap[i].page with the copied page.
+ * menu::detail::Init does exactly that with i=26, which is the live
+ * CASTimerManager slot: the manager was replaced by an unrelated 57-member
+ * struct, CheckHandle then read a stale member and the frame timer stopped.
+ */
+static void sr_assign_element(int arr, int idx, int val)
+{
+	if (arr <= 0 || (size_t)arr >= heap_size)
+		return;
+	struct page *ap = heap[arr].page;
+	if (!ap || ap->type != ARRAY_PAGE)
+		return;
+	if (idx < 0 || idx >= ap->nr_vars)
+		return;
+	int old = ap->values[idx].i;
+	if (val > 0 && val != -1 && (size_t)val < heap_size && heap[val].ref > 0)
+		heap_ref(val);
+	ap->values[idx].i = val;
+	if (old > 0 && old != val && (size_t)old < heap_size && heap[old].ref > 0)
+		heap_unref(old);
+}
+
+
 union vm_value *stack_peek_var(void)
 {
 	int32_t page_index = stack_peek(0).i;
@@ -341,7 +368,7 @@ static int alloc_scenario_page(const char *fname)
 			 * can copy into them; -1 silently discarded the copy. */
 			heap[slot].page->values[i].i = heap_alloc_page(alloc_page(DELEGATE_PAGE, 0, 0));
 		} else {
-			heap[slot].page->values[i] = variable_initval(f->vars[i].type.data);
+			heap[slot].page->values[i] = variable_initval_typed(&f->vars[i].type);
 		}
 	}
 	return slot;
@@ -455,7 +482,7 @@ static int _function_call(int fno, int return_address)
 			 * can copy into them; -1 silently discarded the copy. */
 			heap[slot].page->values[i].i = heap_alloc_page(alloc_page(DELEGATE_PAGE, 0, 0));
 		} else {
-			heap[slot].page->values[i] = variable_initval(f->vars[i].type.data);
+			heap[slot].page->values[i] = variable_initval_typed(&f->vars[i].type);
 		}
 		if (ain->version <= 1 && f->vars[i].type.data == AIN_STRUCT) {
 			create_struct(f->vars[i].type.struc, &heap[slot].page->values[i]);
@@ -1046,7 +1073,57 @@ static enum opcode execute_instruction(enum opcode opcode)
 	}
 	case REF: {
 		// Dereference a reference to a value.
-		stack_push(stack_pop_var()->i);
+		int _hidx = stack_peek(1).i, _pidx = stack_peek(0).i;
+		union vm_value *_v = stack_pop_var();
+		if (getenv("XSYS4_MGRBT") && instr_ptr >= 0x53f0 && instr_ptr <= 0x5424) {
+			struct page *_tp = (_hidx > 0 && (size_t)_hidx < heap_size) ? heap[_hidx].page : NULL;
+			NOTICE("[THIS] checkhandle this_slot=%d type=%d index=%d nr=%d ref=%d memb1=%d ip=0x%zX",
+			       _hidx, _tp ? _tp->type : -1, _tp ? _tp->index : -1,
+			       _tp ? _tp->nr_vars : -1,
+			       (_hidx > 0 && (size_t)_hidx < heap_size) ? heap[_hidx].ref : -1,
+			       (_tp && _tp->nr_vars > 1) ? _tp->values[1].i : -999, instr_ptr);
+			NOTICE("[THIS] global[14] declared data=%d struc=%d rank=%d value=%d",
+			       ain->globals[14].type.data, ain->globals[14].type.struc,
+			       ain->globals[14].type.rank,
+			       heap[0].page ? heap[0].page->values[14].i : -999);
+			NOTICE("[THIS] struct225: nr_members=%d nr_vmethods=%d name_ok=%d struct5_members=%d",
+			       ain->structures[225].nr_members, ain->structures[225].nr_vmethods,
+			       ain->structures[225].name != NULL, ain->structures[5].nr_members);
+		}
+		if (getenv("XSYS4_ARR_DBG")) {
+			struct page *_mp = (_hidx > 0 && (size_t)_hidx < heap_size) ? heap[_hidx].page : NULL;
+			if (_mp && _mp->type == STRUCT_PAGE && _mp->index == 5) {
+				static int _mlim = 0;
+				if (_mlim++ < 60) {
+					int _v0 = _mp->nr_vars > 0 ? _mp->values[0].i : -1;
+					int _v2 = _mp->nr_vars > 2 ? _mp->values[2].i : -1;
+					int _v3 = _mp->nr_vars > 3 ? _mp->values[3].i : -1;
+					NOTICE("[MGR] read memb=%d val=%d ref=%d slot=%d nr=%d v0=%d v2=%d v3=%d ip=0x%zX",
+					       _pidx, _v->i,
+					       (_v->i > 0 && (size_t)_v->i < heap_size) ? heap[_v->i].ref : -2,
+					       _hidx, _mp->nr_vars, _v0, _v2, _v3, instr_ptr);
+				}
+			}
+		}
+		if (getenv("XSYS4_ARR_DBG") && _v->i > 0 && (size_t)_v->i < heap_size &&
+		    heap[_v->i].ref <= 0) {
+			struct page *_sp = (_hidx > 0 && (size_t)_hidx < heap_size) ? heap[_hidx].page : NULL;
+			static int _lim = 0;
+			if (_lim < 200 && _v->i != 255) {
+				_lim++;
+				char _buf[256]; int _o = 0;
+				for (int _k = 0; _k < _sp->nr_vars && _k < 5; _k++) {
+					int _m = _sp->values[_k].i;
+					int _r = (_m > 0 && (size_t)_m < heap_size) ? heap[_m].ref : -1;
+					_o += snprintf(_buf + _o, sizeof(_buf) - _o, "%s[%d]slot=%d(ref=%d)",
+					               _k ? " " : "", _k, _m, _r);
+				}
+				NOTICE("[ARR] dead struct=%d type=%d no=%d nvars=%d member=%d val=%d page=%p %s",
+				       _hidx, _sp ? _sp->type : -1, _sp ? _sp->index : -1,
+				       _sp ? _sp->nr_vars : -1, _pidx, _v->i, (void*)_sp, _buf);
+			}
+		}
+		stack_push(_v->i);
 		break;
 	}
 	case REFREF: {
@@ -1118,7 +1195,28 @@ static enum opcode execute_instruction(enum opcode opcode)
 		stack_push(struct_page_slot());
 		break;
 	}
-	case ASSIGN:
+	case ASSIGN: {
+		{
+			int _dh = stack_peek(1).i, _dp = stack_peek(0).i;
+			if (_dh > 0 && (size_t)_dh < heap_size && heap[_dh].page &&
+			    heap[_dh].page->type == STRUCT_PAGE && heap[_dh].page->index == 5 &&
+			    _dp == 1) {
+				static int _wlim = 0;
+				if (_wlim++ < 40) {
+					int _old = heap[_dh].page->values[1].i;
+					union vm_value _nv = stack_peek(2);
+					NOTICE("[MGR] write old=%d(oldref=%d) new=%d(newref=%d) ip=0x%zX",
+					       _old, (_old > 0 && (size_t)_old < heap_size) ? heap[_old].ref : -2,
+					       _nv.i, (_nv.i > 0 && (size_t)_nv.i < heap_size) ? heap[_nv.i].ref : -2,
+					       instr_ptr);
+				}
+			}
+		}
+		union vm_value val = stack_pop();
+		stack_pop_var()[0] = val;
+		stack_push(val);
+		break;
+	}
 	case F_ASSIGN: {
 		union vm_value val = stack_pop();
 		stack_pop_var()[0] = val;
@@ -1261,6 +1359,14 @@ static enum opcode execute_instruction(enum opcode opcode)
 		int src_page = stack_pop().i;
 		int dst_var = stack_pop().i;
 		struct page *dst = heap_get_page(stack_pop().i);
+		if (getenv("XSYS4_ARR_DBG") && dst && dst->type == STRUCT_PAGE &&
+		    dst_var >= 0 && dst_var < dst->nr_vars) {
+			static int _n = 0;
+			if (_n++ < 60)
+				NOTICE("[ARR] R_ASSIGN struct=%d no=%d dstvar=%d old=%d <- page=%d var=%d",
+				       dst->index, dst->index, dst_var, dst->values[dst_var].i,
+				       src_page, src_var);
+		}
 		page_set_var(dst, dst_var, src_page);
 		page_set_var(dst, dst_var+1, src_var);
 		stack_push(src_page);
@@ -2027,13 +2133,52 @@ static enum opcode execute_instruction(enum opcode opcode)
 		heap_unref(stack_pop().i);
 		break;
 	}
-	case SR_ASSIGN: {
+case SR_ASSIGN: {
 		/* AIN v12 no longer pushes a separate struct-type operand for
 		 * SR_ASSIGN (same simplification as CALLMETHOD/NEW). Popping it
 		 * underflowed the stack and produced garbage page indices like
 		 * 0x8011. Older AIN versions still carry it. */
 		if (ain->version > 1 && ain->version < 12)
 			stack_pop(); // struct type
+		/* v12 form: [array, index, value]. Decide from the operands
+		 * themselves: the two-operand form has a struct destination on
+		 * the bottom of the triple, never a live ARRAY_PAGE. */
+		int _a0 = stack_peek(2).i, _a1 = stack_peek(1).i, _a2 = stack_peek(0).i;
+		if (getenv("XSYS4_SRDBG")) {
+			static int _n = 0;
+			if (_n++ < 200) {
+				struct page *_p0 = (_a0 > 0 && (size_t)_a0 < heap_size) ? heap[_a0].page : NULL;
+				NOTICE("[SR] ip=0x%zX a0=%d(%s/%d) a1=%d a2=%d sp=%d",
+				       instr_ptr, _a0, _p0 ? (_p0->type == ARRAY_PAGE ? "ARR" :
+				       _p0->type == STRUCT_PAGE ? "STRUCT" :
+				       _p0->type == LOCAL_PAGE ? "LOCAL" : "PG") : "nil",
+				       _p0 ? _p0->nr_vars : -1, _a1, _a2, stack_ptr);
+				if (instr_ptr == 0x187F82) {
+					int g67 = heap[0].page ? heap[0].page->values[67].i : -1;
+					struct page *ap = (g67 > 0 && (size_t)g67 < heap_size) ? heap[g67].page : NULL;
+					NOTICE("[SR]   g67=%d pt=%d nr=%d v0..5=%d,%d,%d,%d,%d,%d a1page=%p",
+					       g67, ap ? ap->type : -1, ap ? ap->nr_vars : -1,
+					       ap && ap->nr_vars > 0 ? ap->values[0].i : -9,
+					       ap && ap->nr_vars > 1 ? ap->values[1].i : -9,
+					       ap && ap->nr_vars > 2 ? ap->values[2].i : -9,
+					       ap && ap->nr_vars > 3 ? ap->values[3].i : -9,
+					       ap && ap->nr_vars > 4 ? ap->values[4].i : -9,
+					       ap && ap->nr_vars > 5 ? ap->values[5].i : -9,
+					       (_a1 > 0 && (size_t)_a1 < heap_size) ? (void*)heap[_a1].page : NULL);
+				}
+			}
+		}
+		bool _elem = _a0 > 0 && (size_t)_a0 < heap_size && heap[_a0].page &&
+			heap[_a0].page->type == ARRAY_PAGE && _a1 >= 0 &&
+			_a1 < heap[_a0].page->nr_vars;
+		if (_elem) {
+			int rval = stack_pop().i;
+			int idx = stack_pop().i;
+			int arr = stack_pop().i;
+			sr_assign_element(arr, idx, rval);
+			stack_push(rval);
+			break;
+		}
 		int rval = stack_pop().i;
 		int lval = stack_pop().i;
 		heap_struct_assign(lval, rval);
@@ -2834,7 +2979,7 @@ int vm_execute_ain(struct ain *program)
 			 * （如 g_ASTimerManager 的数组）永远不初始化 */
 			create_struct(ain->globals[i].type.struc, &heap[0].page->values[i]);
 		} else {
-			heap[0].page->values[i] = variable_initval(ain->globals[i].type.data);
+			heap[0].page->values[i] = variable_initval_typed(&ain->globals[i].type);
 		}
 	}
 	for (int i = 0; i < ain->nr_initvals; i++) {

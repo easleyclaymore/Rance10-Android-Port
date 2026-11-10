@@ -84,19 +84,51 @@ struct page *alloc_page(enum page_type type, int type_index, int nr_vars)
  * ARRAY_PAGE that carries the declared struct type. */
 union vm_value variable_initval_typed(const struct ain_type *type)
 {
-	if (type->data == AIN_ARRAY || type->data == AIN_REF_ARRAY) {
+	/* [D106] Every array-typed variable starts life as a real (empty) array
+	 * object, not as 0. A null array variable cannot be filled by an HLL
+	 * `ref array` parameter: the AIN stack only carries the slot number, so
+	 * Array.Alloc's write-back had nowhere to go and the "array" stayed 0.
+	 * menu::detail::Init then evaluated global[67][i] as heap[0].values[i]
+	 * (the global variable page), and the following SR_ASSIGN overwrote
+	 * globals 0..39 -- including slot 26, the live CASTimerManager.
+	 *
+	 * Typed arrays (AIN_ARRAY_INT/BOOL/STRUCT/...) were the ones still
+	 * falling through to variable_initval(); generic AIN_ARRAY was already
+	 * handled, which is why only some globals were corrupted. */
+	enum ain_data_type at = AIN_VOID;
+	switch (type->data) {
+	case AIN_ARRAY:
+	case AIN_REF_ARRAY:
 		/* AIN declares struct arrays as AIN_ARRAY with type.struc set.
 		 * Preserve the element kind in a_type so Array.PushBack can
 		 * reference-count inserted objects (D21). */
-		enum ain_data_type at = type->struc >= 0 ? AIN_ARRAY_STRUCT : AIN_ARRAY_INT;
+		at = type->struc >= 0 ? AIN_ARRAY_STRUCT : AIN_ARRAY_INT;
+		break;
+	case AIN_ARRAY_INT:
+	case AIN_ARRAY_FLOAT:
+	case AIN_ARRAY_STRING:
+	case AIN_ARRAY_STRUCT:
+	case AIN_ARRAY_FUNC_TYPE:
+	case AIN_ARRAY_BOOL:
+	case AIN_ARRAY_LONG_INT:
+	case AIN_ARRAY_DELEGATE:
+		at = type->data;
+		break;
+	default:
+		return variable_initval(type->data);
+	}
+	{
 		struct page *p = alloc_page(ARRAY_PAGE, at, 0);
 		p->array.rank = type->rank > 0 ? type->rank : 1;
 		p->array.struct_type = type->struc;
 		int slot = heap_alloc_slot(VM_PAGE);
 		heap_set_page(slot, p);
+		if (getenv("XSYS4_ARR_DBG"))
+			NOTICE("[ARR] initarr data=%d struc=%d rank=%d -> at=%d st=%d p=%p slot=%d",
+			       type->data, type->struc, type->rank, at, p->array.struct_type,
+			       (void*)p, slot);
 		return (union vm_value) { .i = slot };
 	}
-	return variable_initval(type->data);
 }
 
 union vm_value variable_initval(enum ain_data_type type)

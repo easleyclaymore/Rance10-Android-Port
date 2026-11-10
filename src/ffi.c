@@ -443,6 +443,14 @@ void hll_call(int libno, int fno, int result_tag)
 			 * the old `cur &&` guard skipped that case and passed NULL to the
 			 * HLL, so Array.Numof() returned 0 and CreateHandle produced -1. */
 			if (!cur || cur->type != ARRAY_PAGE) {
+				if (getenv("XSYS4_ARR_DBG"))
+					NOTICE("[ARR] subst slot=%d ref=%d page=%p type=%d fno=%d",
+					       heap_slots[i], heap_slots[i] > 0 ? heap[heap_slots[i]].ref : -1,
+					       (void*)cur, cur ? cur->type : -1, hll_current_fno());
+				if (getenv("XSYS4_SUBST_BT")) {
+					NOTICE("[ARR] subst backtrace for slot=%d:", heap_slots[i]);
+					vm_stack_trace();
+				}
 				struct page *np = alloc_page(ARRAY_PAGE, AIN_ARRAY_INT, 0);
 				np->array.rank = 1;
 				np->array.struct_type = -1;
