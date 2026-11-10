@@ -205,8 +205,12 @@ static union vm_value *stack_pop_var(void)
 	static union vm_value null_ref_slot = { .i = -1 };
 	if (unlikely(!heap_index_valid(heap_index)))
 		return &null_ref_slot;
-	if (heap[heap_index].page && heap[heap_index].page->type == ARRAY_PAGE
-	    && heap[heap_index].page->nr_vars == 0 && page_index == 0)
+	/* D72: a valid slot may still have a NULL page pointer. */
+	if (unlikely(!heap[heap_index].page))
+		return &null_ref_slot;
+	/* D72: any 0-slot page (not just ARRAY_PAGE/index 0) is an
+	 * uninitialised reference during Parts UI setup. */
+	if (heap[heap_index].page && heap[heap_index].page->nr_vars == 0)
 		return &null_ref_slot;
 	if (unlikely(!heap[heap_index].page || page_index >= heap[heap_index].page->nr_vars)) {
 		struct page *pg = heap[heap_index].page;
@@ -502,6 +506,8 @@ static void method_call_fno(int fno, int return_address)
 }
 
 /* CALLMETHOD 用：栈布局 [obj, fno, args...]，fno 在 args 下面一层 */
+static int struct_no_from_function(int fno);
+
 static void method_call(int nargs, int return_address)
 {
 	int fno = stack_peek(nargs).i;
@@ -510,16 +516,38 @@ static void method_call(int nargs, int return_address)
 	function_call(fno, return_address);   /* 弹掉 nargs 个 args */
 	stack_pop();                          /* 弹掉 fno */
 	int obj = stack_pop().i;              /* 弹 obj */
-	/* D48: Rance10 calls member methods through struct-like globals whose
-	 * ref members default to -1. The AIN function declares its owning
-	 * struct, so materialise one for `this` instead of dereferencing -1. */
-	if (obj <= 0 && ain->functions[fno].struct_type >= 0
-	    && ain->functions[fno].struct_type < ain->nr_structures)
-		obj = alloc_struct(ain->functions[fno].struct_type);
+	/* D48/D71: empty obj -> materialise the owning struct. Prefer the
+	 * name-derived struct no; the AIN struct_type field is wrong on v12. */
+	if (obj <= 0) {
+		int sno = struct_no_from_function(fno);
+		if (sno < 0)
+			sno = ain->functions[fno].struct_type;
+		if (sno >= 0 && sno < ain->nr_structures)
+			obj = alloc_struct(sno);
+	}
 	set_struct_page(obj);
 	heap[call_stack[call_stack_ptr-1].page_slot].page->local.struct_ptr = obj;
 }
 
+/* D71: AIN v12 function->struct_type is unreliable (CreateOld reports 0
+ * but belongs to struct 11). The name "NS::Struct@Method" encodes the
+ * owning struct, so resolve it by name when a CALLMETHOD has no obj. */
+static int struct_no_from_function(int fno)
+{
+	if (fno < 0 || fno >= ain->nr_functions || !ain->functions[fno].name)
+		return -1;
+	const char *name = ain->functions[fno].name;
+	const char *at = strrchr(name, '@');
+	if (!at)
+		return -1;
+	size_t n = (size_t)(at - name);
+	for (int i = 0; i < ain->nr_structures; i++) {
+		const char *sn = ain->structures[i].name;
+		if (sn && strlen(sn) == n && !strncmp(sn, name, n))
+			return i;
+	}
+	return -1;
+}
 static void vm_execute(void);
 
 static void delegate_call(int dg_no, int return_address)
