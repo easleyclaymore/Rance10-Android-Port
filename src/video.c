@@ -423,6 +423,13 @@ static void gfx_update_frame_rate_counter(void)
 
 void gfx_swap(void)
 {
+	/* [D112] First-frame probe: XSYS4_SWAP_LOG=1 logs the first swaps so a
+	 * launcher can freeze the process right after the first presented frame. */
+	if (getenv("XSYS4_SWAP_LOG")) {
+		static int n = 0;
+		if (n < 5)
+			NOTICE("[swap] %d", ++n);
+	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glViewport(sdl.viewport.x, sdl.viewport.y, sdl.viewport.w, sdl.viewport.h);
 	gfx_clear();

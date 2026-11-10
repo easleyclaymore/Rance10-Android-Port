@@ -97,6 +97,8 @@ int PE_GetMessageType(void)
 	 * message type 0 forever (PopMessage is a no-op when empty), which is the
 	 * busy loop that froze SceneStack@WaitFrame. */
 	struct parts_message *msg = STAILQ_FIRST(&msg_queue);
+	if (!msg && getenv("XSYS4_MSG_NO_SENTINEL"))
+		return 0;   /* demo knob: reproduce the pre-D112 busy-wait (frozen start screen) */
 	return msg ? msg->type : -1;
 }
 
