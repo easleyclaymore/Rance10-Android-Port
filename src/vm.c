@@ -578,7 +578,23 @@ static void method_call(int nargs, int return_address)
 {
 	int fno = stack_peek(nargs).i;
 	if (fno < 0 || fno >= ain->nr_functions) {
-		VM_ERROR("CALLMETHOD: invalid function index %d", fno);
+		/* [D112] Interface dispatch: the compiled call site reads the method
+		 * slot out of the interface's vtable with REF. When the vtable is not
+		 * resolved (D3) that REF yields the vtable ARRAY_PAGE itself instead of
+		 * vtable[offset]. An out-of-range "fno" that is a live array page of
+		 * function numbers is unambiguous: use its first element (offset 0),
+		 * which is what the call site asked for. */
+		if (fno > 0 && (size_t)fno < heap_size && heap[fno].page &&
+		    heap[fno].page->type == ARRAY_PAGE && heap[fno].page->nr_vars > 0) {
+			int real = heap[fno].page->values[0].i;
+			static int _n = 0;
+			if (_n++ < 20)
+				NOTICE("[iface] vtable resolve: %d -> %d (obj=%d nargs=%d)",
+				       fno, real, stack_peek(nargs + 1).i, nargs);
+			fno = real;
+		}
+		if (fno < 0 || fno >= ain->nr_functions)
+			VM_ERROR("CALLMETHOD: invalid function index %d", fno);
 	}
 	function_call(fno, return_address);   /* 弹掉 nargs 个 args */
 	stack_pop();                          /* 弹掉 fno */
@@ -627,21 +643,37 @@ static int struct_no_from_function(int fno)
 }
 static void vm_execute(void);
 
+/* AIN_IFACE / AIN_WRAP occupy two stack slots ([object, vtable offset]).
+ * A delegate whose return type is one of them must therefore leave two values
+ * behind; a single value leaves the caller's R_ASSIGN with a misaligned pair
+ * and the interface variable keeps -1 (D112). */
+static int delegate_return_slots(const struct ain_function_type *dg)
+{
+	switch (dg->return_type.data) {
+	case AIN_VOID:
+		return 0;
+	case AIN_IFACE:
+	case AIN_WRAP:
+		return 2;
+	default:
+		return 1;
+	}
+}
+
 static void delegate_call(int dg_no, int return_address)
 {
 	if (dg_no < 0 || dg_no >= ain->nr_delegates)
 		VM_ERROR("Invalid delegate index");
 
 	// stack: [arg0, ..., dg_page, dg_index, [return_value]]
-	int return_values = (ain->delegates[dg_no].return_type.data != AIN_VOID) ? 1 : 0;
+	int return_values = delegate_return_slots(&ain->delegates[dg_no]);
 	int dg_page = stack_peek(1 + return_values).i;
 	int dg_index = stack_peek(0 + return_values).i;
 	int obj, fun;
 	if (delegate_get(heap_get_delegate_page(dg_page), dg_index, &obj, &fun)) {
 		// pop previous return value
-		if (ain->delegates[dg_no].return_type.data != AIN_VOID) {
+		for (int rv = 0; rv < return_values; rv++)
 			stack_pop();
-		}
 		// increment dg_index
 		stack[stack_ptr - 1].i++;
 
@@ -1402,6 +1434,11 @@ static enum opcode execute_instruction(enum opcode opcode)
 				NOTICE("[ARR] R_ASSIGN struct=%d no=%d dstvar=%d old=%d <- page=%d var=%d",
 				       dst->index, dst->index, dst_var, dst->values[dst_var].i,
 				       src_page, src_var);
+		}
+		if (getenv("XSYS4_RA_DBG") && instr_ptr >= 0x408f00 && instr_ptr <= 0x408f40) {
+			NOTICE("[ra] ip=0x%zX dstPage=%p dstType=%d dstVar=%d src=(%d,%d)",
+			       instr_ptr, (void*)dst, dst ? dst->type : -1, dst_var,
+			       src_page, src_var);
 		}
 		page_set_var(dst, dst_var, src_page);
 		page_set_var(dst, dst_var+1, src_var);
@@ -2864,11 +2901,10 @@ case SR_ASSIGN: {
 		stack[stack_ptr-1].i = dg_page;
 		stack_push(0);
 
-		// XXX: If the delegate has a return value, we push a dummy value
-		//      so that DG_CALL can replace it
-		if (dg->return_type.data != AIN_VOID) {
+		// XXX: If the delegate has a return value, we push dummy value(s)
+		//      so that DG_CALL can replace them. AIN_IFACE takes two slots.
+		for (int rv = delegate_return_slots(dg); rv > 0; rv--)
 			stack_push(0);
-		}
 		break;
 	}
 	case DG_NEW: {

@@ -76,6 +76,8 @@ struct activity_part {
 	float scale_x, scale_y;
 	float rot_x, rot_y, rot_z;
 	int surface_area[4];
+	int clickable;
+	int pass_cursor;
 
 	/* 种类別情报 / 一般状态 */
 	char *cg_name;         /* GBK bytes, empty when none */
@@ -271,6 +273,10 @@ static void parse_part_fields(struct ex_tree *node, struct activity_part *part)
 	}
 
 	get_int_list(node, "表示領域", part->surface_area, 4);
+	b = 0;
+	part->clickable = get_int(node, "点击許可", &b) ? b : 0;
+	b = 0;
+	part->pass_cursor = get_int(node, "光标选中透過", &b) ? b : 0;
 
 	/* 种类別情报: part type + type specific payload */
 	struct ex_tree *type_info = get_child(node, "种类別情报");
@@ -349,6 +355,13 @@ static int build_part(struct activity_part *part, int parent_no)
 	PE_SetPartsRotateX(part->parts_no, part->rot_x);
 	PE_SetPartsRotateY(part->parts_no, part->rot_y);
 	PE_SetPartsRotateZ(part->parts_no, part->rot_z);
+	if (getenv("XSYS4_ACT_CLICKABLE_ALL"))
+		part->clickable = 1;
+	if (part->clickable)
+		PE_SetClickable(part->parts_no, true);
+	if (part->pass_cursor)
+		PE_SetPassCursor(part->parts_no, true);
+
 	if (part->type == ACT_COMP_LAYOUT_BOX) {
 		/* the layout box owns its children's placement */
 	}
