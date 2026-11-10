@@ -86,8 +86,14 @@ int32_t heap_alloc_slot(enum vm_pointer_type type)
 	int32_t slot = heap_free_stack[heap_free_ptr++];
 	/* Slot 0 is the global variable page (PUSHGLOBALPAGE pushes literal 0).
 	 * Never recycle it for ordinary allocations, otherwise heap[0].page is
-	 * overwritten by a struct/array and global reads go wild (D54). */
-	while (slot == 0) {
+	 * overwritten by a struct/array and global reads go wild (D54).
+	 * [HACK-POC D83] A slot must also be skipped when heap[slot].seq != 0:
+	 * that means it is still live and the free-stack holds a stale duplicate
+	 * entry (released, reallocated, then released again). Allocating such a
+	 * slot again aliases a live object -- observed as alloc_struct() handing
+	 * back the caller's own LOCAL_PAGE slot (3937) during CPartsFunctionSet
+	 * construction. Real fix is to find the unbalanced unref; see TECH_DEBT. */
+	while (slot == 0 || heap[slot].seq != 0) {
 		if (heap_free_ptr >= heap_size)
 			heap_grow(heap_size + HEAP_ALLOC_STEP);
 		slot = heap_free_stack[heap_free_ptr++];

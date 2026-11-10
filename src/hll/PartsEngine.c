@@ -415,6 +415,1712 @@ static int PartsEngine_Parts_GetParentPartsNumber(uintptr_t parts_no)
 	 * AIN AFL_Parts_GetLayerIDByParts (fno 7260) terminates on. */
 	return 0;
 }
+
+/* AIN PartsEngine.CreateUserPartsNumber: allocate a fresh user parts number.
+ * Called from Parts@AllocatePartsNumber (fno 29534) and the result is stored
+ * directly as the parts number, so it must be unique and free.
+ * [HACK-POC D82] reuses the system free-number allocator (1000001000+); the
+ * user-parts segment semantics are not verified yet. */
+static int PartsEngine_CreateUserPartsNumber(void)
+{
+	return PE_GetFreeNumber();
+}
+/* AIN f[66]: void SetEnableInputProcess(int parts_no, bool enable).
+ * [HACK-POC D85] no per-parts state is kept yet; the call must not abort. */
+static void PartsEngine_SetEnableInputProcess(int parts_no, int enable)
+{
+	(void)parts_no;
+	(void)enable;
+}
+
+/* AIN f: void Parts_SetPartsTextCountReturn. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_Parts_SetPartsTextCountReturn(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN f: void Parts_SetPartsTextHighlight. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_Parts_SetPartsTextHighlight(int a0, int a1, int a2, int a3, int a4, int a5, int a6)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+	(void)a4;
+	(void)a5;
+	(void)a6;
+}
+
+/* AIN f: void SetButtonColor. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetButtonColor(int a0, int a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN f: void SetButtonEnable. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetButtonEnable(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetButtonSize. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetButtonSize(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN f: void SetCheckBoxColor. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetCheckBoxColor(int a0, int a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN f: void SetCheckBoxSize. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetCheckBoxSize(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN f: void SetComboBoxSize. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetComboBoxSize(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN f: void SetComboBoxTextMargin. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetComboBoxTextMargin(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN f: void SetComponentMipmap. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetComponentMipmap(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetComponentTextureFilterType. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetComponentTextureFilterType(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetFocus. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetFocus(int a0)
+{
+	(void)a0;
+}
+
+/* AIN f: void SetHScrollbarLeftWidth. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetHScrollbarLeftWidth(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetHScrollbarMoveSizeByButton. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetHScrollbarMoveSizeByButton(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetHScrollbarRightWidth. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetHScrollbarRightWidth(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetHScrollbarScrollPos. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetHScrollbarScrollPos(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetHScrollbarSize. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetHScrollbarSize(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN f: void SetHScrollbarTotalSize. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetHScrollbarTotalSize(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetHScrollbarViewSize. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetHScrollbarViewSize(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetListBoxLineHeight. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetListBoxLineHeight(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetListBoxMargin. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetListBoxMargin(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN f: void SetListBoxScrollPos. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetListBoxScrollPos(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetListBoxSelectIndex. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetListBoxSelectIndex(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetListBoxSize. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetListBoxSize(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN f: void SetMultiTextBoxMaxTextLength. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetMultiTextBoxMaxTextLength(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetMultiTextBoxSelectColor. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetMultiTextBoxSelectColor(int a0, int a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN f: void SetMultiTextBoxSize. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetMultiTextBoxSize(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN f: void SetTextBoxMaxTextLength. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetTextBoxMaxTextLength(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetTextBoxSelectColor. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetTextBoxSelectColor(int a0, int a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN f: void SetTextBoxSize. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetTextBoxSize(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN f: void SetVScrollbarDownHeight. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetVScrollbarDownHeight(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetVScrollbarMoveSizeByButton. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetVScrollbarMoveSizeByButton(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetVScrollbarScrollPos. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetVScrollbarScrollPos(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetVScrollbarSize. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetVScrollbarSize(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN f: void SetVScrollbarTotalSize. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetVScrollbarTotalSize(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetVScrollbarUpHeight. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetVScrollbarUpHeight(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetVScrollbarViewSize. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetVScrollbarViewSize(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetButtonCGName. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetButtonCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetButtonText. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetButtonText(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetCheckBoxCGName. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetCheckBoxCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetCheckBoxText. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetCheckBoxText(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetComboBoxCGName. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetComboBoxCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetComboBoxText. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetComboBoxText(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetHScrollbarCGName. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetHScrollbarCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetListBoxCGName. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetListBoxCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetListBoxItem. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetListBoxItem(int a0, int a1, struct string * a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN f: void SetMultiTextBoxCGName. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetMultiTextBoxCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetMultiTextBoxText. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetMultiTextBoxText(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetTextBoxCGName. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetTextBoxCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetTextBoxText. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetTextBoxText(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f: void SetVScrollbarCGName. [HACK-POC D85] setter stubbed; no state kept. */
+static void PE_Noop_SetVScrollbarCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN Parts_SetAnchor: void Parts_SetAnchor. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_Parts_SetAnchor(int a0, int a1, int a2, int a3, int a4)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+	(void)a4;
+}
+
+/* AIN Parts_SetFlatBeginSeekFrame: void Parts_SetFlatBeginSeekFrame. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_Parts_SetFlatBeginSeekFrame(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN Parts_SetFlatEnableLayer: void Parts_SetFlatEnableLayer. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_Parts_SetFlatEnableLayer(int a0, struct string * a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN Parts_SetHGaugeReverse: void Parts_SetHGaugeReverse. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_Parts_SetHGaugeReverse(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN Parts_SetLockUpdate: void Parts_SetLockUpdate. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_Parts_SetLockUpdate(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN Parts_SetPosForRate: void Parts_SetPosForRate. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_Parts_SetPosForRate(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN Parts_SetRubyCharSpace: void Parts_SetRubyCharSpace. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_Parts_SetRubyCharSpace(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN Parts_SetSoundName: void Parts_SetSoundName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_Parts_SetSoundName(int a0, struct string * a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN Parts_SetSwipeType: void Parts_SetSwipeType. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_Parts_SetSwipeType(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN Parts_SetTextEnableTag: void Parts_SetTextEnableTag. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_Parts_SetTextEnableTag(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN Parts_SetTextPos: void Parts_SetTextPos. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_Parts_SetTextPos(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN Parts_SetTextShowTime: void Parts_SetTextShowTime. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_Parts_SetTextShowTime(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN Parts_SetUpdateLookAtPos: void Parts_SetUpdateLookAtPos. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_Parts_SetUpdateLookAtPos(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN Parts_SetVGaugeReverse: void Parts_SetVGaugeReverse. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_Parts_SetVGaugeReverse(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN Parts_SetWheelable: void Parts_SetWheelable. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_Parts_SetWheelable(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetActiveController: void SetActiveController. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetActiveController(int a0)
+{
+	(void)a0;
+}
+
+/* AIN SetActivityBG: void SetActivityBG. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetActivityBG(struct string * a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetActivityEXText: void SetActivityEXText. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetActivityEXText(struct string * a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetActivityEndKey: void SetActivityEndKey. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetActivityEndKey(struct string * a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetButtonCharSpace: void SetButtonCharSpace. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetButtonCharSpace(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetButtonFlatName: void SetButtonFlatName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetButtonFlatName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetButtonLineSpace: void SetButtonLineSpace. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetButtonLineSpace(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetButtonTextOriginPosMode: void SetButtonTextOriginPosMode. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetButtonTextOriginPosMode(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetCheckBoxButtonMode: void SetCheckBoxButtonMode. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetCheckBoxButtonMode(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetCheckBoxCharSpace: void SetCheckBoxCharSpace. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetCheckBoxCharSpace(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetCheckBoxEnable: void SetCheckBoxEnable. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetCheckBoxEnable(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetCheckBoxFlatName: void SetCheckBoxFlatName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetCheckBoxFlatName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetCheckBoxLineSpace: void SetCheckBoxLineSpace. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetCheckBoxLineSpace(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetCheckBoxOverrideCGName: void SetCheckBoxOverrideCGName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetCheckBoxOverrideCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetCheckBoxOverrideCheckedCGName: void SetCheckBoxOverrideCheckedCGName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetCheckBoxOverrideCheckedCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetCheckBoxOverrideCheckedFlatName: void SetCheckBoxOverrideCheckedFlatName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetCheckBoxOverrideCheckedFlatName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetCheckBoxOverrideFlatName: void SetCheckBoxOverrideFlatName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetCheckBoxOverrideFlatName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetCheckBoxTextOriginPosMode: void SetCheckBoxTextOriginPosMode. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetCheckBoxTextOriginPosMode(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetClickMissSoundName: void SetClickMissSoundName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetClickMissSoundName(struct string * a0)
+{
+	(void)a0;
+}
+
+/* AIN SetComboBoxCharSpace: void SetComboBoxCharSpace. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComboBoxCharSpace(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetComboBoxListBoxCharSpace: void SetComboBoxListBoxCharSpace. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComboBoxListBoxCharSpace(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetComboBoxListBoxHeight: void SetComboBoxListBoxHeight. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComboBoxListBoxHeight(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetComboBoxListBoxItem: void SetComboBoxListBoxItem. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComboBoxListBoxItem(int a0, int a1, struct string * a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN SetComboBoxListBoxLineHeight: void SetComboBoxListBoxLineHeight. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComboBoxListBoxLineHeight(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetComboBoxListBoxMargin: void SetComboBoxListBoxMargin. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComboBoxListBoxMargin(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN SetComboBoxListBoxScrollPos: void SetComboBoxListBoxScrollPos. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComboBoxListBoxScrollPos(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetComboBoxListBoxSelectIndex: void SetComboBoxListBoxSelectIndex. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComboBoxListBoxSelectIndex(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetComponentCheckBoxShowLinkNumber: void SetComponentCheckBoxShowLinkNumber. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComponentCheckBoxShowLinkNumber(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetComponentClipArea: void SetComponentClipArea. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComponentClipArea(int a0, int a1, int a2, int a3, int a4)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+	(void)a4;
+}
+
+/* AIN SetComponentEnableClipArea: void SetComponentEnableClipArea. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComponentEnableClipArea(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetComponentMessageWindowEffectLink: void SetComponentMessageWindowEffectLink. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComponentMessageWindowEffectLink(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetComponentReverseLR: void SetComponentReverseLR. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComponentReverseLR(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetComponentReverseTB: void SetComponentReverseTB. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComponentReverseTB(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetComponentScrollAlphaLinkNumber: void SetComponentScrollAlphaLinkNumber. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComponentScrollAlphaLinkNumber(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetComponentScrollPosXLinkNumber: void SetComponentScrollPosXLinkNumber. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComponentScrollPosXLinkNumber(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetComponentScrollPosYLinkNumber: void SetComponentScrollPosYLinkNumber. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComponentScrollPosYLinkNumber(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetComponentShowEditor: void SetComponentShowEditor. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComponentShowEditor(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetComponentTextureAddressType: void SetComponentTextureAddressType. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetComponentTextureAddressType(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetEnableSpeedUp: void SetEnableSpeedUp. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetEnableSpeedUp(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetFontColorForBackScene: void SetFontColorForBackScene. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetFontColorForBackScene(int a0, int a1, int a2, int a3, int a4)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+	(void)a4;
+}
+
+/* AIN SetFormCaptionColor: void SetFormCaptionColor. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetFormCaptionColor(int a0, int a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN SetFormCaptionPlusHeight: void SetFormCaptionPlusHeight. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetFormCaptionPlusHeight(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetFormClientColor: void SetFormClientColor. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetFormClientColor(int a0, int a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN SetFormEnableCloseButton: void SetFormEnableCloseButton. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetFormEnableCloseButton(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetFormFold: void SetFormFold. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetFormFold(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetFormGroupViewSpan: void SetFormGroupViewSpan. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetFormGroupViewSpan(int a0, int a1, int a2, int a3, int a4, int a5)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+	(void)a4;
+	(void)a5;
+}
+
+/* AIN SetFormHScrollPos: void SetFormHScrollPos. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetFormHScrollPos(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetFormIcon: void SetFormIcon. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetFormIcon(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetFormMaxSize: void SetFormMaxSize. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetFormMaxSize(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN SetFormMinSize: void SetFormMinSize. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetFormMinSize(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN SetFormResizable: void SetFormResizable. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetFormResizable(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetFormSize: void SetFormSize. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetFormSize(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN SetFormTitle: void SetFormTitle. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetFormTitle(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetFormVScrollPos: void SetFormVScrollPos. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetFormVScrollPos(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetHScrollTotalSizeLinkNumber: void SetHScrollTotalSizeLinkNumber. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetHScrollTotalSizeLinkNumber(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetHScrollViewSizeLinkNumber: void SetHScrollViewSizeLinkNumber. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetHScrollViewSizeLinkNumber(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetHScrollbarFlatName: void SetHScrollbarFlatName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetHScrollbarFlatName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetHScrollbarOverrideBGCGName: void SetHScrollbarOverrideBGCGName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetHScrollbarOverrideBGCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetHScrollbarOverrideBGFlatName: void SetHScrollbarOverrideBGFlatName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetHScrollbarOverrideBGFlatName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetHScrollbarOverrideBarCGName: void SetHScrollbarOverrideBarCGName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetHScrollbarOverrideBarCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetHScrollbarOverrideBarFlatName: void SetHScrollbarOverrideBarFlatName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetHScrollbarOverrideBarFlatName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetHScrollbarOverrideLeftCGName: void SetHScrollbarOverrideLeftCGName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetHScrollbarOverrideLeftCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetHScrollbarOverrideLeftFlatName: void SetHScrollbarOverrideLeftFlatName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetHScrollbarOverrideLeftFlatName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetHScrollbarOverrideRightCGName: void SetHScrollbarOverrideRightCGName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetHScrollbarOverrideRightCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetHScrollbarOverrideRightFlatName: void SetHScrollbarOverrideRightFlatName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetHScrollbarOverrideRightFlatName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetKeyWaitCGName: void SetKeyWaitCGName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetKeyWaitCGName(int a0, struct string * a1, int a2, int a3, int a4)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+	(void)a4;
+}
+
+/* AIN SetKeyWaitFlatName: void SetKeyWaitFlatName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetKeyWaitFlatName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetKeyWaitPos: void SetKeyWaitPos. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetKeyWaitPos(int a0, int a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN SetKeyWaitShow: void SetKeyWaitShow. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetKeyWaitShow(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetLayoutBoxPadding: void SetLayoutBoxPadding. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetLayoutBoxPadding(int a0, int a1, int a2, int a3, int a4)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+	(void)a4;
+}
+
+/* AIN SetLayoutBoxReturnSizeForRate: void SetLayoutBoxReturnSizeForRate. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetLayoutBoxReturnSizeForRate(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetListBoxCharSpace: void SetListBoxCharSpace. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetListBoxCharSpace(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetLockInputState: void SetLockInputState. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetLockInputState(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetMessageWindowActive: void SetMessageWindowActive. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMessageWindowActive(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetMessageWindowCGName: void SetMessageWindowCGName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMessageWindowCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetMessageWindowFlatName: void SetMessageWindowFlatName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMessageWindowFlatName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetMessageWindowFlatShowWaitFrameNumber: void SetMessageWindowFlatShowWaitFrameNumber. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMessageWindowFlatShowWaitFrameNumber(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetMessageWindowInactiveMultipleColor: void SetMessageWindowInactiveMultipleColor. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMessageWindowInactiveMultipleColor(int a0, int a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN SetMessageWindowText: void SetMessageWindowText. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMessageWindowText(int a0, struct string * a1, int a2, struct string * a3, int a4, int a5)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+	(void)a4;
+	(void)a5;
+}
+
+/* AIN SetMessageWindowTextArea: void SetMessageWindowTextArea. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMessageWindowTextArea(int a0, int a1, int a2, int a3, int a4)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+	(void)a4;
+}
+
+/* AIN SetMessageWindowTextOriginPosMode: void SetMessageWindowTextOriginPosMode. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMessageWindowTextOriginPosMode(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetMessageWindowTextSpace: void SetMessageWindowTextSpace. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMessageWindowTextSpace(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN SetMessageWindowTextSpeed: void SetMessageWindowTextSpeed. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMessageWindowTextSpeed(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetMotionData: void SetMotionData. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMotionData(int a0, struct string * a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN SetMovieTime: void SetMovieTime. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMovieTime(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN SetMultiTextBoxBGColor: void SetMultiTextBoxBGColor. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMultiTextBoxBGColor(int a0, int a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN SetMultiTextBoxCharSpace: void SetMultiTextBoxCharSpace. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMultiTextBoxCharSpace(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetMultiTextBoxFrameColor: void SetMultiTextBoxFrameColor. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMultiTextBoxFrameColor(int a0, int a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN SetMultiTextBoxHScrollShow: void SetMultiTextBoxHScrollShow. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMultiTextBoxHScrollShow(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetMultiTextBoxLineSpace: void SetMultiTextBoxLineSpace. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMultiTextBoxLineSpace(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetMultiTextBoxPadding: void SetMultiTextBoxPadding. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMultiTextBoxPadding(int a0, int a1, int a2, int a3, int a4)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+	(void)a4;
+}
+
+/* AIN SetMultiTextBoxReadOnly: void SetMultiTextBoxReadOnly. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMultiTextBoxReadOnly(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetMultiTextBoxReadOnlyBGColor: void SetMultiTextBoxReadOnlyBGColor. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMultiTextBoxReadOnlyBGColor(int a0, int a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN SetMultiTextBoxVScrollShow: void SetMultiTextBoxVScrollShow. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetMultiTextBoxVScrollShow(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetNumeralFullPitch: void SetNumeralFullPitch. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetNumeralFullPitch(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN SetNumeralShowPadding: void SetNumeralShowPadding. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetNumeralShowPadding(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN SetNumeralShowType: void SetNumeralShowType. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetNumeralShowType(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN SetOpenTextBoxIME: void SetOpenTextBoxIME. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetOpenTextBoxIME(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetPanelAlphaGradationBottom: void SetPanelAlphaGradationBottom. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetPanelAlphaGradationBottom(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetPanelAlphaGradationLeft: void SetPanelAlphaGradationLeft. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetPanelAlphaGradationLeft(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetPanelAlphaGradationRight: void SetPanelAlphaGradationRight. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetPanelAlphaGradationRight(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetPanelAlphaGradationTop: void SetPanelAlphaGradationTop. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetPanelAlphaGradationTop(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetPanelColor: void SetPanelColor. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetPanelColor(int a0, int a1, int a2, int a3, int a4)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+	(void)a4;
+}
+
+/* AIN SetPanelSize: void SetPanelSize. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetPanelSize(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN SetRectangleDetectionPoint: void SetRectangleDetectionPoint. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetRectangleDetectionPoint(int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7, int a8, int a9)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+	(void)a4;
+	(void)a5;
+	(void)a6;
+	(void)a7;
+	(void)a8;
+	(void)a9;
+}
+
+/* AIN SetShowForBackScene: void SetShowForBackScene. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetShowForBackScene(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetSpinBoxBGColor: void SetSpinBoxBGColor. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetSpinBoxBGColor(int a0, int a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN SetSpinBoxCGName: void SetSpinBoxCGName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetSpinBoxCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetSpinBoxCharSpace: void SetSpinBoxCharSpace. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetSpinBoxCharSpace(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetSpinBoxDecimalPlace: void SetSpinBoxDecimalPlace. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetSpinBoxDecimalPlace(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetSpinBoxFrameColor: void SetSpinBoxFrameColor. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetSpinBoxFrameColor(int a0, int a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN SetSpinBoxReadOnly: void SetSpinBoxReadOnly. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetSpinBoxReadOnly(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetSpinBoxReadOnlyBGColor: void SetSpinBoxReadOnlyBGColor. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetSpinBoxReadOnlyBGColor(int a0, int a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN SetSpinBoxSelectColor: void SetSpinBoxSelectColor. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetSpinBoxSelectColor(int a0, int a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN SetSpinBoxSize: void SetSpinBoxSize. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetSpinBoxSize(int a0, int a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN SetTextBoxBGColor: void SetTextBoxBGColor. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetTextBoxBGColor(int a0, int a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN SetTextBoxCharSpace: void SetTextBoxCharSpace. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetTextBoxCharSpace(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetTextBoxFrameColor: void SetTextBoxFrameColor. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetTextBoxFrameColor(int a0, int a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN SetTextBoxReadOnly: void SetTextBoxReadOnly. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetTextBoxReadOnly(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetTextBoxReadOnlyBGColor: void SetTextBoxReadOnlyBGColor. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetTextBoxReadOnlyBGColor(int a0, int a1, int a2, int a3)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+}
+
+/* AIN SetUserComponentData: void SetUserComponentData. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetUserComponentData(int a0, struct string * a1, struct string * a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+}
+
+/* AIN SetUserComponentName: void SetUserComponentName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetUserComponentName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetVScrollTotalSizeLinkNumber: void SetVScrollTotalSizeLinkNumber. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetVScrollTotalSizeLinkNumber(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetVScrollViewSizeLinkNumber: void SetVScrollViewSizeLinkNumber. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetVScrollViewSizeLinkNumber(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetVScrollbarFlatName: void SetVScrollbarFlatName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetVScrollbarFlatName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetVScrollbarOverrideBGCGName: void SetVScrollbarOverrideBGCGName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetVScrollbarOverrideBGCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetVScrollbarOverrideBGFlatName: void SetVScrollbarOverrideBGFlatName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetVScrollbarOverrideBGFlatName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetVScrollbarOverrideBarCGName: void SetVScrollbarOverrideBarCGName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetVScrollbarOverrideBarCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetVScrollbarOverrideBarFlatName: void SetVScrollbarOverrideBarFlatName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetVScrollbarOverrideBarFlatName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetVScrollbarOverrideDownCGName: void SetVScrollbarOverrideDownCGName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetVScrollbarOverrideDownCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetVScrollbarOverrideDownFlatName: void SetVScrollbarOverrideDownFlatName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetVScrollbarOverrideDownFlatName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetVScrollbarOverrideUpCGName: void SetVScrollbarOverrideUpCGName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetVScrollbarOverrideUpCGName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SetVScrollbarOverrideUpFlatName: void SetVScrollbarOverrideUpFlatName. [HACK-POC D85] setter stubbed. */
+static void PE_Noop_SetVScrollbarOverrideUpFlatName(int a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN PartsEngine f[22]: bool IsExistActivity(string name).
+ * [HACK-POC D89] the whole Activity subsystem (f[22..52]) is unimplemented.
+ * Reporting "absent" keeps RunStartScreen's overlay setup on the no-activity
+ * path instead of aborting. Real fix: activity table + file loading. */
+static int PartsEngine_IsExistActivity(struct string *name)
+{
+	(void)name;
+	return 0;
+}
+
+/* AIN f[23] CreateActivity. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_CreateActivity(struct string * a0)
+{
+	(void)a0;
+	return 0;
+}
+
+/* AIN f[24] ReleaseActivity. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_ReleaseActivity(struct string * a0, struct page ** a1)
+{
+	(void)a0;
+	(void)a1;
+	return 0;
+}
+
+/* AIN f[26] LoadActivityEXText. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_LoadActivityEXText(struct string * a0, struct string * a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	return 0;
+}
+
+/* AIN f[27] ReadActivityFile. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_ReadActivityFile(struct string * a0, struct string * a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	return 0;
+}
+
+/* AIN f[28] WriteActivityFile. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_WriteActivityFile(struct string * a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+	return 0;
+}
+
+/* AIN f[29] IsExistActivityFile. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_IsExistActivityFile(struct string * a0)
+{
+	(void)a0;
+	return 0;
+}
+
+/* AIN f[30] AddActivityParts. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_AddActivityParts(struct string * a0, struct string * a1, int a2)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	return 0;
+}
+
+/* AIN f[31] RemoveActivityParts. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_RemoveActivityParts(struct string * a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+	return 0;
+}
+
+/* AIN f[32] RemoveAllActivityParts. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_RemoveAllActivityParts(struct string * a0)
+{
+	(void)a0;
+	return 0;
+}
+
+/* AIN f[33] NumofActivityParts. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_NumofActivityParts(struct string * a0)
+{
+	(void)a0;
+	return -1;
+}
+
+/* AIN f[35] IsExistActivityPartsByName. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_IsExistActivityPartsByName(struct string * a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+	return 0;
+}
+
+/* AIN f[36] IsExistActivityPartsByNumber. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_IsExistActivityPartsByNumber(struct string * a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+	return 0;
+}
+
+/* AIN f[37] GetActivityPartsNumber. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_GetActivityPartsNumber(struct string * a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+	return -1;
+}
+
+/* AIN f[39] GetActivityEXID. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_GetActivityEXID(struct string * a0)
+{
+	(void)a0;
+	return -1;
+}
+
+/* AIN f[44] AddActivityCloseParts. [HACK-POC D89] Activity subsystem stub. */
+static void PE_Act_AddActivityCloseParts(struct string * a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f[45] IsExistActivityCloseParts. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_IsExistActivityCloseParts(struct string * a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+	return 0;
+}
+
+/* AIN f[46] AddActivityLockedParts. [HACK-POC D89] Activity subsystem stub. */
+static void PE_Act_AddActivityLockedParts(struct string * a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f[47] IsExistActivityLockedParts. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_IsExistActivityLockedParts(struct string * a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+	return 0;
+}
+
+/* AIN f[49] EraseActivityEndKey. [HACK-POC D89] Activity subsystem stub. */
+static void PE_Act_EraseActivityEndKey(struct string * a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN f[50] IsExistActivityEndKey. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_IsExistActivityEndKey(struct string * a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+	return 0;
+}
+
+/* AIN f[51] NumofActivityEndKey. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_NumofActivityEndKey(struct string * a0)
+{
+	(void)a0;
+	return -1;
+}
+
+/* AIN f[52] GetActivityEndKey. [HACK-POC D89] Activity subsystem stub. */
+static int PE_Act_GetActivityEndKey(struct string * a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+	return -1;
+}
+
 HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(_PreLink, PartsEngine_PreLink),
 	    // for versions without PartsEngine.Init
@@ -619,7 +2325,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(GetMessageVariableBool, PE_GetMessageVariableBool),
 	    HLL_EXPORT(GetMessageVariableString, PE_GetMessageVariableString),
 	    HLL_EXPORT(SetDelegateIndex, PE_SetDelegateIndex),
-	    HLL_TODO_EXPORT(SetFocus, PartsEngine_SetFocus),
+	    HLL_EXPORT(SetFocus, PE_Noop_SetFocus),
 	    HLL_TODO_EXPORT(IsFocus, PartsEngine_IsFocus),
 	    HLL_EXPORT(SetComponentType, PE_SetComponentType),
 	    HLL_EXPORT(GetComponentType, PE_GetComponentType),
@@ -669,9 +2375,9 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(GetComponentMarginRight, PE_GetComponentMarginRight),
 	    HLL_EXPORT(SetComponentAlphaClipper, PE_SetPartsAlphaClipperPartsNumber),
 	    HLL_TODO_EXPORT(GetComponentAlphaClipper, PartsEngine_GetComponentAlphaClipper),
-	    HLL_TODO_EXPORT(SetComponentTextureFilterType, PartsEngine_SetComponentTextureFilterType),
+	    HLL_EXPORT(SetComponentTextureFilterType, PE_Noop_SetComponentTextureFilterType),
 	    HLL_TODO_EXPORT(GetComponentTextureFilterType, PartsEngine_GetComponentTextureFilterType),
-	    HLL_TODO_EXPORT(SetComponentMipmap, PartsEngine_SetComponentMipmap),
+	    HLL_EXPORT(SetComponentMipmap, PE_Noop_SetComponentMipmap),
 	    HLL_TODO_EXPORT(IsComponentMipmap, PartsEngine_IsComponentMipmap),
 	    HLL_EXPORT(SetComponentSpeedupRateByMessageSkip, PE_SetSpeedupRateByMessageSkip),
 	    HLL_EXPORT(GetComponentSpeedupRateByMessageSkip, PE_GetSpeedupRateByMessageSkip),
@@ -691,14 +2397,14 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_TODO_EXPORT(SuspendBuildView, PartsEngine_SuspendBuildView),
 	    HLL_TODO_EXPORT(SuspendBuildViewAt, PartsEngine_SuspendBuildViewAt),
 	    HLL_TODO_EXPORT(ResumeBuildView, PartsEngine_ResumeBuildView),
-	    HLL_TODO_EXPORT(SetButtonSize, PartsEngine_SetButtonSize),
+	    HLL_EXPORT(SetButtonSize, PE_Noop_SetButtonSize),
 	    HLL_TODO_EXPORT(SetButtonDrag, PartsEngine_SetButtonDrag),
 	    HLL_TODO_EXPORT(IsButtonDrag, PartsEngine_IsButtonDrag),
-	    HLL_TODO_EXPORT(SetButtonEnable, PartsEngine_SetButtonEnable),
+	    HLL_EXPORT(SetButtonEnable, PE_Noop_SetButtonEnable),
 	    HLL_TODO_EXPORT(IsButtonEnable, PartsEngine_IsButtonEnable),
 	    HLL_TODO_EXPORT(SetButtonPixelDecide, PartsEngine_SetButtonPixelDecide),
 	    HLL_TODO_EXPORT(IsButtonPixelDecide, PartsEngine_IsButtonPixelDecide),
-	    HLL_TODO_EXPORT(SetButtonColor, PartsEngine_SetButtonColor),
+	    HLL_EXPORT(SetButtonColor, PE_Noop_SetButtonColor),
 	    HLL_TODO_EXPORT(GetButtonR, PartsEngine_GetButtonR),
 	    HLL_TODO_EXPORT(GetButtonG, PartsEngine_GetButtonG),
 	    HLL_TODO_EXPORT(GetButtonB, PartsEngine_GetButtonB),
@@ -708,16 +2414,16 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_TODO_EXPORT(SetButtonClickSoundNumber, PartsEngine_SetButtonClickSoundNumber),
 	    HLL_TODO_EXPORT(GetButtonOnCursorSoundNumber, PartsEngine_GetButtonOnCursorSoundNumber),
 	    HLL_TODO_EXPORT(GetButtonClickSoundNumber, PartsEngine_GetButtonClickSoundNumber),
-	    HLL_TODO_EXPORT(SetButtonCGName, PartsEngine_SetButtonCGName),
+	    HLL_EXPORT(SetButtonCGName, PE_Noop_SetButtonCGName),
 	    HLL_TODO_EXPORT(GetButtonCGName, PartsEngine_GetButtonCGName),
-	    HLL_TODO_EXPORT(SetButtonText, PartsEngine_SetButtonText),
+	    HLL_EXPORT(SetButtonText, PE_Noop_SetButtonText),
 	    HLL_TODO_EXPORT(GetButtonText, PartsEngine_GetButtonText),
-	    HLL_TODO_EXPORT(SetCheckBoxSize, PartsEngine_SetCheckBoxSize),
+	    HLL_EXPORT(SetCheckBoxSize, PE_Noop_SetCheckBoxSize),
 	    HLL_TODO_EXPORT(SetCheckBoxDrag, PartsEngine_SetCheckBoxDrag),
 	    HLL_TODO_EXPORT(IsCheckBoxDrag, PartsEngine_IsCheckBoxDrag),
 	    HLL_TODO_EXPORT(CheckBoxChecked, PartsEngine_CheckBoxChecked),
 	    HLL_TODO_EXPORT(IsCheckBoxChecked, PartsEngine_IsCheckBoxChecked),
-	    HLL_TODO_EXPORT(SetCheckBoxColor, PartsEngine_SetCheckBoxColor),
+	    HLL_EXPORT(SetCheckBoxColor, PE_Noop_SetCheckBoxColor),
 	    HLL_TODO_EXPORT(GetCheckBoxR, PartsEngine_GetCheckBoxR),
 	    HLL_TODO_EXPORT(GetCheckBoxG, PartsEngine_GetCheckBoxG),
 	    HLL_TODO_EXPORT(GetCheckBoxB, PartsEngine_GetCheckBoxB),
@@ -727,80 +2433,80 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_TODO_EXPORT(SetCheckBoxClickSoundNumber, PartsEngine_SetCheckBoxClickSoundNumber),
 	    HLL_TODO_EXPORT(GetCheckBoxOnCursorSoundNumber, PartsEngine_GetCheckBoxOnCursorSoundNumber),
 	    HLL_TODO_EXPORT(GetCheckBoxClickSoundNumber, PartsEngine_GetCheckBoxClickSoundNumber),
-	    HLL_TODO_EXPORT(SetCheckBoxCGName, PartsEngine_SetCheckBoxCGName),
+	    HLL_EXPORT(SetCheckBoxCGName, PE_Noop_SetCheckBoxCGName),
 	    HLL_TODO_EXPORT(GetCheckBoxCGName, PartsEngine_GetCheckBoxCGName),
-	    HLL_TODO_EXPORT(SetCheckBoxText, PartsEngine_SetCheckBoxText),
+	    HLL_EXPORT(SetCheckBoxText, PE_Noop_SetCheckBoxText),
 	    HLL_TODO_EXPORT(GetCheckBoxText, PartsEngine_GetCheckBoxText),
 	    HLL_TODO_EXPORT(SetVScrollbarOnCursorSoundNumber, PartsEngine_SetVScrollbarOnCursorSoundNumber),
 	    HLL_TODO_EXPORT(SetVScrollbarClickSoundNumber, PartsEngine_SetVScrollbarClickSoundNumber),
 	    HLL_TODO_EXPORT(GetVScrollbarOnCursorSoundNumber, PartsEngine_GetVScrollbarOnCursorSoundNumber),
 	    HLL_TODO_EXPORT(GetVScrollbarClickSoundNumber, PartsEngine_GetVScrollbarClickSoundNumber),
-	    HLL_TODO_EXPORT(SetVScrollbarSize, PartsEngine_SetVScrollbarSize),
-	    HLL_TODO_EXPORT(SetVScrollbarUpHeight, PartsEngine_SetVScrollbarUpHeight),
-	    HLL_TODO_EXPORT(SetVScrollbarDownHeight, PartsEngine_SetVScrollbarDownHeight),
+	    HLL_EXPORT(SetVScrollbarSize, PE_Noop_SetVScrollbarSize),
+	    HLL_EXPORT(SetVScrollbarUpHeight, PE_Noop_SetVScrollbarUpHeight),
+	    HLL_EXPORT(SetVScrollbarDownHeight, PE_Noop_SetVScrollbarDownHeight),
 	    HLL_TODO_EXPORT(GetVScrollbarUpHeight, PartsEngine_GetVScrollbarUpHeight),
 	    HLL_TODO_EXPORT(GetVScrollbarDownHeight, PartsEngine_GetVScrollbarDownHeight),
-	    HLL_TODO_EXPORT(SetVScrollbarTotalSize, PartsEngine_SetVScrollbarTotalSize),
-	    HLL_TODO_EXPORT(SetVScrollbarViewSize, PartsEngine_SetVScrollbarViewSize),
-	    HLL_TODO_EXPORT(SetVScrollbarScrollPos, PartsEngine_SetVScrollbarScrollPos),
+	    HLL_EXPORT(SetVScrollbarTotalSize, PE_Noop_SetVScrollbarTotalSize),
+	    HLL_EXPORT(SetVScrollbarViewSize, PE_Noop_SetVScrollbarViewSize),
+	    HLL_EXPORT(SetVScrollbarScrollPos, PE_Noop_SetVScrollbarScrollPos),
 	    HLL_TODO_EXPORT(SetVScrollbarScrollRate, PartsEngine_SetVScrollbarScrollRate),
-	    HLL_TODO_EXPORT(SetVScrollbarMoveSizeByButton, PartsEngine_SetVScrollbarMoveSizeByButton),
+	    HLL_EXPORT(SetVScrollbarMoveSizeByButton, PE_Noop_SetVScrollbarMoveSizeByButton),
 	    HLL_TODO_EXPORT(GetVScrollbarTotalSize, PartsEngine_GetVScrollbarTotalSize),
 	    HLL_TODO_EXPORT(GetVScrollbarViewSize, PartsEngine_GetVScrollbarViewSize),
 	    HLL_TODO_EXPORT(GetVScrollbarScrollPos, PartsEngine_GetVScrollbarScrollPos),
 	    HLL_TODO_EXPORT(GetVScrollbarScrollRate, PartsEngine_GetVScrollbarScrollRate),
 	    HLL_TODO_EXPORT(GetVScrollbarMoveSizeByButton, PartsEngine_GetVScrollbarMoveSizeByButton),
-	    HLL_TODO_EXPORT(SetVScrollbarCGName, PartsEngine_SetVScrollbarCGName),
+	    HLL_EXPORT(SetVScrollbarCGName, PE_Noop_SetVScrollbarCGName),
 	    HLL_TODO_EXPORT(GetVScrollbarCGName, PartsEngine_GetVScrollbarCGName),
 	    HLL_TODO_EXPORT(SetHScrollbarOnCursorSoundNumber, PartsEngine_SetHScrollbarOnCursorSoundNumber),
 	    HLL_TODO_EXPORT(SetHScrollbarClickSoundNumber, PartsEngine_SetHScrollbarClickSoundNumber),
 	    HLL_TODO_EXPORT(GetHScrollbarOnCursorSoundNumber, PartsEngine_GetHScrollbarOnCursorSoundNumber),
 	    HLL_TODO_EXPORT(GetHScrollbarClickSoundNumber, PartsEngine_GetHScrollbarClickSoundNumber),
-	    HLL_TODO_EXPORT(SetHScrollbarSize, PartsEngine_SetHScrollbarSize),
-	    HLL_TODO_EXPORT(SetHScrollbarLeftWidth, PartsEngine_SetHScrollbarLeftWidth),
-	    HLL_TODO_EXPORT(SetHScrollbarRightWidth, PartsEngine_SetHScrollbarRightWidth),
+	    HLL_EXPORT(SetHScrollbarSize, PE_Noop_SetHScrollbarSize),
+	    HLL_EXPORT(SetHScrollbarLeftWidth, PE_Noop_SetHScrollbarLeftWidth),
+	    HLL_EXPORT(SetHScrollbarRightWidth, PE_Noop_SetHScrollbarRightWidth),
 	    HLL_TODO_EXPORT(GetHScrollbarLeftWidth, PartsEngine_GetHScrollbarLeftWidth),
 	    HLL_TODO_EXPORT(GetHScrollbarRightWidth, PartsEngine_GetHScrollbarRightWidth),
-	    HLL_TODO_EXPORT(SetHScrollbarTotalSize, PartsEngine_SetHScrollbarTotalSize),
-	    HLL_TODO_EXPORT(SetHScrollbarViewSize, PartsEngine_SetHScrollbarViewSize),
-	    HLL_TODO_EXPORT(SetHScrollbarScrollPos, PartsEngine_SetHScrollbarScrollPos),
+	    HLL_EXPORT(SetHScrollbarTotalSize, PE_Noop_SetHScrollbarTotalSize),
+	    HLL_EXPORT(SetHScrollbarViewSize, PE_Noop_SetHScrollbarViewSize),
+	    HLL_EXPORT(SetHScrollbarScrollPos, PE_Noop_SetHScrollbarScrollPos),
 	    HLL_TODO_EXPORT(SetHScrollbarScrollRate, PartsEngine_SetHScrollbarScrollRate),
-	    HLL_TODO_EXPORT(SetHScrollbarMoveSizeByButton, PartsEngine_SetHScrollbarMoveSizeByButton),
+	    HLL_EXPORT(SetHScrollbarMoveSizeByButton, PE_Noop_SetHScrollbarMoveSizeByButton),
 	    HLL_TODO_EXPORT(GetHScrollbarTotalSize, PartsEngine_GetHScrollbarTotalSize),
 	    HLL_TODO_EXPORT(GetHScrollbarViewSize, PartsEngine_GetHScrollbarViewSize),
 	    HLL_TODO_EXPORT(GetHScrollbarScrollPos, PartsEngine_GetHScrollbarScrollPos),
 	    HLL_TODO_EXPORT(GetHScrollbarScrollRate, PartsEngine_GetHScrollbarScrollRate),
 	    HLL_TODO_EXPORT(GetHScrollbarMoveSizeByButton, PartsEngine_GetHScrollbarMoveSizeByButton),
-	    HLL_TODO_EXPORT(SetHScrollbarCGName, PartsEngine_SetHScrollbarCGName),
+	    HLL_EXPORT(SetHScrollbarCGName, PE_Noop_SetHScrollbarCGName),
 	    HLL_TODO_EXPORT(GetHScrollbarCGName, PartsEngine_GetHScrollbarCGName),
-	    HLL_TODO_EXPORT(SetTextBoxSize, PartsEngine_SetTextBoxSize),
+	    HLL_EXPORT(SetTextBoxSize, PE_Noop_SetTextBoxSize),
 	    HLL_TODO_EXPORT(SetTextBoxFontProperty, PartsEngine_SetTextBoxFontProperty),
 	    HLL_TODO_EXPORT(GetTextBoxFontProperty, PartsEngine_GetTextBoxFontProperty),
-	    HLL_TODO_EXPORT(SetTextBoxText, PartsEngine_SetTextBoxText),
+	    HLL_EXPORT(SetTextBoxText, PE_Noop_SetTextBoxText),
 	    HLL_TODO_EXPORT(GetTextBoxText, PartsEngine_GetTextBoxText),
-	    HLL_TODO_EXPORT(SetTextBoxMaxTextLength, PartsEngine_SetTextBoxMaxTextLength),
+	    HLL_EXPORT(SetTextBoxMaxTextLength, PE_Noop_SetTextBoxMaxTextLength),
 	    HLL_TODO_EXPORT(GetTextBoxMaxTextLength, PartsEngine_GetTextBoxMaxTextLength),
-	    HLL_TODO_EXPORT(SetTextBoxSelectColor, PartsEngine_SetTextBoxSelectColor),
+	    HLL_EXPORT(SetTextBoxSelectColor, PE_Noop_SetTextBoxSelectColor),
 	    HLL_TODO_EXPORT(GetTextBoxSelectR, PartsEngine_GetTextBoxSelectR),
 	    HLL_TODO_EXPORT(GetTextBoxSelectG, PartsEngine_GetTextBoxSelectG),
 	    HLL_TODO_EXPORT(GetTextBoxSelectB, PartsEngine_GetTextBoxSelectB),
-	    HLL_TODO_EXPORT(SetTextBoxCGName, PartsEngine_SetTextBoxCGName),
+	    HLL_EXPORT(SetTextBoxCGName, PE_Noop_SetTextBoxCGName),
 	    HLL_TODO_EXPORT(GetTextBoxCGName, PartsEngine_GetTextBoxCGName),
 	    HLL_TODO_EXPORT(OpenTextBoxIME, PartsEngine_OpenTextBoxIME),
 	    HLL_TODO_EXPORT(CloseTextBoxIME, PartsEngine_CloseTextBoxIME),
-	    HLL_TODO_EXPORT(SetListBoxSize, PartsEngine_SetListBoxSize),
-	    HLL_TODO_EXPORT(SetListBoxLineHeight, PartsEngine_SetListBoxLineHeight),
+	    HLL_EXPORT(SetListBoxSize, PE_Noop_SetListBoxSize),
+	    HLL_EXPORT(SetListBoxLineHeight, PE_Noop_SetListBoxLineHeight),
 	    HLL_TODO_EXPORT(GetListBoxLineHeight, PartsEngine_GetListBoxLineHeight),
-	    HLL_TODO_EXPORT(SetListBoxMargin, PartsEngine_SetListBoxMargin),
+	    HLL_EXPORT(SetListBoxMargin, PE_Noop_SetListBoxMargin),
 	    HLL_TODO_EXPORT(GetListBoxWidthMargin, PartsEngine_GetListBoxWidthMargin),
 	    HLL_TODO_EXPORT(GetListBoxHeightMargin, PartsEngine_GetListBoxHeightMargin),
-	    HLL_TODO_EXPORT(SetListBoxCGName, PartsEngine_SetListBoxCGName),
+	    HLL_EXPORT(SetListBoxCGName, PE_Noop_SetListBoxCGName),
 	    HLL_TODO_EXPORT(GetListBoxCGName, PartsEngine_GetListBoxCGName),
-	    HLL_TODO_EXPORT(SetListBoxScrollPos, PartsEngine_SetListBoxScrollPos),
+	    HLL_EXPORT(SetListBoxScrollPos, PE_Noop_SetListBoxScrollPos),
 	    HLL_TODO_EXPORT(GetListBoxScrollPos, PartsEngine_GetListBoxScrollPos),
 	    HLL_TODO_EXPORT(AddListBoxItem, PartsEngine_AddListBoxItem),
 	    HLL_TODO_EXPORT(InsertListBoxItem, PartsEngine_InsertListBoxItem),
-	    HLL_TODO_EXPORT(SetListBoxItem, PartsEngine_SetListBoxItem),
+	    HLL_EXPORT(SetListBoxItem, PE_Noop_SetListBoxItem),
 	    HLL_TODO_EXPORT(GetListBoxItemCount, PartsEngine_GetListBoxItemCount),
 	    HLL_TODO_EXPORT(GetListBoxItem, PartsEngine_GetListBoxItem),
 	    HLL_TODO_EXPORT(EraseListBoxItem, PartsEngine_EraseListBoxItem),
@@ -809,30 +2515,30 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_TODO_EXPORT(GetListBoxOnCursorItem, PartsEngine_GetListBoxOnCursorItem),
 	    HLL_TODO_EXPORT(SetListBoxFontProperty, PartsEngine_SetListBoxFontProperty),
 	    HLL_TODO_EXPORT(GetListBoxFontProperty, PartsEngine_GetListBoxFontProperty),
-	    HLL_TODO_EXPORT(SetListBoxSelectIndex, PartsEngine_SetListBoxSelectIndex),
+	    HLL_EXPORT(SetListBoxSelectIndex, PE_Noop_SetListBoxSelectIndex),
 	    HLL_TODO_EXPORT(GetListBoxSelectIndex, PartsEngine_GetListBoxSelectIndex),
-	    HLL_TODO_EXPORT(SetComboBoxSize, PartsEngine_SetComboBoxSize),
-	    HLL_TODO_EXPORT(SetComboBoxTextMargin, PartsEngine_SetComboBoxTextMargin),
+	    HLL_EXPORT(SetComboBoxSize, PE_Noop_SetComboBoxSize),
+	    HLL_EXPORT(SetComboBoxTextMargin, PE_Noop_SetComboBoxTextMargin),
 	    HLL_TODO_EXPORT(GetComboBoxTextWidthMargin, PartsEngine_GetComboBoxTextWidthMargin),
 	    HLL_TODO_EXPORT(GetComboBoxTextHeightMargin, PartsEngine_GetComboBoxTextHeightMargin),
-	    HLL_TODO_EXPORT(SetComboBoxCGName, PartsEngine_SetComboBoxCGName),
+	    HLL_EXPORT(SetComboBoxCGName, PE_Noop_SetComboBoxCGName),
 	    HLL_TODO_EXPORT(GetComboBoxCGName, PartsEngine_GetComboBoxCGName),
-	    HLL_TODO_EXPORT(SetComboBoxText, PartsEngine_SetComboBoxText),
+	    HLL_EXPORT(SetComboBoxText, PE_Noop_SetComboBoxText),
 	    HLL_TODO_EXPORT(GetComboBoxText, PartsEngine_GetComboBoxText),
 	    HLL_TODO_EXPORT(SetComboBoxFontProperty, PartsEngine_SetComboBoxFontProperty),
 	    HLL_TODO_EXPORT(GetComboBoxFontProperty, PartsEngine_GetComboBoxFontProperty),
-	    HLL_TODO_EXPORT(SetMultiTextBoxSize, PartsEngine_SetMultiTextBoxSize),
+	    HLL_EXPORT(SetMultiTextBoxSize, PE_Noop_SetMultiTextBoxSize),
 	    HLL_TODO_EXPORT(SetMultiTextBoxFontProperty, PartsEngine_SetMultiTextBoxFontProperty),
 	    HLL_TODO_EXPORT(GetMultiTextBoxFontProperty, PartsEngine_GetMultiTextBoxFontProperty),
-	    HLL_TODO_EXPORT(SetMultiTextBoxText, PartsEngine_SetMultiTextBoxText),
+	    HLL_EXPORT(SetMultiTextBoxText, PE_Noop_SetMultiTextBoxText),
 	    HLL_TODO_EXPORT(GetMultiTextBoxText, PartsEngine_GetMultiTextBoxText),
-	    HLL_TODO_EXPORT(SetMultiTextBoxMaxTextLength, PartsEngine_SetMultiTextBoxMaxTextLength),
+	    HLL_EXPORT(SetMultiTextBoxMaxTextLength, PE_Noop_SetMultiTextBoxMaxTextLength),
 	    HLL_TODO_EXPORT(GetMultiTextBoxMaxTextLength, PartsEngine_GetMultiTextBoxMaxTextLength),
-	    HLL_TODO_EXPORT(SetMultiTextBoxSelectColor, PartsEngine_SetMultiTextBoxSelectColor),
+	    HLL_EXPORT(SetMultiTextBoxSelectColor, PE_Noop_SetMultiTextBoxSelectColor),
 	    HLL_TODO_EXPORT(GetMultiTextBoxSelectR, PartsEngine_GetMultiTextBoxSelectR),
 	    HLL_TODO_EXPORT(GetMultiTextBoxSelectG, PartsEngine_GetMultiTextBoxSelectG),
 	    HLL_TODO_EXPORT(GetMultiTextBoxSelectB, PartsEngine_GetMultiTextBoxSelectB),
-	    HLL_TODO_EXPORT(SetMultiTextBoxCGName, PartsEngine_SetMultiTextBoxCGName),
+	    HLL_EXPORT(SetMultiTextBoxCGName, PE_Noop_SetMultiTextBoxCGName),
 	    HLL_TODO_EXPORT(GetMultiTextBoxCGName, PartsEngine_GetMultiTextBoxCGName),
 	    HLL_EXPORT(SetLayoutBoxLayoutType, PE_SetLayoutBoxLayoutType),
 	    HLL_EXPORT(GetLayoutBoxLayoutType, PE_GetLayoutBoxLayoutType),
@@ -850,10 +2556,10 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Parts_AddPartsText, PE_AddPartsText),
 	    HLL_TODO_EXPORT(Parts_DeletePartsTopTextLine, PartsEngine_Parts_DeletePartsTopTextLine),
 	    HLL_EXPORT(Parts_SetPartsTextSurfaceArea, PE_SetPartsTextSurfaceArea),
-	    HLL_TODO_EXPORT(Parts_SetPartsTextHighlight, PartsEngine_Parts_SetPartsTextHighlight),
+	    HLL_EXPORT(Parts_SetPartsTextHighlight, PE_Noop_Parts_SetPartsTextHighlight),
 	    HLL_TODO_EXPORT(Parts_AddPartsTextHighlight, PartsEngine_Parts_AddPartsTextHighlight),
 	    HLL_TODO_EXPORT(Parts_ClearPartsTextHighlight, PartsEngine_Parts_ClearPartsTextHighlight),
-	    HLL_TODO_EXPORT(Parts_SetPartsTextCountReturn, PartsEngine_Parts_SetPartsTextCountReturn),
+	    HLL_EXPORT(Parts_SetPartsTextCountReturn, PE_Noop_Parts_SetPartsTextCountReturn),
 	    HLL_TODO_EXPORT(Parts_GetPartsTextCountReturn, PartsEngine_Parts_GetPartsTextCountReturn),
 	    HLL_EXPORT(Parts_SetFont, PE_SetFont),
 	    HLL_EXPORT(Parts_SetPartsFontType, PE_SetPartsFontType),
@@ -940,7 +2646,180 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_TODO_EXPORT(Parts_IsPartsPixelDecide, PartsEngine_Parts_IsPartsPixelDecide),
 	    HLL_EXPORT(Parts_IsCursorIn, PE_IsCursorIn),
 	    HLL_TODO_EXPORT(SaveParts, PartsEngine_SaveParts),
-	    HLL_TODO_EXPORT(LoadParts, PartsEngine_LoadParts)
+	    HLL_TODO_EXPORT(LoadParts, PartsEngine_LoadParts),
+	    HLL_EXPORT(CreateUserPartsNumber, PartsEngine_CreateUserPartsNumber),
+	    HLL_EXPORT(SetEnableInputProcess, PartsEngine_SetEnableInputProcess),
+	    HLL_EXPORT(Parts_SetAnchor, PE_Noop_Parts_SetAnchor),
+	    HLL_EXPORT(Parts_SetFlatBeginSeekFrame, PE_Noop_Parts_SetFlatBeginSeekFrame),
+	    HLL_EXPORT(Parts_SetFlatEnableLayer, PE_Noop_Parts_SetFlatEnableLayer),
+	    HLL_EXPORT(Parts_SetHGaugeReverse, PE_Noop_Parts_SetHGaugeReverse),
+	    HLL_EXPORT(Parts_SetLockUpdate, PE_Noop_Parts_SetLockUpdate),
+	    HLL_EXPORT(Parts_SetPosForRate, PE_Noop_Parts_SetPosForRate),
+	    HLL_EXPORT(Parts_SetRubyCharSpace, PE_Noop_Parts_SetRubyCharSpace),
+	    HLL_EXPORT(Parts_SetSoundName, PE_Noop_Parts_SetSoundName),
+	    HLL_EXPORT(Parts_SetSwipeType, PE_Noop_Parts_SetSwipeType),
+	    HLL_EXPORT(Parts_SetTextEnableTag, PE_Noop_Parts_SetTextEnableTag),
+	    HLL_EXPORT(Parts_SetTextPos, PE_Noop_Parts_SetTextPos),
+	    HLL_EXPORT(Parts_SetTextShowTime, PE_Noop_Parts_SetTextShowTime),
+	    HLL_EXPORT(Parts_SetUpdateLookAtPos, PE_Noop_Parts_SetUpdateLookAtPos),
+	    HLL_EXPORT(Parts_SetVGaugeReverse, PE_Noop_Parts_SetVGaugeReverse),
+	    HLL_EXPORT(Parts_SetWheelable, PE_Noop_Parts_SetWheelable),
+	    HLL_EXPORT(SetActiveController, PE_Noop_SetActiveController),
+	    HLL_EXPORT(SetActivityBG, PE_Noop_SetActivityBG),
+	    HLL_EXPORT(SetActivityEXText, PE_Noop_SetActivityEXText),
+	    HLL_EXPORT(SetActivityEndKey, PE_Noop_SetActivityEndKey),
+	    HLL_EXPORT(SetButtonCharSpace, PE_Noop_SetButtonCharSpace),
+	    HLL_EXPORT(SetButtonFlatName, PE_Noop_SetButtonFlatName),
+	    HLL_EXPORT(SetButtonLineSpace, PE_Noop_SetButtonLineSpace),
+	    HLL_EXPORT(SetButtonTextOriginPosMode, PE_Noop_SetButtonTextOriginPosMode),
+	    HLL_EXPORT(SetCheckBoxButtonMode, PE_Noop_SetCheckBoxButtonMode),
+	    HLL_EXPORT(SetCheckBoxCharSpace, PE_Noop_SetCheckBoxCharSpace),
+	    HLL_EXPORT(SetCheckBoxEnable, PE_Noop_SetCheckBoxEnable),
+	    HLL_EXPORT(SetCheckBoxFlatName, PE_Noop_SetCheckBoxFlatName),
+	    HLL_EXPORT(SetCheckBoxLineSpace, PE_Noop_SetCheckBoxLineSpace),
+	    HLL_EXPORT(SetCheckBoxOverrideCGName, PE_Noop_SetCheckBoxOverrideCGName),
+	    HLL_EXPORT(SetCheckBoxOverrideCheckedCGName, PE_Noop_SetCheckBoxOverrideCheckedCGName),
+	    HLL_EXPORT(SetCheckBoxOverrideCheckedFlatName, PE_Noop_SetCheckBoxOverrideCheckedFlatName),
+	    HLL_EXPORT(SetCheckBoxOverrideFlatName, PE_Noop_SetCheckBoxOverrideFlatName),
+	    HLL_EXPORT(SetCheckBoxTextOriginPosMode, PE_Noop_SetCheckBoxTextOriginPosMode),
+	    HLL_EXPORT(SetClickMissSoundName, PE_Noop_SetClickMissSoundName),
+	    HLL_EXPORT(SetComboBoxCharSpace, PE_Noop_SetComboBoxCharSpace),
+	    HLL_EXPORT(SetComboBoxListBoxCharSpace, PE_Noop_SetComboBoxListBoxCharSpace),
+	    HLL_EXPORT(SetComboBoxListBoxHeight, PE_Noop_SetComboBoxListBoxHeight),
+	    HLL_EXPORT(SetComboBoxListBoxItem, PE_Noop_SetComboBoxListBoxItem),
+	    HLL_EXPORT(SetComboBoxListBoxLineHeight, PE_Noop_SetComboBoxListBoxLineHeight),
+	    HLL_EXPORT(SetComboBoxListBoxMargin, PE_Noop_SetComboBoxListBoxMargin),
+	    HLL_EXPORT(SetComboBoxListBoxScrollPos, PE_Noop_SetComboBoxListBoxScrollPos),
+	    HLL_EXPORT(SetComboBoxListBoxSelectIndex, PE_Noop_SetComboBoxListBoxSelectIndex),
+	    HLL_EXPORT(SetComponentCheckBoxShowLinkNumber, PE_Noop_SetComponentCheckBoxShowLinkNumber),
+	    HLL_EXPORT(SetComponentClipArea, PE_Noop_SetComponentClipArea),
+	    HLL_EXPORT(SetComponentEnableClipArea, PE_Noop_SetComponentEnableClipArea),
+	    HLL_EXPORT(SetComponentMessageWindowEffectLink, PE_Noop_SetComponentMessageWindowEffectLink),
+	    HLL_EXPORT(SetComponentReverseLR, PE_Noop_SetComponentReverseLR),
+	    HLL_EXPORT(SetComponentReverseTB, PE_Noop_SetComponentReverseTB),
+	    HLL_EXPORT(SetComponentScrollAlphaLinkNumber, PE_Noop_SetComponentScrollAlphaLinkNumber),
+	    HLL_EXPORT(SetComponentScrollPosXLinkNumber, PE_Noop_SetComponentScrollPosXLinkNumber),
+	    HLL_EXPORT(SetComponentScrollPosYLinkNumber, PE_Noop_SetComponentScrollPosYLinkNumber),
+	    HLL_EXPORT(SetComponentShowEditor, PE_Noop_SetComponentShowEditor),
+	    HLL_EXPORT(SetComponentTextureAddressType, PE_Noop_SetComponentTextureAddressType),
+	    HLL_EXPORT(SetEnableSpeedUp, PE_Noop_SetEnableSpeedUp),
+	    HLL_EXPORT(SetFontColorForBackScene, PE_Noop_SetFontColorForBackScene),
+	    HLL_EXPORT(SetFormCaptionColor, PE_Noop_SetFormCaptionColor),
+	    HLL_EXPORT(SetFormCaptionPlusHeight, PE_Noop_SetFormCaptionPlusHeight),
+	    HLL_EXPORT(SetFormClientColor, PE_Noop_SetFormClientColor),
+	    HLL_EXPORT(SetFormEnableCloseButton, PE_Noop_SetFormEnableCloseButton),
+	    HLL_EXPORT(SetFormFold, PE_Noop_SetFormFold),
+	    HLL_EXPORT(SetFormGroupViewSpan, PE_Noop_SetFormGroupViewSpan),
+	    HLL_EXPORT(SetFormHScrollPos, PE_Noop_SetFormHScrollPos),
+	    HLL_EXPORT(SetFormIcon, PE_Noop_SetFormIcon),
+	    HLL_EXPORT(SetFormMaxSize, PE_Noop_SetFormMaxSize),
+	    HLL_EXPORT(SetFormMinSize, PE_Noop_SetFormMinSize),
+	    HLL_EXPORT(SetFormResizable, PE_Noop_SetFormResizable),
+	    HLL_EXPORT(SetFormSize, PE_Noop_SetFormSize),
+	    HLL_EXPORT(SetFormTitle, PE_Noop_SetFormTitle),
+	    HLL_EXPORT(SetFormVScrollPos, PE_Noop_SetFormVScrollPos),
+	    HLL_EXPORT(SetHScrollTotalSizeLinkNumber, PE_Noop_SetHScrollTotalSizeLinkNumber),
+	    HLL_EXPORT(SetHScrollViewSizeLinkNumber, PE_Noop_SetHScrollViewSizeLinkNumber),
+	    HLL_EXPORT(SetHScrollbarFlatName, PE_Noop_SetHScrollbarFlatName),
+	    HLL_EXPORT(SetHScrollbarOverrideBGCGName, PE_Noop_SetHScrollbarOverrideBGCGName),
+	    HLL_EXPORT(SetHScrollbarOverrideBGFlatName, PE_Noop_SetHScrollbarOverrideBGFlatName),
+	    HLL_EXPORT(SetHScrollbarOverrideBarCGName, PE_Noop_SetHScrollbarOverrideBarCGName),
+	    HLL_EXPORT(SetHScrollbarOverrideBarFlatName, PE_Noop_SetHScrollbarOverrideBarFlatName),
+	    HLL_EXPORT(SetHScrollbarOverrideLeftCGName, PE_Noop_SetHScrollbarOverrideLeftCGName),
+	    HLL_EXPORT(SetHScrollbarOverrideLeftFlatName, PE_Noop_SetHScrollbarOverrideLeftFlatName),
+	    HLL_EXPORT(SetHScrollbarOverrideRightCGName, PE_Noop_SetHScrollbarOverrideRightCGName),
+	    HLL_EXPORT(SetHScrollbarOverrideRightFlatName, PE_Noop_SetHScrollbarOverrideRightFlatName),
+	    HLL_EXPORT(SetKeyWaitCGName, PE_Noop_SetKeyWaitCGName),
+	    HLL_EXPORT(SetKeyWaitFlatName, PE_Noop_SetKeyWaitFlatName),
+	    HLL_EXPORT(SetKeyWaitPos, PE_Noop_SetKeyWaitPos),
+	    HLL_EXPORT(SetKeyWaitShow, PE_Noop_SetKeyWaitShow),
+	    HLL_EXPORT(SetLayoutBoxPadding, PE_Noop_SetLayoutBoxPadding),
+	    HLL_EXPORT(SetLayoutBoxReturnSizeForRate, PE_Noop_SetLayoutBoxReturnSizeForRate),
+	    HLL_EXPORT(SetListBoxCharSpace, PE_Noop_SetListBoxCharSpace),
+	    HLL_EXPORT(SetLockInputState, PE_Noop_SetLockInputState),
+	    HLL_EXPORT(SetMessageWindowActive, PE_Noop_SetMessageWindowActive),
+	    HLL_EXPORT(SetMessageWindowCGName, PE_Noop_SetMessageWindowCGName),
+	    HLL_EXPORT(SetMessageWindowFlatName, PE_Noop_SetMessageWindowFlatName),
+	    HLL_EXPORT(SetMessageWindowFlatShowWaitFrameNumber, PE_Noop_SetMessageWindowFlatShowWaitFrameNumber),
+	    HLL_EXPORT(SetMessageWindowInactiveMultipleColor, PE_Noop_SetMessageWindowInactiveMultipleColor),
+	    HLL_EXPORT(SetMessageWindowText, PE_Noop_SetMessageWindowText),
+	    HLL_EXPORT(SetMessageWindowTextArea, PE_Noop_SetMessageWindowTextArea),
+	    HLL_EXPORT(SetMessageWindowTextOriginPosMode, PE_Noop_SetMessageWindowTextOriginPosMode),
+	    HLL_EXPORT(SetMessageWindowTextSpace, PE_Noop_SetMessageWindowTextSpace),
+	    HLL_EXPORT(SetMessageWindowTextSpeed, PE_Noop_SetMessageWindowTextSpeed),
+	    HLL_EXPORT(SetMotionData, PE_Noop_SetMotionData),
+	    HLL_EXPORT(SetMovieTime, PE_Noop_SetMovieTime),
+	    HLL_EXPORT(SetMultiTextBoxBGColor, PE_Noop_SetMultiTextBoxBGColor),
+	    HLL_EXPORT(SetMultiTextBoxCharSpace, PE_Noop_SetMultiTextBoxCharSpace),
+	    HLL_EXPORT(SetMultiTextBoxFrameColor, PE_Noop_SetMultiTextBoxFrameColor),
+	    HLL_EXPORT(SetMultiTextBoxHScrollShow, PE_Noop_SetMultiTextBoxHScrollShow),
+	    HLL_EXPORT(SetMultiTextBoxLineSpace, PE_Noop_SetMultiTextBoxLineSpace),
+	    HLL_EXPORT(SetMultiTextBoxPadding, PE_Noop_SetMultiTextBoxPadding),
+	    HLL_EXPORT(SetMultiTextBoxReadOnly, PE_Noop_SetMultiTextBoxReadOnly),
+	    HLL_EXPORT(SetMultiTextBoxReadOnlyBGColor, PE_Noop_SetMultiTextBoxReadOnlyBGColor),
+	    HLL_EXPORT(SetMultiTextBoxVScrollShow, PE_Noop_SetMultiTextBoxVScrollShow),
+	    HLL_EXPORT(SetNumeralFullPitch, PE_Noop_SetNumeralFullPitch),
+	    HLL_EXPORT(SetNumeralShowPadding, PE_Noop_SetNumeralShowPadding),
+	    HLL_EXPORT(SetNumeralShowType, PE_Noop_SetNumeralShowType),
+	    HLL_EXPORT(SetOpenTextBoxIME, PE_Noop_SetOpenTextBoxIME),
+	    HLL_EXPORT(SetPanelAlphaGradationBottom, PE_Noop_SetPanelAlphaGradationBottom),
+	    HLL_EXPORT(SetPanelAlphaGradationLeft, PE_Noop_SetPanelAlphaGradationLeft),
+	    HLL_EXPORT(SetPanelAlphaGradationRight, PE_Noop_SetPanelAlphaGradationRight),
+	    HLL_EXPORT(SetPanelAlphaGradationTop, PE_Noop_SetPanelAlphaGradationTop),
+	    HLL_EXPORT(SetPanelColor, PE_Noop_SetPanelColor),
+	    HLL_EXPORT(SetPanelSize, PE_Noop_SetPanelSize),
+	    HLL_EXPORT(SetRectangleDetectionPoint, PE_Noop_SetRectangleDetectionPoint),
+	    HLL_EXPORT(SetShowForBackScene, PE_Noop_SetShowForBackScene),
+	    HLL_EXPORT(SetSpinBoxBGColor, PE_Noop_SetSpinBoxBGColor),
+	    HLL_EXPORT(SetSpinBoxCGName, PE_Noop_SetSpinBoxCGName),
+	    HLL_EXPORT(SetSpinBoxCharSpace, PE_Noop_SetSpinBoxCharSpace),
+	    HLL_EXPORT(SetSpinBoxDecimalPlace, PE_Noop_SetSpinBoxDecimalPlace),
+	    HLL_EXPORT(SetSpinBoxFrameColor, PE_Noop_SetSpinBoxFrameColor),
+	    HLL_EXPORT(SetSpinBoxReadOnly, PE_Noop_SetSpinBoxReadOnly),
+	    HLL_EXPORT(SetSpinBoxReadOnlyBGColor, PE_Noop_SetSpinBoxReadOnlyBGColor),
+	    HLL_EXPORT(SetSpinBoxSelectColor, PE_Noop_SetSpinBoxSelectColor),
+	    HLL_EXPORT(SetSpinBoxSize, PE_Noop_SetSpinBoxSize),
+	    HLL_EXPORT(SetTextBoxBGColor, PE_Noop_SetTextBoxBGColor),
+	    HLL_EXPORT(SetTextBoxCharSpace, PE_Noop_SetTextBoxCharSpace),
+	    HLL_EXPORT(SetTextBoxFrameColor, PE_Noop_SetTextBoxFrameColor),
+	    HLL_EXPORT(SetTextBoxReadOnly, PE_Noop_SetTextBoxReadOnly),
+	    HLL_EXPORT(SetTextBoxReadOnlyBGColor, PE_Noop_SetTextBoxReadOnlyBGColor),
+	    HLL_EXPORT(SetUserComponentData, PE_Noop_SetUserComponentData),
+	    HLL_EXPORT(SetUserComponentName, PE_Noop_SetUserComponentName),
+	    HLL_EXPORT(SetVScrollTotalSizeLinkNumber, PE_Noop_SetVScrollTotalSizeLinkNumber),
+	    HLL_EXPORT(SetVScrollViewSizeLinkNumber, PE_Noop_SetVScrollViewSizeLinkNumber),
+	    HLL_EXPORT(SetVScrollbarFlatName, PE_Noop_SetVScrollbarFlatName),
+	    HLL_EXPORT(SetVScrollbarOverrideBGCGName, PE_Noop_SetVScrollbarOverrideBGCGName),
+	    HLL_EXPORT(SetVScrollbarOverrideBGFlatName, PE_Noop_SetVScrollbarOverrideBGFlatName),
+	    HLL_EXPORT(SetVScrollbarOverrideBarCGName, PE_Noop_SetVScrollbarOverrideBarCGName),
+	    HLL_EXPORT(SetVScrollbarOverrideBarFlatName, PE_Noop_SetVScrollbarOverrideBarFlatName),
+	    HLL_EXPORT(SetVScrollbarOverrideDownCGName, PE_Noop_SetVScrollbarOverrideDownCGName),
+	    HLL_EXPORT(SetVScrollbarOverrideDownFlatName, PE_Noop_SetVScrollbarOverrideDownFlatName),
+	    HLL_EXPORT(SetVScrollbarOverrideUpCGName, PE_Noop_SetVScrollbarOverrideUpCGName),
+	    HLL_EXPORT(SetVScrollbarOverrideUpFlatName, PE_Noop_SetVScrollbarOverrideUpFlatName),
+	    HLL_EXPORT(IsExistActivity, PartsEngine_IsExistActivity),
+	    HLL_EXPORT(CreateActivity, PE_Act_CreateActivity),
+	    HLL_EXPORT(ReleaseActivity, PE_Act_ReleaseActivity),
+	    HLL_EXPORT(LoadActivityEXText, PE_Act_LoadActivityEXText),
+	    HLL_EXPORT(ReadActivityFile, PE_Act_ReadActivityFile),
+	    HLL_EXPORT(WriteActivityFile, PE_Act_WriteActivityFile),
+	    HLL_EXPORT(IsExistActivityFile, PE_Act_IsExistActivityFile),
+	    HLL_EXPORT(AddActivityParts, PE_Act_AddActivityParts),
+	    HLL_EXPORT(RemoveActivityParts, PE_Act_RemoveActivityParts),
+	    HLL_EXPORT(RemoveAllActivityParts, PE_Act_RemoveAllActivityParts),
+	    HLL_EXPORT(NumofActivityParts, PE_Act_NumofActivityParts),
+	    HLL_EXPORT(IsExistActivityPartsByName, PE_Act_IsExistActivityPartsByName),
+	    HLL_EXPORT(IsExistActivityPartsByNumber, PE_Act_IsExistActivityPartsByNumber),
+	    HLL_EXPORT(GetActivityPartsNumber, PE_Act_GetActivityPartsNumber),
+	    HLL_EXPORT(GetActivityEXID, PE_Act_GetActivityEXID),
+	    HLL_EXPORT(AddActivityCloseParts, PE_Act_AddActivityCloseParts),
+	    HLL_EXPORT(IsExistActivityCloseParts, PE_Act_IsExistActivityCloseParts),
+	    HLL_EXPORT(AddActivityLockedParts, PE_Act_AddActivityLockedParts),
+	    HLL_EXPORT(IsExistActivityLockedParts, PE_Act_IsExistActivityLockedParts),
+	    HLL_EXPORT(EraseActivityEndKey, PE_Act_EraseActivityEndKey),
+	    HLL_EXPORT(IsExistActivityEndKey, PE_Act_IsExistActivityEndKey),
+	    HLL_EXPORT(NumofActivityEndKey, PE_Act_NumofActivityEndKey),
+	    HLL_EXPORT(GetActivityEndKey, PE_Act_GetActivityEndKey)
 	    );
 
 static struct ain_hll_function *get_fun(int libno, const char *name)

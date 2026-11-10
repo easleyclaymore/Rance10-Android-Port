@@ -521,8 +521,15 @@ static void method_call(int nargs, int return_address)
 	stack_pop();                          /* 弹掉 fno */
 	int obj = stack_pop().i;              /* 弹 obj */
 	/* D48/D71: empty obj -> materialise the owning struct. Prefer the
-	 * name-derived struct no; the AIN struct_type field is wrong on v12. */
-	if (obj <= 0) {
+	 * name-derived struct no; the AIN struct_type field is wrong on v12.
+	 * [HACK-POC D83] Also rebuild when `this` resolves to a live slot that no
+	 * longer holds a STRUCT/IFACE page: that means an object was released while
+	 * a holder still referenced its slot, and the slot has since been recycled
+	 * (observed: a LOCAL_PAGE handed to CPartsFunctionSet@Init). Rebuilding
+	 * loses the old state, but the object is already gone; see TECH_DEBT D83. */
+	bool _obj_bad = obj > 0 && (size_t)obj < heap_size && heap[obj].page &&
+		heap[obj].page->type != STRUCT_PAGE && heap[obj].page->type != IFACE_PAGE;
+	if (obj <= 0 || _obj_bad) {
 		int sno = struct_no_from_function(fno);
 		if (sno < 0)
 			sno = ain->functions[fno].struct_type;

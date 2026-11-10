@@ -660,13 +660,16 @@ static bool pe_dirty = false;
 
 void parts_render_update(void)
 {
-	if (pe_dirty) {
-		struct parts *p;
-		PARTS_LIST_FOREACH(p) {
-			scene_sprite_dirty(&p->sp);
-		}
-		pe_dirty = false;
+	/* [HACK-POC D92] Mark every parts sprite dirty on each update instead of
+	 * only when pe_dirty is set. parts_engine_dirty() has very few call sites,
+	 * so the scene was rendered exactly once (at startup, with an empty sprite
+	 * list) and gfx_swap() never presented parts again -- the window stayed
+	 * black. Real fix: make every parts mutation call parts_engine_dirty(). */
+	struct parts *p;
+	PARTS_LIST_FOREACH(p) {
+		scene_sprite_dirty(&p->sp);
 	}
+	pe_dirty = false;
 }
 
 void parts_engine_dirty(void)

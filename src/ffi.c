@@ -559,16 +559,40 @@ void hll_call(int libno, int fno, int result_tag)
                     continue;
                 if (heap[slot].type != VM_PAGE)
                     continue;
-                struct page *pg = heap[slot].page;
-                if (!pg)
-                    continue;
-                union vm_value *base = pg->values;
-                if ((union vm_value *)addr >= base &&
-                    (union vm_value *)addr < base + pg->nr_vars) {
-                    hi = slot;
-                    pi = (int32_t)((union vm_value *)addr - base);
+                /* [FIX D94] Resolve `addr` against the page the HLL call left in
+                 * heap_ptrs[i], not heap[slot].page: the callee may have
+                 * realloc'ed the array (Array.EmplaceBack does `*a = np`), and
+                 * that page is only written back to heap[slot].page AFTER this
+                 * result block. Matching against the stale page made every
+                 * Array.EmplaceBack with tag=47 return (hi=-1,pi=-1), so
+                 * CASTimerManager@CreateHandle produced invalid handles and
+                 * CheckHandle reported "manager deleted" -- the frame timer
+                 * stopped and the scene never advanced past WaitFrame. */
+                struct page *cand = NULL;
+                switch (f->arguments[i].type.data) {
+                case AIN_REF_ARRAY:
+                case AIN_REF_ARRAY_TYPE:
+                case AIN_REF_STRUCT:
+                    cand = (struct page *)heap_ptrs[i];
+                    break;
+                default:
                     break;
                 }
+                struct page *pg = heap[slot].page;
+                for (int c = 0; c < 2; c++) {
+                    struct page *try_pg = c == 0 ? cand : pg;
+                    if (!try_pg)
+                        continue;
+                    union vm_value *base = try_pg->values;
+                    if ((union vm_value *)addr >= base &&
+                        (union vm_value *)addr < base + try_pg->nr_vars) {
+                        hi = slot;
+                        pi = (int32_t)((union vm_value *)addr - base);
+                        break;
+                    }
+                }
+                if (hi > 0)
+                    break;
             }
         }
         /* AIN v12 CALLHLL's third immediate is the concrete element type of

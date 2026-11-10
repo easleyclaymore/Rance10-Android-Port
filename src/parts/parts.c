@@ -60,6 +60,13 @@ static void parts_init(struct parts *parts)
 	parts->sp.has_pixel = true;
 	parts->sp.has_alpha = true;
 	parts->sp.render = parts_sprite_render;
+	/* [HACK-POC D93] parts are drawn dynamically by parts_sprite_render(), so
+	 * they have no static pixel buffer -- but scene_sprite_dirty() only calls
+	 * scene_register_sprite() when has_pixel is set. Without this flag every
+	 * parts sprite stayed out of the scene and scene_render() only cleared the
+	 * screen (black window). Real fix: let the scene accept render-only
+	 * sprites, or set has_pixel in parts_dirty() alongside the dirty flag. */
+	parts->sp.has_pixel = true;
 	parts->sp.to_json = parts_sprite_to_json;
 	parts->local = PARTS_PARAMS_INITIALIZER(1);
 	parts->global = PARTS_PARAMS_INITIALIZER(1);

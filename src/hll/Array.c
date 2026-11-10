@@ -775,7 +775,43 @@ static void Array_Reverse_(struct page **a)
 	}
 }
 
+/* AIN Array f[15]: bool EraseAll(ref array, HLL_FUNC predicate).
+ * [HACK-POC D88] predicate dispatch is still TODO (D39/D63); Rance10 calls this
+ * from Overlay@InnerInit to drop every pending entry, so clearing is enough to
+ * keep the sequence correct. Real fix: evaluate the predicate per element. */
+static int Array_EraseAll_(struct page **a, void *predicate)
+{
+	(void)predicate;
+	if (!a || !*a)
+		return 0;
+	struct page *p = *a;
+	int had = p->nr_vars > 0;
+	p->nr_vars = 0;
+	return had;
+}
+
+/* AIN Array f[58..61]: ref First(ref array [, predicate]).
+ * [HACK-POC D90] the predicate overloads are registered on the same C symbol,
+ * so they ignore the predicate and return the first element. Real fix: split
+ * them once predicate dispatch exists (D39/D63). */
+static void *Array_First_(struct page **a)
+{
+	if (!a || !*a || (*a)->nr_vars == 0)
+		return NULL;
+	return &(*a)->values[0];
+}
+
+/* AIN Array f[21..22]: bool Any(ref array [, predicate]).
+ * [HACK-POC D90] predicate overload shares this symbol and is ignored; returns
+ * "array is non-empty". Real fix: evaluate the predicate per element (D39/D63). */
+static int Array_Any_(struct page **a, void *predicate)
+{
+	(void)predicate;
+	return a && *a && (*a)->nr_vars > 0;
+}
+
 HLL_LIBRARY(Array,
+	    HLL_EXPORT(EraseAll, Array_EraseAll_),
 	    HLL_EXPORT(At, Array_At_),
     HLL_EXPORT(Last, Array_Last_),
 	    HLL_EXPORT(Find, Array_Find_),
@@ -1017,5 +1053,8 @@ HLL_LIBRARY(Array,
 	    HLL_TODO_EXPORT(VN_or, Array_VN_or),
 	    HLL_TODO_EXPORT(VS_add, Array_VS_add),
 	    HLL_TODO_EXPORT(VS_and, Array_VS_and),
-	    HLL_TODO_EXPORT(VS_or, Array_VS_or)
+	    HLL_TODO_EXPORT(VS_or, Array_VS_or),
+	    HLL_EXPORT(First, Array_First_),
+	    HLL_EXPORT(Last, Array_Last_),
+	    HLL_EXPORT(Any, Array_Any_)
 	    );
