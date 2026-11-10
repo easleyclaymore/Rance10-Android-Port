@@ -435,6 +435,16 @@ void hll_call(int libno, int fno, int result_tag)
 				stack[stack_ptr].i = heap_slots[i];
 			}
 			heap_ptrs[i] = heap[heap_slots[i]].page;
+			/* D72: a ref-array parameter must point at an ARRAY_PAGE. Some
+			 * Parts UI globals hold a 0-slot placeholder instead; Array.PushBack
+			 * skipped them so the array never grew. Normalise to an empty array. */
+			struct page *cur = (struct page *)heap_ptrs[i];
+			if (cur && cur->type != ARRAY_PAGE) {
+				struct page *np = alloc_page(ARRAY_PAGE, AIN_ARRAY_INT, 0);
+				np->array.rank = 1;
+				np->array.struct_type = -1;
+				heap_ptrs[i] = np;
+			}
 			ptrs[i] = &heap_ptrs[i];
 			args[i] = &ptrs[i];
 			break;
@@ -493,12 +503,15 @@ void hll_call(int libno, int fno, int result_tag)
 				j++;
 			break;
 		case AIN_REF_STRING:
-			heap[heap_slots[i]].s = heap_ptrs[i];
+			/* D75: slot 0 is the reserved GLOBAL_PAGE; never clobber it. */
+			if (heap_slots[i] > 0 && heap_slots[i] < heap_size)
+				heap[heap_slots[i]].s = heap_ptrs[i];
 			break;
 		case AIN_REF_STRUCT:
 		case AIN_REF_ARRAY_TYPE:
 		case AIN_REF_ARRAY:   /* 80 */
-			heap[heap_slots[i]].page = heap_ptrs[i];
+			if (heap_slots[i] > 0 && heap_slots[i] < heap_size)
+				heap[heap_slots[i]].page = heap_ptrs[i];
 			break;
 		case AIN_REF_FUNC_TYPE:
 		case AIN_REF_DELEGATE:

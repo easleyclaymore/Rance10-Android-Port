@@ -262,6 +262,10 @@ int vm_copy_page(struct page *page)
 
 union vm_value vm_copy(union vm_value v, enum ain_data_type type)
 {
+	/* D73: a null reference (-1) is common in freshly built structs;
+	 * copying it must not call heap_get_page(-1). */
+	if (v.i < 0)
+		return v;
 	switch (type) {
 	case AIN_STRING:
 		return (union vm_value) { .i = vm_string_ref(heap_get_string(v.i)) };
@@ -2613,7 +2617,11 @@ static enum opcode execute_instruction(enum opcode opcode)
 		 * already ignores negative slots. */
 		if (dst_i > 0)
 			delete_page(dst_i);
-		heap_set_page(dst_i, new_dg);
+		/* D75: slot 0 is the reserved GLOBAL_PAGE. DG_ASSIGN with dst_i<=0
+		 * used to overwrite it with a delegate page, so every later
+		 * PUSHGLOBALPAGE; PUSH n; REF read out of bounds. */
+		if (dst_i > 0)
+			heap_set_page(dst_i, new_dg);
 		stack_push(set_i);
 		break;
 	}
