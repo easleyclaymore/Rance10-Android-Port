@@ -6,9 +6,24 @@
 
 ## 状态
 
-**进行中，尚未成功。** 启动链已跑通：`*ERROR*=0`、零未实现 HLL，
-VM 进入持续主循环（`Rance10@Run → InitGlobalObject`），**但画面仍全黑**
-（当前卡点 D81：第一帧渲染）。累计 105 个修复点，`[HACK]` 源码标记为 0。
+**进行中，尚未成功。** 启动链已彻底跑通：`*ERROR*=0`、零未实现 HLL，
+VM 进入持续主循环（`main → Run → RunLocalGame → RunStartScreen → RunIScene
+→ WaitFrame`），**但画面仍全黑**。
+
+关键里程碑（2026-11-10）：
+
+- **D100/D101** 修复了启动崩溃：`heap_grow` 未零初始化 `seq`（`xrealloc` 不
+  清零，D83 守卫误判新 slot 为"仍在使用"，`heap_free_ptr` 越界写坏 glibc
+  堆元数据 → `calloc()` SEGV）；ffi 引用返回值（tag=47 非 single-value）
+  的 `hi`（数组页 slot）缺引用保护，AIN `DELETE` 把数组页 unref 到 0。
+  修后程序不再崩溃，30 秒跑满。
+- **当前卡点**：`CASTimerManager` 的 `handles` 数组（`AIN_ARRAY_STRUCT`）被
+  `Realloc(0)` 错误清空到 0/1 个元素，`CheckHandle(At(40))` 越界 → timer
+  失效 → 时间不流动 → CG 永远不加载（`Parts_SetPartsCG` 0 次）。这是 struct
+  数组元素生命周期问题，见主文档 `TECH_DEBT`。
+- 累计修复点 >110 个；`[HACK]` 标记约 259 处，集中在 `src/hll/PartsEngine.c`
+  （Activity 子系统整段 stub，约 225 处），其余少量在 heap/vm/Array/
+  SystemService。**主分支交付物不含 `[HACK]` 代码**（当前都在本地工作分支）。
 
 开发与调试文档**唯一来源**是私有笔记仓库
 <https://github.com/easleyclaymore/alinnotes>，目录
