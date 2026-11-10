@@ -376,11 +376,13 @@ static void *Array_Last_(struct page **a, uintptr_t out)
 static void *Array_At_(struct page **a, int index)
 {
 	NOTICE("[Array] At(%d)", index);
-	if (!a || !*a)
+	if (!a || !*a) {
 		return NULL;
+	}
 	struct page *p = *a;
-	if (index < 0 || index >= p->nr_vars)
+	if (index < 0 || index >= p->nr_vars) {
 		return NULL;
+	}
 	return &p->values[index];
 }
 

@@ -527,6 +527,9 @@ static void method_call(int nargs, int return_address)
 	 * a holder still referenced its slot, and the slot has since been recycled
 	 * (observed: a LOCAL_PAGE handed to CPartsFunctionSet@Init). Rebuilding
 	 * loses the old state, but the object is already gone; see TECH_DEBT D83. */
+	/* Only the LOCAL_PAGE case is the known slot-recycling symptom; rebuilding on
+	 * every non-STRUCT page destroyed live containers (CASTimerManager.handles
+	 * got replaced by a fresh empty array, so every handle went stale). */
 	bool _obj_bad = obj > 0 && (size_t)obj < heap_size && heap[obj].page &&
 		heap[obj].page->type != STRUCT_PAGE && heap[obj].page->type != IFACE_PAGE;
 	if (obj <= 0 || _obj_bad) {

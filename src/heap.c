@@ -119,8 +119,22 @@ int32_t heap_alloc_slot(enum vm_pointer_type type)
 
 static void heap_free_slot(int32_t slot)
 {
+	/* [HACK-POC D95] Do NOT recycle the slot.
+	 *
+	 * Rance10's Parts/Asra layers keep holding stale slot numbers after an
+	 * object is released (the slot is then handed out again and its page type
+	 * changes under the holder). That produced a cascade of symptoms: a LOCAL
+	 * page handed to CPartsFunctionSet@Init (3937), a DELEGATE page used as
+	 * `this` (heap[1], 1/8 out of bounds), CASTimerManager::handles collapsing
+	 * to nr_vars=0. All of them are "recycled slot still referenced".
+	 *
+	 * Leaking the slot removes the entire class: allocation only ever grows.
+	 * Cost is a few MB over a session; the real fix is to find the unbalanced
+	 * unref and restore recycling. */
 	heap[slot].seq = 0;
-	heap_free_stack[--heap_free_ptr] = slot;
+	/* Keep the (now released) payload pointer so stale holders read a dead but
+	 * mapped page instead of a NULL/aliased one. */
+	(void)slot;
 }
 
 static void heap_double_free(int32_t slot)
@@ -264,8 +278,15 @@ bool string_index_valid(int index)
 
 struct page *heap_get_page(int index)
 {
-	if (unlikely(!page_index_valid(index)))
-		VM_ERROR("Invalid page index: %d", index);
+	/* [HACK-POC D96] Tolerate a dead slot instead of aborting: the Asra layer
+	 * still references delegate pages after release (DG_PLUSA from
+	 * parts::AddErasingLayerEvent / CModeMark@Init). Callers already handle
+	 * NULL. Real fix: keep the delegate alive until the last holder drops it. */
+	if (unlikely(!page_index_valid(index))) {
+		WARNING("Invalid page index: %d (type=%d)", index,
+			heap_index_valid(index) ? heap[index].type : -1);
+		return NULL;
+	}
 	return heap[index].page;
 }
 
