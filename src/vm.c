@@ -595,6 +595,17 @@ static void function_call(int fno, int return_address)
 			for (int i = 0; i < f->nr_vars && i < 24; i++)
 				NOTICE("[fn]   v%-2d type=%-3d i=%-8d f=%.3f", i,
 				       f->vars[i].type.data, lp->values[i].i, lp->values[i].f);
+			/* this 结构体成员也 dump 出来：SceneStack@IsActive 这类判据
+			 * 全靠 this[6] 之类的字段，只打印实参看不到。 */
+			int sp = lp->local.struct_ptr;
+			if (sp > 0) {
+				struct page *tp = heap_get_page(sp);
+				if (tp && tp->type == STRUCT_PAGE) {
+					NOTICE("[fn]   this slot=%d nr=%d", sp, tp->nr_vars);
+					for (int i = 0; i < tp->nr_vars && i < 12; i++)
+						NOTICE("[fn]     m%-2d i=%d", i, tp->values[i].i);
+				}
+			}
 		}
 	}
 }
@@ -657,6 +668,27 @@ static void method_call(int nargs, int return_address)
 	}
 	set_struct_page(obj);
 	heap[call_stack[call_stack_ptr-1].page_slot].page->local.struct_ptr = obj;
+
+	/* [D116] CALLMETHOD 的 `this` 要等 method_call 才知道（function_call 里
+	 * struct_ptr 还是 -1），所以 this 成员转储放在这里。 */
+	if (getenv("XSYS4_FN_DUMP") && atoi(getenv("XSYS4_FN_DUMP")) == fno) {
+		static int mn;
+		if (mn++ < 3) {
+			struct page *tp = heap_get_page(obj);
+			if (tp && tp->type == STRUCT_PAGE) {
+				NOTICE("[fn] this(fno=%d) slot=%d nr=%d", fno, obj, tp->nr_vars);
+				for (int i = 0; i < tp->nr_vars && i < 12; i++) {
+					int v = tp->values[i].i;
+					struct page *mp = v > 0 ? heap_get_page(v) : NULL;
+					NOTICE("[fn]   m%-2d i=%-8d page=%d nr=%d", i, v,
+					       mp ? mp->type : -1, mp ? mp->nr_vars : -1);
+				}
+			} else {
+				NOTICE("[fn] this(fno=%d) slot=%d 不是 STRUCT（type=%d）",
+				       fno, obj, tp ? tp->type : -1);
+			}
+		}
+	}
 }
 
 /* D71: AIN v12 function->struct_type is unreliable (CreateOld reports 0

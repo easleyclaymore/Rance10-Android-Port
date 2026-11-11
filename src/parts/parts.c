@@ -2341,9 +2341,13 @@ int PE_get_active_controller(void)
 	/* [D115] XSYS4_CTRL_DBG=1：AIN 的 parts::detail::GetActiveLayer 走
 	 * PartsEngine f[6]，若这里安静而 PE_Init 被打，说明 lib27 表与 AIN 索引错位。 */
 	if (getenv("XSYS4_CTRL_DBG")) {
-		static int n;
-		if (n++ < 20) NOTICE("[ctrl] active=%d nctrl=%d", ctrl_stack.active,
-				     PE_get_nr_controllers());
+		/* 只在值变化时打印：IsActive 每帧都问，全打会把日志冲爆，
+		 * 而这里要的正是"这一次返回了什么"。 */
+		static int n, la = -99, ln = -99;
+		int a = ctrl_stack.active, c = PE_get_nr_controllers();
+		if (n++ < 5 || a != la || c != ln)
+			NOTICE("[ctrl] #%d active=%d nctrl=%d", n, a, c);
+		la = a; ln = c;
 	}
 	return ctrl_stack.active;
 }
