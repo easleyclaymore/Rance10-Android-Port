@@ -71,6 +71,19 @@ int32_t call_stack_ptr = 0;
 struct ain *ain;
 size_t instr_ptr = 0;
 
+/* [D118] Parent local page for lambda frames, indexed by lambda fno.
+ * DG_NEW_FROM_METHOD records the creating frame (where captured variables
+ * live); X_GETENV reads it back. The frame is kept alive with heap_ref. */
+static int *lambda_parent_slot;
+static int lambda_parent_n;
+static void lambda_parent_init(void)
+{
+        if (!lambda_parent_slot && ain && ain->nr_functions > 0) {
+                lambda_parent_slot = calloc(ain->nr_functions, sizeof(int));
+                lambda_parent_n = ain->nr_functions;
+        }
+}
+
 bool vm_reset_once = false;
 
 // Read the opcode at ADDR.
@@ -311,8 +324,23 @@ union vm_value vm_copy(union vm_value v, enum ain_data_type type)
 		return (union vm_value) { .i = vm_string_ref(heap_get_string(v.i)) };
 	case AIN_STRUCT:
 	case AIN_DELEGATE:
-	case AIN_ARRAY_TYPE:
-		return (union vm_value) { .i = vm_copy_page(heap_get_page(v.i)) };
+	case AIN_ARRAY_TYPE: {
+		union vm_value r = { .i = vm_copy_page(heap_get_page(v.i)) };
+		/* [D116] XSYS4_CP_DBG=1：结构体深拷贝时打源/副本的成员 0。
+		 * Parts(1114) 的 m_partsNumber 若在拷贝时还是 0，副本就永远是 0。 */
+		if (getenv("XSYS4_CP_DBG") && type == AIN_STRUCT) {
+			struct page *sp = heap_get_page(v.i);
+			struct page *dp = heap_get_page(r.i);
+			if (sp && dp && sp->type == STRUCT_PAGE && sp->index == 1114) {
+				static int n;
+				if (n++ < 60)
+					NOTICE("[cp] src=%d m0=%d -> dst=%d m0=%d ip=0x%zX",
+					       v.i, sp->values[0].i, r.i, dp->values[0].i,
+					       instr_ptr);
+			}
+		}
+		return r;
+	}
 	case AIN_REF_TYPE:
 		heap_ref(v.i);
 		return v;
@@ -779,11 +807,11 @@ static void delegate_call(int dg_no, int return_address)
 	 * 场景的点击处理器若根本没注册进去，这里能看到 dg_no=37601 之后的
 	 * 目标 delegate 是"空". */
 	bool dg_ok = delegate_get(heap_get_delegate_page(dg_page), dg_index, &obj, &fun);
-	if (!dg_ok && getenv("XSYS4_DG_MISS_DBG")) {
-		static int miss_n;
-		if (miss_n++ < 40)
-			NOTICE("[dgm] MISS dg_no=%d page=%d idx=%d", dg_no, dg_page, dg_index);
-	}
+        if (!dg_ok && getenv("XSYS4_DG_MISS_DBG")) {
+                static int miss_n;
+                if (miss_n++ < 40)
+                        NOTICE("[dgm] MISS dg_no=%d page=%d idx=%d", dg_no, dg_page, dg_index);
+        }
 	if (dg_ok) {
 		/* [D114] XSYS4_DG_CALL_DBG=1: which AIN function does a per-frame
 		 * delegate actually dispatch to? Used to locate the broken
@@ -1487,7 +1515,21 @@ static enum opcode execute_instruction(enum opcode opcode)
 	 * Observed form at MapPair@... @0xd918f2: [member_ref, copy] -> one
 	 * value left for the following DELETE. Full semantics over all 300
 	 * call sites still needs a static census. */
-	case X_SET: {
+/* [D118] X_GETENV (0x103): in [local_page] -> out [parent_local_page].
+         * The parent is the frame that CREATED this lambda (recorded at
+         * DG_NEW_FROM_METHOD), not the current caller: FadeIn's onFinish
+         * lambdas read the captured DG_Event from FadeIn's var[2]. */
+        case X_GETENV: {
+                stack_pop();
+                int fno = call_stack[call_stack_ptr-1].fno;
+                int parent = (fno > 0 && fno < lambda_parent_n) ? lambda_parent_slot[fno] : -1;
+                if (parent > 0 && parent < heap_size && heap[parent].page)
+                        stack_push(parent);
+                else
+                        stack_push(-1);
+                break;
+        }
+        	case X_SET: {
 		int v = stack_pop().i;
 		stack_pop();
 		stack_push((union vm_value){ .i = v });
@@ -3053,6 +3095,17 @@ case SR_ASSIGN: {
 	case DG_NEW_FROM_METHOD: {
 		int fun = stack_pop().i;
 		int obj = stack_pop().i;
+                /* [D118] remember the creating frame's local page for X_GETENV */
+                if (!lambda_parent_slot)
+                        lambda_parent_init();
+                if (fun > 0 && fun < lambda_parent_n) {
+                        int lp = local_page_slot();
+                        if (lp > 0 && lp < heap_size && heap[lp].ref > 0 &&
+                            lambda_parent_slot[fun] != lp) {
+                                lambda_parent_slot[fun] = lp;
+                                heap_ref(lp);
+                        }
+                }
 		stack_push(heap_alloc_page(delegate_new_from_method(obj, fun)));
 		break;
 	}

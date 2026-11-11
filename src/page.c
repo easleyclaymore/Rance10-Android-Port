@@ -15,6 +15,7 @@
  */
 
 #include <string.h>
+#include <stdlib.h>
 #include "system4.h"
 #include "system4/ain.h"
 #include "system4/string.h"
@@ -802,6 +803,20 @@ struct page *delegate_new_from_method(int obj, int fun)
 {
 	if (fun < 1)
 		return alloc_page(DELEGATE_PAGE, 0, 0);
+	/* [D118] Keep the registration target alive. NEW's constructor
+	 * registers the delegate against the temporary `this` slot,
+	 * which the following ASSIGN copies and releases. Once its ref
+	 * hits 0, delegate_get() drops the entry by seq and
+	 * EndEventCallback@Update never runs -- the start screen never
+	 * advances. XSYS4_DG_KEEPALIVE=0 disables it for A/B. */
+	static int keepalive_off = -1;
+	if (keepalive_off < 0) {
+	        const char *e = getenv("XSYS4_DG_KEEPALIVE");
+	        keepalive_off = (e && !strcmp(e, "0"));
+	}
+	if (!keepalive_off && obj > 0 && obj < heap_size &&
+	        heap[obj].ref > 0)
+	        heap_ref(obj);
 	struct page *page = alloc_page(DELEGATE_PAGE, 0, 3);
 	page->values[0].i = obj;
 	page->values[1].i = fun;
