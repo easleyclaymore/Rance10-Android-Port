@@ -21,6 +21,9 @@
 #include "system4/string.h"
 #include "vm/page.h"
 #include "vm/heap.h"
+#include <stdint.h>
+#include "vm.h"
+#include "system4/ain.h"
 
 /* [DBG] XSYS4_ARR_DBG=1 gates a compact page-lifecycle trace for array
  * bugs (D102): every op prints the page pointer and element count so a
@@ -820,18 +823,50 @@ static void Array_Reverse_(struct page **a)
 }
 
 /* AIN Array f[15]: bool EraseAll(ref array, HLL_FUNC predicate).
- * [HACK-POC D88] predicate dispatch is still TODO (D39/D63); Rance10 calls this
- * from Overlay@InnerInit to drop every pending entry, so clearing is enough to
- * keep the sequence correct. Real fix: evaluate the predicate per element. */
-static int Array_EraseAll_(struct page **a, void *predicate)
+ * [D116] Real predicate dispatch.
+ * The D88 stub cleared the whole array. That is wrong for callers passing a
+ * predicate: EndEventCallbackCollection@Add PushBack()s the fresh callback and
+ * then calls EraseAll(IsEnd) to drop only *completed* entries. Clearing
+ * everything removed the fresh callback too, so the FadeIn -> onFinish ->
+ * 37123 -> SceneStack@Exit chain never ran and the game stayed on the start
+ * screen (L2 unreachable).
+ * With no predicate (fno <= 0, or outside the AIN function table) keep the
+ * old "clear all" behaviour, which Overlay@InnerInit relies on.
+ * XSYS4_ERASEALL_LEGACY=1 forces the old behaviour for A/B comparison. */
+static int Array_EraseAll_(struct page **a, uintptr_t predicate)
 {
-	(void)predicate;
-	if (!a || !*a)
-		return 0;
-	struct page *p = *a;
-	int had = p->nr_vars > 0;
-	p->nr_vars = 0;
-	return had;
+        if (!a || !*a)
+                return 0;
+        struct page *p = *a;
+        int before = p->nr_vars;
+        int had = before > 0;
+        int fno = (int)predicate;
+
+        static int legacy = -1;
+        if (legacy < 0) {
+                const char *e = getenv("XSYS4_ERASEALL_LEGACY");
+                legacy = (e && *e && *e != '0');
+        }
+        if (legacy || fno <= 0 || fno >= ain->nr_functions) {
+                p->nr_vars = 0;
+                return had;
+        }
+
+        int n = 0, removed = 0;
+        for (int i = 0; i < before; i++) {
+                union vm_value v = p->values[i];
+                stack_push(v);
+                vm_call(fno, -1);
+                int drop = stack_pop().i != 0;
+                if (drop)
+                        removed++;
+                else
+                        p->values[n++] = v;
+        }
+        p->nr_vars = n;
+        if (getenv("XSYS4_ERASEALL_DBG"))
+                NOTICE("[eraseall] fno=%d before=%d kept=%d removed=%d", fno, before, n, removed);
+        return had;
 }
 
 /* AIN Array f[58..61]: ref First(ref array [, predicate]).
