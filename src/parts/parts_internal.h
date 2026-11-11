@@ -548,6 +548,11 @@ enum parts_message_type {
 	PARTS_MSG_KEY_TRIGGER    = 14,
 	PARTS_MSG_KEY_DOWN       = 15,
 	PARTS_MSG_KEY_UP         = 17,
+	/* [D115] AIN 侧 CPartsMessageManager@CallDelegate 的 switch 编号与本枚举
+	 * 不一致（实测 4=左键点击、5=双击、6=OnCursor）。消息类型最终由 AIN 解释，
+	 * 所以发消息时用 AIN 的编号；本枚举只用于 C 侧语义。
+	 * 目前只验证了左键点击，其余类型保持原值，遇到再逐个校准。 */
+	PARTS_MSG_MOUSE_CLICK_AIN = 4,
 };
 
 void parts_msg_push(struct parts* parts, int type, const char *fmt, ...);

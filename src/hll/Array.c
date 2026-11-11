@@ -392,7 +392,6 @@ static void *Array_Last_(struct page **a, uintptr_t out)
 
 static void *Array_At_(struct page **a, int index)
 {
-	NOTICE("[Array] At(%d)", index);
 	if (!a || !*a) {
 		return NULL;
 	}
@@ -748,12 +747,15 @@ static void *Array_EmplaceBack_(struct page **a)
 static void Array_Realloc_(struct page **a, int size, uintptr_t extra)
 {
 	(void)extra;
-	NOTICE("[Array] Realloc(%d)", size);
+	if (getenv("XSYS4_ARRAY_DBG"))
+		NOTICE("[Array] Realloc(%d)", size);
 	if (!a)
 		return;
 	if (size < 0)
 		size = 0;
 	if (!*a) {
+		if (size == 0)
+			return; /* realloc_array() would free it immediately (D114) */
 		struct page *p = alloc_page(ARRAY_PAGE, AIN_ARRAY_INT, size);
 		p->array.rank = 1;
 		p->array.struct_type = -1;
@@ -761,8 +763,22 @@ static void Array_Realloc_(struct page **a, int size, uintptr_t extra)
 		return;
 	}
 	struct page *p = *a;
+	if (p->type != ARRAY_PAGE)
+		return;
+	/* [D114] p->a_type is already an ARRAY type (AIN_ARRAY_STRUCT, ...);
+	 * elem_to_array_type() on it falls through to AIN_ARRAY_INT and silently
+	 * turns struct arrays into int arrays -- the exact bug already fixed in
+	 * Array_PushBack_. realloc_array() wants the array type itself. */
+	if (size == 0) {
+		/* realloc_array(..., 0) calls delete_page_vars + free_page and
+		 * returns NULL, leaving *a dangling. Keep a valid empty page:
+		 * parts::detail::CallPartsUpdateEvent calls Realloc(0) every
+		 * frame for the empty EndUpdateEvent list. */
+		p->nr_vars = 0;
+		return;
+	}
 	union vm_value dim = { .i = size };
-	struct page *np = realloc_array(p, 1, &dim, elem_to_array_type(p->a_type), p->array.struct_type, false);
+	struct page *np = realloc_array(p, 1, &dim, p->a_type, p->array.struct_type, false);
 	if (np)
 		*a = np;
 }

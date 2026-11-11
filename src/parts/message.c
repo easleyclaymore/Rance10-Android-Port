@@ -41,13 +41,28 @@ static STAILQ_HEAD(, parts_message) msg_queue =
 
 void parts_msg_push(struct parts* parts, int type, const char *fmt, ...)
 {
+	/* [D114] XSYS4_MSG_DBG=1: confirm that the multi-controller message
+	 * system is enabled and that click messages actually reach the queue. */
+	static int msg_dbg_n;
+	/* 只打非悬停消息，否则前 60 条全被 MOUSE_ON 占满，看不到点击。 */
+	if (getenv("XSYS4_MSG_DBG") && type != PARTS_MSG_MOUSE_ON && msg_dbg_n < 120) {
+		msg_dbg_n++;
+		NOTICE("[msg] push type=%d parts=%d multi=%d", type,
+		       parts ? parts->no : 0, parts_multi_controller);
+	}
+
 	// Message system is introduced in Rance 9
 	if (!parts_multi_controller)
 		return;
 
 	struct parts_message *msg = xmalloc(sizeof(*msg));
-	msg->parts_no = parts->no;
-	msg->delegate_index = parts->delegate_index;
+	/* [D115] parts == NULL 表示“全屏事件”：parts_no 固定 0。
+	 * AIN 侧 CPartsMessageManager@CallDelegate 只有看到 parts_no == 0 才去取
+	 * GetFunctionSet(0) 上注册的 AddWholeMouseLClickEvent 系列委托；
+	 * 之前 C 侧只推 per-parts 消息，全屏委托永远收不到点击，
+	 * SceneStack@Join 的 SceneStack@Exit 也就永远不被调用。 */
+	msg->parts_no = parts ? parts->no : 0;
+	msg->delegate_index = parts ? parts->delegate_index : 0;
 	msg->type = type;
 	msg->nr_variables = 0;
 
@@ -84,6 +99,10 @@ void PE_PopMessage(void)
 	if (STAILQ_EMPTY(&msg_queue))
 		return;
 	struct parts_message *msg = STAILQ_FIRST(&msg_queue);
+	/* [D115] XSYS4_MSG_POPDBG=1：谁把消息弹掉了。点击消息若被悬停处理吃掉，
+	 * 这里能看到 type=5 被 pop 而没有对应 dispatch。 */
+	if (getenv("XSYS4_MSG_POPDBG") && msg->type != PARTS_MSG_MOUSE_ON)
+		NOTICE("[mpop] type=%d parts=%d", msg->type, msg->parts_no);
 	STAILQ_REMOVE_HEAD(&msg_queue, entry);
 	free(msg);
 }

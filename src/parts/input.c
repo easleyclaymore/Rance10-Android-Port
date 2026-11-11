@@ -157,12 +157,33 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	 * still respects pass_cursor / front-to-back consumption. */
 	if (prev_clicking && !cur_clicking && click_down_parts == parts->no) {
 		clicked_parts = parts->no;
-		if (parts->clickable) {
+		/* [D114] Queue the CLICK/KEY_UP messages for every captured click,
+		 * not just for clickable parts.  The AIN side registers
+		 * "whole screen" mouse delegates (AFL_Parts_AddWholeMouseLClickEvent)
+		 * on the parts message manager; SceneStack@Join uses one of them to
+		 * call SceneStack@Exit, which is the only writer of IsFinish.
+		 * Rance10's start screen has 点击許可=0 on all three parts ("click
+		 * anywhere to continue"), so gating the message on clickable left
+		 * IsFinish=0 forever: WaitForClick kept exiting on GetClickNumber,
+		 * Join immediately re-entered 効果設定待ち, and Scenes::RunTitle
+		 * never started.  clickable still controls the button sound. */
+		if (parts->clickable)
 			audio_play_sound(parts->on_click_sound);
-			parts_msg_push(parts, PARTS_MSG_MOUSE_CLICK,
-					"iii", cur_pos.x, cur_pos.y, VK_LBUTTON);
-			parts_msg_push(parts, PARTS_MSG_KEY_UP, "i", VK_LBUTTON);
-		}
+		/* [D115] 用 PARTS_MSG_MOUSE_CLICK（=5）发出去，AIN 的
+		 * CPartsMessageManager@CallDelegate 会落到 CallDelegateMouseDoubleClick
+		 * ——AIN 侧的 switch 编号与 xsystem4 枚举错位，左键点击是 4。
+		 * 实测 4 → CallDelegateMouseClick → SceneStack@RegisterEvent 的 lambda，
+		 * 这是 start screen 唯一能收到点击的入口。 */
+		parts_msg_push(parts, PARTS_MSG_MOUSE_CLICK_AIN,
+				"iii", cur_pos.x, cur_pos.y, VK_LBUTTON);
+		parts_msg_push(parts, PARTS_MSG_KEY_UP, "i", VK_LBUTTON);
+		/* [D115] 同一此点击还要以“全屏”身份入队一份：AIN 的
+		 * AFL_Parts_AddWholeMouseLClickEvent 系列把委托注册在 parts_no=0 的
+		 * 函数集上，只有 parts_no==0 的消息才会派发到它们。
+		 * SceneStack@RegisterEvent 注册左键 lambda → SceneStack@Exit →
+		 * IsFinish，是 start screen 推进到标题场景的另一条入口。 */
+		parts_msg_push(NULL, PARTS_MSG_MOUSE_CLICK_AIN,
+				"iii", cur_pos.x, cur_pos.y, VK_LBUTTON);
 	}
 }
 

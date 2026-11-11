@@ -69,7 +69,16 @@ static int Delegate_Numof(struct page **delegate)
 
 static bool Delegate_Empty(struct page **delegate)
 {
-	return Delegate_Numof(delegate) == 0;
+	/* [D114] Do NOT route through Delegate_Numof(): delegate_numof() runs a
+	 * garbage-collection pass that *removes* entries whose obj slot has lost
+	 * its ref. parts::detail::CallPartsUpdateEvent uses Delegate.Empty() as
+	 * a harmless "is this registration still live?" query; the GC side
+	 * effect emptied fresh registrations, so the EndUpdateEvent list lost
+	 * its only entry on the first frame and EndEventCallback@Update was
+	 * never dispatched. That broke the whole FadeIn -> onFinish chain.
+	 * Empty() is a predicate and must not mutate the page. */
+	struct page *p = as_delegate_page(delegate);
+	return !p || p->nr_vars == 0;
 }
 
 static bool Delegate_Exist(struct page **delegate, int func)

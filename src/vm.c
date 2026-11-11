@@ -454,8 +454,14 @@ static void scenario_call(int slot)
  *   - callee pushes return value on the stack
  *   - RETURN jumps to return address (saved in stack frame)
  */
+static void call_trace_probe(int fno);
+
 static int _function_call(int fno, int return_address)
 {
+	/* [D114] Probe here, not in function_call(): delegate_call() bypasses
+	 * function_call() and jumps straight to _function_call(), so the old
+	 * placement made every DG_CALL-dispatched function look "never called". */
+	call_trace_probe(fno);
 	struct ain_function *f = &ain->functions[fno];
 	if (fno == 147) {
 		NOTICE(">>> CASTimer@0 构造函数被调用 (ptr=%d)", call_stack_ptr);
@@ -537,7 +543,6 @@ static void call_trace_probe(int fno)
 
 static void function_call(int fno, int return_address)
 {
-	call_trace_probe(fno);
 	/* AIN reserves fno 0 / address 0 for the NULL function. A call to it
 	 * is a no-op: consume its arguments (there are none) without creating
 	 * a frame or jumping to address 0. The caller's instruction pointer
@@ -565,6 +570,31 @@ static void function_call(int fno, int return_address)
 			break;
 		default:
 			break;
+		}
+	}
+
+	/* [D114-probe] XSYS4_FN_DUMP=<fno>: 打印该 AIN 函数前 3 次调用的实参/局部，
+	 * 用来回答"参数到底是 0 还是 -1"这种只能靠观测的问题。默认关闭。 */
+	if (getenv("XSYS4_FN_DUMP")) {
+		static int fn_fno = -2, fn_n;
+		if (fn_fno == -2)
+			fn_fno = atoi(getenv("XSYS4_FN_DUMP"));
+		/* XSYS4_FN_DUMP_SKIP=<v>：跳过首参等于 v 的调用（例如把每帧的悬停
+		 * 消息 6 滤掉，只留点击/按键），否则转储全被噪音占满。 */
+		static int fn_skip = -1;
+		if (fn_skip == -1) {
+			const char *sv = getenv("XSYS4_FN_DUMP_SKIP");
+			fn_skip = sv ? atoi(sv) : -2;
+		}
+		if (fno == fn_fno && fn_skip != -2 && heap[slot].page->values[0].i == fn_skip)
+			;
+		else if (fno == fn_fno && fn_n++ < 3) {
+			struct page *lp = heap[slot].page;
+			NOTICE("[fn] %s(%d) slot=%d nargs=%d nvars=%d",
+			       display_sjis0(f->name), fno, slot, f->nr_args, f->nr_vars);
+			for (int i = 0; i < f->nr_vars && i < 24; i++)
+				NOTICE("[fn]   v%-2d type=%-3d i=%-8d f=%.3f", i,
+				       f->vars[i].type.data, lp->values[i].i, lp->values[i].f);
 		}
 	}
 }
@@ -678,6 +708,17 @@ static void delegate_call(int dg_no, int return_address)
 	int dg_index = stack_peek(0 + return_values).i;
 	int obj, fun;
 	if (delegate_get(heap_get_delegate_page(dg_page), dg_index, &obj, &fun)) {
+		/* [D114] XSYS4_DG_CALL_DBG=1: which AIN function does a per-frame
+		 * delegate actually dispatch to? Used to locate the broken
+		 * parts::detail::CallPartsUpdateEvent -> CASTask@UpdateEvent chain. */
+		static int dgc_dbg_n;
+		if (getenv("XSYS4_DG_CALL_DBG") && dgc_dbg_n++ < 20000) {
+			const char *nm = "?";
+			if (fun > 0 && fun < ain->nr_functions)
+				nm = ain->functions[fun].name;
+			NOTICE("[dgc] dg_no=%d obj=%d fun=%d %s page=%d idx=%d",
+			       dg_no, obj, fun, nm, dg_page, dg_index);
+		}
 		// pop previous return value
 		for (int rv = 0; rv < return_values; rv++)
 			stack_pop();
@@ -2847,6 +2888,14 @@ case SR_ASSIGN: {
 		int dst_i = stack_pop().i;
 		struct page *set = heap_get_delegate_page(set_i);
 		struct page *new_dg = copy_page(set);
+		/* [D114] XSYS4_DG_ASSIGN_DBG=1: verify the source delegate really
+		 * carries entries before it is copied into an event registration. */
+		static int dga_dbg_n;
+		if (getenv("XSYS4_DG_ASSIGN_DBG") && dga_dbg_n++ < 60)
+			NOTICE("[dga] set_i=%d dst_i=%d set=%p type=%d nr=%d new=%p nr=%d",
+			       set_i, dst_i, (void*)set, set ? set->type : -1,
+			       set ? set->nr_vars : -1, (void*)new_dg,
+			       new_dg ? new_dg->nr_vars : -1);
 		/* dst_i == -1 is an empty delegate target; delete_page(-1) would
 		 * call heap_get_page on an invalid slot (D57). heap_set_page()
 		 * already ignores negative slots. */
