@@ -775,6 +775,28 @@ static void delegate_call(int dg_no, int return_address)
 			heap[slot].page->values[i] = vm_copy(arg, dg->variables[i].type.data);
 		}
 
+		/* [D116] delegate 调用直接走 _function_call，绕开了 function_call 里的
+		 * FN_DUMP 探针；这里补一份，否则"委托调用的函数"永远 dump 不到。 */
+		if (getenv("XSYS4_FN_DUMP") && atoi(getenv("XSYS4_FN_DUMP")) == fun) {
+			static int dn;
+			int k = dn++;
+			if ((k < 3 || k % 300 == 0) && fun > 0 && fun < ain->nr_functions) {
+				NOTICE("[fn] %s(%d) [delegate obj=%d]",
+				       display_sjis0(ain->functions[fun].name), fun, obj);
+				for (int i = 0; i < dg->nr_arguments && i < 8; i++)
+					NOTICE("[fn]   a%d type=%d i=%d f=%.3f", i,
+					       dg->variables[i].type.data,
+					       heap[slot].page->values[i].i,
+					       heap[slot].page->values[i].f);
+				struct page *tp2 = obj > 0 ? heap_get_page(obj) : NULL;
+				if (tp2 && tp2->type == STRUCT_PAGE) {
+					NOTICE("[fn]   this slot=%d nr=%d", obj, tp2->nr_vars);
+					for (int i = 0; i < tp2->nr_vars && i < 10; i++)
+						NOTICE("[fn]     m%-2d i=%d", i, tp2->values[i].i);
+				}
+			}
+		}
+
 		set_struct_page(obj);
 	} else {
 		// call finished: clean up stack and jump to return address
