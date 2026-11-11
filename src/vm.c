@@ -707,7 +707,16 @@ static void delegate_call(int dg_no, int return_address)
 	int dg_page = stack_peek(1 + return_values).i;
 	int dg_index = stack_peek(0 + return_values).i;
 	int obj, fun;
-	if (delegate_get(heap_get_delegate_page(dg_page), dg_index, &obj, &fun)) {
+	/* [D115] XSYS4_DG_MISS_DBG=1：DG_CALL 打空炮时也留痕。
+	 * 场景的点击处理器若根本没注册进去，这里能看到 dg_no=37601 之后的
+	 * 目标 delegate 是"空". */
+	bool dg_ok = delegate_get(heap_get_delegate_page(dg_page), dg_index, &obj, &fun);
+	if (!dg_ok && getenv("XSYS4_DG_MISS_DBG")) {
+		static int miss_n;
+		if (miss_n++ < 40)
+			NOTICE("[dgm] MISS dg_no=%d page=%d idx=%d", dg_no, dg_page, dg_index);
+	}
+	if (dg_ok) {
 		/* [D114] XSYS4_DG_CALL_DBG=1: which AIN function does a per-frame
 		 * delegate actually dispatch to? Used to locate the broken
 		 * parts::detail::CallPartsUpdateEvent -> CASTask@UpdateEvent chain. */
