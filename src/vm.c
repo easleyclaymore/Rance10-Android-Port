@@ -193,6 +193,12 @@ static union vm_value *stack_peek_ptr(int n)
 }
 
 // Pop a reference off the stack, returning the address of the referenced object.
+#define NULLREF_LOG(why) do { \
+	if (getenv("XSYS4_NULLREF_DBG")) { \
+		static int _n; \
+		if (_n++ < 200) NOTICE("[nullw] %s ip=0x%zX", why, instr_ptr); \
+	} } while (0)
+
 static union vm_value *stack_pop_var(void)
 {
 	int32_t page_index = stack_pop().i;
@@ -204,21 +210,21 @@ static union vm_value *stack_pop_var(void)
 	 * initialisation (TECH_DEBT). */
 	static union vm_value null_ref_slot = { .i = -1 };
 	if (unlikely(!heap_index_valid(heap_index)))
-		return &null_ref_slot;
+		{ NULLREF_LOG("site1"); return &null_ref_slot; }
 	/* D72: a valid slot may still have a NULL page pointer. */
 	if (unlikely(!heap[heap_index].page))
-		return &null_ref_slot;
+		{ NULLREF_LOG("site2"); return &null_ref_slot; }
 	/* D72: any 0-slot page (not just ARRAY_PAGE/index 0) is an
 	 * uninitialised reference during Parts UI setup. */
 	if (heap[heap_index].page && heap[heap_index].page->nr_vars == 0)
-		return &null_ref_slot;
+		{ NULLREF_LOG("site3"); return &null_ref_slot; }
 	/* [D113] Generic HLL refs (Array.First/Last/...) can hand back an
 	 * unresolved [page, -1] pair when the callee ignored the predicate.
 	 * ASSIGN on such a pair must not abort the VM; the destination is a
 	 * compiler-generated dummy return slot that is DELETEd immediately.
 	 * Same null_ref_slot strategy as D52. */
 	if (unlikely(page_index < 0))
-		return &null_ref_slot;
+		{ NULLREF_LOG("site4"); return &null_ref_slot; }
 	if (unlikely(!heap[heap_index].page || page_index >= heap[heap_index].page->nr_vars)) {
 		struct page *pg = heap[heap_index].page;
 		VM_ERROR("Out of bounds page index: %d/%d (type=%d nr_vars=%d ref=%d v0=%d v1=%d)",
@@ -647,6 +653,23 @@ static void method_call(int nargs, int return_address)
 	function_call(fno, return_address);   /* 弹掉 nargs 个 args */
 	stack_pop();                          /* 弹掉 fno */
 	int obj = stack_pop().i;              /* 弹 obj */
+	/* [D116] XSYS4_BADTHIS=1：this 拿到了一个不是堆槽的值（例如 parts 编号），
+	 * 后续对成员的写会落到错误地址且不报错。记下函数与调用 IP。 */
+	if (getenv("XSYS4_BADTHIS")) {
+		bool bad = obj <= 0 || (size_t)obj >= heap_size || !heap[obj].page;
+		if (!bad) {
+			enum page_type pt = heap[obj].page->type;
+			bad = pt != STRUCT_PAGE && pt != IFACE_PAGE;
+		}
+		const char *nm = (fno > 0 && fno < ain->nr_functions) ?
+			display_sjis0(ain->functions[fno].name) : "?";
+		if (bad && obj > 0 && nm && strstr(nm, "Parts@")) {
+			static int n;
+			if (n++ < 30)
+				NOTICE("[badthis] fno=%d %s obj=%d ip=0x%zX",
+				       fno, nm, obj, instr_ptr);
+		}
+	}
 	/* D48/D71: empty obj -> materialise the owning struct. Prefer the
 	 * name-derived struct no; the AIN struct_type field is wrong on v12.
 	 * [HACK-POC D83] Also rebuild when `this` resolves to a live slot that no
@@ -673,7 +696,20 @@ static void method_call(int nargs, int return_address)
 	 * struct_ptr 还是 -1），所以 this 成员转储放在这里。 */
 	if (getenv("XSYS4_FN_DUMP") && atoi(getenv("XSYS4_FN_DUMP")) == fno) {
 		static int mn;
-		if (mn++ < 3) {
+		int _mn = mn++;
+		if (_mn < 3 || _mn % 300 == 0) {
+			if (getenv("XSYS4_CENSUS")) {
+				int cnt = 0, zero = 0;
+				for (int s2 = 1; s2 < heap_size && cnt < 40; s2++) {
+					struct page *pp = heap[s2].page;
+					if (!pp || pp->type != STRUCT_PAGE || pp->index != 1114)
+						continue;
+					cnt++;
+					if (pp->values[0].i == 0) zero++;
+					NOTICE("[census] slot=%d m0=%d nr=%d", s2, pp->values[0].i, pp->nr_vars);
+				}
+				NOTICE("[census] Parts 实例=%d 其中 m0==0 的=%d", cnt, zero);
+			}
 			struct page *tp = heap_get_page(obj);
 			if (tp && tp->type == STRUCT_PAGE) {
 				NOTICE("[fn] this(fno=%d) slot=%d nr=%d", fno, obj, tp->nr_vars);
@@ -1375,6 +1411,22 @@ static enum opcode execute_instruction(enum opcode opcode)
 		break;
 	}
 	case ASSIGN: {
+		/* [D116] XSYS4_IP_WATCH=<hex_lo>:<hex_hi>：只看某个地址区间内的赋值，
+		 * 直接看到"写到了哪个 slot、写了什么值"。 */
+		if (getenv("XSYS4_IP_WATCH")) {
+			static size_t lo = (size_t)-1, hi;
+			if (lo == (size_t)-1) {
+				const char *w = getenv("XSYS4_IP_WATCH");
+				sscanf(w, "%zx:%zx", &lo, &hi);
+			}
+			if ((size_t)instr_ptr >= lo && (size_t)instr_ptr <= hi) {
+				static int n;
+				if (n++ < 40)
+					NOTICE("[ipw] ip=0x%zX heap=%d page=%d val=%d",
+					       instr_ptr, stack_peek(2).i, stack_peek(1).i,
+					       stack_peek(0).i);
+			}
+		}
 		{
 			int _dh = stack_peek(1).i, _dp = stack_peek(0).i;
 			if (_dh > 0 && (size_t)_dh < heap_size && heap[_dh].page &&
