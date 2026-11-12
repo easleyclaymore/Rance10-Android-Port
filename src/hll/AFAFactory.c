@@ -18,11 +18,15 @@
 #include "asset_manager.h"
 #include "hll.h"
 
-static enum asset_type get_asset_type(int type)
+/* AIN AFAFactory type ids (see afa::CG/Flat/Sound_SearchTitle):
+ * 2 = CG, 3 = FLAT, 5 = SOUND. Return int, not enum: an unsigned enum turned
+ * the -1 sentinel into 0xffffffff and crashed asset_exists_by_name(). */
+static int get_asset_type(int type)
 {
 	switch (type) {
 	case 2: return ASSET_CG;
 	case 3: return ASSET_FLAT;
+	case 5: return ASSET_SOUND;
 	default: return -1;
 	}
 }
@@ -31,7 +35,7 @@ HLL_WARN_UNIMPLEMENTED(false, bool, AFAFactory, IsExistArchive, struct string *A
 
 bool AFAFactory_LoadArchive(int type, struct string *archive_name)
 {
-	enum asset_type t = get_asset_type(type);
+	int t = get_asset_type(type);
 	if (t < 0) {
 		WARNING("Unknown asset type: %d", type);
 		return false;
@@ -41,7 +45,17 @@ bool AFAFactory_LoadArchive(int type, struct string *archive_name)
 
 //int AFAFactory_GetCountOfData(int Type);
 //void AFAFactory_GetTitleByIndex(int Type, int Index, struct string **Name);
-//int AFAFactory_SearchTitle(int Type, struct string *Name);
+/* AFAFactory.SearchTitle(Type, Name) -> archive entry id, or -1.
+ * Used by the title scene to resolve flat asset names. */
+static int AFAFactory_SearchTitle(int type, struct string *name)
+{
+	int t = get_asset_type(type);
+	if (t < 0 || !name || !name->text)
+		return -1;
+	int id = -1;
+	return asset_exists_by_name(t, name->text, &id) ? id : -1;
+}
+
 //int AFAFactory_PrefixSearchTitle(int Type, struct string *Name);
 //int AFAFactory_SuffixSearchTitle(int Type, struct string *Name);
 //int AFAFactory_GetCountOfSearchData(int Type);
@@ -52,7 +66,7 @@ HLL_LIBRARY(AFAFactory,
 	    HLL_EXPORT(LoadArchive, AFAFactory_LoadArchive),
 	    HLL_TODO_EXPORT(GetCountOfData, AFAFactory_GetCountOfData),
 	    HLL_TODO_EXPORT(GetTitleByIndex, AFAFactory_GetTitleByIndex),
-	    HLL_TODO_EXPORT(SearchTitle, AFAFactory_SearchTitle),
+	    HLL_EXPORT(SearchTitle, AFAFactory_SearchTitle),
 	    HLL_TODO_EXPORT(PrefixSearchTitle, AFAFactory_PrefixSearchTitle),
 	    HLL_TODO_EXPORT(SuffixSearchTitle, AFAFactory_SuffixSearchTitle),
 	    HLL_TODO_EXPORT(GetCountOfSearchData, AFAFactory_GetCountOfSearchData),

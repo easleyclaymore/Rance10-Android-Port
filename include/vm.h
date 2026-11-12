@@ -110,6 +110,10 @@ union vm_value vm_copy(union vm_value v, enum ain_data_type type);
 
 int vm_execute_ain(struct ain *program);
 void vm_call(int fno, int struct_page);
+bool vm_iface_pair(int iface_no, int ref_slot, int *obj, int *offset);
+bool vm_call_hll_func(int fno, union vm_value elem, union vm_value *ret);
+bool vm_call_hll_closure(int fno, const union vm_value *args, int nargs,
+			 union vm_value *ret);
 int vm_time(void);
 void vm_sleep(int ms);
 
@@ -159,6 +163,7 @@ struct function_call {
 	int32_t page_slot;
 	int32_t struct_page;
 	int32_t struct_page_refed;  /* true only if set_struct_page actually took a ref */
+	int32_t entry_sp;           /* operand stack depth after the arguments were popped */
 };
 
 extern struct function_call call_stack[4096];

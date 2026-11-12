@@ -894,6 +894,23 @@ bool PE_SetPartsFlat(int parts_no, struct string *filename, int state)
 	return false;
 }
 
+/* AIN PartsEngine f[733]: string GetPartsFlatName(int parts_no, int state).
+ *
+ * The name last given to PE_SetPartsFlat() for that state. Rance10 reads it
+ * back to decide whether a state already carries artwork before replacing it
+ * (scene transitions call SetFlat for every state and compare the result), so
+ * a missing state must answer with the empty string rather than fail. */
+struct string *PE_GetPartsFlatName(int parts_no, int state)
+{
+	if (!parts_state_valid(--state))
+		return string_ref(&EMPTY_STRING);
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts)
+		return string_ref(&EMPTY_STRING);
+	struct parts_flat *f = parts_get_flat(parts, state);
+	return string_ref(f->name ? f->name : &EMPTY_STRING);
+}
+
 bool PE_IsPartsFlatEnd(int parts_no, int state)
 {
 	if (!parts_state_valid(--state))

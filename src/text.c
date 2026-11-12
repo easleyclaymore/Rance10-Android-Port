@@ -117,6 +117,7 @@ struct font_size *gfx_font_get_size(unsigned face, float size)
 	return font->get_size(font, size);
 }
 
+
 static struct font_size *text_style_font_size(struct text_style *ts)
 {
 	if (ts->font_size)
@@ -213,8 +214,20 @@ float _gfx_render_text(Texture *dst, char *msg, struct text_render_metrics *tm)
 		uint32_t code = char_to_code(msg, tm->font_size->font->charmap);
 		msg += SJIS_2BYTE(*msg) ? 2 : 1;
 		struct glyph *glyph = font_get_glyph(tm->font_size, code, tm->weight);
-		if (!glyph)
+		if (!glyph) {
+			/* XSYS4_UC_RENDER_DBG：字形缺失是"画了但纹理全透明"的
+			 * 直接原因。打印编码表/码值/字体名，区分"编码不对"和
+			 * "这个字体根本没有这个字"。 */
+			if (getenv("XSYS4_UC_RENDER_DBG")) {
+				static int gn;
+				if (gn++ < 8)
+					NOTICE("[uct] NO GLYPH charmap=%d code=0x%X "
+					       "size=%.1f",
+					       tm->font_size->font->charmap, code,
+					       tm->font_size->size);
+			}
 			continue;
+		}
 
 		// render glyph
 		Texture *t = &glyph->t[tm->weight];

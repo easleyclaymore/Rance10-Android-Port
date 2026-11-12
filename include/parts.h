@@ -27,6 +27,7 @@ void PE_enable_multi_controller(void);
 bool PE_Init(void);
 void PE_Reset(void);
 void PE_Update(int passed_time, bool message_window_show);
+void parts_advance_animation(int passed_time);
 void PE_UpdateComponent(int passed_time);
 void PE_UpdateParts(int passed_time, bool is_skip, bool message_window_show);
 void PE_SetDelegateIndex(int parts_no, int delegate_index);
@@ -72,6 +73,9 @@ void PE_ReleaseAllPartsWithoutSystem(void);
 void PE_ReleaseAllWithoutSystem(struct page **erase_number_list);
 void PE_SetPos(int parts_no, int x, int y);
 int PE_GetPartsX(int parts_no);
+/* 视图绝对坐标（含父链）。排障用；渲染与命中都以 global.pos 为准。 */
+int PE_GetPartsGlobalX(int parts_no);
+int PE_GetPartsGlobalY(int parts_no);
 int PE_GetPartsY(int parts_no);
 void PE_SetZ(int parts_no, int z);
 int PE_GetPartsZ(int parts_no);
@@ -123,6 +127,19 @@ int PE_GetComponentType(int parts_no, int state);
 void PE_SetInputState(int parts_no, int state);
 int PE_GetInputState(int parts_no);
 bool PE_SetPartsRectangleDetectionSize(int parts_no, int w, int h, int state);
+bool PE_SetPartsSize(int parts_no, int w, int h, int state);
+/* 用户组件 (component type 15)：登记控件种类与显示文字（游戏编码字节串）。
+ * 目前只绘制 TextButton。 */
+void PE_SetUserComponent(int parts_no, const char *object, const char *label);
+/* 用户组件的名字与键值数据（PartsEngine.Set/GetUserComponent* 的底层）。
+ * 入参/返回值都是游戏编码字节串。 */
+void PE_SetUserComponentName(int parts_no, const char *name);
+const char *PE_GetUserComponentName(int parts_no);
+void PE_SetUserComponentData(int parts_no, const char *key, const char *value);
+const char *PE_GetUserComponentData(int parts_no, const char *key);
+/* 从根参数重算整棵 parts 树的 global 参数（pos/z/alpha/scale/颜色）。
+ * 建树完成或布局变动后调用；幂等。详见 parts.c 里的说明。 */
+void PE_RefreshGlobalTree(void);
 bool PE_SetPartsCGDetectionSize(int parts_no, struct string *cg_name, int state);
 bool PE_Save(struct page **buffer);
 bool PE_SaveWithoutHideParts(struct page **buffer);
@@ -183,6 +200,9 @@ bool PE_SetPartsConstructionSurfaceArea(int parts_no, int x, int y, int w, int h
 
 // input.c
 void PE_UpdateInputState(int passed_time);
+/* 帧心跳的输入阶段：handle_events() + PE_UpdateInputState()。
+ * sact_Update 与 vm_frame_pump 都必须调用它（见 input.c 注释）。 */
+void PE_PumpInput(int passed_time);
 void PE_SetPassCursor(int parts_no, bool pass);
 bool PE_GetPartsPassCursor(int parts_no);
 void PE_SetClickable(int parts_no, bool clickable);
@@ -197,6 +217,7 @@ bool PE_SetPartsClickSoundNumber(int parts_no, int sound_no);
 bool PE_SetClickMissSoundNumber(int sound_no);
 void PE_BeginInput(void);
 void PE_EndInput(void);
+bool PE_IsInputBegun(void);
 int PE_GetClickPartsNumber(void);
 bool PE_IsCursorIn(int parts_no, int mouse_x, int mouse_y, int state);
 
@@ -257,6 +278,7 @@ void PE_EndMotion(void);
 void PE_SetMotionTime(int t);
 void PE_SeekEndMotion(void);
 void PE_UpdateMotionTime(int time, bool skip);
+void PE_AdvanceMotionClock(int passed_time);
 bool PE_IsMotion(void);
 int PE_GetMotionEndTime(void);
 void PE_PauseMotion(bool pause);
@@ -275,6 +297,8 @@ bool PE_SetPartsFontEdgeColor(int parts_no, int r, int g, int b, int state);
 bool PE_SetPartsFontEdgeWeight(int parts_no, float edge_weight, int state);
 bool PE_SetTextCharSpace(int parts_no, int char_space, int state);
 bool PE_SetTextLineSpace(int parts_no, int line_space, int state);
+int PE_GetTextCharSpace(int parts_no, int state);
+int PE_GetTextLineSpace(int parts_no, int state);
 
 // flash.c
 bool PE_ExistsFlashFile(struct string *flash_filename);
@@ -297,6 +321,7 @@ int PE_GetPartsFlatCurrentFrameNumber(int parts_no, int state);
 bool PE_BackPartsFlatBeginFrame(int parts_no, int state);
 bool PE_StepPartsFlatFinalFrame(int parts_no, int state);
 bool PE_SetPartsFlatSurfaceArea(int parts_no, int x, int y, int w, int h, int state);
+struct string *PE_GetPartsFlatName(int parts_no, int state);
 bool PE_SetPartsFlatAndStop(int parts_no, struct string *filename, int state);
 bool PE_StopPartsFlat(int parts_no, int state);
 bool PE_StartPartsFlat(int parts_no, int state);

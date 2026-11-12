@@ -10,7 +10,14 @@
 #    同时负责在桌面/终端退出时把引擎一起杀掉。
 set -u
 
-PORT=/home/alin/Rance10_Port
+PORT="${RANCE10_ROOT:-$(cd "$(dirname "$(realpath "$0")")/../.." && pwd)}"
+export XSYS4_DATA_DIR="${XSYS4_DATA_DIR:-$PORT/xsystem4}"
+# [N100] desktop Linux: force the x11 EGL platform so SDL really creates a window.
+# Termux keeps its own Termux:X11 + zink/Turnip configuration untouched.
+if [ ! -d /data/data/com.termux ]; then
+    export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-x11}"
+    export EGL_PLATFORM="${EGL_PLATFORM:-x11}"
+fi
 GAME="$PORT/game"
 BIN="$PORT/xsystem4/build/src/xsystem4"
 LOG="${RANCE10_LOG:-/tmp/rance10_run.log}"

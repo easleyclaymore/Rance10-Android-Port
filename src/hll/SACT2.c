@@ -208,6 +208,15 @@ int sact_Update(void)
 	 * leaves the window black (D113). */
 	PE_UpdateInputState(passed_time);
 
+	/* Present every frame. Drawing used to be gated on scene_is_dirty, which
+	 * only a handful of calls ever set (scene_set_wp and friends). Nothing in
+	 * AIN marks "a scene pushed a static dialog" or "a flat part changed its
+	 * frame", so the window kept showing whatever the last 3D frame put
+	 * there: the network confirmation dialog and the whole title screen were
+	 * built, loaded, validated and never painted. The render itself is a
+	 * cheap sprite-list walk; correctness first. */
+	scene_is_dirty = true;
+
 	if (scene_is_dirty) {
 		scene_render();
 		gfx_swap();

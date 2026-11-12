@@ -435,6 +435,16 @@ int hll_current_fno(void)
 	return hll_call_fno;
 }
 
+/* An AIN_IFACE / AIN_WRAP value occupies two stack slots:
+ * [object heap slot, vtable offset]. Rance10 passes and returns such values
+ * through the generic Array element type (AIN_HLL_PARAM / AIN_REF_HLL_PARAM)
+ * with the concrete element type in CALLHLL's third immediate, so the
+ * marshalling has to know when a generic value is two slots wide. */
+static bool hll_tag_is_two_slot(int tag)
+{
+	return tag == AIN_IFACE || tag == AIN_WRAP || tag == AIN_IFACE_WRAP;
+}
+
 /* A reference to a heap-owned object is just the object's handle (one stack
  * value); a reference to a value living inside a page is a two-value
  * [page, var] pair. This is not inferred from runtime behaviour: the AIN
@@ -506,10 +516,41 @@ void hll_call(int libno, int fno, int result_tag)
 		const char *t = getenv("XSYS4_HLL_TRACE");
 		hll_trace = t ? 1 : 0;
 	}
-	if (hll_trace)
-		NOTICE("[hll] lib=%d fno=%d tag=%d nr_args=%d sp=%d ret=%d %s.%s",
-		       libno, fno, result_tag, f->nr_arguments, stack_ptr,
-		       f->return_type.data, ain->libraries[libno].name, f->name);
+	if (hll_trace) {
+		/* XSYS4_HLL_TRACE_FILTER 收窄轨迹：`27:73,27:170` 按库/序号，
+		 * `PartsEngine` 这样带大写的词也匹配库名，其它写法按函数名子串。
+		 * 不设则全打（很吵）。 */
+		const char *flt = getenv("XSYS4_HLL_TRACE_FILTER");
+		int show = flt == NULL;
+		if (flt) {
+			const char *p = flt;
+			while (*p && !show) {
+				const char *comma = strchr(p, ',');
+				size_t len = comma ? (size_t)(comma - p) : strlen(p);
+				if (len > 0) {
+					const char *colon = memchr(p, ':', len);
+					if (colon) {
+						int l = atoi(p), f2 = atoi(colon + 1);
+						if (l == libno && f2 == fno)
+							show = 1;
+					} else if (strlen(f->name) >= len &&
+						   strncasecmp(f->name, p, len) == 0) {
+						show = 1;
+					} else if (strstr(ain->libraries[libno].name, p)) {
+						/* 按库名（如 PartsEngine / SceneStack）收窄 */
+						show = 1;
+					}
+				}
+				if (!comma)
+					break;
+				p = comma + 1;
+			}
+		}
+		if (show)
+			NOTICE("[hll] lib=%d fno=%d tag=%d nr_args=%d sp=%d ret=%d %s.%s",
+			       libno, fno, result_tag, f->nr_arguments, stack_ptr,
+			       f->return_type.data, ain->libraries[libno].name, f->name);
+	}
 
 	if (!libraries[libno])
 		VM_ERROR("Unimplemented HLL function: %s.%s", ain->libraries[libno].name, f->name);
@@ -603,8 +644,14 @@ void hll_call(int libno, int fno, int result_tag)
 			args[i] = &ptrs[i];
 			break;
 		case AIN_HLL_PARAM:
-			stack_ptr--;
-			hll_values[i] = (uint32_t)stack[stack_ptr].i;
+			if (hll_tag_is_two_slot(result_tag)) {
+				/* [object, vtable offset]: the object is the value. */
+				stack_ptr -= 2;
+				hll_values[i] = (uint32_t)stack[stack_ptr].i;
+			} else {
+				stack_ptr--;
+				hll_values[i] = (uint32_t)stack[stack_ptr].i;
+			}
 			args[i] = &hll_values[i];
 			break;
 		case AIN_HLL_FUNC:
@@ -635,6 +682,7 @@ void hll_call(int libno, int fno, int result_tag)
 	}
 
 	union vm_value r;
+	int sp_after_args = stack_ptr;
 	hll_result_tag = result_tag;
 #ifdef TRACE_HLL
 	trace_hll_call(&ain->libraries[libno], f, fun, &r, args);
@@ -690,6 +738,18 @@ void hll_call(int libno, int fno, int result_tag)
 	case AIN_VOID:
 		break;
 	case AIN_STRING:
+		/* A function declared to return a string must hand back a
+		 * `struct string *`. A small integer means the C binding does not
+		 * match its declaration (wrong arity or a stub), and storing it makes
+		 * the slot a "string" whose payload crashes the first %s that reads
+		 * it. Keep the slot empty and name the offender once. */
+		if ((uintptr_t)r.ref < 0x1000) {
+			static int n;
+			if (n++ < 20)
+				WARNING("%s.%s returned %p where a string was declared",
+					ain->libraries[libno].name, f->name, r.ref);
+			r.ref = NULL;
+		}
 		slot = heap_alloc_slot(VM_STRING);
 		heap[slot].s = r.ref;
 		stack_push(slot);
@@ -706,6 +766,7 @@ void hll_call(int libno, int fno, int result_tag)
          * match a stale/aliased slot and create a dangling reference. */
         void *addr = r.ref;
         int32_t hi = -1, pi = -1;
+        struct page *elem_page = NULL;
         if (addr) {
             for (int i = 0; i < f->nr_arguments; i++) {
                 int slot = heap_slots[i];
@@ -742,6 +803,7 @@ void hll_call(int libno, int fno, int result_tag)
                         (union vm_value *)addr < base + try_pg->nr_vars) {
                         hi = slot;
                         pi = (int32_t)((union vm_value *)addr - base);
+                        elem_page = try_pg;
                         break;
                     }
                 }
@@ -763,29 +825,46 @@ void hll_call(int libno, int fno, int result_tag)
          *          AIN_VOID placeholder) and dereferenced by ASSIGN.
          * Returning the raw element index as the leading value made DELETE
          * heap_unref() an unrelated heap slot (D31). */
-        if (result_tag >= 0 && addr && hi > 0) {
-            union vm_value v = *(union vm_value *)addr;
-            if (hll_ref_result_is_single_value(result_tag)) {
-                /* The container keeps one reference, the caller DELETEs its
-                 * own. Take an extra one so DELETE cannot drop the last ref
-                 * and leave the container with a dangling slot (D21). */
-                if (v.i > 0 && v.i < heap_size && heap[v.i].ref > 0)
-                    heap_ref(v.i);
-                stack_push(v);
-            } else {
-                /* [FIX D101] The non-single-value form returns [hi, pi] where
-                 * hi is the ARRAY page slot. AIN then R_ASSIGNs both and DELETEs
-                 * local[2] (=hi), which heap_unref()s the array page. The
-                 * container already holds its own reference, so without an extra
-                 * ref the DELETE drops it to 0 and frees the array (the observed
-                 * double free of slot 28/74315 from CreateHandle's cleanup).
-                 * Take a ref so the caller's DELETE cannot release the array. */
-                if (hi > 0 && hi < heap_size && heap[hi].ref > 0)
-                    heap_ref(hi);
-                stack_push((union vm_value){ .i = hi });
-                stack_push((union vm_value){ .i = pi });
+        /* The number of slots this result owns is decided by CALLHLL's
+         * concrete element type, and an *unresolved* reference must still
+         * leave exactly that many values behind: pushing a two-value pair for
+         * a single-value tag shifted the operand stack by one on every empty
+         * `Array.Max`/`Array.Find`, which walked the caller's stack into the
+         * wrong slots (the `PlayerCardCollection@Add` corruption). */
+        bool is_iface = result_tag >= 0 && hll_tag_is_two_slot(result_tag);
+        bool is_single = result_tag >= 0 && hll_ref_result_is_single_value(result_tag);
+        bool resolved = addr && hi > 0;
+        union vm_value elem = resolved ? *(union vm_value *)addr
+                                       : (union vm_value){ .i = -1 };
+
+        if (is_iface) {
+            /* [object, vtable offset]; -1 in the object slot is the null
+             * interface. The container owns the reference it holds, and the
+             * caller DELETEs its own copy, so take one for it. */
+            int iface = (resolved && elem_page && elem_page->type == ARRAY_PAGE)
+                ? elem_page->array.struct_type : -1;
+            int obj = -1, offset = 0;
+            if (iface < 0 || !vm_iface_pair(iface, elem.i, &obj, &offset)) {
+                obj = -1;
+                offset = 0;
+            } else if (obj > 0 && obj < heap_size && heap[obj].ref > 0) {
+                heap_ref(obj);
             }
+            stack_push((union vm_value){ .i = obj });
+            stack_push((union vm_value){ .i = offset });
+        } else if (is_single) {
+            /* One heap handle: the container keeps its reference, the caller
+             * DELETEs its own (D21). */
+            if (elem.i > 0 && elem.i < heap_size && heap[elem.i].ref > 0)
+                heap_ref(elem.i);
+            stack_push(elem);
         } else {
+            /* [FIX D101] The reference form returns [hi, pi] where hi is the
+             * page slot. AIN then R_ASSIGNs both and DELETEs local[2] (=hi),
+             * which heap_unref()s the page. The container already holds its
+             * own reference, so without an extra ref the DELETE drops it to 0
+             * and frees the array (the observed double free in CreateHandle's
+             * cleanup). */
             if (hi > 0 && hi < heap_size && heap[hi].ref > 0)
                 heap_ref(hi);
             stack_push((union vm_value){ .i = hi });
@@ -796,6 +875,32 @@ void hll_call(int libno, int fno, int result_tag)
 	default:
 		stack_push(r);
 		break;
+	}
+
+	if (getenv("XSYS4_HLL_ARGDBG")) {
+		/* After the marshalling loop the arguments are already off the stack,
+		 * so the only expected change is the declared return value.
+		 * AIN_IFACE / AIN_WRAP / AIN_OPTION returns leave two slots. */
+		int rt = f->return_type.data;
+		int slots;
+		if (rt == AIN_VOID)
+			slots = 0;
+		else if (rt == AIN_IFACE || rt == AIN_WRAP || rt == AIN_OPTION)
+			slots = 2;
+		else if (rt == AIN_REF_HLL_PARAM)
+			/* The generic return's width is decided by CALLHLL's concrete
+			 * element type, not by the declared type (see
+			 * hll_ref_result_is_single_value). */
+			slots = (result_tag >= 0 &&
+				 hll_ref_result_is_single_value(result_tag)) ? 1 : 2;
+		else
+			slots = 1;
+		int expect = sp_after_args + slots;
+		static int n;
+		if (stack_ptr != expect && n++ < 60)
+			NOTICE("[argdbg] %s.%s args=%d tag=%d sp_args=%d sp_end=%d expect=%d ret=%d",
+			       ain->libraries[libno].name, f->name, f->nr_arguments,
+			       result_tag, sp_after_args, stack_ptr, expect, rt);
 	}
 }
 
@@ -1143,14 +1248,29 @@ static struct hll_function *link_static_library(struct ain_library *ainlib, stru
 	struct hll_function *dst = xcalloc(ainlib->nr_functions, sizeof(struct hll_function));
 
 	for (int i = 0; i < ainlib->nr_functions; i++) {
+		bool matched = false;
 		for (int j = 0; lib->functions[j].name; j++) {
 			if (!strcmp(ainlib->functions[i].name, lib->functions[j].name)) {
 				link_static_library_function(&dst[i], &ainlib->functions[i], lib->functions[j].fun);
+				matched = true;
 				break;
 			}
 		}
-		if (!dst[i].fun)
-			;//WARNING("Unimplemented library function: %s.%s", ainlib->name, ainlib->functions[i].name);
+		/* [HACK][ZERO-STUB] AIN functions with no C export at all still need a
+		 * prepared ffi cif so the soft-stub path can supply a correctly typed
+		 * zero stub. With XSYS4_SOFT_STUB unset dst[i].fun stays NULL and the
+		 * original VM_ERROR behaviour is preserved. Registered in TECH_DEBT. */
+		if (!matched)
+			link_static_library_function(&dst[i], &ainlib->functions[i], NULL);
+		if (!dst[i].fun) {
+			/* [D125] 这行告警以前被注释掉了，于是"某个库函数根本没实现"
+			 * 在启动时完全无声——只有等它真被调用才炸（SOFT_STUB 打开时
+			 * 甚至不炸，只返回零值）。ADV/剧情这类模块一旦命中零桩，
+			 * 表现就是"剧情被跳过、状态机乱走"而日志里一片干净。
+			 * 每个未实现导出只打一行，量很小，必须可见。 */
+			WARNING("Unimplemented library function: %s.%s",
+				ainlib->name, ainlib->functions[i].name);
+		}
 		else if (ainlib->functions[i].nr_arguments >= HLL_MAX_ARGS)
 			ERROR("Too many arguments to library function: %s", ainlib->functions[i].name);
 	}

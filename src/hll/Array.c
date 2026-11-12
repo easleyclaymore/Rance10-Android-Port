@@ -25,6 +25,11 @@
 #include "vm.h"
 #include "system4/ain.h"
 
+/* Defined next to the Array predicate helpers below; Array_Last_ needs them
+ * before that point in the file. */
+static bool array_has_predicate(void);
+static bool array_predicate_matches(uintptr_t predicate, union vm_value elem);
+
 /* [DBG] XSYS4_ARR_DBG=1 gates a compact page-lifecycle trace for array
  * bugs (D102): every op prints the page pointer and element count so a
  * container that silently gets replaced can be followed across the run. */
@@ -311,7 +316,7 @@ static enum ain_data_type elem_to_array_type(enum ain_data_type t);
 
 static void Array_Alloc_(struct page **out, int size, int type, int a, int b)
 {
-	WARNING("Array.Alloc: size=%d type=%d a=%d b=%d tag=%d fno=%d (out=%p -> %p)",
+	ARRDBG("[ARR] alloc: size=%d type=%d a=%d b=%d tag=%d fno=%d (out=%p -> %p)",
 		size, type, a, b, hll_generic_result_type(), hll_current_fno(),
 		(void*)out, out ? (void*)*out : NULL);
 	if (!out || !*out)
@@ -347,8 +352,18 @@ static void Array_Alloc_(struct page **out, int size, int type, int a, int b)
 	                            iface_array ? AIN_ARRAY_INT : elem_to_array_type(type), n);
 	p->array.rank = 1;
 	p->array.struct_type = struct_type;
+	/* [D121] 结构体数组的元素必须在这里就构造出来（并跑构造函数）。
+	 * Rance10 的 SceneTitle.m_btnMenu 是 array<TextButton>：Alloc(8) 之后
+	 * 每个元素都该是一个构造好的 TextButton，成员 0 是 <vtable>。
+	 * 只把 8 个槽清成 0 的话，场景创建事件里 `m_btnMenu[menu]` 拿到 0，
+	 * 接着读 vtable 就变成 "Out of bounds page index" 并中止进程。 */
+	if (struct_type >= 0 && !iface_array) {
+		for (int i = 0; i < n; i++) {
+			create_struct(struct_type, &p->values[i]);
+			ARRDBG("[ARR]   elem[%d] = %d", i, p->values[i].i);
+		}
+	}
 	*out = p;
-	WARNING("Array.Alloc: 已填充 page=%p nr_vars=%d", (void*)p, p->nr_vars);
 	ARRDBG("[ARR] alloc new=%p nr=%d st=%d at=%d", (void*)p, p->nr_vars, p->array.struct_type, p->a_type);
 }
 
@@ -380,17 +395,18 @@ static bool Array_Empty_(struct page **a)
 }
 
 
-/* At(ref array, int index) -> ref <any>：返回元素引用（可读可写） */
-static void *Array_Last_(struct page **a, uintptr_t out)
+/* AIN Array f[62..65]: ref Last(ref array [, predicate]). */
+static void *Array_Last_(struct page **a, uintptr_t predicate)
 {
-	(void)out;
-	NOTICE("[Array] Last");
-	if (!a || !*a)
+	struct page *p = a ? *a : NULL;
+	if (!p || p->type != ARRAY_PAGE || p->nr_vars == 0)
 		return NULL;
-	struct page *p = *a;
-	if (p->nr_vars == 0)
-		return NULL;
-	return &p->values[p->nr_vars - 1];
+	if (!array_has_predicate())
+		return &p->values[p->nr_vars - 1];
+	for (int i = p->nr_vars - 1; i >= 0; i--)
+		if (array_predicate_matches(predicate, p->values[i]))
+			return &p->values[i];
+	return NULL;
 }
 
 static void *Array_At_(struct page **a, int index)
@@ -621,7 +637,6 @@ static int Array_Find_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 	uint64_t value = ranged ? p3 : p1;
 	int from = ranged ? (int)p1 : 0;
 	int to = ranged ? (int)p2 : 0;
-	NOTICE("[Array] Find");
 	if (!a || !*a)
 		return -1;
 	struct page *p = *a;
@@ -646,7 +661,6 @@ static int Array_FindLast_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p
 	uint64_t value = ranged ? p3 : p1;
 	int from = ranged ? (int)p1 : 0;
 	int to = ranged ? (int)p2 : 0;
-	NOTICE("[Array] FindLast");
 	if (!a || !*a)
 		return -1;
 	struct page *p = *a;
@@ -660,14 +674,17 @@ static int Array_FindLast_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p
 
 static bool Array_IsExist_(struct page **a, uint64_t value)
 {
-	NOTICE("[Array] IsExist");
 	return Array_Find_((uintptr_t)a, value, 0, 0) >= 0;
 }
 
 static void Array_PushBack_(struct page **a, uint64_t value)
 {
-	NOTICE("[Array] PushBack");
-	if (!a || !*a || !value)
+	/* A zero value is a legitimate element (0, false, the null string, an
+	 * interface whose vtable offset is 0). The old `!value` guard silently
+	 * dropped it, so `Array.PushBack(a, 0)` lost the element:
+	 * CommonFrame@GetFramePointTypeList builds {0,1,2} and got {1,2}, which
+	 * then indexed past the end of the array. */
+	if (!a || !*a)
 		return;
 	struct page *p = *a;
 	/* D41: Rance10's card-construct cache can pass a ref-array slot whose
@@ -680,17 +697,35 @@ static void Array_PushBack_(struct page **a, uint64_t value)
 	}
 	/* realloc_array 用 xrealloc 原地重分配，p 调用后立刻失效，
 	 * 所以长度和类型必须先在参数求值阶段取出 */
+	/* XSYS4_ARR_TYPE_DBG=1: report elements whose heap type does not match the
+	 * array's element type. A string array receiving a page slot (or vice
+	 * versa) is how a "string" member ends up holding an object. */
+	if (getenv("XSYS4_ARR_TYPE_DBG") && p->a_type == AIN_ARRAY_STRING &&
+	    value > 0 && value < heap_size && heap[value].type != VM_STRING) {
+		static int n;
+		if (n++ < 20)
+			NOTICE("[arrtype] push %d into string array nr=%d (slot type=%d) fno=%d",
+			       (int)value, p->nr_vars, heap[value].type, hll_current_fno());
+	}
 	int old_n = p->nr_vars;
 	/* p->a_type is already an ARRAY type (AIN_ARRAY_STRUCT, ...).
 	 * realloc_array() expects that array type, not the element type:
 	 * elem_to_array_type() on an array type falls through to AIN_ARRAY_INT
-	 * and silently turns struct arrays into int arrays. */
+	 * and silently turns struct arrays into int arrays.
+	 *
+	 * A generic `array` still has no element kind; CALLHLL's third immediate
+	 * carries the concrete type of this call, which is exactly what AIN uses
+	 * to type such an array on its first store. */
 	enum ain_data_type at = p->a_type;
+	if (at == AIN_ARRAY || at == AIN_REF_ARRAY) {
+		int tag = hll_generic_result_type();
+		array_settle_type(p, tag >= 0 ? (enum ain_data_type)tag
+					     : array_value_type(*(union vm_value *)&value));
+		at = p->a_type;
+	}
 	int st = p->array.struct_type;
-	NOTICE("PushBack: p=%p n=%d at=%d st=%d", (void*)p, old_n, at, st);
 	union vm_value dim = { .i = old_n + 1 };
 	struct page *np = realloc_array(p, 1, &dim, at, st, false);
-	NOTICE("PushBack: np=%p nr=%d", (void*)np, np ? np->nr_vars : -1);
 	if (!np)
 		return;
 	np->values[old_n] = *(union vm_value *)&value;
@@ -703,13 +738,11 @@ static void Array_PushBack_(struct page **a, uint64_t value)
 	     elem == AIN_ARRAY) && value > 0 && value < heap_size &&
 	    heap[value].ref > 0)
 		heap_ref((int)value);
-	NOTICE("PushBack: 写入完成, *a 将更新");
 	*a = np;
 }
 
 static void Array_PopBack_(struct page **a)
 {
-	NOTICE("[Array] PopBack");
 	if (!a || !*a)
 		return;
 	struct page *p = *a;
@@ -726,12 +759,15 @@ static int Array_Numof_(struct page **a, int rank);
  * The element is value-initialised according to the CALLHLL type tag. */
 static void *Array_EmplaceBack_(struct page **a)
 {
-	NOTICE("[Array] EmplaceBack");
 	if (!a || !*a)
 		return NULL;
 	struct page *p = *a;
 	int old_n = p->nr_vars;
 	int st = p->array.struct_type;
+	int tag = hll_generic_result_type();
+	/* A generic array takes the element kind of the value being added. */
+	if (p->a_type == AIN_ARRAY || p->a_type == AIN_REF_ARRAY)
+		array_settle_type(p, tag >= 0 ? (enum ain_data_type)tag : AIN_INT);
 	ARRDBG("[ARR] emp p=%p nr=%d at=%d st=%d", (void*)p, old_n, p->a_type, st);
 	union vm_value dim = { .i = old_n + 1 };
 	struct page *np = realloc_array(p, 1, &dim, p->a_type, st, false);
@@ -739,7 +775,6 @@ static void *Array_EmplaceBack_(struct page **a)
 	if (!np)
 		return NULL;
 	*a = np;
-	int tag = hll_generic_result_type();
 	if (tag == AIN_STRUCT && st >= 0)
 		create_struct(st, &np->values[old_n]);
 	else
@@ -751,7 +786,6 @@ static void Array_Realloc_(struct page **a, int size, uintptr_t extra)
 {
 	(void)extra;
 	if (getenv("XSYS4_ARRAY_DBG"))
-		NOTICE("[Array] Realloc(%d)", size);
 	if (!a)
 		return;
 	if (size < 0)
@@ -789,8 +823,10 @@ static void Array_Realloc_(struct page **a, int size, uintptr_t extra)
 static void Array_ReallocInit_(struct page **a, int size, uint64_t value)
 {
 	Array_Realloc_(a, size, 0);
-	if (!a || !*a || !value)
+	if (!a || !*a)
 		return;
+	/* Fill with `value` even when it is zero: the freshly realloc'ed page is
+	 * not guaranteed to be zeroed, and 0 is a legitimate fill. */
 	struct page *p = *a;
 	for (int i = 0; i < p->nr_vars; i++)
 		p->values[i] = *(union vm_value *)&value;
@@ -798,7 +834,6 @@ static void Array_ReallocInit_(struct page **a, int size, uint64_t value)
 
 static bool Array_Erase_(struct page **a, int index)
 {
-	NOTICE("[Array] Erase(%d)", index);
 	if (!a || !*a)
 		return false;
 	struct page *p = *a;
@@ -822,71 +857,228 @@ static void Array_Reverse_(struct page **a)
 	}
 }
 
-/* AIN Array f[15]: bool EraseAll(ref array, HLL_FUNC predicate).
- * [D116] Real predicate dispatch.
- * The D88 stub cleared the whole array. That is wrong for callers passing a
- * predicate: EndEventCallbackCollection@Add PushBack()s the fresh callback and
- * then calls EraseAll(IsEnd) to drop only *completed* entries. Clearing
- * everything removed the fresh callback too, so the FadeIn -> onFinish ->
- * 37123 -> SceneStack@Exit chain never ran and the game stayed on the start
- * screen (L2 unreachable).
- * With no predicate (fno <= 0, or outside the AIN function table) keep the
- * old "clear all" behaviour, which Overlay@InnerInit relies on.
- * XSYS4_ERASEALL_LEGACY=1 forces the old behaviour for A/B comparison. */
+/* AIN Array f[15]: bool EraseAll(ref array, predicate).
+ * Removes every element the predicate accepts; returns whether the array had
+ * anything to examine (the caller distinguishes "emptied" from "was empty"). */
 static int Array_EraseAll_(struct page **a, uintptr_t predicate)
 {
-        if (!a || !*a)
-                return 0;
-        struct page *p = *a;
-        int before = p->nr_vars;
-        int had = before > 0;
-        int fno = (int)predicate;
-
-        static int legacy = -1;
-        if (legacy < 0) {
-                const char *e = getenv("XSYS4_ERASEALL_LEGACY");
-                legacy = (e && *e && *e != '0');
-        }
-        if (legacy || fno <= 0 || fno >= ain->nr_functions) {
-                p->nr_vars = 0;
-                return had;
-        }
-
-        int n = 0, removed = 0;
-        for (int i = 0; i < before; i++) {
-                union vm_value v = p->values[i];
-                stack_push(v);
-                vm_call(fno, -1);
-                int drop = stack_pop().i != 0;
-                if (drop)
-                        removed++;
-                else
-                        p->values[n++] = v;
-        }
-        p->nr_vars = n;
-        if (getenv("XSYS4_ERASEALL_DBG"))
-                NOTICE("[eraseall] fno=%d before=%d kept=%d removed=%d", fno, before, n, removed);
-        return had;
+	struct page *p = a ? *a : NULL;
+	if (!p || p->type != ARRAY_PAGE)
+		return 0;
+	int before = p->nr_vars;
+	int n = 0;
+	for (int i = 0; i < before; i++) {
+		if (!array_predicate_matches(predicate, p->values[i]))
+			p->values[n++] = p->values[i];
+	}
+	p->nr_vars = n;
+	return before > 0;
 }
 
-/* AIN Array f[58..61]: ref First(ref array [, predicate]).
- * [HACK-POC D90] the predicate overloads are registered on the same C symbol,
- * so they ignore the predicate and return the first element. Real fix: split
- * them once predicate dispatch exists (D39/D63). */
-static void *Array_First_(struct page **a)
+/* Array registers several same-named AIN functions (First / Last / Any / ...),
+ * all bound to one C symbol. Whether the trailing predicate argument is
+ * present, and therefore whether the extra uintptr_t parameter means anything,
+ * is decided by the declaration of the function being executed. */
+static bool array_has_predicate(void)
 {
-	if (!a || !*a || (*a)->nr_vars == 0)
+	int lib = ain_get_library(ain, "Array");
+	int fno = hll_current_fno();
+	if (lib < 0 || fno < 0 || fno >= ain->libraries[lib].nr_functions)
+		return false;
+	struct ain_hll_function *decl = &ain->libraries[lib].functions[fno];
+	return decl->nr_arguments > 0 &&
+		decl->arguments[decl->nr_arguments - 1].type.data == AIN_HLL_FUNC;
+}
+
+/* Evaluate the predicate on one element. `predicate` is the AIN function index
+ * that ffi.c extracted from the [this, fno] pair the caller pushed; see
+ * vm_call_hll_func() for how the closure environment is bound. */
+static bool array_predicate_matches(uintptr_t predicate, union vm_value elem)
+{
+	union vm_value r;
+	if (!vm_call_hll_func((int)predicate, elem, &r))
+		return false;
+	return r.i != 0;
+}
+
+/* AIN Array f[58..61]: ref First(ref array [, predicate]). */
+static void *Array_First_(struct page **a, uintptr_t predicate)
+{
+	struct page *p = a ? *a : NULL;
+	if (!p || p->type != ARRAY_PAGE || p->nr_vars == 0)
 		return NULL;
-	return &(*a)->values[0];
+	if (!array_has_predicate())
+		return &p->values[0];
+	for (int i = 0; i < p->nr_vars; i++)
+		if (array_predicate_matches(predicate, p->values[i]))
+			return &p->values[i];
+	return NULL;
 }
 
-/* AIN Array f[21..22]: bool Any(ref array [, predicate]).
- * [HACK-POC D90] predicate overload shares this symbol and is ignored; returns
- * "array is non-empty". Real fix: evaluate the predicate per element (D39/D63). */
-static int Array_Any_(struct page **a, void *predicate)
+/* AIN Array f[20]: bool All(ref array, predicate). */
+static int Array_All_(struct page **a, uintptr_t predicate)
 {
-	(void)predicate;
-	return a && *a && (*a)->nr_vars > 0;
+	struct page *p = a ? *a : NULL;
+	if (!p || p->nr_vars == 0)
+		return 1;
+	for (int i = 0; i < p->nr_vars; i++)
+		if (!array_predicate_matches(predicate, p->values[i]))
+			return 0;
+	return 1;
+}
+
+/* AIN Array f[21..22]: bool Any(ref array [, predicate]). */
+static int Array_Any_(struct page **a, uintptr_t predicate)
+{
+	struct page *p = a ? *a : NULL;
+	if (!p || p->nr_vars == 0)
+		return 0;
+	if (!array_has_predicate())
+		return 1;
+	for (int i = 0; i < p->nr_vars; i++)
+		if (array_predicate_matches(predicate, p->values[i]))
+			return 1;
+	return 0;
+}
+
+/* Append every element of `src` to `*dst`. The destination takes a reference
+ * for each heap object it now owns; the source keeps its own (see
+ * Array_PushBack_). */
+static void array_append(struct page **dst, struct page *src)
+{
+	if (!dst || !*dst || !src || src->nr_vars == 0)
+		return;
+	struct page *p = *dst;
+	if (p->type != ARRAY_PAGE || src->type != ARRAY_PAGE)
+		return;
+	int old_n = p->nr_vars;
+	enum ain_data_type at = p->a_type;
+	int st = p->array.struct_type;
+	union vm_value dim = { .i = old_n + src->nr_vars };
+	struct page *np = realloc_array(p, 1, &dim, at, st, false);
+	if (!np)
+		return;
+	memcpy(&np->values[old_n], src->values,
+	       (size_t)src->nr_vars * sizeof(union vm_value));
+	enum ain_data_type elem = array_type(at);
+	if (elem == AIN_STRUCT || elem == AIN_STRING || elem == AIN_DELEGATE ||
+	    elem == AIN_ARRAY) {
+		for (int i = 0; i < src->nr_vars; i++) {
+			int v = np->values[old_n + i].i;
+			if (v > 0 && v < heap_size && heap[v].ref > 0)
+				heap_ref(v);
+		}
+	}
+	*dst = np;
+}
+
+/* AIN Array f[10]: void Concat(ref array, ref array) - append src to dst. */
+static void Array_Concat_(struct page **dst, struct page **src)
+{
+	if (!src || !*src)
+		return;
+	array_append(dst, *src);
+}
+
+/* AIN Array f[3]: void Duplicate(ref array, ref array) - replace dst with a
+ * copy of src. */
+static void Array_Duplicate_(struct page **dst, struct page **src)
+{
+	if (!dst || !*dst || !src || !*src)
+		return;
+	struct page *d = *dst, *s = *src;
+	if (d->type != ARRAY_PAGE || s->type != ARRAY_PAGE)
+		return;
+	union vm_value dim = { .i = s->nr_vars };
+	struct page *np = realloc_array(d, 1, &dim, d->a_type, d->array.struct_type,
+					false);
+	if (!np)
+		return;
+	memcpy(np->values, s->values, (size_t)s->nr_vars * sizeof(union vm_value));
+	enum ain_data_type elem = array_type(d->a_type);
+	if (elem == AIN_STRUCT || elem == AIN_STRING || elem == AIN_DELEGATE ||
+	    elem == AIN_ARRAY) {
+		for (int i = 0; i < s->nr_vars; i++) {
+			int v = np->values[i].i;
+			if (v > 0 && v < heap_size && heap[v].ref > 0)
+				heap_ref(v);
+		}
+	}
+	*dst = np;
+}
+
+/* AIN Array f[53]: void Shuffle(ref array, int seed).
+ * Deterministic for a given seed, so a save/load pair replays identically. */
+static void Array_Shuffle_(struct page **a, int seed)
+{
+	struct page *p = a ? *a : NULL;
+	if (!p || p->type != ARRAY_PAGE || p->nr_vars < 2)
+		return;
+	uint32_t state = seed > 0 ? (uint32_t)seed : 1u;
+	for (int i = p->nr_vars - 1; i > 0; i--) {
+		state = state * 1103515245u + 12345u;
+		int j = (int)((state >> 16) % (uint32_t)(i + 1));
+		union vm_value tmp = p->values[i];
+		p->values[i] = p->values[j];
+		p->values[j] = tmp;
+	}
+}
+
+/* AIN Array f[16]: ref array Remain(ref array, predicate).
+ * Drops every element the predicate rejects, in place. Rance10 never reads the
+ * result (no CALLHLL site for lib 5 func 16), so only the mutation is
+ * implemented. */
+static int Array_Remain_(struct page **a, uintptr_t predicate)
+{
+	struct page *p = a ? *a : NULL;
+	if (!p || p->type != ARRAY_PAGE)
+		return 0;
+	int n = 0;
+	for (int i = 0; i < p->nr_vars; i++) {
+		if (array_predicate_matches(predicate, p->values[i]))
+			p->values[n++] = p->values[i];
+	}
+	p->nr_vars = n;
+	return 0;
+}
+
+/* AIN Array f[66..73]: ref Min/Max(ref array [, predicate]).
+ * Without a predicate the elements are ordered by value; with one the
+ * predicate acts as a "less than" comparator, as in Sort. */
+static void *array_extreme_(struct page **a, uintptr_t predicate, bool want_max)
+{
+	struct page *p = a ? *a : NULL;
+	if (!p || p->type != ARRAY_PAGE || p->nr_vars == 0)
+		return NULL;
+	int best = 0;
+	if (!array_has_predicate()) {
+		for (int i = 1; i < p->nr_vars; i++) {
+			bool less = p->values[i].i < p->values[best].i;
+			if (less == want_max)
+				best = i;
+		}
+	} else {
+		for (int i = 1; i < p->nr_vars; i++) {
+			union vm_value args[2] = {
+				want_max ? p->values[best] : p->values[i],
+				want_max ? p->values[i] : p->values[best],
+			};
+			union vm_value r;
+			if (vm_call_hll_closure((int)predicate, args, 2, &r) && r.i)
+				best = i;
+		}
+	}
+	return &p->values[best];
+}
+
+static void *Array_Min_(struct page **a, uintptr_t predicate)
+{
+	return array_extreme_(a, predicate, false);
+}
+
+static void *Array_Max_(struct page **a, uintptr_t predicate)
+{
+	return array_extreme_(a, predicate, true);
 }
 
 HLL_LIBRARY(Array,
@@ -1135,5 +1327,12 @@ HLL_LIBRARY(Array,
 	    HLL_TODO_EXPORT(VS_or, Array_VS_or),
 	    HLL_EXPORT(First, Array_First_),
 	    HLL_EXPORT(Last, Array_Last_),
-	    HLL_EXPORT(Any, Array_Any_)
+	    HLL_EXPORT(Any, Array_Any_),
+	    HLL_EXPORT(All, Array_All_),
+	    HLL_EXPORT(Min, Array_Min_),
+	    HLL_EXPORT(Max, Array_Max_),
+	    HLL_EXPORT(Concat, Array_Concat_),
+	    HLL_EXPORT(Duplicate, Array_Duplicate_),
+	    HLL_EXPORT(Shuffle, Array_Shuffle_),
+	    HLL_EXPORT(Remain, Array_Remain_)
 	    );

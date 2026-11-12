@@ -116,8 +116,14 @@ union vm_value variable_initval_typed(const struct ain_type *type)
 	case AIN_REF_ARRAY:
 		/* AIN declares struct arrays as AIN_ARRAY with type.struc set.
 		 * Preserve the element kind in a_type so Array.PushBack can
-		 * reference-count inserted objects (D21). */
-		at = type->struc >= 0 ? AIN_ARRAY_STRUCT : AIN_ARRAY_INT;
+		 * reference-count inserted objects (D21).
+		 *
+		 * Without a struct id the declaration says nothing about the element
+		 * kind - it is AIN's generic `array`, whose type the first store
+		 * decides (array_settle_type). Do NOT default it to AIN_ARRAY_INT:
+		 * that stored strings as unreferenced slot numbers and left dangling
+		 * handles behind (D44). */
+		at = type->struc >= 0 ? AIN_ARRAY_STRUCT : AIN_ARRAY;
 		break;
 	case AIN_ARRAY_INT:
 	case AIN_ARRAY_FLOAT:
@@ -221,9 +227,81 @@ enum ain_data_type array_type(enum ain_data_type type)
 	case AIN_ARRAY_DELEGATE:
 	case AIN_REF_ARRAY_DELEGATE:
 		return AIN_DELEGATE;
+	case AIN_ARRAY:
+	case AIN_REF_ARRAY:
+		/* A generic array has no element kind until the first store fixes
+		 * it (see array_settle_type). Reporting "void" keeps every caller's
+		 * switch on the element type on its default branch instead of
+		 * falling into the warning below. */
+		return AIN_VOID;
 	default:
 		WARNING("Unknown/invalid array type: %d from %p", type, __builtin_return_address(0));
 		return type;
+	}
+}
+
+/* The array kind that stores `elem`, for settling a generic array. */
+static enum ain_data_type elem_to_array_type(enum ain_data_type elem)
+{
+	switch (elem) {
+	case AIN_FLOAT:    return AIN_ARRAY_FLOAT;
+	case AIN_STRING:   return AIN_ARRAY_STRING;
+	case AIN_STRUCT:   return AIN_ARRAY_STRUCT;
+	case AIN_FUNC_TYPE:return AIN_ARRAY_FUNC_TYPE;
+	case AIN_BOOL:     return AIN_ARRAY_BOOL;
+	case AIN_LONG_INT: return AIN_ARRAY_LONG_INT;
+	case AIN_DELEGATE: return AIN_ARRAY_DELEGATE;
+	default:           return AIN_ARRAY_INT;
+	}
+}
+
+/* A variable declared as a generic `array` / `ref array` starts life with no
+ * element kind: AIN lets the first stored value decide it (`array a;
+ * a.PushBack("x")` makes a string array). Defaulting such an array to
+ * AIN_ARRAY_INT instead - the previous behaviour - stored strings as bare slot
+ * numbers without taking a reference; the caller then DELETEd its own copy, the
+ * slot was freed, and the array kept a dead handle. Reading it back produced
+ * "Invalid string index" (SceneQuestSelect@m_questIds, D44).
+ *
+ * `elem` may be AIN_VOID when the caller can only infer from the value; the
+ * array then stays generic until a later store knows better. */
+void array_settle_type(struct page *p, enum ain_data_type elem)
+{
+	if (!p || p->type != ARRAY_PAGE)
+		return;
+	if (p->a_type != AIN_ARRAY && p->a_type != AIN_REF_ARRAY)
+		return;
+	if (elem == AIN_VOID)
+		return;
+	/* A struct array is useless without the struct id, which only the
+	 * declaration carries; leave it generic in that case. */
+	if (elem == AIN_STRUCT && p->array.struct_type < 0)
+		return;
+	p->a_type = elem_to_array_type(elem);
+}
+
+/* The element kind a stored value implies, used when no declaration is
+ * available (A_PUSHBACK on a generic array). */
+enum ain_data_type array_value_type(union vm_value v)
+{
+	if (v.i <= 0 || (size_t)v.i >= heap_size)
+		return AIN_INT;
+	switch (heap[v.i].type) {
+	case VM_STRING:
+		return AIN_STRING;
+	case VM_PAGE: {
+		struct page *p = heap[v.i].page;
+		if (!p)
+			return AIN_INT;
+		switch (p->type) {
+		case ARRAY_PAGE:    return AIN_ARRAY;
+		case STRUCT_PAGE:   return AIN_STRUCT;
+		case DELEGATE_PAGE: return AIN_DELEGATE;
+		default:            return AIN_INT;
+		}
+	}
+	default:
+		return AIN_INT;
 	}
 }
 
@@ -532,14 +610,31 @@ struct page *array_pushback(struct page *dst, union vm_value v, enum ain_data_ty
 		if (dst->array.rank != 1)
 			VM_ERROR("Tried pushing to a multi-dimensional array");
 
+		/* A generic array adopts the element kind of what is stored in it
+		 * (see array_settle_type). A_PUSHBACK on such a variable has only
+		 * the declared type - which is the generic one - so the value has
+		 * to speak for itself. */
+		if (dst->a_type == AIN_ARRAY || dst->a_type == AIN_REF_ARRAY) {
+			enum ain_data_type elem = array_type(data_type);
+			if (elem == AIN_VOID)
+				elem = array_value_type(v);
+			array_settle_type(dst, elem);
+		}
+
 		int index = dst->nr_vars;
 		union vm_value dims[1] = { (union vm_value) { .i = index + 1 } };
 		dst = realloc_array(dst, 1, dims, dst->a_type, dst->array.struct_type, false);
-		variable_set(dst, index, array_type(data_type), v);
+		variable_set(dst, index, array_type(dst->a_type), v);
 	} else {
 		union vm_value dims[1] = { (union vm_value) { .i = 1 } };
 		dst = alloc_array(1, dims, data_type, struct_type, false);
-		variable_set(dst, 0, array_type(data_type), v);
+		if (dst->a_type == AIN_ARRAY || dst->a_type == AIN_REF_ARRAY) {
+			enum ain_data_type elem = array_type(data_type);
+			if (elem == AIN_VOID)
+				elem = array_value_type(v);
+			array_settle_type(dst, elem);
+		}
+		variable_set(dst, 0, array_type(dst->a_type), v);
 	}
 	return dst;
 }

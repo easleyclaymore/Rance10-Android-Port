@@ -129,6 +129,10 @@ void create_struct_with_ctor(int no, int ctor_fno, union vm_value *var);
 
 // arrays
 enum ain_data_type array_type(enum ain_data_type type);
+/* Fix the element kind of a generic (`array` / `ref array`) array page. */
+void array_settle_type(struct page *p, enum ain_data_type elem);
+/* The element kind a stored value implies, for stores that carry no type. */
+enum ain_data_type array_value_type(union vm_value v);
 struct page *alloc_array(int rank, union vm_value *dimensions, enum ain_data_type data_type, int struct_type, bool init_structs);
 struct page *realloc_array(struct page *src, int rank, union vm_value *dimensions, enum ain_data_type data_type, int struct_type, bool init_structs);
 int array_numof(struct page *page, int rank);

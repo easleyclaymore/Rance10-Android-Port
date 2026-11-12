@@ -88,6 +88,10 @@ void gfx_load_shader(struct shader *dst, const char *vertex_shader_path, const c
 GLuint gfx_load_shader_file(const char *path, GLenum type, const char *defines);
 
 // rendering
+/* [D128] 逻辑视图尺寸（引擎自己的坐标系，不是窗口尺寸）。parts 层用它判断
+ * 一个部件是不是"铺满整个画面"，见 parts_update_cover_layer()。 */
+int gfx_view_width(void);
+int gfx_view_height(void);
 void gfx_set_clear_color(int r, int g, int b, int a);
 void gfx_set_view_offset(int x, int y);
 void gfx_clear(void);

@@ -1869,19 +1869,36 @@ static void PE_Noop_SetTextBoxReadOnlyBGColor(int a0, int a1, int a2, int a3)
 	(void)a3;
 }
 
-/* AIN SetUserComponentData: void SetUserComponentData. [HACK-POC D85] setter stubbed. */
-static void PE_Noop_SetUserComponentData(int a0, struct string * a1, struct string * a2)
+/* 用户组件 (component type 15)。引擎侧只存"名字 + 键值袋"，
+ * TextButton 之类的行为与绘制由游戏的 AIN 代码实现：
+ *   activity::detail::CallUserComponentCreateEventWithChild
+ *   → PartsEngine.GetUserComponentName(parts_no)
+ *   → 交给活动的用户组件事件委托。
+ * 数据表就是 EX 的 数据 = ['オブジェクト名','TextButton','参数','标题,从头开始']。 */
+static struct string *PE_GetUserComponentName_str(int parts_no)
 {
-	(void)a0;
-	(void)a1;
-	(void)a2;
+	const char *name = PE_GetUserComponentName(parts_no);
+	if (!name)
+		return NULL;
+	return cstr_to_string(name);
 }
 
-/* AIN SetUserComponentName: void SetUserComponentName. [HACK-POC D85] setter stubbed. */
-static void PE_Noop_SetUserComponentName(int a0, struct string * a1)
+static void PE_SetUserComponentName_str(int parts_no, struct string *name)
 {
-	(void)a0;
-	(void)a1;
+	PE_SetUserComponentName(parts_no, name ? name->text : NULL);
+}
+
+static void PE_SetUserComponentData_str(int parts_no, struct string *key, struct string *value)
+{
+	PE_SetUserComponentData(parts_no, key ? key->text : NULL, value ? value->text : NULL);
+}
+
+static struct string *PE_GetUserComponentData_str(int parts_no, struct string *key)
+{
+	const char *v = PE_GetUserComponentData(parts_no, key ? key->text : NULL);
+	if (!v)
+		return NULL;
+	return cstr_to_string(v);
 }
 
 /* AIN SetVScrollTotalSizeLinkNumber: void SetVScrollTotalSizeLinkNumber. [HACK-POC D85] setter stubbed. */
@@ -2075,7 +2092,12 @@ static int PE_Act_RemoveAllActivityParts(struct string *name)
 static int PE_Act_NumofActivityParts(struct string *name)
 {
 	struct activity *act = name ? activity_get(name->text) : NULL;
-	return activity_nr_parts(act);
+	int n = activity_nr_parts(act);
+	/* [D119 probe] AIN Activity@GetList uses this to size its parts list.
+	 * A zero result leaves the button objects uncreated. */
+	if (getenv("XSYS4_ACT_DBG"))
+		NOTICE("[act] Numof('%s') = %d", name && name->text ? name->text : "(null)", n);
+	return n;
 }
 
 /* AIN f[34] GetActivityParts(index, name, ref string out_name, ref int out_no).
@@ -2091,8 +2113,16 @@ static int PE_Act_GetActivityParts(int index, struct string *name,
 				   struct string **out_name, union vm_value *out_no)
 {
 	struct activity *act = name ? activity_get(name->text) : NULL;
-	if (!act || index < 0 || index >= activity_nr_parts(act))
+	if (!act || index < 0 || index >= activity_nr_parts(act)) {
+		if (getenv("XSYS4_ACT_DBG"))
+			NOTICE("[act] GetParts(%d,'%s') MISS", index,
+			       name && name->text ? name->text : "(null)");
 		return 0;
+	}
+	if (getenv("XSYS4_ACT_DBG"))
+		NOTICE("[act] GetParts(%d,'%s') -> name='%s' no=%d", index,
+		       name->text, activity_part_name_at(act, index),
+		       activity_part_no_at(act, index));
 	if (out_name) {
 		if (*out_name)
 			free_string(*out_name);
@@ -2252,6 +2282,32 @@ static int PE_GetControllerLength(void)
 static int PE_GetControllerID(int index)
 {
 	return index;
+}
+
+/* PartsEngine.SetFlatFPSRate(parts_no, rate, state), AIN lib27 f[761].
+ * [HACK][D119-FLATFPS] one global rate instead of per-parts/per-state storage;
+ * enough to stop the unimplemented-HLL error that blocked the title scene.
+ * Refactor: store the rate on the parts state and use it in
+ * parts_update_animation(). Registered in TECH_DEBT. */
+static float parts_flat_fps_rate = 1.0f;
+
+static void PE_SetFlatFPSRate(int parts_no, float rate, int state)
+{
+	(void)parts_no;
+	(void)state;
+	parts_flat_fps_rate = rate > 0.0f ? rate : 1.0f;
+}
+
+/* AIN v12 declares Parts_GetPartsCGName(parts_no, state) -> string, while the
+ * upstream binding is the out-parameter form
+ * (parts_no, struct string **out, state). libffi passed the state where the
+ * out pointer belongs, so the HLL wrote through a small integer and returned
+ * 0x1 as the "string" (which then crashed the first %s that formatted it). */
+static struct string *PE_GetPartsCGName_v12(int parts_no, int state)
+{
+	struct string *name = NULL;
+	PE_GetPartsCGName(parts_no, &name, state);
+	return name;
 }
 
 HLL_LIBRARY(PartsEngine,
@@ -2692,7 +2748,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetLayoutBoxAlign, PE_SetLayoutBoxAlign),
 	    HLL_EXPORT(GetLayoutBoxAlign, PE_GetLayoutBoxAlign),
 	    HLL_EXPORT(Parts_SetPartsCG, PE_SetPartsCG),
-	    HLL_EXPORT(Parts_GetPartsCGName, PE_GetPartsCGName),
+	    HLL_EXPORT(Parts_GetPartsCGName, PE_GetPartsCGName_v12),
 	    HLL_EXPORT(Parts_SetPartsCGSurfaceArea, PE_SetPartsCGSurfaceArea),
 	    HLL_EXPORT(Parts_SetLoopCG, PE_SetLoopCG),
 	    HLL_EXPORT(Parts_SetLoopCGSurfaceArea, PE_SetLoopCGSurfaceArea),
@@ -2713,6 +2769,8 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Parts_SetPartsFontEdgeColor, PE_SetPartsFontEdgeColor),
 	    HLL_EXPORT(Parts_SetPartsFontEdgeWeight, PE_SetPartsFontEdgeWeight),
 	    HLL_EXPORT(Parts_SetTextCharSpace, PE_SetTextCharSpace),
+	    HLL_EXPORT(Parts_GetTextCharSpace, PE_GetTextCharSpace),
+	    HLL_EXPORT(Parts_GetTextLineSpace, PE_GetTextLineSpace),
 	    HLL_EXPORT(Parts_SetTextLineSpace, PE_SetTextLineSpace),
 	    HLL_EXPORT(Parts_SetHGaugeCG, PE_SetHGaugeCG),
 	    HLL_EXPORT(Parts_SetHGaugeRate, PE_SetHGaugeRate),
@@ -2733,6 +2791,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Parts_SetPartsCGDetectionSize, PE_SetPartsCGDetectionSize),
 	    HLL_TODO_EXPORT(Parts_SetPartsCGDetectionSurfaceArea, PartsEngine_Parts_SetPartsCGDetectionSurfaceArea),
 	    HLL_EXPORT(Parts_SetPartsFlat, PE_SetPartsFlat),
+	    HLL_EXPORT(Parts_GetPartsFlatName, PE_GetPartsFlatName),
 	    HLL_EXPORT(Parts_IsPartsFlatEnd, PE_IsPartsFlatEnd),
 	    HLL_EXPORT(Parts_GetPartsFlatCurrentFrameNumber, PE_GetPartsFlatCurrentFrameNumber),
 	    HLL_EXPORT(Parts_BackPartsFlatBeginFrame, PE_BackPartsFlatBeginFrame),
@@ -2925,8 +2984,10 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetTextBoxFrameColor, PE_Noop_SetTextBoxFrameColor),
 	    HLL_EXPORT(SetTextBoxReadOnly, PE_Noop_SetTextBoxReadOnly),
 	    HLL_EXPORT(SetTextBoxReadOnlyBGColor, PE_Noop_SetTextBoxReadOnlyBGColor),
-	    HLL_EXPORT(SetUserComponentData, PE_Noop_SetUserComponentData),
-	    HLL_EXPORT(SetUserComponentName, PE_Noop_SetUserComponentName),
+	    HLL_EXPORT(SetUserComponentData, PE_SetUserComponentData_str),
+	    HLL_EXPORT(SetUserComponentName, PE_SetUserComponentName_str),
+	    HLL_EXPORT(GetUserComponentData, PE_GetUserComponentData_str),
+	    HLL_EXPORT(GetUserComponentName, PE_GetUserComponentName_str),
 	    HLL_EXPORT(SetVScrollTotalSizeLinkNumber, PE_Noop_SetVScrollTotalSizeLinkNumber),
 	    HLL_EXPORT(SetVScrollViewSizeLinkNumber, PE_Noop_SetVScrollViewSizeLinkNumber),
 	    HLL_EXPORT(SetVScrollbarFlatName, PE_Noop_SetVScrollbarFlatName),
@@ -2968,7 +3029,8 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(EraseActivityEndKey, PE_Act_EraseActivityEndKey),
 	    HLL_EXPORT(IsExistActivityEndKey, PE_Act_IsExistActivityEndKey),
 	    HLL_EXPORT(NumofActivityEndKey, PE_Act_NumofActivityEndKey),
-	    HLL_EXPORT(GetActivityEndKey, PE_Act_GetActivityEndKey)
+	    HLL_EXPORT(GetActivityEndKey, PE_Act_GetActivityEndKey),
+	    HLL_EXPORT(SetFlatFPSRate, PE_SetFlatFPSRate)
 	    );
 
 static struct ain_hll_function *get_fun(int libno, const char *name)

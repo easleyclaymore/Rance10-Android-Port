@@ -240,7 +240,11 @@ void heap_unref(int slot)
 		}
 		break;
 	case VM_STRING:
-		free_string(heap[slot].s);
+		/* A string slot with no payload is a legitimate state: the HLL
+		 * string-return guard in ffi.c stores NULL when a binding hands back
+		 * something that is not a `struct string *`. */
+		if (heap[slot].s)
+			free_string(heap[slot].s);
 		break;
 	}
 	heap[slot].ref = 0;
@@ -342,8 +346,43 @@ struct page *heap_get_page(int index)
 
 struct string *heap_get_string(int index)
 {
-	if (unlikely(!string_index_valid(index)))
-		VM_ERROR("Invalid string index: %d", index);
+	/* [D123] index <= 0 是 AIN 侧的"空字符串 / 未初始化引用"哨兵。
+	 * -1 常见于比较（LeaderCard@IsExist 的 S_NOTE）；0 是保留的
+	 * GLOBAL_PAGE 槽，heap_string_assign() 早已按 slot<=0 直接跳过（D43），
+	 * 但 S_ASSIGN 会先调本函数取右值，于是 `QuestMapMiniCardView@UpdateCard`
+	 * 里 A = <未初始化> 直接 VM_ERROR。统一返回空串，让赋值/比较自然进行。
+	 * 之前 stack_peek_string() 绕过本函数、把 -1 当数组下标用，行为也不一致。 */
+	if (unlikely(index <= 0))
+		return &EMPTY_STRING;
+	/* [D124] 与 D96 对 dead page 的处理一致：越界/类型不符的槽降级成空串。
+	 *
+	 * 走到这里通常意味着某处持有已释放对象的索引——进入第一章任务地图后
+	 * heap 里出现成片 double free，`Party@GetCardId` 从 LeaderCardCollection
+	 * 取到的元素指向一个 type=-1 的槽（实测索引 1933133，越过 heap_size），
+	 * 原来这里 VM_ERROR 直接杀进程。调用方（`QuestMapMiniCardView@UpdateCard`
+	 * 的 S_ASSIGN）只想拿到"这张卡不存在"，空串正好表达这个语义。
+	 * 告警限流，避免掩掉真正的问题；根因见 TECH_DEBT [INIT-DOUBLEFREE]。 */
+	if (unlikely(!string_index_valid(index))) {
+		static int warned;
+		if (warned++ < 24)
+			WARNING("Invalid string index: %d (type=%d, returning empty)",
+			        index, heap_index_valid(index) ? heap[index].type : -1);
+		return &EMPTY_STRING;
+	}
+	/* [D123] 槽被释放后 heap[slot].s 会被置 NULL，但 [HACK-POC D95] 故意
+	 * 不回收槽号、type 也仍留 VM_STRING，于是 string_index_valid() 会通过，
+	 * 调用方直接 strcmp(s->text) 就段错误。点击标题菜单进入新游戏初始化时，
+	 * 一批 VM_PAGE 被重复 unref（日志里成片 double free），随后 `main`(18397)
+	 * 的 S_NOTE 正好读到这样的死槽。
+	 *
+	 * 与 D96 对 dead page 的处理一致：返回空串让流程走下去，而不是崩。
+	 * 真正的修复是找出那批重复 unref 的来源，见 TECH_DEBT [INIT-DOUBLEFREE]。 */
+	if (unlikely(!heap[index].s)) {
+		static int warned;
+		if (warned++ < 12)
+			WARNING("use of released string slot %d (returning empty)", index);
+		return &EMPTY_STRING;
+	}
 	return heap[index].s;
 }
 

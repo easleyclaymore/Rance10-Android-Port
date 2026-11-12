@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include "system4.h"
+#include "system4/ain.h"
 #include "system4/string.h"
 
 #include "vm.h"
@@ -47,8 +48,9 @@ void parts_msg_push(struct parts* parts, int type, const char *fmt, ...)
 	/* 只打非悬停消息，否则前 60 条全被 MOUSE_ON 占满，看不到点击。 */
 	if (getenv("XSYS4_MSG_DBG") && type != PARTS_MSG_MOUSE_ON && msg_dbg_n < 120) {
 		msg_dbg_n++;
-		NOTICE("[msg] push type=%d parts=%d multi=%d", type,
-		       parts ? parts->no : 0, parts_multi_controller);
+		NOTICE("[msg] push type=%d parts=%d multi=%d di=%d", type,
+		       parts ? parts->no : 0, parts_multi_controller,
+		       parts ? parts->delegate_index : 0);
 	}
 
 	// Message system is introduced in Rance 9
@@ -63,6 +65,27 @@ void parts_msg_push(struct parts* parts, int type, const char *fmt, ...)
 	 * SceneStack@Join 的 SceneStack@Exit 也就永远不被调用。 */
 	msg->parts_no = parts ? parts->no : 0;
 	msg->delegate_index = parts ? parts->delegate_index : 0;
+	/* [D123 实验开关] 把标题段的点击消息改投到指定 part（用它的 parts_no
+	 * 和 delegate_index），用来验证"委托注册在子活动按钮 part 上"。
+	 * 只对 >= 1000001040 的标题段生效，避免把网络确认框的 OK 也改投，
+	 * 否则根本进不到标题。默认关闭。 */
+	if (parts && type == PARTS_MSG_MOUSE_CLICK_AIN &&
+	    msg->parts_no >= 1000001040 && getenv("XSYS4_CLICK_RETARGET")) {
+		int target = atoi(getenv("XSYS4_CLICK_RETARGET"));
+		if (target > 0) {
+			int di = PE_GetDelegateIndex(target);
+			NOTICE("[retarget] click %d(di=%d) -> %d(di=%d)",
+			       msg->parts_no, msg->delegate_index, target, di);
+			msg->parts_no = target;
+			msg->delegate_index = di;
+		}
+	}
+	/* [D119 probe] AIN CPartsMessageManager@CallDelegate drops any message
+	 * whose delegate_index < 0 (return 0 immediately). Activity parts created
+	 * by activity.c keep the default -1, so per-parts clicks never dispatch.
+	 * Controlled experiment: fall back to index 0 when explicitly enabled. */
+	if (msg->delegate_index < 0 && getenv("XSYS4_DI_FALLBACK"))
+		msg->delegate_index = 0;
 	msg->type = type;
 	msg->nr_variables = 0;
 
