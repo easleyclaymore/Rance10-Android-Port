@@ -125,6 +125,7 @@ tools/bin/gsave_dump logs/savedir/<tag>/GlobalSave.asd
 | `../README.md` | 主文档：现状、跑测、必读契约、卡点 |
 | `../TECH_DEBT.md` | 未结债务（A 结构性 / B 会炸的 / C 长尾） |
 | `../GUIDE/` | 《黑盒字节码引擎移植实战指南》，独立成书 |
+| `game/Manual/`（工作区） | 官方中文说明书；参考手册 `r01..r14.html` + `img/rm*.jpg` 是界面出画的客观基准 |
 | `notes/` | 字节码规范取证笔记（AIN v12 引用槽宽等） |
 
 ## 上游与许可
