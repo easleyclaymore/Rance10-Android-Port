@@ -16,6 +16,7 @@
 
 #define VM_PRIVATE
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ffi.h>
@@ -34,9 +35,142 @@ struct hll_function {
 	unsigned int nr_args;
 	ffi_type **args;
 	ffi_type *return_type;
+	int is_stub;            /* [D110] HLL_TODO_EXPORT 且已被零值桩接管 */
 };
 
 static struct hll_function **libraries = NULL;
+
+/* ---------------- [D110] 未实现 HLL 的软桩与触达清单 ----------------
+ * HLL_TODO_EXPORT 展开为 { .name=..., .fun=NULL }，hll_call() 一旦执行到
+ * 就 VM_ERROR -> sys_exit(1)，进程当场死亡：只能看到"最深的那一次"，
+ * 后面还有什么没实现永远不知道。
+ *
+ * XSYS4_SOFT_STUB=1 时把这些导出换成"按返回类型给零值"的桩：
+ *   - 参数仍走原有 ffi 编组路径，栈平衡/引用计数逻辑一字未改；
+ *   - 每个桩首次触达在清单里记一行，之后只累加计数；
+ *   - XSYS4_STUB_BT=1 时给前 32 个桩打印 VM 调用栈；
+ *   - 清单默认 $TMPDIR/xsys4_stubs.txt（未设则当前目录），
+ *     可用 XSYS4_STUB_LOG 指定；Core Layer 不写死绝对路径。
+ * 不设 XSYS4_SOFT_STUB 时行为与以前完全一致（仍然 VM_ERROR 退出）。
+ */
+static int soft_stub_enabled(void)
+{
+	static int mode = -1;
+	if (mode < 0) {
+		const char *e = getenv("XSYS4_SOFT_STUB");
+		mode = (e && *e && strcmp(e, "0") != 0) ? 1 : 0;
+	}
+	return mode;
+}
+
+static void stub_ret_void(void) { }
+static int32_t stub_ret_i32(void) { return 0; }
+static int64_t stub_ret_i64(void) { return 0; }
+static float stub_ret_f32(void) { return 0.0f; }
+static double stub_ret_f64(void) { return 0.0; }
+static void *stub_ret_ptr(void) { return NULL; }
+
+static void *soft_stub_for(ffi_type *ret)
+{
+	if (!ret || ret == &ffi_type_void)
+		return (void *)stub_ret_void;
+	switch (ret->type) {
+	case FFI_TYPE_POINTER: return (void *)stub_ret_ptr;
+	case FFI_TYPE_FLOAT:   return (void *)stub_ret_f32;
+	case FFI_TYPE_DOUBLE:  return (void *)stub_ret_f64;
+	case FFI_TYPE_SINT64:
+	case FFI_TYPE_UINT64:  return (void *)stub_ret_i64;
+	default:               return (void *)stub_ret_i32;
+	}
+}
+
+#define STUB_MAX 512
+struct stub_hit {
+	int libno;
+	int fno;
+	unsigned long count;
+};
+static struct stub_hit stub_hits[STUB_MAX];
+static int stub_nr = 0;
+static int stub_nr_bt = 0;
+static int stub_replaced = 0;   /* [D110b] 链接期被零值桩接管的导出数 */
+
+static void stub_summary(void);
+
+static FILE *stub_log_file(void)
+{
+	static FILE *fp = NULL;
+	static int inited = 0;
+	if (!inited) {
+		inited = 1;
+		const char *p = getenv("XSYS4_STUB_LOG");
+		char path[512];
+		if (!p || !*p) {
+			/* [L3] No hardcoded /tmp path in Core Layer: honour the
+			 * platform's temp directory and fall back to CWD. */
+			const char *tmp = getenv("TMPDIR");
+			snprintf(path, sizeof(path), "%s/xsys4_stubs.txt",
+				 (tmp && *tmp) ? tmp : ".");
+			p = path;
+		}
+		fp = fopen(p, "w");
+		if (fp) {
+			fprintf(fp, "# xsystem4 soft-stub hit list (XSYS4_SOFT_STUB=1)\n# lib.func  args  ret\n");
+			fflush(fp);
+			atexit(stub_summary);
+		}
+	}
+	return fp;
+}
+
+static void stub_summary(void)
+{
+	FILE *fp = stub_log_file();
+	if (!fp)
+		return;
+	fprintf(fp, "\n# ===== summary: %d distinct unimplemented HLL functions hit =====\n", stub_nr);
+	for (int i = 0; i < stub_nr; i++) {
+		struct ain_library *lib = &ain->libraries[stub_hits[i].libno];
+		struct ain_hll_function *f = &lib->functions[stub_hits[i].fno];
+		fprintf(fp, "%8lu  %s.%s\n", stub_hits[i].count, lib->name, f->name);
+	}
+	fflush(fp);
+}
+
+static void stub_note(int libno, int fno)
+{
+	FILE *fp = stub_log_file();
+	if (!fp)
+		return;
+	for (int i = 0; i < stub_nr; i++) {
+		if (stub_hits[i].libno == libno && stub_hits[i].fno == fno) {
+			stub_hits[i].count++;
+			return;
+		}
+	}
+	if (stub_nr >= STUB_MAX)
+		return;
+	struct ain_library *lib = &ain->libraries[libno];
+	struct ain_hll_function *f = &lib->functions[fno];
+	stub_hits[stub_nr].libno = libno;
+	stub_hits[stub_nr].fno = fno;
+	stub_hits[stub_nr].count = 1;
+	stub_nr++;
+	fprintf(fp, "[stub %03d] %s.%s  args=%d ret=%s\n", stub_nr, lib->name, f->name,
+	        (int)f->nr_arguments, ain_strtype(ain, f->return_type.data, -1));
+	fflush(fp);
+	static int bt = -1;
+	if (bt < 0) {
+		const char *e = getenv("XSYS4_STUB_BT");
+		bt = (e && *e && strcmp(e, "0") != 0) ? 1 : 0;
+	}
+	if (bt && stub_nr_bt < 32) {
+		stub_nr_bt++;
+		NOTICE("[stub] backtrace for %s.%s:", lib->name, f->name);
+		vm_stack_trace();
+	}
+}
+
 
 bool library_exists(int libno)
 {
@@ -45,7 +179,8 @@ bool library_exists(int libno)
 
 bool library_function_exists(int libno, int fno)
 {
-	return libraries[libno] && libraries[libno][fno].fun;
+	/* [D110] 软桩只是运行期兜底，审计时仍算"未实现"。 */
+	return libraries[libno] && libraries[libno][fno].fun && !libraries[libno][fno].is_stub;
 }
 
 /*
@@ -308,6 +443,16 @@ int hll_current_fno(void)
 	return hll_call_fno;
 }
 
+/* An AIN_IFACE / AIN_WRAP value occupies two stack slots:
+ * [object heap slot, vtable offset]. Rance10 passes and returns such values
+ * through the generic Array element type (AIN_HLL_PARAM / AIN_REF_HLL_PARAM)
+ * with the concrete element type in CALLHLL's third immediate, so the
+ * marshalling has to know when a generic value is two slots wide. */
+static bool hll_tag_is_two_slot(int tag)
+{
+	return tag == AIN_IFACE || tag == AIN_WRAP || tag == AIN_IFACE_WRAP;
+}
+
 /* A reference to a heap-owned object is just the object's handle (one stack
  * value); a reference to a value living inside a page is a two-value
  * [page, var] pair. This is not inferred from runtime behaviour: the AIN
@@ -358,6 +503,20 @@ static int hll_ref_result_is_single_value(int tag)
 
 void hll_call(int libno, int fno, int result_tag)
 {
+	/* [D110b] 首次 HLL 调用时落一次自检：清单为空时也能区分
+	 * "一路没踩到空桩" 和 "软桩机制根本没生效"。 */
+	if (soft_stub_enabled()) {
+		static int self_checked = 0;
+		if (!self_checked) {
+			self_checked = 1;
+			FILE *sfp = stub_log_file();
+			if (sfp) {
+				fprintf(sfp, "# link-time: %d unimplemented exports replaced by zero-stubs\n", stub_replaced);
+				fflush(sfp);
+			}
+			NOTICE("[stub] soft-stub active: %d unimplemented exports replaced", stub_replaced);
+		}
+	}
 	hll_call_fno = fno;
 	struct ain_hll_function *f = &ain->libraries[libno].functions[fno];
 	static int hll_trace = -1;
@@ -365,10 +524,41 @@ void hll_call(int libno, int fno, int result_tag)
 		const char *t = getenv("XSYS4_HLL_TRACE");
 		hll_trace = t ? 1 : 0;
 	}
-	if (hll_trace)
-		NOTICE("[hll] lib=%d fno=%d tag=%d nr_args=%d sp=%d ret=%d %s.%s",
-		       libno, fno, result_tag, f->nr_arguments, stack_ptr,
-		       f->return_type.data, ain->libraries[libno].name, f->name);
+	if (hll_trace) {
+		/* XSYS4_HLL_TRACE_FILTER 收窄轨迹：`27:73,27:170` 按库/序号，
+		 * `PartsEngine` 这样带大写的词也匹配库名，其它写法按函数名子串。
+		 * 不设则全打（很吵）。 */
+		const char *flt = getenv("XSYS4_HLL_TRACE_FILTER");
+		int show = flt == NULL;
+		if (flt) {
+			const char *p = flt;
+			while (*p && !show) {
+				const char *comma = strchr(p, ',');
+				size_t len = comma ? (size_t)(comma - p) : strlen(p);
+				if (len > 0) {
+					const char *colon = memchr(p, ':', len);
+					if (colon) {
+						int l = atoi(p), f2 = atoi(colon + 1);
+						if (l == libno && f2 == fno)
+							show = 1;
+					} else if (strlen(f->name) >= len &&
+						   strncasecmp(f->name, p, len) == 0) {
+						show = 1;
+					} else if (strstr(ain->libraries[libno].name, p)) {
+						/* 按库名（如 PartsEngine / SceneStack）收窄 */
+						show = 1;
+					}
+				}
+				if (!comma)
+					break;
+				p = comma + 1;
+			}
+		}
+		if (show)
+			NOTICE("[hll] ip=0x%zX lib=%d fno=%d tag=%d nr_args=%d sp=%d ret=%d %s.%s",
+			       instr_ptr, libno, fno, result_tag, f->nr_arguments, stack_ptr,
+			       f->return_type.data, ain->libraries[libno].name, f->name);
+	}
 
 	if (!libraries[libno])
 		VM_ERROR("Unimplemented HLL function: %s.%s", ain->libraries[libno].name, f->name);
@@ -376,6 +566,8 @@ void hll_call(int libno, int fno, int result_tag)
 	struct hll_function *fun = &libraries[libno][fno];
 	if (!fun->fun)
 		VM_ERROR("Unimplemented HLL function: %s.%s", ain->libraries[libno].name, f->name);
+	if (fun->is_stub)
+		stub_note(libno, fno);
 
 	void *args[HLL_MAX_ARGS];
 	void *ptrs[HLL_MAX_ARGS];
@@ -439,7 +631,18 @@ void hll_call(int libno, int fno, int result_tag)
 			 * Parts UI globals hold a 0-slot placeholder instead; Array.PushBack
 			 * skipped them so the array never grew. Normalise to an empty array. */
 			struct page *cur = (struct page *)heap_ptrs[i];
-			if (cur && cur->type != ARRAY_PAGE) {
+			/* [FIX D99] A live slot whose page is NULL must also be normalised:
+			 * the old `cur &&` guard skipped that case and passed NULL to the
+			 * HLL, so Array.Numof() returned 0 and CreateHandle produced -1. */
+			if (!cur || cur->type != ARRAY_PAGE) {
+				if (getenv("XSYS4_ARR_DBG"))
+					NOTICE("[ARR] subst slot=%d ref=%d page=%p type=%d fno=%d",
+					       heap_slots[i], heap_slots[i] > 0 ? heap[heap_slots[i]].ref : -1,
+					       (void*)cur, cur ? cur->type : -1, hll_current_fno());
+				if (getenv("XSYS4_SUBST_BT")) {
+					NOTICE("[ARR] subst backtrace for slot=%d:", heap_slots[i]);
+					vm_stack_trace();
+				}
 				struct page *np = alloc_page(ARRAY_PAGE, AIN_ARRAY_INT, 0);
 				np->array.rank = 1;
 				np->array.struct_type = -1;
@@ -449,8 +652,14 @@ void hll_call(int libno, int fno, int result_tag)
 			args[i] = &ptrs[i];
 			break;
 		case AIN_HLL_PARAM:
-			stack_ptr--;
-			hll_values[i] = (uint32_t)stack[stack_ptr].i;
+			if (hll_tag_is_two_slot(result_tag)) {
+				/* [object, vtable offset]: the object is the value. */
+				stack_ptr -= 2;
+				hll_values[i] = (uint32_t)stack[stack_ptr].i;
+			} else {
+				stack_ptr--;
+				hll_values[i] = (uint32_t)stack[stack_ptr].i;
+			}
 			args[i] = &hll_values[i];
 			break;
 		case AIN_HLL_FUNC:
@@ -481,6 +690,7 @@ void hll_call(int libno, int fno, int result_tag)
 	}
 
 	union vm_value r;
+	int sp_after_args = stack_ptr;
 	hll_result_tag = result_tag;
 #ifdef TRACE_HLL
 	trace_hll_call(&ain->libraries[libno], f, fun, &r, args);
@@ -536,6 +746,18 @@ void hll_call(int libno, int fno, int result_tag)
 	case AIN_VOID:
 		break;
 	case AIN_STRING:
+		/* A function declared to return a string must hand back a
+		 * `struct string *`. A small integer means the C binding does not
+		 * match its declaration (wrong arity or a stub), and storing it makes
+		 * the slot a "string" whose payload crashes the first %s that reads
+		 * it. Keep the slot empty and name the offender once. */
+		if ((uintptr_t)r.ref < 0x1000) {
+			static int n;
+			if (n++ < 20)
+				WARNING("%s.%s returned %p where a string was declared",
+					ain->libraries[libno].name, f->name, r.ref);
+			r.ref = NULL;
+		}
 		slot = heap_alloc_slot(VM_STRING);
 		heap[slot].s = r.ref;
 		stack_push(slot);
@@ -552,6 +774,7 @@ void hll_call(int libno, int fno, int result_tag)
          * match a stale/aliased slot and create a dangling reference. */
         void *addr = r.ref;
         int32_t hi = -1, pi = -1;
+        struct page *elem_page = NULL;
         if (addr) {
             for (int i = 0; i < f->nr_arguments; i++) {
                 int slot = heap_slots[i];
@@ -559,16 +782,41 @@ void hll_call(int libno, int fno, int result_tag)
                     continue;
                 if (heap[slot].type != VM_PAGE)
                     continue;
-                struct page *pg = heap[slot].page;
-                if (!pg)
-                    continue;
-                union vm_value *base = pg->values;
-                if ((union vm_value *)addr >= base &&
-                    (union vm_value *)addr < base + pg->nr_vars) {
-                    hi = slot;
-                    pi = (int32_t)((union vm_value *)addr - base);
+                /* [FIX D94] Resolve `addr` against the page the HLL call left in
+                 * heap_ptrs[i], not heap[slot].page: the callee may have
+                 * realloc'ed the array (Array.EmplaceBack does `*a = np`), and
+                 * that page is only written back to heap[slot].page AFTER this
+                 * result block. Matching against the stale page made every
+                 * Array.EmplaceBack with tag=47 return (hi=-1,pi=-1), so
+                 * CASTimerManager@CreateHandle produced invalid handles and
+                 * CheckHandle reported "manager deleted" -- the frame timer
+                 * stopped and the scene never advanced past WaitFrame. */
+                struct page *cand = NULL;
+                switch (f->arguments[i].type.data) {
+                case AIN_REF_ARRAY:
+                case AIN_REF_ARRAY_TYPE:
+                case AIN_REF_STRUCT:
+                    cand = (struct page *)heap_ptrs[i];
+                    break;
+                default:
                     break;
                 }
+                struct page *pg = heap[slot].page;
+                for (int c = 0; c < 2; c++) {
+                    struct page *try_pg = c == 0 ? cand : pg;
+                    if (!try_pg)
+                        continue;
+                    union vm_value *base = try_pg->values;
+                    if ((union vm_value *)addr >= base &&
+                        (union vm_value *)addr < base + try_pg->nr_vars) {
+                        hi = slot;
+                        pi = (int32_t)((union vm_value *)addr - base);
+                        elem_page = try_pg;
+                        break;
+                    }
+                }
+                if (hi > 0)
+                    break;
             }
         }
         /* AIN v12 CALLHLL's third immediate is the concrete element type of
@@ -585,20 +833,48 @@ void hll_call(int libno, int fno, int result_tag)
          *          AIN_VOID placeholder) and dereferenced by ASSIGN.
          * Returning the raw element index as the leading value made DELETE
          * heap_unref() an unrelated heap slot (D31). */
-        if (result_tag >= 0 && addr && hi > 0) {
-            union vm_value v = *(union vm_value *)addr;
-            if (hll_ref_result_is_single_value(result_tag)) {
-                /* The container keeps one reference, the caller DELETEs its
-                 * own. Take an extra one so DELETE cannot drop the last ref
-                 * and leave the container with a dangling slot (D21). */
-                if (v.i > 0 && v.i < heap_size && heap[v.i].ref > 0)
-                    heap_ref(v.i);
-                stack_push(v);
-            } else {
-                stack_push((union vm_value){ .i = hi });
-                stack_push((union vm_value){ .i = pi });
+        /* The number of slots this result owns is decided by CALLHLL's
+         * concrete element type, and an *unresolved* reference must still
+         * leave exactly that many values behind: pushing a two-value pair for
+         * a single-value tag shifted the operand stack by one on every empty
+         * `Array.Max`/`Array.Find`, which walked the caller's stack into the
+         * wrong slots (the `PlayerCardCollection@Add` corruption). */
+        bool is_iface = result_tag >= 0 && hll_tag_is_two_slot(result_tag);
+        bool is_single = result_tag >= 0 && hll_ref_result_is_single_value(result_tag);
+        bool resolved = addr && hi > 0;
+        union vm_value elem = resolved ? *(union vm_value *)addr
+                                       : (union vm_value){ .i = -1 };
+
+        if (is_iface) {
+            /* [object, vtable offset]; -1 in the object slot is the null
+             * interface. The container owns the reference it holds, and the
+             * caller DELETEs its own copy, so take one for it. */
+            int iface = (resolved && elem_page && elem_page->type == ARRAY_PAGE)
+                ? elem_page->array.struct_type : -1;
+            int obj = -1, offset = 0;
+            if (iface < 0 || !vm_iface_pair(iface, elem.i, &obj, &offset)) {
+                obj = -1;
+                offset = 0;
+            } else if (obj > 0 && obj < heap_size && heap[obj].ref > 0) {
+                heap_ref(obj);
             }
+            stack_push((union vm_value){ .i = obj });
+            stack_push((union vm_value){ .i = offset });
+        } else if (is_single) {
+            /* One heap handle: the container keeps its reference, the caller
+             * DELETEs its own (D21). */
+            if (elem.i > 0 && elem.i < heap_size && heap[elem.i].ref > 0)
+                heap_ref(elem.i);
+            stack_push(elem);
         } else {
+            /* [FIX D101] The reference form returns [hi, pi] where hi is the
+             * page slot. AIN then R_ASSIGNs both and DELETEs local[2] (=hi),
+             * which heap_unref()s the page. The container already holds its
+             * own reference, so without an extra ref the DELETE drops it to 0
+             * and frees the array (the observed double free in CreateHandle's
+             * cleanup). */
+            if (hi > 0 && hi < heap_size && heap[hi].ref > 0)
+                heap_ref(hi);
             stack_push((union vm_value){ .i = hi });
             stack_push((union vm_value){ .i = pi });
         }
@@ -607,6 +883,32 @@ void hll_call(int libno, int fno, int result_tag)
 	default:
 		stack_push(r);
 		break;
+	}
+
+	if (getenv("XSYS4_HLL_ARGDBG")) {
+		/* After the marshalling loop the arguments are already off the stack,
+		 * so the only expected change is the declared return value.
+		 * AIN_IFACE / AIN_WRAP / AIN_OPTION returns leave two slots. */
+		int rt = f->return_type.data;
+		int slots;
+		if (rt == AIN_VOID)
+			slots = 0;
+		else if (rt == AIN_IFACE || rt == AIN_WRAP || rt == AIN_OPTION)
+			slots = 2;
+		else if (rt == AIN_REF_HLL_PARAM)
+			/* The generic return's width is decided by CALLHLL's concrete
+			 * element type, not by the declared type (see
+			 * hll_ref_result_is_single_value). */
+			slots = (result_tag >= 0 &&
+				 hll_ref_result_is_single_value(result_tag)) ? 1 : 2;
+		else
+			slots = 1;
+		int expect = sp_after_args + slots;
+		static int n;
+		if (stack_ptr != expect && n++ < 60)
+			NOTICE("[argdbg] %s.%s args=%d tag=%d sp_args=%d sp_end=%d expect=%d ret=%d",
+			       ain->libraries[libno].name, f->name, f->nr_arguments,
+			       result_tag, sp_after_args, stack_ptr, expect, rt);
 	}
 }
 
@@ -936,6 +1238,14 @@ static void link_static_library_function(struct hll_function *dst, struct ain_hl
 
 	if (ffi_prep_cif(&dst->cif, FFI_DEFAULT_ABI, dst->nr_args, dst->return_type, dst->args) != FFI_OK)
 		ERROR("Failed to link HLL function");
+
+	/* [D110] 名字注册了但没有实现（HLL_TODO_EXPORT）：软桩模式下换成零值桩，
+	 * 让流程继续往下走并在清单里留下证据；默认仍然留着 NULL 走 VM_ERROR。 */
+	if (!dst->fun && soft_stub_enabled()) {
+		dst->fun = soft_stub_for(dst->return_type);
+		dst->is_stub = 1;
+		stub_replaced++;
+	}
 }
 
 /*
@@ -946,14 +1256,29 @@ static struct hll_function *link_static_library(struct ain_library *ainlib, stru
 	struct hll_function *dst = xcalloc(ainlib->nr_functions, sizeof(struct hll_function));
 
 	for (int i = 0; i < ainlib->nr_functions; i++) {
+		bool matched = false;
 		for (int j = 0; lib->functions[j].name; j++) {
 			if (!strcmp(ainlib->functions[i].name, lib->functions[j].name)) {
 				link_static_library_function(&dst[i], &ainlib->functions[i], lib->functions[j].fun);
+				matched = true;
 				break;
 			}
 		}
-		if (!dst[i].fun)
-			;//WARNING("Unimplemented library function: %s.%s", ainlib->name, ainlib->functions[i].name);
+		/* [HACK][ZERO-STUB] AIN functions with no C export at all still need a
+		 * prepared ffi cif so the soft-stub path can supply a correctly typed
+		 * zero stub. With XSYS4_SOFT_STUB unset dst[i].fun stays NULL and the
+		 * original VM_ERROR behaviour is preserved. Registered in TECH_DEBT. */
+		if (!matched)
+			link_static_library_function(&dst[i], &ainlib->functions[i], NULL);
+		if (!dst[i].fun) {
+			/* [D125] 这行告警以前被注释掉了，于是"某个库函数根本没实现"
+			 * 在启动时完全无声——只有等它真被调用才炸（SOFT_STUB 打开时
+			 * 甚至不炸，只返回零值）。ADV/剧情这类模块一旦命中零桩，
+			 * 表现就是"剧情被跳过、状态机乱走"而日志里一片干净。
+			 * 每个未实现导出只打一行，量很小，必须可见。 */
+			WARNING("Unimplemented library function: %s.%s",
+				ainlib->name, ainlib->functions[i].name);
+		}
 		else if (ainlib->functions[i].nr_arguments >= HLL_MAX_ARGS)
 			ERROR("Too many arguments to library function: %s", ainlib->functions[i].name);
 	}

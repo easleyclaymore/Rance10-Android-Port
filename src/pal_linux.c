@@ -104,8 +104,30 @@ static const IPlatformClock linux_clock = { lc_monotonic_ms, lc_wall_ms };
 static const IPlatformThread linux_thread = { lt_sleep_ms, lt_thread_id };
 static const IPlatformNet linux_net = { ln_resolve };
 static const IPlatformInfo linux_info = { li_platform_name, li_os_description, li_data_dir };
+/* RSS/peak for diagnostics ([mem]). Lives in the adapter because it reads a
+ * Linux-specific file; Core asks through the vtable instead. */
+static void linux_mem_usage(uint64_t *rss_bytes, uint64_t *peak_bytes)
+{
+	*rss_bytes = 0;
+	*peak_bytes = 0;
+	FILE *f = fopen("/proc/self/status", "r");
+	if (!f)
+		return;
+	char line[256];
+	while (fgets(line, sizeof(line), f)) {
+		long kb = 0;
+		if (sscanf(line, "VmRSS: %ld kB", &kb) == 1)
+			*rss_bytes = (uint64_t)kb * 1024;
+		else if (sscanf(line, "VmHWM: %ld kB", &kb) == 1)
+			*peak_bytes = (uint64_t)kb * 1024;
+	}
+	fclose(f);
+}
+
+static const IPlatformMem linux_mem = { linux_mem_usage };
+
 static const Platform linux_platform = {
-	&linux_file, &linux_clock, &linux_thread, &linux_net, &linux_info
+	&linux_file, &linux_clock, &linux_thread, &linux_net, &linux_info, &linux_mem
 };
 
 const Platform *pal_linux(void) { return &linux_platform; }

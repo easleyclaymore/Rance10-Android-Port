@@ -377,6 +377,16 @@ void gfx_set_wait_vsync(bool wait)
 		SDL_GL_SetSwapInterval(wait ? 1 : 0);
 }
 
+int gfx_view_width(void)
+{
+	return sdl.w;
+}
+
+int gfx_view_height(void)
+{
+	return sdl.h;
+}
+
 void gfx_set_clear_color(int r, int g, int b, int a)
 {
 	clear_color.r = max(0, min(255, r));
@@ -423,6 +433,34 @@ static void gfx_update_frame_rate_counter(void)
 
 void gfx_swap(void)
 {
+	/* [D112] First-frame probe: XSYS4_SWAP_LOG=1 logs the first swaps so a
+	 * launcher can freeze the process right after the first presented frame. */
+	if (getenv("XSYS4_SWAP_LOG")) {
+		static int n = 0;
+		if (n < 5)
+			NOTICE("[swap] %d", ++n);
+	}
+	/* XSYS4_DUMP_FRAME=<dir>: 每 N 次 swap 把 main_surface 存成 PNG。
+	 * 真实桌面是 Wayland/XWayland，外部截图工具拿不到合成后的画面
+	 * （x11grab 全黑、import 只拿到过期的 backing pixmap），只能由引擎
+	 * 自己导出帧缓冲作为“到底画出了什么”的判据。
+	 * XSYS4_DUMP_EVERY 控制间隔（默认 200 次 swap）。 */
+	if (getenv("XSYS4_DUMP_FRAME")) {
+		static int n;
+		static int every = -1;
+		if (every < 0) {
+			const char *e = getenv("XSYS4_DUMP_EVERY");
+			every = e && *e ? atoi(e) : 200;
+		}
+		if (++n % every == 0) {
+			char path[PATH_MAX];
+			snprintf(path, sizeof path, "%s/frame_%06d.png",
+				 getenv("XSYS4_DUMP_FRAME"), n);
+			gfx_save_texture(gfx_main_surface(), path, ALCG_PNG);
+			NOTICE("[frame] dumped %s (swap #%d)", path, n);
+		}
+	}
+
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glViewport(sdl.viewport.x, sdl.viewport.y, sdl.viewport.w, sdl.viewport.h);
 	gfx_clear();
@@ -576,8 +614,16 @@ void gfx_render_quadrilateral(struct texture *t, struct gfx_vertex vertices[4])
 	gfx_render(&job);
 }
 
+/* [MEM] Lifetime counters for [mem] (XSYS4_MEM_STAT): how many GL textures we
+ * ever created and how many pixels we ever uploaded. A rising texture count
+ * with a flat live-object count means a leak outside the VM heap. */
+size_t gfx_texture_count = 0;
+size_t gfx_texture_pixels = 0;
+
 static void init_texture(struct texture *t, int w, int h)
 {
+	gfx_texture_count++;
+	gfx_texture_pixels += (size_t)(w > 0 ? w : 0) * (size_t)(h > 0 ? h : 0);
 	glGenTextures(1, &t->handle);
 	glBindTexture(GL_TEXTURE_2D, t->handle);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -660,7 +706,18 @@ void gfx_init_texture_amap(struct texture *t, int w, int h, uint8_t *amap, SDL_C
 void gfx_init_texture_rmap(struct texture *t, int w, int h, uint8_t *rmap)
 {
 	init_texture(t, w, h);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, rmap);
+	/* rmap 是单通道字形位图（字体用）。展开成 RGBA 再上传：parts / sprite
+	 * 这类通用着色器按 vec4 采样，GL_R8 在它们眼里 rgb 恒 0、alpha 恒 1，
+	 * 结果文字要么整块黑、要么整块透明——实测标题菜单的字形完全不出画。
+	 * 展开后 r=g=b=a=覆盖率，读 .r 的专用着色器（blend_rmap_color /
+	 * dilate）行为不变，通用着色器也能正常混合。 */
+	uint32_t *px = xmalloc(sizeof(uint32_t) * w * h);
+	for (int i = 0; i < w * h; i++) {
+		uint32_t a = rmap[i];
+		px[i] = a | (a << 8) | (a << 16) | (a << 24);
+	}
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
+	free(px);
 }
 
 void gfx_init_texture_blank(struct texture *t, int w, int h)
@@ -698,7 +755,10 @@ void gfx_reset_framebuffer(GLenum target, GLuint fbo)
 {
 	glBindFramebuffer(target, main_surface_fb);
 	glDeleteFramebuffers(1, &fbo);
-	glViewport(0, 0, sdl.w, sdl.h);
+	/* [L3] main_surface_fb is VIEW-sized (config.view_width/height), not
+	 * window-sized. Restoring the viewport to sdl.w/h left viewport != FBO
+	 * whenever the window was not exactly 1920x1080 (e.g. 1440x900). */
+	glViewport(0, 0, config.view_width, config.view_height);
 }
 
 SDL_Color gfx_get_pixel(Texture *t, int x, int y)

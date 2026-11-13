@@ -27,6 +27,7 @@ void PE_enable_multi_controller(void);
 bool PE_Init(void);
 void PE_Reset(void);
 void PE_Update(int passed_time, bool message_window_show);
+void parts_advance_animation(int passed_time);
 void PE_UpdateComponent(int passed_time);
 void PE_UpdateParts(int passed_time, bool is_skip, bool message_window_show);
 void PE_SetDelegateIndex(int parts_no, int delegate_index);
@@ -72,6 +73,9 @@ void PE_ReleaseAllPartsWithoutSystem(void);
 void PE_ReleaseAllWithoutSystem(struct page **erase_number_list);
 void PE_SetPos(int parts_no, int x, int y);
 int PE_GetPartsX(int parts_no);
+/* 视图绝对坐标（含父链）。排障用；渲染与命中都以 global.pos 为准。 */
+int PE_GetPartsGlobalX(int parts_no);
+int PE_GetPartsGlobalY(int parts_no);
 int PE_GetPartsY(int parts_no);
 void PE_SetZ(int parts_no, int z);
 int PE_GetPartsZ(int parts_no);
@@ -92,6 +96,14 @@ int PE_GetPartsUpperLeftPosY(int parts_no, int state);
 void PE_SetPartsOriginPosMode(int parts_no, int origin_pos_mode);
 int PE_GetPartsOriginPosMode(int parts_no);
 void PE_SetParentPartsNumber(int parts_no, int parent_parts_no);
+void PE_AddChild(int parts_no, int child_no);
+void PE_InsertChild(int parts_no, int child_no, int index);
+void PE_RemoveChild(int parts_no, int child_no);
+void PE_ClearChild(int parts_no);
+int PE_NumofChild(int parts_no);
+int PE_GetChild(int parts_no, int index);
+int PE_GetChildIndex(int parts_no, int child_no);
+int PE_IsExistChild(int parts_no, int child_no);
 int PE_GetParentPartsNumber(int parts_no);
 bool PE_SetPartsGroupNumber(int parts_no, int group_no);
 void PE_SetPartsMessageWindowShowLink(int parts_no, bool message_window_show_link);
@@ -115,12 +127,30 @@ int PE_GetComponentType(int parts_no, int state);
 void PE_SetInputState(int parts_no, int state);
 int PE_GetInputState(int parts_no);
 bool PE_SetPartsRectangleDetectionSize(int parts_no, int w, int h, int state);
+bool PE_SetPartsSize(int parts_no, int w, int h, int state);
+/* 用户组件 (component type 15)：登记控件种类与显示文字（游戏编码字节串）。
+ * 目前只绘制 TextButton。 */
+void PE_SetUserComponent(int parts_no, const char *object, const char *label);
+/* 用户组件的名字与键值数据（PartsEngine.Set/GetUserComponent* 的底层）。
+ * 入参/返回值都是游戏编码字节串。 */
+void PE_SetUserComponentName(int parts_no, const char *name);
+const char *PE_GetUserComponentName(int parts_no);
+void PE_SetUserComponentData(int parts_no, const char *key, const char *value);
+const char *PE_GetUserComponentData(int parts_no, const char *key);
+/* 从根参数重算整棵 parts 树的 global 参数（pos/z/alpha/scale/颜色）。
+ * 建树完成或布局变动后调用；幂等。详见 parts.c 里的说明。 */
+void PE_RefreshGlobalTree(void);
 bool PE_SetPartsCGDetectionSize(int parts_no, struct string *cg_name, int state);
 bool PE_Save(struct page **buffer);
 bool PE_SaveWithoutHideParts(struct page **buffer);
 bool PE_Load(struct page **buffer);
 int PE_AddController(int index);
 void PE_RemoveController(struct page **erase_number_list, int index);
+/* [D129] 图层 ID ↔ 栈下标的边界转换。AIN 侧保存的是 ID，内部渲染/命中
+ * 用的是下标；只有跨 HLL 边界（AddLayer/GetActiveLayer/SetActiveLayer/
+ * EraseLayer/SetComponentShow/GetLayerID/GetLayerIndex）才需要转换。 */
+int PE_get_controller_id(int index);
+int PE_get_controller_index(int id);
 bool PE_CreateParts3DLayerPluginID(int parts_no, int state);
 int PE_GetParts3DLayerPluginID(int parts_no, int state);
 bool PE_ReleaseParts3DLayerPluginID(int parts_no, int state);
@@ -175,6 +205,9 @@ bool PE_SetPartsConstructionSurfaceArea(int parts_no, int x, int y, int w, int h
 
 // input.c
 void PE_UpdateInputState(int passed_time);
+/* 帧心跳的输入阶段：handle_events() + PE_UpdateInputState()。
+ * sact_Update 与 vm_frame_pump 都必须调用它（见 input.c 注释）。 */
+void PE_PumpInput(int passed_time);
 void PE_SetPassCursor(int parts_no, bool pass);
 bool PE_GetPartsPassCursor(int parts_no);
 void PE_SetClickable(int parts_no, bool clickable);
@@ -189,6 +222,7 @@ bool PE_SetPartsClickSoundNumber(int parts_no, int sound_no);
 bool PE_SetClickMissSoundNumber(int sound_no);
 void PE_BeginInput(void);
 void PE_EndInput(void);
+bool PE_IsInputBegun(void);
 int PE_GetClickPartsNumber(void);
 bool PE_IsCursorIn(int parts_no, int mouse_x, int mouse_y, int state);
 
@@ -249,6 +283,7 @@ void PE_EndMotion(void);
 void PE_SetMotionTime(int t);
 void PE_SeekEndMotion(void);
 void PE_UpdateMotionTime(int time, bool skip);
+void PE_AdvanceMotionClock(int passed_time);
 bool PE_IsMotion(void);
 int PE_GetMotionEndTime(void);
 void PE_PauseMotion(bool pause);
@@ -267,6 +302,8 @@ bool PE_SetPartsFontEdgeColor(int parts_no, int r, int g, int b, int state);
 bool PE_SetPartsFontEdgeWeight(int parts_no, float edge_weight, int state);
 bool PE_SetTextCharSpace(int parts_no, int char_space, int state);
 bool PE_SetTextLineSpace(int parts_no, int line_space, int state);
+int PE_GetTextCharSpace(int parts_no, int state);
+int PE_GetTextLineSpace(int parts_no, int state);
 
 // flash.c
 bool PE_ExistsFlashFile(struct string *flash_filename);
@@ -289,6 +326,7 @@ int PE_GetPartsFlatCurrentFrameNumber(int parts_no, int state);
 bool PE_BackPartsFlatBeginFrame(int parts_no, int state);
 bool PE_StepPartsFlatFinalFrame(int parts_no, int state);
 bool PE_SetPartsFlatSurfaceArea(int parts_no, int x, int y, int w, int h, int state);
+struct string *PE_GetPartsFlatName(int parts_no, int state);
 bool PE_SetPartsFlatAndStop(int parts_no, struct string *filename, int state);
 bool PE_StopPartsFlat(int parts_no, int state);
 bool PE_StartPartsFlat(int parts_no, int state);
@@ -313,5 +351,27 @@ int PE_get_layoutbox_padding_top(int parts_no);
 int PE_get_layoutbox_padding_bottom(int parts_no);
 int PE_get_layoutbox_padding_left(int parts_no);
 int PE_get_layoutbox_padding_right(int parts_no);
+
+// activity.c (D89)
+struct activity;
+struct activity_part;
+bool activity_exists(const char *name);
+struct activity *activity_get(const char *name);
+struct activity *activity_create(const char *name);
+bool activity_read(struct string *name, struct string *file);
+bool activity_release(const char *name);
+void activity_release_all(void);
+void activity_free(struct activity *act);
+bool activity_is_exist_file(const char *file);
+int activity_nr_parts(struct activity *act);
+struct activity_part *activity_find_parts(struct activity *act, const char *parts_name);
+int activity_find_parts_no(struct activity *act, const char *parts_name);
+int activity_part_no_at(struct activity *act, int index);
+const char *activity_part_name_at(struct activity *act, int index);
+int activity_part_cg_name_at(struct activity *act, int index, const char **out);
+bool activity_add_parts(struct string *name, struct string *parts_name, int parts_no);
+bool activity_remove_parts(struct string *name, struct string *parts_name);
+void activity_remove_all_parts(struct string *name);
+const char *activity_background(struct activity *act);
 
 #endif /* SYSTEM4_PARTS_H */

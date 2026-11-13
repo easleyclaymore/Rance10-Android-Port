@@ -524,7 +524,18 @@ static bool MainEXFile_IA2Int(int handle, int key, struct string *format_name, i
 	int v_handle = MainEXFile_IA2Handle(handle, key, format_name);
 	if (v_handle <= 0)
 		return false;
-	return MainEXFile_Int(v_handle, data);
+	bool ok = MainEXFile_Int(v_handle, data);
+	/* [D128] XSYS4_EX_DBG=1：EX 表按 (行键, 列名) 取整数的现场。
+	 * 剧情走不走由 `Quest.Type`（读「種別」列）决定，一旦这里取不到，
+	 * 所有任务都会被判成地图任务、剧情整段跳过——所以必须能看见。 */
+	if (getenv("XSYS4_EX_DBG")) {
+		static int n;
+		if (n++ < 60)
+			NOTICE("[ex] IA2Int h=%d key=%d col='%s' -> %s val=%d",
+			       handle, key, format_name ? format_name->text : "(null)",
+			       ok ? "ok" : "FAIL", ok ? *data : -9999);
+	}
+	return ok;
 }
 
 static bool MainEXFile_IA2Float(int handle, int key, struct string *format_name, float *data)
@@ -640,22 +651,28 @@ static bool MainEXFile_GetNodeName(struct string *tree_path, int index, struct s
 	return false;
 }
 
-/* AIN f[31]: bool GetNodeNameList(tree_path, ref array out, int flags).
- * Stage 1: collect the non-leaf child names into a fresh string array.
- * flags / in-place reuse are not implemented (D80). */
-static bool MainEXFile_GetNodeNameList(struct string *tree_path, struct page **out, int flags)
+static bool MainEXFile_GetEXName(struct string *tree_path, int index,
+				 struct string **ex_name);
+
+/* AIN f[31]/f[32]: bool GetNodeNameList / GetEXNameList(tree_path, ref array
+ * out, int flags). Collects the child names of a tree node into a fresh string
+ * array; `leaf` selects the EX (leaf) children instead of the node children.
+ * `flags` (in-place reuse of an existing array) is not implemented (D80). */
+static bool ex_tree_name_list(struct string *tree_path, struct page **out, bool leaf)
 {
-	(void)flags;
 	if (!out)
 		return false;
-	int count = MainEXFile_GetNodeNameCount(tree_path);
+	int count = leaf ? MainEXFile_GetEXNameCount(tree_path)
+			 : MainEXFile_GetNodeNameCount(tree_path);
 	struct page *np = alloc_page(ARRAY_PAGE, AIN_ARRAY_STRING, count > 0 ? count : 1);
 	np->array.rank = 1;
 	np->array.struct_type = -1;
 	np->nr_vars = count;
 	for (int i = 0; i < count; i++) {
 		struct string *name = NULL;
-		if (!MainEXFile_GetNodeName(tree_path, i, &name) || !name)
+		bool ok = leaf ? MainEXFile_GetEXName(tree_path, i, &name)
+			       : MainEXFile_GetNodeName(tree_path, i, &name);
+		if (!ok || !name)
 			continue;
 		int slot = heap_alloc_slot(VM_STRING);
 		heap[slot].s = name;
@@ -663,6 +680,18 @@ static bool MainEXFile_GetNodeNameList(struct string *tree_path, struct page **o
 	}
 	*out = np;
 	return true;
+}
+
+static bool MainEXFile_GetNodeNameList(struct string *tree_path, struct page **out, int flags)
+{
+	(void)flags;
+	return ex_tree_name_list(tree_path, out, false);
+}
+
+static bool MainEXFile_GetEXNameList(struct string *tree_path, struct page **out, int flags)
+{
+	(void)flags;
+	return ex_tree_name_list(tree_path, out, true);
 }
 static bool MainEXFile_GetEXName(struct string *tree_path, int index, struct string **ex_name)
 {
@@ -729,54 +758,257 @@ MAIN_EX_NAME_FUNCTIONS(DEFINE_NAME_WRAPPER)
 
 static void MainEXFile_PreLink(void);
 
-/* AIN v12 f[16]: float Float(string name, float default_value, int row).
- * The old binding used (int handle, float *data), so libffi passed the
- * second argument as a float and the C side read it as a NULL pointer
- * (D38). Match the declared signature exactly. */
-static float MainEXFile_Float_v12(struct string *name, float dflt, int row)
+/* ---- AIN v12 name-based access ------------------------------------------
+ * v12 addresses values by NAME and returns them directly, with the caller's
+ * default standing in for a missing entry (D38); the handle-based API above is
+ * only used by the editor. The trailing int parameter of each declaration is a
+ * row selector for the one-dimensional getters and unused elsewhere.
+ *
+ * `TreePath` arguments (GetNodeName* / GetEXName*) address nodes of the .ex
+ * tree, not top-level values, and are handled by the functions below. */
+
+/* The value stored at `name`, indexed into when it is a container:
+ * a table is indexed [row][col], a list by `row`. */
+static struct ex_value *v12_leaf(struct string *name, int row, int col)
 {
-	(void)row;
-	int handle = MainEXFile_Handle(name);
-	if (handle > 0 && (unsigned)handle < nr_handles
-	    && handles[handle]->type == EX_FLOAT)
-		return handles[handle]->f;
+	if (!ex || !name || !name->text)
+		return NULL;
+	struct ex_value *v = ex_get(ex, name->text);
+	if (!v)
+		return NULL;
+	if (v->type == EX_TABLE)
+		return ex_table_get(v->t, row, col);
+	if (v->type == EX_LIST)
+		return ex_list_get(v->list, row);
+	return v;
+}
+
+static struct ex_table *v12_table(struct string *name)
+{
+	if (!ex || !name || !name->text)
+		return NULL;
+	struct ex_value *v = ex_get(ex, name->text);
+	return v && v->type == EX_TABLE ? v->t : NULL;
+}
+
+static int ex_value_int(struct ex_value *v, int dflt)
+{
+	if (!v)
+		return dflt;
+	switch (v->type) {
+	case EX_INT:
+		return v->i;
+	case EX_FLOAT:
+		return (int)v->f;
+	case EX_STRING:
+		return v->s && v->s->text ? (int)strtol(v->s->text, NULL, 10) : dflt;
+	default:
+		return dflt;
+	}
+}
+
+static float ex_value_float(struct ex_value *v, float dflt)
+{
+	if (!v)
+		return dflt;
+	switch (v->type) {
+	case EX_INT:
+		return (float)v->i;
+	case EX_FLOAT:
+		return v->f;
+	case EX_STRING:
+		return v->s && v->s->text ? strtof(v->s->text, NULL) : dflt;
+	default:
+		return dflt;
+	}
+}
+
+static struct string *ex_value_string(struct ex_value *v, struct string *dflt)
+{
+	if (v && v->type == EX_STRING && v->s)
+		return string_ref(v->s);
+	return string_ref(dflt);
+}
+
+static int MainEXFile_Row_v12(struct string *name, int dflt)
+{
+	struct ex_table *t = v12_table(name);
+	return t ? (int)t->nr_rows : dflt;
+}
+
+static int MainEXFile_Col_v12(struct string *name, int dflt)
+{
+	if (ex && name && name->text) {
+		struct ex_value *v = ex_get(ex, name->text);
+		if (v && v->type == EX_TABLE)
+			return (int)v->t->nr_columns;
+		if (v && v->type == EX_LIST)
+			return (int)v->list->nr_items;
+		if (v)
+			return 1;
+	}
 	return dflt;
 }
 
-/* AIN v12 MainEXFile getters f[15..23] are
- *   (name, [index...], default_value, row) -> value
- * while upstream Name_* wrappers are (name, [index...], T *out) -> bool.
- * libffi therefore passed the default value where an out-pointer was
- * expected (D38). These v12 bindings match the declared signatures. */
-static int MainEXFile_Int_v12(struct string *name, int dflt, int row)
-{ (void)name; (void)row; return dflt; }
-static struct string *MainEXFile_String_v12(struct string *name,
-        struct string *dflt, int row)
-{ (void)name; (void)row; return string_ref(dflt); }
-static int MainEXFile_AInt_v12(struct string *name, int index, int dflt, int row)
-{ (void)name; (void)index; (void)row; return dflt; }
-static float MainEXFile_AFloat_v12(struct string *name, int index, float dflt, int row)
-{ (void)name; (void)index; (void)row; return dflt; }
-static struct string *MainEXFile_AString_v12(struct string *name, int index,
-        struct string *dflt, int row)
-{ (void)name; (void)index; (void)row; return string_ref(dflt); }
-static int MainEXFile_A2Int_v12(struct string *name, int r, int c, int dflt, int row)
-{ (void)name; (void)r; (void)c; (void)row; return dflt; }
-static float MainEXFile_A2Float_v12(struct string *name, int r, int c,
-        float dflt, int row)
-{ (void)name; (void)r; (void)c; (void)row; return dflt; }
-static struct string *MainEXFile_A2String_v12(struct string *name, int r, int c,
-        struct string *dflt, int row)
-{ (void)name; (void)r; (void)c; (void)row; return string_ref(dflt); }
-
-/* AIN f[26]: int GetColAtFormatName(string name, string format, int row).
- * Stage 1 (D56): EX table column lookup is not ported; return 0 so the
- * button-assignment init chain can continue. */
-static int MainEXFile_GetColAtFormatName_v12(struct string *name,
-        struct string *format, int row)
+static int MainEXFile_Type_v12(struct string *name, int dflt)
 {
-	(void)name; (void)format; (void)row;
-	return 0;
+	if (!ex || !name || !name->text)
+		return dflt;
+	struct ex_value *v = ex_get(ex, name->text);
+	return v ? v->type : dflt;
+}
+
+static int MainEXFile_AType_v12(struct string *name, int index, int dflt)
+{
+	struct ex_value *v = v12_leaf(name, index, 0);
+	return v ? v->type : dflt;
+}
+
+static int MainEXFile_A2Type_v12(struct string *name, int row, int col, int dflt)
+{
+	struct ex_value *v = v12_leaf(name, row, col);
+	return v ? v->type : dflt;
+}
+
+static int MainEXFile_Exists_v12(struct string *name, int dflt)
+{
+	(void)dflt;
+	return v12_leaf(name, 0, 0) != NULL;
+}
+
+static int MainEXFile_AExists_v12(struct string *name, int index, int dflt)
+{
+	(void)dflt;
+	return v12_leaf(name, index, 0) != NULL;
+}
+
+static int MainEXFile_A2Exists_v12(struct string *name, int row, int col, int dflt)
+{
+	(void)dflt;
+	return v12_leaf(name, row, col) != NULL;
+}
+
+static int MainEXFile_Int_v12(struct string *name, int dflt, int row)
+{
+	return ex_value_int(v12_leaf(name, row, 0), dflt);
+}
+
+static float MainEXFile_Float_v12(struct string *name, float dflt, int row)
+{
+	return ex_value_float(v12_leaf(name, row, 0), dflt);
+}
+
+static struct string *MainEXFile_String_v12(struct string *name,
+	struct string *dflt, int row)
+{
+	return ex_value_string(v12_leaf(name, row, 0), dflt);
+}
+
+static int MainEXFile_AInt_v12(struct string *name, int index, int dflt, int row)
+{
+	(void)row;
+	return ex_value_int(v12_leaf(name, index, 0), dflt);
+}
+
+static float MainEXFile_AFloat_v12(struct string *name, int index, float dflt,
+	int row)
+{
+	(void)row;
+	return ex_value_float(v12_leaf(name, index, 0), dflt);
+}
+
+static struct string *MainEXFile_AString_v12(struct string *name, int index,
+	struct string *dflt, int row)
+{
+	(void)row;
+	return ex_value_string(v12_leaf(name, index, 0), dflt);
+}
+
+static int MainEXFile_A2Int_v12(struct string *name, int r, int c, int dflt, int row)
+{
+	(void)row;
+	return ex_value_int(v12_leaf(name, r, c), dflt);
+}
+
+static float MainEXFile_A2Float_v12(struct string *name, int r, int c,
+	float dflt, int row)
+{
+	(void)row;
+	return ex_value_float(v12_leaf(name, r, c), dflt);
+}
+
+static struct string *MainEXFile_A2String_v12(struct string *name, int r, int c,
+	struct string *dflt, int row)
+{
+	(void)row;
+	return ex_value_string(v12_leaf(name, r, c), dflt);
+}
+
+/* Row/column indices are 0-based here, matching ex_row_at_* / ex_col_from_name;
+ * a missing table maps to the caller's default. */
+static int MainEXFile_GetRowAtIntKey_v12(struct string *name, int key, int dflt)
+{
+	struct ex_table *t = v12_table(name);
+	if (!t)
+		return dflt;
+	int row = ex_row_at_int_key(t, key);
+	return row < 0 ? dflt : row;
+}
+
+static int MainEXFile_GetRowAtStringKey_v12(struct string *name,
+	struct string *key, int dflt)
+{
+	struct ex_table *t = v12_table(name);
+	if (!t || !key || !key->text)
+		return dflt;
+	int row = ex_row_at_string_key(t, key->text);
+	return row < 0 ? dflt : row;
+}
+
+static int MainEXFile_GetColAtFormatName_v12(struct string *name,
+	struct string *format, int dflt)
+{
+	struct ex_table *t = v12_table(name);
+	if (!t || !format || !format->text)
+		return dflt;
+	int col = ex_col_from_name(t, format->text);
+	/* [D128] XSYS4_EX_DBG=1：列名解析现场。EX 的列名与 AIN 里的字面量
+	 * 必须逐字节相等，编码不一致就会解析失败、返回值退化成 dflt，
+	 * 上层（`Quest.Type` 读「種別」）于是把任务判成地图任务。 */
+	if (getenv("XSYS4_EX_DBG")) {
+		static int n;
+		if (n++ < 40)
+			NOTICE("[ex] col table='%s' col='%s' -> %d (dflt=%d)",
+			       name ? name->text : "(null)",
+			       format->text, col, dflt);
+	}
+	return col < 0 ? dflt : col;
+}
+
+static int MainEXFile_GetNodeNameCount_v12(struct string *path, int dflt)
+{
+	int n = MainEXFile_GetNodeNameCount(path);
+	return n > 0 ? n : dflt;
+}
+
+static int MainEXFile_GetEXNameCount_v12(struct string *path, int dflt)
+{
+	int n = MainEXFile_GetEXNameCount(path);
+	return n > 0 ? n : dflt;
+}
+
+static bool MainEXFile_GetNodeName_v12(struct string *path, int index,
+	struct string **out, int dflt)
+{
+	(void)dflt;
+	return MainEXFile_GetNodeName(path, index, out);
+}
+
+static bool MainEXFile_GetEXName_v12(struct string *path, int index,
+	struct string **out, int dflt)
+{
+	(void)dflt;
+	return MainEXFile_GetEXName(path, index, out);
 }
 
 HLL_LIBRARY(MainEXFile,
@@ -829,34 +1061,45 @@ HLL_LIBRARY(MainEXFile,
 	    HLL_EXPORT(GetEXNameCount, MainEXFile_GetEXNameCount),
 	    HLL_EXPORT(GetNodeName, MainEXFile_GetNodeName),
 	    HLL_EXPORT(GetNodeNameList, MainEXFile_GetNodeNameList),
+	    HLL_EXPORT(GetEXNameList, MainEXFile_GetEXNameList),
 	    HLL_EXPORT(GetEXName, MainEXFile_GetEXName));
 
 static void MainEXFile_PreLink(void)
 {
-	int libno = ain_get_library(ain, "MainEXFile");
-	if (libno < 0)
-		return;
-	int row = ain_get_library_function(ain, libno, "Row");
-	if (row < 0 || ain->libraries[libno].functions[row].nr_arguments < 1 ||
-	    ain->libraries[libno].functions[row].arguments[0].type.data != AIN_STRING)
-		return;
-
-#define USE_NAME_WRAPPER(ret, name, params, args) \
-	static_library_replace(&lib_MainEXFile, #name, MainEXFile_Name_##name);
-	MAIN_EX_NAME_FUNCTIONS(USE_NAME_WRAPPER)
-#undef USE_NAME_WRAPPER
-	/* Rance10 AIN v12 declares f[16] Float(string, float, int) -> float,
-	 * not the legacy (string, float*) out-param form that the Name_ wrapper
-	 * expects. Rebind it after the generic replacement (D38). */
-	static_library_replace(&lib_MainEXFile, "Int", MainEXFile_Int_v12);
-	static_library_replace(&lib_MainEXFile, "Float", MainEXFile_Float_v12);
-	static_library_replace(&lib_MainEXFile, "String", MainEXFile_String_v12);
-	static_library_replace(&lib_MainEXFile, "AInt", MainEXFile_AInt_v12);
-	static_library_replace(&lib_MainEXFile, "AFloat", MainEXFile_AFloat_v12);
-	static_library_replace(&lib_MainEXFile, "AString", MainEXFile_AString_v12);
-	static_library_replace(&lib_MainEXFile, "A2Int", MainEXFile_A2Int_v12);
-	static_library_replace(&lib_MainEXFile, "A2Float", MainEXFile_A2Float_v12);
-	static_library_replace(&lib_MainEXFile, "A2String", MainEXFile_A2String_v12);
+	/* Rance10's AIN v12 declares every value accessor as
+	 *   (string name, [index...], default_value, row)
+	 * i.e. addressed by name and returning the value directly, while the
+	 * upstream bindings are the (int handle, ...) editor forms or the
+	 * (string name, ..., T *out) forms. Rebind the whole name-addressed
+	 * family onto the v12 implementations above; the handle-based entries in
+	 * the export table stay for the editor. */
+#define V12(name) \
+	static_library_replace(&lib_MainEXFile, #name, MainEXFile_##name##_v12)
+	V12(Row);
+	V12(Col);
+	V12(Type);
+	V12(AType);
+	V12(A2Type);
+	V12(Exists);
+	V12(AExists);
+	V12(A2Exists);
+	V12(Int);
+	V12(Float);
+	V12(String);
+	V12(AInt);
+	V12(AFloat);
+	V12(AString);
+	V12(A2Int);
+	V12(A2Float);
+	V12(A2String);
+	V12(GetRowAtIntKey);
+	V12(GetRowAtStringKey);
+	V12(GetColAtFormatName);
+	V12(GetNodeNameCount);
+	V12(GetEXNameCount);
+	V12(GetNodeName);
+	V12(GetEXName);
+#undef V12
 }
 
 #undef MAIN_EX_NAME_FUNCTIONS

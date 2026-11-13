@@ -25,6 +25,7 @@
 #include "audio.h"
 #include "vm/page.h"
 #include "xsystem4.h"
+#include "gfx/gfx.h"
 #include "sact.h"
 #include "sprite.h"
 #include "parts.h"
@@ -60,6 +61,13 @@ static void parts_init(struct parts *parts)
 	parts->sp.has_pixel = true;
 	parts->sp.has_alpha = true;
 	parts->sp.render = parts_sprite_render;
+	/* [HACK-POC D93] parts are drawn dynamically by parts_sprite_render(), so
+	 * they have no static pixel buffer -- but scene_sprite_dirty() only calls
+	 * scene_register_sprite() when has_pixel is set. Without this flag every
+	 * parts sprite stayed out of the scene and scene_render() only cleared the
+	 * screen (black window). Real fix: let the scene accept render-only
+	 * sprites, or set has_pixel in parts_dirty() alongside the dirty flag. */
+	parts->sp.has_pixel = true;
 	parts->sp.to_json = parts_sprite_to_json;
 	parts->local = PARTS_PARAMS_INITIALIZER(1);
 	parts->global = PARTS_PARAMS_INITIALIZER(1);
@@ -165,6 +173,8 @@ struct parts *parts_get(int parts_no)
 	parts->controller_no = ctrl_stack.active;
 	slot->value = parts;
 	parts_list_insert(parts);
+	/* [D128] 部件分布变了，覆盖推断要跟着更新（不放在每帧钩子上：
+	 * parts_render_update() 并不是所有等待路径都会走到）。 */
 	return parts;
 }
 
@@ -248,10 +258,16 @@ static struct text_style default_text_style = {
 	.font_size = NULL
 };
 
+struct text_style *parts_default_text_style(void)
+{
+	return &default_text_style;
+}
+
 void parts_state_reset(struct parts_state *state, enum parts_type type)
 {
 	parts_state_free(state);
 	state->type = type;
+	state->component_type = -1;
 	switch (type) {
 	case PARTS_TEXT:
 		state->text.ts = default_text_style;
@@ -435,6 +451,66 @@ void parts_recalculate_hitbox(struct parts *parts)
 	for (int i = 0; i < PARTS_NR_STATES; i++) {
 		parts_common_recalculate_hitbox(parts, &parts->states[i].common);
 	}
+}
+
+static void parts_combine_params(struct parts_params *parent, struct parts_params *child,
+		struct parts_params *out);
+
+static void parts_refresh_subtree(struct parts *parts, struct parts_params *parent)
+{
+	parts_combine_params(parent, &parts->local, &parts->global);
+	struct parts *child;
+	PARTS_FOREACH_CHILD(child, parts) {
+		parts_refresh_subtree(child, &parts->global);
+	}
+}
+
+/* 把 pending_parent 落到 children 链表（只挂树，不跑 layout）。
+ * 与 PE_UpdateComponent() 里那段逻辑一致，抽出来是为了能"只建树不排布"。 */
+static void parts_bind_pending_parent(struct parts *parts)
+{
+	if (parts->pending_parent < 0)
+		return;
+	struct parts *parent = parts_try_get(parts->pending_parent);
+	if (parent) {
+		if (parts->parent)
+			TAILQ_REMOVE(&parts->parent->children, parts, child_list_entry);
+		parts->parent = parent;
+		TAILQ_INSERT_TAIL(&parent->children, parts, child_list_entry);
+		if (parent->states[0].type == PARTS_LAYOUT_BOX)
+			parts_component_dirty(parent);
+	}
+	parts->pending_parent = -1;
+}
+
+/* 从根参数出发重算整棵树的 global 参数。
+ *
+ * 为什么需要：部件被创建时还没有父节点，PE_SetPos() 只能算出
+ * global = local；随后 PE_SetParentPartsNumber() 只是登记 pending_parent，
+ * 真正的合成发生在 PE_UpdateComponent() 里。而 PE_UpdateComponent() 会跳过
+ * "父节点还脏" 的子部件（它们已经被从脏链表里弹掉，不会自动回来），
+ * 布局框又会改写子部件的 local.pos 而不回流通 global ——
+ * 结果子部件的 global.pos 永远停在建树瞬间的值。
+ * 渲染（parts_render_*）与命中测试都读 global.pos，
+ * 于是整棵子树都画在错误的坐标上（Rance10 标题菜单画到屏幕外的根因）。
+ *
+ * 注意：这里只重算参数，**不触发 layout**。layout 会按布局框自己的原点
+ * 覆盖子部件的 local.pos，一旦提前跑，就会把 EX 里给好的绝对位置冲掉
+ * （NetworkConfirmation 的 OK 按钮被排到左上角就是这么来的）。
+ *
+ * 建树完成后调一次即可；幂等。 */
+void PE_RefreshGlobalTree(void)
+{
+	struct parts *parts;
+	/* 两趟：先把所有 pending_parent 挂完，再从根往下合成参数。 */
+	PARTS_LIST_FOREACH(parts) {
+		parts_bind_pending_parent(parts);
+	}
+	PARTS_LIST_FOREACH(parts) {
+		if (!parts->parent)
+			parts_refresh_subtree(parts, &root_params);
+	}
+	parts_engine_dirty();
 }
 
 static void parts_update_global_pos(struct parts *parts, Point parent_pos)
@@ -979,11 +1055,62 @@ static void parts_update_loop(struct parts *parts, int passed_time)
 		parts_dirty(parts);
 }
 
+/* 用户组件 (component type 15)：登记控件种类与显示文字。
+ * 入参都是游戏自己的编码（GBK / SJIS）字节串，原样留存，绘制时交给
+ * parts_render_user_component()。重复设置会丢弃旧的文字缓存。 */
+void parts_set_user_component(struct parts *parts, const char *object, const char *label)
+{
+	if (!parts)
+		return;
+	free(parts->uc_object);
+	free(parts->uc_label);
+	parts->uc_object = object ? strdup(object) : NULL;
+	parts->uc_label = label ? strdup(label) : NULL;
+	/* 文字缓存要跟着失效，否则改标签后画的还是旧字。 */
+	if (parts->uc_text_valid) {
+		parts_text_free(&parts->uc_text);
+		parts->uc_text_valid = false;
+	}
+	parts_engine_dirty();
+}
+
+/* 用户组件的键值数据。EX 的 数据 就是一个 [键,值,键,值,...] 列表，
+ * 原样存下来，游戏用 GetUserComponentData(no, "参数") 之类读回去。 */
+void parts_set_user_component_data(struct parts *parts, const char *key, const char *value)
+{
+	if (!parts || !key)
+		return;
+	for (int i = 0; i + 1 < parts->uc_data_n; i += 2) {
+		if (strcmp(parts->uc_data[i], key) != 0)
+			continue;
+		free(parts->uc_data[i + 1]);
+		parts->uc_data[i + 1] = value ? strdup(value) : NULL;
+		return;
+	}
+	parts->uc_data = xrealloc_array(parts->uc_data, parts->uc_data_n,
+			parts->uc_data_n + 2, sizeof(char *));
+	parts->uc_data[parts->uc_data_n++] = strdup(key);
+	parts->uc_data[parts->uc_data_n++] = value ? strdup(value) : NULL;
+}
+
+const char *parts_get_user_component_data(struct parts *parts, const char *key)
+{
+	if (!parts || !key)
+		return NULL;
+	for (int i = 0; i + 1 < parts->uc_data_n; i += 2) {
+		if (strcmp(parts->uc_data[i], key) == 0)
+			return parts->uc_data[i + 1];
+	}
+	return NULL;
+}
+
 static void parts_update_animation(int passed_time)
 {
 	struct parts *parts;
 	PARTS_LIST_FOREACH(parts) {
 		parts_update_loop(parts, passed_time);
+		/* 用户组件的文字纹理在这里建（渲染之外），见 render.c。 */
+		parts_uc_text_prepare(parts);
 	}
 }
 
@@ -999,6 +1126,13 @@ void parts_release(int parts_no)
 	for (int i = 0; i < PARTS_NR_STATES; i++) {
 		parts_state_free(&parts->states[i]);
 	}
+	if (parts->uc_text_valid)
+		parts_text_free(&parts->uc_text);
+	free(parts->uc_object);
+	free(parts->uc_label);
+	for (int i = 0; i < parts->uc_data_n; i++)
+		free(parts->uc_data[i]);
+	free(parts->uc_data);
 
 	// break parent/child relationships
 	while (!TAILQ_EMPTY(&parts->children)) {
@@ -1165,8 +1299,76 @@ void PE_UpdateComponent(possibly_unused int passed_time)
 
 bool parts_message_window_show = true;
 
+/* [D128] 图层遮挡：一层里出现"铺满整个视图且不透明"的部件时，它下面的
+ * 所有图层都不该再画。
+ *
+ * 为什么不能简单地"新压入的图层盖住旧图层"：对话框也走 AddController，
+ * 于是一弹对话框整张地图就黑掉。真实机靠 SceneStack 析构里的 EraseLayer
+ * 把旧场景连部件一起带走，而我们的图层/部件在泄漏（见 [LAYER-LEAK]），
+ * 旧场景还活着——所以只能从"能不能盖住屏幕"反推视觉上的上下关系：
+ *   标题层有全屏背景  → 盖住底下的场景层   ✓
+ *   任务地图有全屏底图 → 盖住标题层        ✓
+ *   对话框只有 862x226 的面板 → 不盖地图   ✓
+ * 每帧重算，代价是遍历一次部件表。XSYS4_NO_LAYER_COVER=1 可关闭。 */
+int parts_cover_layer;
+
+static void parts_update_cover_layer(void)
+{
+	static int disabled = -1;
+	if (disabled < 0)
+		disabled = getenv("XSYS4_NO_LAYER_COVER") ? 1 : 0;
+	if (disabled) {
+		parts_cover_layer = 0;
+		return;
+	}
+
+	int vw = gfx_view_width(), vh = gfx_view_height();
+	int top = 0;
+	struct parts *p;
+	TAILQ_FOREACH(p, &parts_list, parts_list_entry) {
+		if (!p->global.show)
+			continue;
+		int c = p->controller_no;
+		if (c < 0 || c >= PARTS_CONTROLLER_STACK_MAX)
+			continue;
+		if (!ctrl_stack.show[c])
+			continue;
+		if (p->global.alpha < 250)
+			continue;
+		struct parts_state *st = &p->states[p->state];
+		if (st->common.w < vw || st->common.h < vh)
+			continue;
+		ctrl_stack.opaque[c] = true;
+	}
+	for (int c = 0; c < ctrl_stack.nr_controllers; c++) {
+		/* [D128] 不看 show：AIN 弹对话框时会把地图那层 show=0（淡出遮罩），
+		 * 此时地图仍然定义了"视觉地板"，它下面的旧场景不该因为地图淡出而
+		 * 重新露出来。 */
+		if (ctrl_stack.opaque[c])
+			top = c;
+	}
+	parts_cover_layer = top;
+	if (getenv("XSYS4_CTRL_DBG")) {
+		static int last = -1;
+		if (top != last) {
+			last = top;
+			char buf[256];
+			int n = snprintf(buf, sizeof(buf), "[ctrl] cover_layer=%d (view %dx%d)",
+					 top, vw, vh);
+			for (int c = 0; c < ctrl_stack.nr_controllers && n < (int)sizeof(buf) - 20; c++)
+				n += snprintf(buf + n, sizeof(buf) - n, " L%d[o%d s%d]",
+					      c, ctrl_stack.opaque[c], ctrl_stack.show[c]);
+			NOTICE("%s", buf);
+		}
+	}
+}
+
 void PE_Update(int passed_time, bool message_window_show)
 {
+	if (getenv("XSYS4_UPD_DBG")) {
+		static int n = 0;
+		if (n++ < 12) NOTICE("[upd] PE_Update t=%d", passed_time);
+	}
 	parts_message_window_show = message_window_show;
 	PE_UpdateComponent(passed_time);
 	audio_update();
@@ -1175,8 +1377,28 @@ void PE_Update(int passed_time, bool message_window_show)
 	parts_render_update();
 }
 
+/* Advance the per-parts animation clocks (flat / animation / flash) by
+ * `passed_time` ms.
+ *
+ * This is deliberately *only* the clock: PE_Update() also re-runs
+ * PE_UpdateComponent() and parts_render_update(), which invalidate the sprites
+ * the scene renderer has already prepared. Callers that merely need "time has
+ * passed" (the VM frame pump, see vm_frame_pump) use this. */
+void parts_advance_animation(int passed_time)
+{
+	/* [D128] 图层遮挡的判定跟着这里重算：AIN 在 WaitForClick 里自旋时根本
+	 * 到不了 PartsEngine.Update，而遮挡必须在每次绘制前是最新的。 */
+	parts_update_cover_layer();
+	if (passed_time > 0)
+		parts_update_animation(passed_time);
+}
+
 void PE_UpdateParts(int passed_time, possibly_unused bool is_skip, bool message_window_show)
 {
+	if (getenv("XSYS4_UPD_DBG")) {
+		static int n = 0;
+		if (n++ < 12) NOTICE("[upd] PE_UpdateParts t=%d", passed_time);
+	}
 	parts_message_window_show = message_window_show;
 	audio_update();
 	parts_update_animation(passed_time);
@@ -1690,6 +1912,11 @@ bool PE_SetNumeralSurfaceArea(int parts_no, int x, int y, int w, int h, int stat
 
 void PE_ReleaseParts(int parts_no)
 {
+	if (getenv("XSYS4_CTRL_DBG")) {
+		static int n;
+		if (n++ < 300)
+			NOTICE("[ctrl] Release parts=%d", parts_no);
+	}
 	parts_release(parts_no);
 }
 
@@ -1735,6 +1962,31 @@ void PE_SetZ(int parts_no, int z)
 
 void PE_SetShow(int parts_no, bool show)
 {
+	/* [D128] AIN 的 SceneStack 用 SetComponentShow(图层号, show) 整层显示/
+	 * 隐藏（parts::detail 的"ﾚｲﾔｰ表示設定"就是 CALLHLL 27 99）。以前这里
+	 * 一律当部件号处理，parts_get() 还会为图层号凭空造一个部件——于是
+	 * 切场景时旧场景整层都留在画面上，新背景又盖不住它。 */
+	if (parts_no_is_layer(parts_no)) {
+		/* [D129] 小整数是图层 ID，不是栈下标。 */
+		int c = PE_get_controller_index(parts_no);
+		if (c < 0 || c == PARTS_CONTROLLER_SYSTEM_OVERLAY)
+			return;
+		ctrl_stack.show[c] = show;
+		if (getenv("XSYS4_CTRL_DBG"))
+			NOTICE("[ctrl] layer id=%d idx=%d show=%d fno=%d", parts_no, c,
+			       show, hll_current_fno());
+		if (getenv("XSYS4_LAYER_TRACE"))
+			vm_stack_trace();
+		scene_dirty();
+		return;
+	}
+	/* 只记"隐藏"：这是场景切换时图层挂起的动作，量少且正是要看的东西。
+	 * 创建期的 show=1 每部件一条，全打会把日志冲掉。 */
+	if (!show && getenv("XSYS4_CTRL_DBG")) {
+		static int n;
+		if (n++ < 200)
+			NOTICE("[ctrl] hide parts=%d", parts_no);
+	}
 	parts_set_show(parts_get(parts_no), show);
 }
 
@@ -1780,6 +2032,18 @@ int PE_GetPartsY(int parts_no)
 	return parts_get(parts_no)->local.pos.y;
 }
 
+/* 视图绝对坐标（已含父链与 root 偏移）。AIN 侧只有 GetPartsX/Y（局部），
+ * 但渲染与命中用的都是 global.pos，排障时必须有地方读它。 */
+int PE_GetPartsGlobalX(int parts_no)
+{
+	return parts_get(parts_no)->global.pos.x;
+}
+
+int PE_GetPartsGlobalY(int parts_no)
+{
+	return parts_get(parts_no)->global.pos.y;
+}
+
 int PE_GetPartsWidth(int parts_no, int state)
 {
 	if (!parts_state_valid(--state))
@@ -1823,6 +2087,13 @@ int PE_GetPartsZ(int parts_no)
 
 bool PE_GetPartsShow(int parts_no)
 {
+	/* [D128] 图层号查询的是整层的显示状态（SceneStack@IsShow 走这条路）。 */
+	if (parts_no_is_layer(parts_no)) {
+		int c = PE_get_controller_index(parts_no);
+		if (c < 0 || c == PARTS_CONTROLLER_SYSTEM_OVERLAY)
+			return true;
+		return ctrl_stack.show[c];
+	}
 	return parts_get(parts_no)->local.show;
 }
 
@@ -1879,6 +2150,130 @@ int PE_GetParentPartsNumber(int parts_no)
 	return -1;
 }
 
+/* --- D89: explicit child tree -------------------------------------------
+ * The AIN addresses the parts tree through PartsEngine f[165..172]
+ * (IsExistChild / ClearChild / AddChild / InsertChild / RemoveChild /
+ * NumofChild / GetChildIndex / GetChild). The activity loader already sets
+ * parents with PE_SetParentPartsNumber, but AIN asks about the tree
+ * immediately, so these operate on the live TAILQ instead of waiting for the
+ * dirty-list pass. */
+
+static void parts_detach(struct parts *child)
+{
+	if (!child->parent)
+		return;
+	TAILQ_REMOVE(&child->parent->children, child, child_list_entry);
+	child->parent = NULL;
+}
+
+static void parts_attach_after(struct parts *parent, struct parts *child, struct parts *after)
+{
+	parts_detach(child);
+	child->parent = parent;
+	child->pending_parent = -1;
+	if (after)
+		TAILQ_INSERT_AFTER(&parent->children, after, child, child_list_entry);
+	else
+		TAILQ_INSERT_TAIL(&parent->children, child, child_list_entry);
+	parts_component_dirty(child);
+	parts_dirty(parent);
+}
+
+void PE_AddChild(int parts_no, int child_no)
+{
+	struct parts *parent = parts_get(parts_no);
+	struct parts *child = parts_get(child_no);
+	parts_attach_after(parent, child, NULL);
+}
+
+void PE_InsertChild(int parts_no, int child_no, int index)
+{
+	struct parts *parent = parts_get(parts_no);
+	struct parts *child = parts_get(child_no);
+	struct parts *after = NULL;
+	int i = 0;
+	struct parts *c;
+	PARTS_FOREACH_CHILD(c, parent) {
+		if (i++ == index - 1) {
+			after = c;
+			break;
+		}
+	}
+	if (index <= 0)
+		parts_attach_after(parent, child, NULL);
+	else
+		parts_attach_after(parent, child, after);
+}
+
+void PE_RemoveChild(int parts_no, int child_no)
+{
+	struct parts *parent = parts_get(parts_no);
+	struct parts *child = parts_try_get(child_no);
+	if (!parent || !child || child->parent != parent)
+		return;
+	parts_detach(child);
+	parts_dirty(parent);
+}
+
+void PE_ClearChild(int parts_no)
+{
+	struct parts *parent = parts_get(parts_no);
+	struct parts *c = TAILQ_FIRST(&parent->children);
+	while (c) {
+		struct parts *next = TAILQ_NEXT(c, child_list_entry);
+		TAILQ_REMOVE(&parent->children, c, child_list_entry);
+		c->parent = NULL;
+		c = next;
+	}
+	parts_dirty(parent);
+}
+
+int PE_NumofChild(int parts_no)
+{
+	struct parts *parent = parts_try_get(parts_no);
+	if (!parent)
+		return 0;
+	int n = 0;
+	struct parts *c;
+	PARTS_FOREACH_CHILD(c, parent)
+		n++;
+	return n;
+}
+
+int PE_GetChild(int parts_no, int index)
+{
+	struct parts *parent = parts_try_get(parts_no);
+	if (!parent || index < 0)
+		return -1;
+	int i = 0;
+	struct parts *c;
+	PARTS_FOREACH_CHILD(c, parent) {
+		if (i++ == index)
+			return c->no;
+	}
+	return -1;
+}
+
+int PE_GetChildIndex(int parts_no, int child_no)
+{
+	struct parts *parent = parts_try_get(parts_no);
+	if (!parent)
+		return -1;
+	int i = 0;
+	struct parts *c;
+	PARTS_FOREACH_CHILD(c, parent) {
+		if (c->no == child_no)
+			return i;
+		i++;
+	}
+	return -1;
+}
+
+int PE_IsExistChild(int parts_no, int child_no)
+{
+	return PE_GetChildIndex(parts_no, child_no) >= 0;
+}
+
 bool PE_SetPartsGroupNumber(possibly_unused int PartsNumber, possibly_unused int GroupNumber)
 {
 	UNIMPLEMENTED("(%d, %d)", PartsNumber, GroupNumber);
@@ -1920,13 +2315,11 @@ float PE_GetPartsMagY(int parts_no)
 
 void PE_SetPartsRotateX(int parts_no, float rot_x)
 {
-	UNIMPLEMENTED("(%d, %f)", parts_no, rot_x);
 	parts_set_rotation_x(parts_get(parts_no), rot_x);
 }
 
 void PE_SetPartsRotateY(int parts_no, float rot_y)
 {
-	UNIMPLEMENTED("(%d, %f)", parts_no, rot_y);
 	parts_set_rotation_y(parts_get(parts_no), rot_y);
 }
 
@@ -2017,41 +2410,85 @@ int PE_GetInputState(int parts_no)
 	return parts_get(parts_no)->state + 1;
 }
 
+/* Rance10 component type numbers -> engine drawing type.
+ *
+ * The numbers are the ones the game itself uses (recovered from
+ * activityeditor::detail::CBatchRenameStack@GetPartsTypeName, AIN switch #31).
+ * They differ from the upstream xsystem4 numbering; see the matching enum in
+ * activity.c. Widget-like components (button, checkbox, textbox, ...) are drawn
+ * from a flat image, containers become layout boxes, and the remaining slots
+ * map onto the dedicated engine renderers. */
+static enum parts_type component_type_to_parts_type(int type)
+{
+	switch (type) {
+	case 0:  /* 按钮 Button */
+	case 1:  /* 检查ＢＯＸ CheckBox */
+	case 2:  /* 纵向滚动条栏 VScrollBar */
+	case 3:  /* 横向滚动条栏 HScrollBar */
+	case 4:  /* 文本ＢＯＸ TextBox */
+	case 5:  /* リストＢＯＸ ListBox */
+	case 6:  /* ＣＯＭＢＯＢＯＸ ComboBox */
+	case 7:  /* ＭＬ文本ＢＯＸ MultiLineTextBox */
+	case 9:  /* ラジオ按钮ＢＯＸ */
+	case 10: /* 消息窗口 MessageWindow */
+	case 11: /* スピンＢＯＸ SpinBox */
+		return PARTS_FLAT;
+	case 8:  /* レイアウトＢＯＸ */
+	case 12: /* 面板 Panel */
+	case 13: /* フォーム Form */
+	case 14: /* フォームグ分组 */
+		return PARTS_LAYOUT_BOX;
+	case 15: /* 用户组件 UserComponent */
+		/* The widget itself draws nothing: its content comes from the
+		 * built-in control named in its EX payload
+		 * (数据 = ['オブジェクト名','TextButton','参数','...']).
+		 * Treating it as PARTS_CG made it a texture-less CG with size 0,
+		 * which is why Rance10's title menu (8 of its 13 parts are user
+		 * components) is invisible. It is a container until the control
+		 * layer exists. */
+		return PARTS_LAYOUT_BOX;
+	case 17: /* ＣＧ */
+		return PARTS_CG;
+	case 18: /* 循环ＣＧ */
+		return PARTS_ANIMATION;
+	case 19: /* 文本 */
+		return PARTS_TEXT;
+	case 20: /* 横向计量 */
+		return PARTS_HGAUGE;
+	case 21: /* 纵向计量 */
+		return PARTS_VGAUGE;
+	case 22: /* 数字 */
+		return PARTS_NUMERAL;
+	case 23: /* 矩形 */
+		return PARTS_RECT_DETECTION;
+	case 24: /* 構築 */
+		return PARTS_CONSTRUCTION_PROCESS;
+	case 25: /* ＣＧ判定 */
+		return PARTS_RECT_DETECTION;
+	case 26: /* フラット */
+		return PARTS_FLAT;
+	case 27: /* ３Ｄ层 */
+		return PARTS_3DLAYER;
+	case 28: /* 动画 */
+		return PARTS_MOVIE;
+	default:
+		return PARTS_UNINITIALIZED;
+	}
+}
+
 void PE_SetComponentType(int parts_no, int type, int state)
 {
 	if (!parts_state_valid(--state))
 		return;
 	struct parts *parts = parts_get(parts_no);
-	enum parts_type pt = PARTS_UNINITIALIZED;
-	switch (type) {
-	case 8:  pt = PARTS_LAYOUT_BOX; break;
-	case 11: pt = PARTS_CG; break;
-	case 12: pt = PARTS_ANIMATION; break;
-	case 13: pt = PARTS_TEXT; break;
-	case 14: pt = PARTS_HGAUGE; break;
-	case 15: pt = PARTS_VGAUGE; break;
-	case 16: pt = PARTS_NUMERAL; break;
-	case 17: pt = PARTS_RECT_DETECTION; break;
-	case 18: pt = PARTS_CONSTRUCTION_PROCESS; break;
-	/* Rance10 uses component type 19. It is the only unmapped numeric slot
-	 * between 18 and 20, and PARTS_FLASH is the only enum member without a
-	 * numeric mapping (PE_GetComponentType used to break on it). */
-	case 19: pt = PARTS_FLASH; break;
-	case 20: pt = PARTS_FLAT; break;
-	case 21: pt = PARTS_3DLAYER; break;
-	case 22: pt = PARTS_MOVIE; break;
-	/* Rance10-only numeric type used by AFL_Parts_CreateConstruction /
-	 * ISpriteParts@GetConstruction. Upstream has no matching enum;
-	 * reuse the construction-process state for now (D36). */
-	case 24: pt = PARTS_CONSTRUCTION_PROCESS; break;
-	/* Rance10-only: CFlatParts@0 / CModeMark@Create use type 26. No upstream
-	 * enum exists; map to PARTS_FLAT so component creation can proceed (D74). */
-	case 26: pt = PARTS_FLAT; break;
-	default:
+	enum parts_type pt = component_type_to_parts_type(type);
+	if (pt == PARTS_UNINITIALIZED) {
 		VM_ERROR("unknown component type %d", type);
+		return;
 	}
 	if (parts->states[state].type != pt)
 		parts_state_reset(&parts->states[state], pt);
+	parts->states[state].component_type = type;
 }
 
 int PE_GetComponentType(int parts_no, int state)
@@ -2062,24 +2499,74 @@ int PE_GetComponentType(int parts_no, int state)
 	if (!parts)
 		return -1;
 
+	/* Round-trip whatever the game set on this state. States created
+	 * implicitly (e.g. by PE_SetPartsCG) have no component type of their
+	 * own, so derive a sane one from the drawing type. */
+	if (parts->states[state].component_type >= 0)
+		return parts->states[state].component_type;
 	switch (parts->states[state].type) {
-	case PARTS_LAYOUT_BOX: return 8;
-	case PARTS_UNINITIALIZED:  // defaluts to CG
-	case PARTS_CG:
-		return 11;
-	case PARTS_ANIMATION: return 12;
-	case PARTS_TEXT: return 13;
-	case PARTS_HGAUGE: return 14;
-	case PARTS_VGAUGE: return 15;
-	case PARTS_NUMERAL: return 16;
-	case PARTS_RECT_DETECTION: return 17;
-	case PARTS_CONSTRUCTION_PROCESS: return 18;
-	case PARTS_FLAT: return 20;
-	case PARTS_3DLAYER: return 21;
-	case PARTS_MOVIE: return 22;
-	case PARTS_FLASH: return 19;
+	case PARTS_UNINITIALIZED:
+	case PARTS_CG:                  return 17;
+	case PARTS_LAYOUT_BOX:          return 8;
+	case PARTS_ANIMATION:           return 18;
+	case PARTS_TEXT:                return 19;
+	case PARTS_HGAUGE:              return 20;
+	case PARTS_VGAUGE:              return 21;
+	case PARTS_NUMERAL:             return 22;
+	case PARTS_RECT_DETECTION:      return 25;
+	case PARTS_CONSTRUCTION_PROCESS:return 24;
+	case PARTS_FLAT:                return 26;
+	case PARTS_3DLAYER:             return 27;
+	case PARTS_MOVIE:               return 28;
+	case PARTS_FLASH:               return 19;
 	}
 	VM_ERROR("unsupported component type %d", parts->states[state].type);
+	return -1;
+}
+
+/* Give a part a size (and therefore a hitbox) without changing its state type.
+ *
+ * PE_SetPartsRectangleDetectionSize() resets the state to PARTS_RECT_DETECTION,
+ * which would throw away whatever the part already holds. User components need
+ * a hitbox while keeping their own state (they are LAYOUT_BOX containers whose
+ * content is drawn by the control layer). */
+bool PE_SetPartsSize(int parts_no, int w, int h, int state)
+{
+	if (!parts_state_valid(--state))
+		return false;
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts)
+		return false;
+	parts_set_dims(parts, &parts->states[state].common, w, h);
+	return true;
+}
+
+void PE_SetUserComponent(int parts_no, const char *object, const char *label)
+{
+	parts_set_user_component(parts_try_get(parts_no), object, label);
+}
+
+/* 用户组件的 4 个 HLL 入口（PartsEngine.Set/GetUserComponentName/Data）。
+ * 引擎侧只是个"名字 + 键值袋"，控件行为由游戏的 AIN 代码实现。 */
+void PE_SetUserComponentName(int parts_no, const char *name)
+{
+	parts_set_user_component(parts_try_get(parts_no), name, NULL);
+}
+
+const char *PE_GetUserComponentName(int parts_no)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	return parts ? parts->uc_object : NULL;
+}
+
+void PE_SetUserComponentData(int parts_no, const char *key, const char *value)
+{
+	parts_set_user_component_data(parts_try_get(parts_no), key, value);
+}
+
+const char *PE_GetUserComponentData(int parts_no, const char *key)
+{
+	return parts_get_user_component_data(parts_try_get(parts_no), key);
 }
 
 bool PE_SetPartsRectangleDetectionSize(int parts_no, int w, int h, int state)
@@ -2120,8 +2607,34 @@ bool PE_IsExist(int parts_no)
 static void ctrl_stack_init(void)
 {
 	memset(&ctrl_stack, 0, sizeof(ctrl_stack));
+	/* [D128] 图层默认可见。 */
+	for (int i = 0; i < PARTS_CONTROLLER_STACK_MAX; i++)
+		ctrl_stack.show[i] = true;
 	// Add initial default controller
 	PE_AddController(-1);
+}
+
+/* [D129] ID/index 边界：内部一律用栈下标，AIN 一律用稳定 ID。 */
+int PE_get_controller_id(int index)
+{
+	if (index == PARTS_CONTROLLER_SYSTEM_OVERLAY)
+		return PARTS_CONTROLLER_SYSTEM_OVERLAY;
+	if (index < 0 || index >= ctrl_stack.nr_controllers)
+		return -1;
+	return ctrl_stack.id[index];
+}
+
+int PE_get_controller_index(int id)
+{
+	if (id == PARTS_CONTROLLER_SYSTEM_OVERLAY)
+		return PARTS_CONTROLLER_SYSTEM_OVERLAY;
+	if (id < 0)
+		return -1;
+	for (int i = 0; i < ctrl_stack.nr_controllers; i++) {
+		if (ctrl_stack.id[i] == id)
+			return i;
+	}
+	return -1;
 }
 
 // Adds a new controller to the stack and makes it active. The `index`
@@ -2130,6 +2643,69 @@ static void ctrl_stack_init(void)
 // controller". In practice the game only ever passes -1, and the active
 // controller is always the top of the stack at that point, so this
 // degenerates to a simple push.
+/* [D128] 场景切换后旧图层仍在画面上：需要知道"谁挂在哪个 controller 上"，
+ * 因为渲染顺序是 (controller_no, global.z)，旧场景只要挂在低位 controller
+ * 上就永远画在新场景下面，而 RemoveController 又带不走它。
+ * 只在诊断开关下打印，一次一行，输出量可控。 */
+void PE_DebugControllerHistogram(const char *tag)
+{
+	int cnt[PARTS_CONTROLLER_STACK_MAX + 2] = { 0 };
+	int shown[PARTS_CONTROLLER_STACK_MAX + 2] = { 0 };
+	struct parts *p;
+	int total = 0, nr_shown = 0, max_c = -1;
+
+	TAILQ_FOREACH(p, &parts_list, parts_list_entry) {
+		int c = p->controller_no;
+		if (c < 0 || c > PARTS_CONTROLLER_STACK_MAX)
+			c = PARTS_CONTROLLER_STACK_MAX + 1;
+		cnt[c]++;
+		total++;
+		if (p->global.show) {
+			shown[c]++;
+			nr_shown++;
+		}
+		if (c > max_c && c <= PARTS_CONTROLLER_STACK_MAX)
+			max_c = c;
+	}
+
+	char buf[512];
+	int n = snprintf(buf, sizeof(buf), "[ctrl] %s total=%d shown=%d active=%d nctrl=%d hist=",
+			 tag, total, nr_shown, ctrl_stack.active, ctrl_stack.nr_controllers);
+	for (int c = 0; c <= max_c && n < (int)sizeof(buf) - 24; c++) {
+		if (!cnt[c])
+			continue;
+		n += snprintf(buf + n, sizeof(buf) - n, "%d:%d/%d ", c, shown[c], cnt[c]);
+	}
+	if (cnt[PARTS_CONTROLLER_STACK_MAX + 1] && n < (int)sizeof(buf) - 24)
+		n += snprintf(buf + n, sizeof(buf) - n, "sys:%d/%d ",
+			      shown[PARTS_CONTROLLER_STACK_MAX + 1],
+			      cnt[PARTS_CONTROLLER_STACK_MAX + 1]);
+	NOTICE("%s", buf);
+}
+
+/* [D128] 一次性部件快照：把"此刻还在显示"的部件连同所属 controller、z、
+ * 尺寸、UC 名一起打出来。诊断"场景切走了但旧图层还画着"时靠它定位。
+ * XSYS4_PARTS_DUMP=1 时在每次活动装载后调用。 */
+void PE_DebugDumpParts(const char *tag)
+{
+	struct parts *p;
+	int n = 0;
+	TAILQ_FOREACH(p, &parts_list, parts_list_entry) {
+		if (!p->global.show)
+			continue;
+		NOTICE("[parts] %s no=%d ctrl=%d z=%d pos=(%d,%d) %dx%d uc=%s",
+		       tag, p->no, p->controller_no, p->global.z,
+		       p->global.pos.x, p->global.pos.y,
+		       p->states[PARTS_STATE_DEFAULT].common.w,
+		       p->states[PARTS_STATE_DEFAULT].common.h,
+		       p->uc_object ? p->uc_object : "-");
+		if (++n > 400) {
+			NOTICE("[parts] %s ... truncated", tag);
+			break;
+		}
+	}
+}
+
 int PE_AddController(int index)
 {
 	if (index != -1)
@@ -2141,8 +2717,15 @@ int PE_AddController(int index)
 		VM_ERROR("controller stack overflow");
 
 	int no = ctrl_stack.nr_controllers++;
+	ctrl_stack.opaque[no] = false;
+	ctrl_stack.show[no] = true;
+	/* [D129] 返回稳定 ID，不是栈下标。AIN 会把它存进
+	 * SceneStack.LayerPartsNumber，之后与 GetActiveLayer() 比较。 */
+	ctrl_stack.id[no] = ctrl_stack.next_id++;
 	ctrl_stack.active = no;
-	return no;
+	if (getenv("XSYS4_CTRL_DBG"))
+		PE_DebugControllerHistogram("add-controller");
+	return ctrl_stack.id[no];
 }
 
 // Removes the controller at position `index` from the stack, releases all
@@ -2163,12 +2746,22 @@ void PE_RemoveController(struct page **erase_number_list, int index)
 	if (index == -1) {
 		ctrl_no = ctrl_stack.active;
 	} else {
-		if (index < 0 || index >= nr)
-			VM_ERROR("Invalid controller index %d", index);
-		ctrl_no = index;
+		/* [D129] AIN 传的是 AddLayer 返回的稳定 ID，不是栈下标。 */
+		ctrl_no = PE_get_controller_index(index);
+		if (ctrl_no < 0 || ctrl_no == PARTS_CONTROLLER_SYSTEM_OVERLAY ||
+		    ctrl_no >= nr) {
+			/* 已经弹过的层再 Erase 一次是正常路径（SceneStack@1 会重复调），
+			 * 不该杀进程。 */
+			if (getenv("XSYS4_CTRL_DBG"))
+				NOTICE("[ctrl] RemoveController stale id=%d nctrl=%d", index, nr);
+			return;
+		}
 	}
 
 	// Collect and release parts belonging to this controller
+	int released = 0;
+	if (getenv("XSYS4_CTRL_DBG"))
+		PE_DebugControllerHistogram("remove-pre");
 	struct parts *p = TAILQ_FIRST(&parts_list);
 	while (p) {
 		struct parts *next = TAILQ_NEXT(p, parts_list_entry);
@@ -2176,11 +2769,33 @@ void PE_RemoveController(struct page **erase_number_list, int index)
 			*erase_number_list = array_pushback(*erase_number_list,
 					(union vm_value){.i = p->delegate_index}, AIN_ARRAY_INT, -1);
 			parts_release(p->no);
+			released++;
 		}
 		p = next;
 	}
+	if (getenv("XSYS4_CTRL_DBG"))
+		NOTICE("[ctrl] RemoveController index=%d -> ctrl=%d nctrl=%d released=%d",
+		       index, ctrl_no, nr, released);
 
 	ctrl_stack.nr_controllers--;
+	/* 弹出后上面的下标整体左移：显示状态、稳定 ID 都要跟着搬。
+	 * [D129] 部件内部记的是下标，也必须同步左移，否则渲染分层错位。 */
+	for (int i = ctrl_no; i < ctrl_stack.nr_controllers; i++) {
+		ctrl_stack.show[i] = ctrl_stack.show[i + 1];
+		ctrl_stack.opaque[i] = ctrl_stack.opaque[i + 1];
+		ctrl_stack.id[i] = ctrl_stack.id[i + 1];
+	}
+	ctrl_stack.show[ctrl_stack.nr_controllers] = true;
+	ctrl_stack.opaque[ctrl_stack.nr_controllers] = false;
+	ctrl_stack.id[ctrl_stack.nr_controllers] = -1;
+
+	struct parts *pp;
+	PARTS_LIST_FOREACH(pp) {
+		if (pp->controller_no > ctrl_no &&
+		    pp->controller_no != PARTS_CONTROLLER_SYSTEM_OVERLAY)
+			pp->controller_no--;
+	}
+
 	if (ctrl_stack.nr_controllers == 0) {
 		PE_AddController(-1);
 	} else {
@@ -2190,16 +2805,34 @@ void PE_RemoveController(struct page **erase_number_list, int index)
 
 void PE_set_active_controller(int controller_no)
 {
-	if (controller_no == PARTS_CONTROLLER_SYSTEM_OVERLAY ||
-			(controller_no >= 0 && controller_no < ctrl_stack.nr_controllers))
-		ctrl_stack.active = controller_no;
-	else
-		VM_ERROR("Invalid controller number: %d", controller_no);
+	/* [D129] AIN 的 SetActiveLayer 传稳定 ID，内部 active 存下标。 */
+	int idx = controller_no == PARTS_CONTROLLER_SYSTEM_OVERLAY
+		? PARTS_CONTROLLER_SYSTEM_OVERLAY
+		: PE_get_controller_index(controller_no);
+	if (idx == PARTS_CONTROLLER_SYSTEM_OVERLAY ||
+			(idx >= 0 && idx < ctrl_stack.nr_controllers))
+		ctrl_stack.active = idx;
+	else if (getenv("XSYS4_CTRL_DBG"))
+		/* 场景重建后 AIN 可能拿旧 ID 来 SetActiveLayer；这是正常的迟到
+		 * 事件，不该 VM_ERROR(_Noreturn) 直接杀进程。 */
+		NOTICE("[ctrl] SetActiveLayer stale id=%d nctrl=%d", controller_no,
+		       ctrl_stack.nr_controllers);
 }
 
 int PE_get_active_controller(void)
 {
-	return ctrl_stack.active;
+	/* [D115] XSYS4_CTRL_DBG=1：AIN 的 parts::detail::GetActiveLayer 走
+	 * PartsEngine f[6]，若这里安静而 PE_Init 被打，说明 lib27 表与 AIN 索引错位。 */
+	if (getenv("XSYS4_CTRL_DBG")) {
+		/* 只在值变化时打印：IsActive 每帧都问，全打会把日志冲爆，
+		 * 而这里要的正是"这一次返回了什么"。 */
+		static int n, la = -99, ln = -99;
+		int a = ctrl_stack.active, c = PE_get_nr_controllers();
+		if (n++ < 5 || a != la || c != ln)
+			NOTICE("[ctrl] #%d active=%d nctrl=%d", n, a, c);
+		la = a; ln = c;
+	}
+	return PE_get_controller_id(ctrl_stack.active);
 }
 
 int PE_get_system_controller(void)

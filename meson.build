@@ -17,6 +17,12 @@ zlib = dependency('zlib', static : static_libs)
 libm = meson.get_compiler('c').find_library('m', required: false)
 sdl2 = dependency('sdl2', static : static_libs)
 ft2 = dependency('freetype2', static : static_libs)
+# [D131] 可选：GBK 中文版用 fontconfig 动态找 CJK 字体，避免硬编码字体路径。
+# 平台没有 fontconfig 时行为与原来完全一致（回退内置 VL-Gothic）。
+fontconfig = dependency('fontconfig', required: false, static : static_libs)
+if fontconfig.found()
+    add_project_arguments('-DHAVE_FONTCONFIG', language : 'c')
+endif
 ffi = dependency('libffi', static : static_libs)
 tj = dependency('libturbojpeg', static : static_libs)
 webp = dependency('libwebp', static : static_libs)

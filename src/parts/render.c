@@ -111,30 +111,25 @@ static void parts_render_texture(struct texture *texture, mat4 mw_transform, Rec
 	gfx_run_job(&job);
 }
 
+static struct texture uc_white;
+static bool uc_white_ready;
+
 static void parts_render_text(struct parts *parts, struct parts_text *t)
 {
-	vec3 add_color = {
-		parts->global.add_color.r / 255.0f,
-		parts->global.add_color.g / 255.0f,
-		parts->global.add_color.b / 255.0f
-	};
-	vec3 multiply_color = {
-		parts->global.multiply_color.r / 255.0f,
-		parts->global.multiply_color.g / 255.0f,
-		parts->global.multiply_color.b / 255.0f,
-	};
-	float blend_rate = parts->global.alpha / 255.0;
-
 	int x = parts->global.pos.x + t->common.origin_offset.x;
 	int y = parts->global.pos.y + t->common.origin_offset.y;
 	for (int i = 0; i < t->nr_lines; i++) {
 		struct parts_text_line *line = &t->lines[i];
 		for (int j = 0; j < line->nr_chars; j++) {
 			struct parts_text_char *ch = &line->chars[j];
-			mat4 mw_transform = WORLD_TRANSFORM(ch->t.w, ch->t.h, x, y);
-			Rectangle r = { 0, 0, ch->t.w, ch->t.h };
-			parts_render_texture(&ch->t, mw_transform, &r, blend_rate, add_color,
-					multiply_color, 0, parts->global.alpha_clipper_parts_no);
+			/* 用精灵路径贴字形，而不是 parts 着色器。
+			 *
+			 * parts 着色器采样字形纹理时一个像素都不出——把纹理换成已知
+			 * 可用的 1×1 白纹理、矩阵换成和底板完全一样的写法也照样不出，
+			 * 而同一张白纹理走 render_uc_rect() 就能画（见 TECH_DEBT
+			 * [UC-TEXSHADER]，未定位）。精灵路径稳定，先走这条。 */
+			Rectangle pr = RECT(x, y, ch->t.w, ch->t.h);
+			gfx_render_texture(&ch->t, &pr);
 			x += ch->advance;
 		}
 		x = parts->global.pos.x + t->common.origin_offset.x;
@@ -142,8 +137,118 @@ static void parts_render_text(struct parts *parts, struct parts_text *t)
 	}
 }
 
-static void parts_render_cg(struct parts *parts, struct parts_common *common)
+/* 用户组件 (component type 15) 的绘制。
+ *
+ * EX 里声明的是“引擎内建控件”（数据 = ['オブジェクト名','TextButton',...]），
+ * 游戏本身不提供图；按钮的底板与文字都得引擎自己画。目前只实现 TextButton：
+ * 半透明深色底 + 1px 浅色边框 + 居中白字，hover 时底板和边框提亮。
+ *
+ * 底板用一张 1×1 白色纹理拉伸得到，避免引入美术资源依赖。 */
+
+/* 把单位方框缩放铺到 (x,y,w,h)。颜色走 multiply_color——这张纹理是纯白的，
+ * 乘上去才是最终颜色（此前只传了 alpha，红色底板画出来是白的）。 */
+static void render_uc_rect(int x, int y, int w, int h, SDL_Color c)
 {
+	if (w <= 0 || h <= 0)
+		return;
+	mat4 mw = GLM_MAT4_IDENTITY_INIT;
+	glm_translate(mw, (vec3){ x, y, 0 });
+	glm_scale(mw, (vec3){ w, h, 1.0f });
+	Rectangle r = { 0, 0, 1, 1 };
+	vec3 add_color = { 0.0f, 0.0f, 0.0f };
+	vec3 multiply_color = { c.r / 255.0f, c.g / 255.0f, c.b / 255.0f };
+	parts_render_texture(&uc_white, mw, &r, c.a / 255.0f, add_color,
+			multiply_color, 0, 0);
+}
+
+/* 用户组件的文字纹理必须在渲染之外创建。
+ *
+ * gfx_init_texture_rgba()/gfx_draw_glyph() 会切 FBO 并把 viewport 重置成窗口
+ * 尺寸；在 parts_render_user_component() 里顺手建文字，等于在一帧画到一半时
+ * 换渲染目标——实测结果是字形纹理全是空的（gfx_get_pixel 采样 0,0,0,0），
+ * 后面的绘制也跟着错位。放到每帧的 update 阶段（parts_update_animation）
+ * 来建，和游戏自己的 PARTS_TEXT 一个时机。 */
+void parts_uc_text_prepare(struct parts *parts)
+{
+	if (!parts || !parts->uc_object || parts->uc_text_valid)
+		return;
+	if (!parts->uc_label || !*parts->uc_label)
+		return;
+	struct parts_common *common = &parts->states[parts->state].common;
+	if (common->w <= 0 || common->h <= 0)
+		return;
+	float size = common->h * 0.55f;
+	if (size < 10.0f)
+		size = 10.0f;
+	parts_uc_text_build(&parts->uc_text, parts->uc_label, size,
+			(SDL_Color){ 236, 234, 226, 255 });
+	parts->uc_text_valid = true;
+}
+
+static void parts_render_user_component(struct parts *parts)
+{
+	if (!uc_white_ready) {
+		gfx_init_texture_rgba(&uc_white, 1, 1, (SDL_Color){255, 255, 255, 255});
+		uc_white_ready = true;
+	}
+
+	struct parts_common *common = &parts->states[parts->state].common;
+	int w = common->w;
+	int h = common->h;
+	if (getenv("XSYS4_UC_RENDER_DBG")) {
+		static int n = 0;
+		if (n < 24) {
+			n++;
+			NOTICE("[ucr] no=%d state=%d type=%d w=%d h=%d pos=(%d,%d) "
+			       "alpha=%d z=%d clickable=%d pass=%d di=%d label=%s",
+			       parts->no, parts->state,
+			       parts->states[parts->state].type, w, h,
+			       parts->global.pos.x, parts->global.pos.y,
+			       parts->global.alpha, parts->global.z,
+			       parts->clickable, parts->pass_cursor, parts->delegate_index,
+			       parts->uc_label ? display_sjis0(parts->uc_label) : "(null)");
+		}
+	}
+	if (w <= 0 || h <= 0)
+		return;
+
+	/* 文字纹理由 parts_uc_text_prepare() 在 update 阶段建好，这里只画。 */
+
+	set_draw_filter_blend_func(parts->draw_filter);
+	int x = parts->global.pos.x;
+	int y = parts->global.pos.y;
+	bool hover = parts->is_hovered;
+
+	/* 底板：hover 提亮；normal 保持低调，避免挡住标题画 */
+	if (hover) {
+		/* hover 态用字面量 alpha：实测 (uint8_t)(X * ga) 在这个调用点算出来是
+		 * 0，整块底板直接消失（ga 来自 parts->global.alpha，但同一帧日志里
+		 * 它是 255，原因未定位，见 TECH_DEBT [UC-ALPHA]）。 */
+		render_uc_rect(x, y, w, h, (SDL_Color){ 96, 108, 140, 235 });
+		render_uc_rect(x, y, w, 3, (SDL_Color){ 255, 246, 214, 255 });
+		render_uc_rect(x, y + h - 3, w, 3, (SDL_Color){ 255, 246, 214, 255 });
+		render_uc_rect(x, y, 3, h, (SDL_Color){ 255, 246, 214, 255 });
+		render_uc_rect(x + w - 3, y, 3, h, (SDL_Color){ 255, 246, 214, 255 });
+	} else {
+		render_uc_rect(x, y, w, h, (SDL_Color){ 70, 80, 105, 255 });
+		render_uc_rect(x, y, w, 3, (SDL_Color){ 208, 200, 180, 255 });
+		render_uc_rect(x, y + h - 3, w, 3, (SDL_Color){ 208, 200, 180, 255 });
+		render_uc_rect(x, y, 3, h, (SDL_Color){ 208, 200, 180, 255 });
+		render_uc_rect(x + w - 3, y, 3, h, (SDL_Color){ 208, 200, 180, 255 });
+	}
+
+	if (parts->uc_text_valid) {
+		int tw = parts_uc_text_width(&parts->uc_text);
+		int th = parts_uc_text_height(&parts->uc_text);
+		parts->uc_text.common.origin_offset.x = (w - tw) / 2;
+		parts->uc_text.common.origin_offset.y = (h - th) / 2;
+		parts_render_text(parts, &parts->uc_text);
+	}
+
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ZERO);
+}
+
+static void parts_render_cg(struct parts *parts, struct parts_common *common){
 	set_draw_filter_blend_func(parts->draw_filter);
 
 	mat4 mw_transform = GLM_MAT4_IDENTITY_INIT;
@@ -362,6 +467,7 @@ static void render_flat_cg(struct parts *parts, Texture *tex,
 static void render_flat_item(struct parts *parts, struct parts_flat *f,
 		struct flat_layer_state *state, size_t tl_idx,
 		struct flat_timeline *tl, int local,
+		struct flat_key_data_graphic *key,
 		struct flat_draw_ctx *parent, mat4 root,
 		struct flat_key_stack *key_stack)
 {
@@ -377,7 +483,6 @@ static void render_flat_item(struct parts *parts, struct parts_flat *f,
 		return;
 	}
 
-	struct flat_key_data_graphic *key = &tl->graphic.keys[local];
 	mat4 layer_m;
 	vec2 pos = { key->pos_x, key->pos_y };
 	parts_flat_build_layer_matrix(key, pos,
@@ -440,10 +545,25 @@ static void render_flat_layer(struct parts *parts, struct parts_flat *f,
 		if (local < 0 || local >= tl->frame_count)
 			continue;
 
+		/* flat v15 stores a *list* of graphic keys per frame
+		 * (one per SWF layer); earlier versions store exactly one key per
+		 * frame in `count`/`keys`. Rance10's UI is v15+, so only handling
+		 * the flat array left every flat part -- the whole network
+		 * confirmation dialog and the title screen -- with an empty key
+		 * list and therefore unpainted. */
+		if (tl->graphic.frames) {
+			struct flat_key_frame_graphic *fr = &tl->graphic.frames[local];
+			for (uint32_t k = 0; k < fr->count; k++)
+				render_flat_item(parts, f, state, i, tl, local,
+						 &fr->keys[k], ctx, root, key_stack);
+			continue;
+		}
+
 		if (local >= (int)tl->graphic.count)
 			continue;
 
-		render_flat_item(parts, f, state, i, tl, local, ctx, root, key_stack);
+		render_flat_item(parts, f, state, i, tl, local,
+				 &tl->graphic.keys[local], ctx, root, key_stack);
 	}
 }
 
@@ -591,7 +711,8 @@ static void parts_render_flash(struct parts *parts, struct parts_flash *f)
 
 void parts_render(struct parts *parts)
 {
-	if (!parts->global.show)
+	/* [D128] 图层整体隐藏时（AIN 的 SceneStack@IsShow）该层所有部件都不画。 */
+	if (!parts_is_visible(parts))
 		return;
 	if (parts->message_window && !parts_message_window_show)
 		return;
@@ -603,6 +724,10 @@ void parts_render(struct parts *parts)
 
 	// render
 	struct parts_state *state = &parts->states[parts->state];
+	if (parts->uc_object) {
+		parts_render_user_component(parts);
+		return;
+	}
 	switch (state->type) {
 	case PARTS_UNINITIALIZED:
 	case PARTS_RECT_DETECTION:
@@ -660,13 +785,16 @@ static bool pe_dirty = false;
 
 void parts_render_update(void)
 {
-	if (pe_dirty) {
-		struct parts *p;
-		PARTS_LIST_FOREACH(p) {
-			scene_sprite_dirty(&p->sp);
-		}
-		pe_dirty = false;
+	/* [HACK-POC D92] Mark every parts sprite dirty on each update instead of
+	 * only when pe_dirty is set. parts_engine_dirty() has very few call sites,
+	 * so the scene was rendered exactly once (at startup, with an empty sprite
+	 * list) and gfx_swap() never presented parts again -- the window stayed
+	 * black. Real fix: make every parts mutation call parts_engine_dirty(). */
+	struct parts *p;
+	PARTS_LIST_FOREACH(p) {
+		scene_sprite_dirty(&p->sp);
 	}
+	pe_dirty = false;
 }
 
 void parts_engine_dirty(void)

@@ -369,6 +369,12 @@ struct parts_3dlayer {
 
 struct parts_state {
 	enum parts_type type;
+	/* Rance10 component-type number last passed to PE_SetComponentType(),
+	 * or -1 when the state was created implicitly (then it is derived from
+	 * `type`). Kept per state because PE_GetComponentType() must round-trip
+	 * exactly what the game set: the AIN Activity layer switches on this
+	 * number to pick the wrapper class. */
+	int component_type;
 	union {
 		struct parts_common common;
 		struct parts_cg cg;
@@ -436,6 +442,21 @@ struct parts {
 	int margin_right;
 	struct parts_motion_list motion;
 	int controller_no;
+
+	/* 用户组件 (component type 15)。
+	 * EX 的 数据 = ['オブジェクト名','TextButton','参数','标题,从头开始'] 声明
+	 * 的是“引擎内建控件”，不是游戏自绘的图。activity 层把控件种类和显示文字
+	 * 填进来，绘制由 parts_render_user_component() 负责。
+	 * 三个字段都是 GBK 字节串；uc_text 是首次绘制时构建的字形缓存。 */
+	char *uc_object;
+	char *uc_label;
+	struct parts_text uc_text;
+	bool uc_text_valid;
+	/* 用户组件的键值数据（EX 数据 = [k,v,k,v,...] 原样留存）。
+	 * 游戏侧通过 PartsEngine.GetUserComponentData(no,"参数") 之类读回去，
+	 * 控件真正的行为（点击、绘制）由游戏的 AIN 代码实现。 */
+	char **uc_data;
+	int uc_data_n;
 };
 
 #define PARTS_LIST_FOREACH(iter) TAILQ_FOREACH(iter, &parts_list, parts_list_entry)
@@ -445,20 +466,62 @@ struct parts {
 // parts.c
 extern struct parts_list parts_list;
 
-// Controllers are identified by their position in the stack (0 = bottom). The
-// system overlay controller lives outside the stack.
+// A "controller" is stored internally by its position in the stack (0 = bottom).
+// AIN, however, distinguishes a stable layer *ID* from a stack *index*:
+//   GetLayerID(index) / GetLayerIndex(id)  (PartsFunc cases 4 / 3)
+// SceneStack remembers the ID returned by AddLayer and compares it with
+// GetActiveLayer() in IsActive. If IDs were just indices, removing a layer
+// from the middle would shift every higher index and the comparison would
+// fail forever -> SceneStack@Join never finishes (D129 / DIALOG-STUCK).
+// So the stack owns id[index] (monotonically increasing, never reused) and
+// everything crossing the HLL boundary is converted between ID and index.
 #define PARTS_CONTROLLER_STACK_MAX 10000
 #define PARTS_CONTROLLER_SYSTEM_OVERLAY PARTS_CONTROLLER_STACK_MAX
 
 struct parts_controller_stack {
 	int nr_controllers;
-	int active;  // stack index or PARTS_CONTROLLER_SYSTEM_OVERLAY
+	int active;  // stack INDEX (internal) or PARTS_CONTROLLER_SYSTEM_OVERLAY
+	int id[PARTS_CONTROLLER_STACK_MAX];  // stable AIN-visible layer id per index
+	int next_id;
+	/* [D128] 每个 controller 是一个"图层"，AIN 用 SetComponentShow(图层号)
+	 * 把整层一起显示/隐藏（SceneStack@IsShow）。show 为 false 时该层的
+	 * 全部部件都不画、也不参与命中。 */
+	/* [D128] 该图层曾经出现"铺满视图且不透明"的部件 —— 用它判定视觉上下关系。
+	 * 不能每帧只按当前帧算：背景淡入的瞬间 alpha<255，遮挡层值会来回跳，
+	 * 旧场景就一闪一闪地透出来。所以一旦认定就记住，只在该层被弹出时清掉。 */
+	bool opaque[PARTS_CONTROLLER_STACK_MAX];
+	bool show[PARTS_CONTROLLER_STACK_MAX];
 };
 extern struct parts_controller_stack ctrl_stack;
 extern bool parts_multi_controller;
 
+/* [D128] 图层遮挡的下界：这一层往下（含本层）不画。
+ * 由"最上面那个铺满视图且不透明的部件所在图层"决定，每帧重算。 */
+extern int parts_cover_layer;
+
+/* [D128] 编号 < 100000000 的一律是图层号（部件号从 1000001000 起分配）。 */
+static inline bool parts_no_is_layer(int no)
+{
+	return no >= 0 && no < 100000000;
+}
+/* 图层 + 部件自身都可见才画。 */
+static inline bool parts_is_visible(const struct parts *parts)
+{
+	if (!parts->global.show)
+		return false;
+	int c = parts->controller_no;
+	if (c < 0 || c >= PARTS_CONTROLLER_STACK_MAX)
+		return true;
+	if (!ctrl_stack.show[c])
+		return false;
+	return c >= parts_cover_layer;
+}
+
 struct parts *parts_try_get(int parts_no);
 struct parts *parts_get(int parts_no);
+/* [D128] 场景图层诊断：controller 分布 + 当前显示部件快照。 */
+void PE_DebugControllerHistogram(const char *tag);
+void PE_DebugDumpParts(const char *tag);
 struct parts_cg *parts_get_cg(struct parts *parts, int state);
 struct parts_text *parts_get_text(struct parts *parts, int state);
 struct parts_animation *parts_get_animation(struct parts *parts, int state);
@@ -506,15 +569,27 @@ bool parts_gauge_set_cg_by_index(struct parts *parts, struct parts_gauge *g, int
 void parts_hgauge_set_rate(struct parts *parts, struct parts_gauge *g, float rate);
 void parts_vgauge_set_rate(struct parts *parts, struct parts_gauge *g, float rate);
 bool parts_3dlayer_create_plugin(struct parts_3dlayer *l);
+struct text_style *parts_default_text_style(void);
+
+/* 用户组件 (component type 15)：登记控件种类与显示文字。
+ * 两者都是 GBK 字节串，函数内部自行 strdup。 */
+void parts_set_user_component(struct parts *parts, const char *object, const char *label);
+void parts_set_user_component_data(struct parts *parts, const char *key, const char *value);
+const char *parts_get_user_component_data(struct parts *parts, const char *key);
 
 // text.c
 void parts_text_free(struct parts_text *t);
 struct string *parts_text_line_get(struct parts_text_line *line);
 struct string *parts_text_get(struct parts_text *t);
+void parts_uc_text_build(struct parts_text *t, const char *label, float size, SDL_Color color);
+int parts_uc_text_width(struct parts_text *t);
+int parts_uc_text_height(struct parts_text *t);
 
 // render.c
 void parts_render_init(void);
 void parts_render_update(void);
+/* 在 update 阶段（渲染之外）准备用户组件的文字纹理。 */
+void parts_uc_text_prepare(struct parts *parts);
 void parts_engine_dirty(void);
 void parts_engine_clean(void);
 void parts_dirty(struct parts *parts);
@@ -548,6 +623,11 @@ enum parts_message_type {
 	PARTS_MSG_KEY_TRIGGER    = 14,
 	PARTS_MSG_KEY_DOWN       = 15,
 	PARTS_MSG_KEY_UP         = 17,
+	/* [D115] AIN 侧 CPartsMessageManager@CallDelegate 的 switch 编号与本枚举
+	 * 不一致（实测 4=左键点击、5=双击、6=OnCursor）。消息类型最终由 AIN 解释，
+	 * 所以发消息时用 AIN 的编号；本枚举只用于 C 侧语义。
+	 * 目前只验证了左键点击，其余类型保持原值，遇到再逐个校准。 */
+	PARTS_MSG_MOUSE_CLICK_AIN = 4,
 };
 
 void parts_msg_push(struct parts* parts, int type, const char *fmt, ...);

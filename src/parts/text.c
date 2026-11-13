@@ -132,6 +132,46 @@ void parts_text_free(struct parts_text *t)
 		free(line->chars);
 	}
 	free(t->lines);
+	t->lines = NULL;
+	t->nr_lines = 0;
+}
+
+/* 用户组件 (component type 15) 的文字：独立于 parts 状态的字形缓存。
+ * 不调用 parts_text_append()，因为那条路径会用文字尺寸覆盖 parts 的尺寸
+ * —— 用户组件的尺寸来自 EX 的「幅Ｗ」，不能被文字度量改掉。 */
+void parts_uc_text_build(struct parts_text *t, const char *label, float size, SDL_Color color)
+{
+	memset(t, 0, sizeof(*t));
+	if (!label || !*label)
+		return;
+	t->ts = *parts_default_text_style();
+	t->ts.size = size;
+	t->ts.color = color;
+	t->ts.font_size = NULL;
+	t->lines = xcalloc(1, sizeof(struct parts_text_line));
+	t->nr_lines = 1;
+	const char *p = label;
+	while (*p)
+		p = parts_text_append_char(t, p);
+}
+
+int parts_uc_text_width(struct parts_text *t)
+{
+	int w = 0;
+	for (unsigned i = 0; i < t->nr_lines; i++)
+		w = max(w, t->lines[i].width);
+	return w;
+}
+
+int parts_uc_text_height(struct parts_text *t)
+{
+	int h = 0;
+	for (unsigned i = 0; i < t->nr_lines; i++) {
+		if (i > 0)
+			h += t->line_space;
+		h += t->lines[i].height;
+	}
+	return h;
 }
 
 static void parts_text_rerender(struct parts *parts, struct parts_text *t)
@@ -307,6 +347,29 @@ bool PE_SetPartsFontEdgeWeight(int parts_no, float edge_weight, int state)
 		return true;
 	parts_text_rerender(parts, text);
 	return true;
+}
+
+/* Character / line spacing as stored by PE_SetTextCharSpace /
+ * PE_SetTextLineSpace. A missing parts or non-text state reads as 0, matching
+ * the renderer's default of "no extra spacing". */
+int PE_GetTextCharSpace(int parts_no, int state)
+{
+	if (!parts_state_valid(--state))
+		return 0;
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts)
+		return 0;
+	return parts->states[state].text.ts.font_spacing;
+}
+
+int PE_GetTextLineSpace(int parts_no, int state)
+{
+	if (!parts_state_valid(--state))
+		return 0;
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts)
+		return 0;
+	return parts->states[state].text.line_space;
 }
 
 bool PE_SetTextCharSpace(int parts_no, int char_space, int state)

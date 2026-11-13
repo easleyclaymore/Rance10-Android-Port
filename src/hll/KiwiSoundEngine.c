@@ -116,6 +116,19 @@ static int rance9_wav_prepare(int ch, int num)
 
 static void KiwiSoundEngine_PreLink(void);
 
+/* KiwiSoundEngine.GetMixerMute(group, ref bool mute), AIN lib21 f[35].
+ * [HACK][D119-MIXER] Minimal implementation: audio is never muted by the
+ * engine, so report "not muted" and write false to the ref parameter.
+ * Refactor: track per-mixer mute state in audio.c and expose a setter too.
+ * Registered in TECH_DEBT. */
+static bool KiwiSoundEngine_GetMixerMute(int group, bool *mute)
+{
+	(void)group;
+	if (mute)
+		*mute = false;
+	return false;
+}
+
 HLL_LIBRARY(KiwiSoundEngine,
 	    HLL_EXPORT(_PreLink, KiwiSoundEngine_PreLink),
 	    HLL_EXPORT(SetGlobalFocus, KiwiSoundEngine_SetGlobalFocus),
@@ -192,7 +205,8 @@ HLL_LIBRARY(KiwiSoundEngine,
 	    HLL_EXPORT(GetGroupNumFromFile, audio_get_group_by_name),
 	    HLL_EXPORT(GetGroupVolume, audio_get_group_volume),
 	    HLL_EXPORT(MillisecondsToSamples, KiwiSoundEngine_MillisecondsToSamples),
-	    HLL_EXPORT(GetSoundFileName, KiwiSoundEngine_GetSoundFileName)
+	    HLL_EXPORT(GetSoundFileName, KiwiSoundEngine_GetSoundFileName),
+	    HLL_EXPORT(GetMixerMute, KiwiSoundEngine_GetMixerMute)
 	);
 
 static void KiwiSoundEngine_PreLink(void)

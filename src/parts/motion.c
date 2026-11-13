@@ -539,14 +539,38 @@ void PE_SeekEndMotion(void)
 
 static int msgskip_speedup_rate = 1;
 
+/* Wall-clock of the last time AIN drove the motion clock. Zero when AIN has
+ * never called UpdateMotionTime (Rance10 does not: its scenes animate through
+ * Parts.Motion, but nothing in the bytecode ticks it while a scene waits). */
+static uint32_t last_explicit_motion_tick;
+
 void PE_UpdateMotionTime(int time, bool skip)
 {
+	last_explicit_motion_tick = SDL_GetTicks();
 	if (is_motion_paused)
 		return;
 	if (skip)
 		PE_SetMotionTime(motion_t + time * msgskip_speedup_rate);
 	else
 		PE_SetMotionTime(motion_t + time);
+}
+
+/* Advance the motion clock when nobody else is doing it.
+ *
+ * The whole Parts.Motion system (fade-ins, slides) is driven by
+ * motion_t, which AIN is supposed to tick through
+ * PartsEngine.UpdateMotionTime(). Rance10 never calls it: measured 0 calls in
+ * a 200 s run, so every motion stayed at t=0 and the title menu buttons kept
+ * alpha=0 forever. The VM frame pump calls this once per frame; if AIN ever
+ * starts ticking the clock itself we back off, so the two never stack. */
+void PE_AdvanceMotionClock(int passed_time)
+{
+	if (!is_motion || is_motion_paused || passed_time <= 0)
+		return;
+	if (last_explicit_motion_tick &&
+	    SDL_GetTicks() - last_explicit_motion_tick < 32)
+		return;
+	PE_SetMotionTime(motion_t + passed_time);
 }
 
 void PE_SetSpeedupRateByMessageSkip(int parts_no, int rate)

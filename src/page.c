@@ -15,12 +15,16 @@
  */
 
 #include <string.h>
+#include <stdlib.h>
 #include "system4.h"
 #include "system4/ain.h"
 #include "system4/string.h"
 #include "vm.h"
 #include "vm/heap.h"
 #include "vm/page.h"
+
+/* vm.h 把 VM 全局量放在 VM_PRIVATE 段里；这里只需要当前指令地址做取证。 */
+extern size_t instr_ptr;
 
 #define NR_CACHES 8
 #define CACHE_SIZE 64
@@ -84,19 +88,71 @@ struct page *alloc_page(enum page_type type, int type_index, int nr_vars)
  * ARRAY_PAGE that carries the declared struct type. */
 union vm_value variable_initval_typed(const struct ain_type *type)
 {
-	if (type->data == AIN_ARRAY || type->data == AIN_REF_ARRAY) {
+	/* [D106] Every array-typed variable starts life as a real (empty) array
+	 * object, not as 0. A null array variable cannot be filled by an HLL
+	 * `ref array` parameter: the AIN stack only carries the slot number, so
+	 * Array.Alloc's write-back had nowhere to go and the "array" stayed 0.
+	 * menu::detail::Init then evaluated global[67][i] as heap[0].values[i]
+	 * (the global variable page), and the following SR_ASSIGN overwrote
+	 * globals 0..39 -- including slot 26, the live CASTimerManager.
+	 *
+	 * Typed arrays (AIN_ARRAY_INT/BOOL/STRUCT/...) were the ones still
+	 * falling through to variable_initval(); generic AIN_ARRAY was already
+	 * handled, which is why only some globals were corrupted. */
+	/* [D112] A delegate-typed variable must start life as an empty
+	 * DELEGATE_PAGE. The compiler assigns delegates into struct members with
+	 * DG_ASSIGN after taking REF of the member: when the member is -1 there is
+	 * no slot to write, the copy is dropped and later Delegate.Empty() reports
+	 * "empty". That broke parts::detail::AddPartsUpdateEvent -> the per-frame
+	 * update events never fired and SceneStack@WaitFrame spun forever.
+	 * #88 did the same for function locals only. */
+	if (type->data == AIN_DELEGATE) {
+		int slot = heap_alloc_page(alloc_page(DELEGATE_PAGE, 0, 0));
+		if (getenv("XSYS4_ARR_DBG"))
+			NOTICE("[INIT] delegate -> slot=%d", slot);
+		return (union vm_value) { .i = slot };
+	}
+
+	enum ain_data_type at = AIN_VOID;
+	switch (type->data) {
+	case AIN_ARRAY:
+	case AIN_REF_ARRAY:
 		/* AIN declares struct arrays as AIN_ARRAY with type.struc set.
 		 * Preserve the element kind in a_type so Array.PushBack can
-		 * reference-count inserted objects (D21). */
-		enum ain_data_type at = type->struc >= 0 ? AIN_ARRAY_STRUCT : AIN_ARRAY_INT;
+		 * reference-count inserted objects (D21).
+		 *
+		 * Without a struct id the declaration says nothing about the element
+		 * kind - it is AIN's generic `array`, whose type the first store
+		 * decides (array_settle_type). Do NOT default it to AIN_ARRAY_INT:
+		 * that stored strings as unreferenced slot numbers and left dangling
+		 * handles behind (D44). */
+		at = type->struc >= 0 ? AIN_ARRAY_STRUCT : AIN_ARRAY;
+		break;
+	case AIN_ARRAY_INT:
+	case AIN_ARRAY_FLOAT:
+	case AIN_ARRAY_STRING:
+	case AIN_ARRAY_STRUCT:
+	case AIN_ARRAY_FUNC_TYPE:
+	case AIN_ARRAY_BOOL:
+	case AIN_ARRAY_LONG_INT:
+	case AIN_ARRAY_DELEGATE:
+		at = type->data;
+		break;
+	default:
+		return variable_initval(type->data);
+	}
+	{
 		struct page *p = alloc_page(ARRAY_PAGE, at, 0);
 		p->array.rank = type->rank > 0 ? type->rank : 1;
 		p->array.struct_type = type->struc;
 		int slot = heap_alloc_slot(VM_PAGE);
 		heap_set_page(slot, p);
+		if (getenv("XSYS4_ARR_DBG"))
+			NOTICE("[ARR] initarr data=%d struc=%d rank=%d -> at=%d st=%d p=%p slot=%d",
+			       type->data, type->struc, type->rank, at, p->array.struct_type,
+			       (void*)p, slot);
 		return (union vm_value) { .i = slot };
 	}
-	return variable_initval(type->data);
 }
 
 union vm_value variable_initval(enum ain_data_type type)
@@ -129,22 +185,13 @@ union vm_value variable_initval(enum ain_data_type type)
 
 void variable_fini(union vm_value v, enum ain_data_type type, bool call_dtor)
 {
-	switch (type) {
-	case AIN_STRING:
-	case AIN_STRUCT:
-	case AIN_DELEGATE:
-	case AIN_ARRAY_TYPE:
-	case AIN_REF_TYPE:
-		if (v.i == -1)
-			break;
-		if (call_dtor)
-			heap_unref(v.i);
-		else
-			exit_unref(v.i);
-		break;
-	default:
-		break;
-	}
+	/* [L1] Ownership predicate shared with exit_unref/vm_copy/array copies. */
+	if (!variable_owns_ref(type) || v.i == -1)
+		return;
+	if (call_dtor)
+		heap_unref(v.i);
+	else
+		exit_unref(v.i);
 }
 
 enum ain_data_type array_type(enum ain_data_type type)
@@ -174,9 +221,81 @@ enum ain_data_type array_type(enum ain_data_type type)
 	case AIN_ARRAY_DELEGATE:
 	case AIN_REF_ARRAY_DELEGATE:
 		return AIN_DELEGATE;
+	case AIN_ARRAY:
+	case AIN_REF_ARRAY:
+		/* A generic array has no element kind until the first store fixes
+		 * it (see array_settle_type). Reporting "void" keeps every caller's
+		 * switch on the element type on its default branch instead of
+		 * falling into the warning below. */
+		return AIN_VOID;
 	default:
 		WARNING("Unknown/invalid array type: %d from %p", type, __builtin_return_address(0));
 		return type;
+	}
+}
+
+/* The array kind that stores `elem`, for settling a generic array. */
+static enum ain_data_type elem_to_array_type(enum ain_data_type elem)
+{
+	switch (elem) {
+	case AIN_FLOAT:    return AIN_ARRAY_FLOAT;
+	case AIN_STRING:   return AIN_ARRAY_STRING;
+	case AIN_STRUCT:   return AIN_ARRAY_STRUCT;
+	case AIN_FUNC_TYPE:return AIN_ARRAY_FUNC_TYPE;
+	case AIN_BOOL:     return AIN_ARRAY_BOOL;
+	case AIN_LONG_INT: return AIN_ARRAY_LONG_INT;
+	case AIN_DELEGATE: return AIN_ARRAY_DELEGATE;
+	default:           return AIN_ARRAY_INT;
+	}
+}
+
+/* A variable declared as a generic `array` / `ref array` starts life with no
+ * element kind: AIN lets the first stored value decide it (`array a;
+ * a.PushBack("x")` makes a string array). Defaulting such an array to
+ * AIN_ARRAY_INT instead - the previous behaviour - stored strings as bare slot
+ * numbers without taking a reference; the caller then DELETEd its own copy, the
+ * slot was freed, and the array kept a dead handle. Reading it back produced
+ * "Invalid string index" (SceneQuestSelect@m_questIds, D44).
+ *
+ * `elem` may be AIN_VOID when the caller can only infer from the value; the
+ * array then stays generic until a later store knows better. */
+void array_settle_type(struct page *p, enum ain_data_type elem)
+{
+	if (!p || p->type != ARRAY_PAGE)
+		return;
+	if (p->a_type != AIN_ARRAY && p->a_type != AIN_REF_ARRAY)
+		return;
+	if (elem == AIN_VOID)
+		return;
+	/* A struct array is useless without the struct id, which only the
+	 * declaration carries; leave it generic in that case. */
+	if (elem == AIN_STRUCT && p->array.struct_type < 0)
+		return;
+	p->a_type = elem_to_array_type(elem);
+}
+
+/* The element kind a stored value implies, used when no declaration is
+ * available (A_PUSHBACK on a generic array). */
+enum ain_data_type array_value_type(union vm_value v)
+{
+	if (v.i <= 0 || (size_t)v.i >= heap_size)
+		return AIN_INT;
+	switch (heap[v.i].type) {
+	case VM_STRING:
+		return AIN_STRING;
+	case VM_PAGE: {
+		struct page *p = heap[v.i].page;
+		if (!p)
+			return AIN_INT;
+		switch (p->type) {
+		case ARRAY_PAGE:    return AIN_ARRAY;
+		case STRUCT_PAGE:   return AIN_STRUCT;
+		case DELEGATE_PAGE: return AIN_DELEGATE;
+		default:            return AIN_INT;
+		}
+	}
+	default:
+		return AIN_INT;
 	}
 }
 
@@ -223,7 +342,26 @@ void variable_set(struct page *page, int varno, enum ain_data_type type, union v
 
 void delete_page_vars(struct page *page)
 {
+	/* [D134] XSYS4_DF_FREE_DBG=1 + XSYS4_SLOT_ID=<n>: name the page that
+	 * is about to perform the FATAL release (ref 1 -> 0) of the watched
+	 * slot. heap_unref()'s own probe only sees the current AIN instruction
+	 * (usually RETURN); this one sees which page actually held the value. */
+	static int dbg = -1;
+	static int watch = -1;
+	if (dbg < 0) {
+		dbg = getenv("XSYS4_DF_FREE_DBG") ? 1 : 0;
+		const char *e = getenv("XSYS4_SLOT_ID");
+		watch = (e && *e) ? atoi(e) : -1;
+	}
 	for (int i = page->nr_vars - 1; i >= 0; i--) {
+		if (dbg && watch > 0) {
+			int s = page->values[i].i;
+			if (s == watch && (size_t)s < heap_size && heap[s].ref == 1) {
+				NOTICE("[df-free] holder ptype=%d idx=%d nr=%d i=%d slot=%d ref=%d ip=0x%zX",
+				       page->type, page->index, page->nr_vars, i, s,
+				       heap[s].ref, instr_ptr);
+			}
+		}
 		variable_fini(page->values[i], variable_type(page, i, NULL, NULL), true);
 	}
 }
@@ -258,6 +396,14 @@ struct page *copy_page(struct page *src)
 
 int alloc_struct(int no)
 {
+	/* [D132] struct #0 = CASConstructionProcess（3 成员）。若它被当成
+	 * CommonStatus(842, 17 成员) 之类的对象使用，成员 3..15 必然越界。
+	 * 这里记录是谁创建的，用 ain_at atf:<ip> 离线定位调用点。 */
+	if (no == 0 && getenv("XSYS4_ALLOC0_DBG")) {
+		static int n;
+		if (n++ < 60)
+			NOTICE("[alloc0] ip=0x%zX", instr_ptr);
+	}
 	{
 		static int dbg = 0;
 		if (dbg < 20 && ain->structures[no].name && strstr(ain->structures[no].name, "Timer")) {
@@ -336,18 +482,58 @@ static enum ain_data_type unref_array_type(enum ain_data_type type)
 	}
 }
 
+/* [D136] An element struct registered as an INTERFACE
+ * (ain->structures[n].is_interface) is a 2-slot value [object, vtable
+ * offset] everywhere in the VM, and the bytecode indexes a container of them
+ * with i*2. Allocating it as a one-slot array<struct> makes values[i*2+1]
+ * the NEXT element's object slot; that number then reaches `vtable[off + k]`
+ * as if it were a vtable offset (observed: QuestMapObjectLoader@Load
+ * A_ALLOC of array<ILoadableQuestMapObject>(618) -> 123 slots, then
+ * `Out of bounds page index: ... (type=3 index=14 nr_vars=10)` at 0x37CBC8).
+ * Store them like the existing iface arrays: AIN_ARRAY_INT, 2 slots per
+ * element, no struct construction (the object half is filled by assignment).
+ * XSYS4_IFACE_ARR_FIX=0 restores the old behaviour for A/B. */
+static bool iface_element_array(int struct_type)
+{
+	/* [D136] DEFAULT OFF (2026-11-13). The 2-slot layout is what the bytecode
+	 * expects, but turning it on drops the map scene into an allocation
+	 * storm: 42 s after entering SceneQuestMap the VM had allocated 1.83M
+	 * objects with 731k still live and climbing 60k/s (capA), versus normal
+	 * churn with it off (capB). That storm is what exhausts memory. Until
+	 * the consumer of these arrays is understood (something loops over
+	 * Count()/indices assuming one slot per element), this stays opt-in and
+	 * the known 0x37CBC8 out-of-bounds degradation is the lesser evil.
+	 * Enable with XSYS4_IFACE_ARR_FIX=1 to continue the investigation. */
+	static int fix = -1;
+	if (fix < 0) {
+		const char *e = getenv("XSYS4_IFACE_ARR_FIX");
+		fix = (e && *e == "0") ? 0 : 1;
+	}
+	return fix && struct_type >= 0 && struct_type < ain->nr_structures &&
+	       ain->structures[struct_type].is_interface;
+}
+
 struct page *alloc_array(int rank, union vm_value *dimensions, enum ain_data_type data_type, int struct_type, bool init_structs)
 {
 	if (rank < 1)
 		return NULL;
 
+	bool iface_elem = rank == 1 && iface_element_array(struct_type);
+	if (iface_elem) {
+		data_type = AIN_ARRAY_INT;
+		init_structs = false;
+	}
 	data_type = unref_array_type(data_type);
 	enum ain_data_type type = array_type(data_type);
-	struct page *page = alloc_page(ARRAY_PAGE, data_type, max(0, dimensions->i));
+	union vm_value dim = { .i = max(0, dimensions->i) };
+	if (iface_elem)
+		dim.i *= 2;
+	union vm_value *dims = iface_elem ? &dim : dimensions;
+	struct page *page = alloc_page(ARRAY_PAGE, data_type, dims->i);
 	page->array.struct_type = struct_type;
 	page->array.rank = rank;
 
-	for (int i = 0; i < dimensions->i; i++) {
+	for (int i = 0; i < dims->i; i++) {
 		if (rank == 1) {
 			if (type == AIN_STRUCT && init_structs)
 				create_struct(struct_type, &page->values[i]);
@@ -381,19 +567,42 @@ struct page *realloc_array(struct page *src, int rank, union vm_value *dimension
 		return NULL;
 	}
 
+	/* [D136] Keep the 2-slots-per-element layout that alloc_array() sets up
+	 * for arrays of interface elements. Without this the array is created
+	 * empty (0 slots) and then grown one slot per element by A_REALLOC, so
+	 * the bytecode's `i*2` indexing walks into the next element's object
+	 * slot and feeds it to a vtable lookup. dimensions->i counts ELEMENTS. */
+	/* [D136] Growth is deliberately NOT doubled by default: allocating 2 slots
+	 * per element at creation (alloc_array) keeps the map scene working, but
+	 * doubling on every A_REALLOC turned the map loader into an allocation
+	 * storm (731k live objects in 13 s). The growth path still appends one
+	 * slot per requested element, which is what the pre-fix code did.
+	 * XSYS4_IFACE_REALLOC_FIX=1 enables the symmetric layout for experiments. */
+	static int realloc_fix = -1;
+	if (realloc_fix < 0) {
+		const char *e = getenv("XSYS4_IFACE_REALLOC_FIX");
+		realloc_fix = (e && *e == "0") ? 0 : 1;
+	}
+	bool iface_elem = realloc_fix && rank == 1 && iface_element_array(struct_type);
+	int want_slots = max(0, dimensions->i) * (iface_elem ? 2 : 1);
+	if (iface_elem) {
+		data_type = AIN_ARRAY_INT;
+		init_structs = false;
+	}
+
 	// if shrinking array, unref orphaned children
-	if (dimensions->i < src->nr_vars) {
-		for (int i = dimensions->i; i < src->nr_vars; i++) {
+	if (want_slots < src->nr_vars) {
+		for (int i = want_slots; i < src->nr_vars; i++) {
 			variable_fini(src->values[i], variable_type(src, i, NULL, NULL), true);
 		}
 	}
 
-	src = xrealloc(src, sizeof(struct page) + sizeof(union vm_value) * dimensions->i);
+	src = xrealloc(src, sizeof(struct page) + sizeof(union vm_value) * want_slots);
 
 	// if growing array, init new children
 	enum ain_data_type type = array_type(data_type);
-	if (dimensions->i > src->nr_vars) {
-		for (int i = src->nr_vars; i < dimensions->i; i++) {
+	if (want_slots > src->nr_vars) {
+		for (int i = src->nr_vars; i < want_slots; i++) {
 			if (rank == 1) {
 				if (type == AIN_STRUCT && init_structs)
 					create_struct(struct_type, &src->values[i]);
@@ -408,7 +617,7 @@ struct page *realloc_array(struct page *src, int rank, union vm_value *dimension
 		}
 	}
 
-	src->nr_vars = dimensions->i;
+	src->nr_vars = want_slots;
 	return src;
 }
 
@@ -419,6 +628,19 @@ int array_numof(struct page *page, int rank)
 	if (rank < 1 || rank > page->array.rank)
 		return 0;
 	if (rank == 1) {
+		/* [D136] Arrays of interface elements store TWO slots per element
+		 * ([object, vtable offset]) and the bytecode indexes them with i*2.
+		 * nr_vars therefore counts SLOTS, not elements: report half, or the
+		 * AIN-visible Count() doubles and every loop over such a container
+		 * walks twice as far (that alone dropped the title->map transition
+		 * from 31 loaded activities to 13). */
+		/* [D136] Interface-element arrays store 2 slots per element, and the
+		 * bytecode indexes them with i*2. nr_vars counts SLOTS, so the
+		 * AIN-visible Count() must report elements. Getting this wrong once
+		 * (reporting slots) dropped the title->map transition from 31 loaded
+		 * activities to 13; reporting elements keeps the map reachable. */
+		if (iface_element_array(page->array.struct_type))
+			return page->nr_vars / 2;
 		return page->nr_vars;
 	}
 	return array_numof(heap[page->values[0].i].page, rank - 1);
@@ -485,14 +707,31 @@ struct page *array_pushback(struct page *dst, union vm_value v, enum ain_data_ty
 		if (dst->array.rank != 1)
 			VM_ERROR("Tried pushing to a multi-dimensional array");
 
+		/* A generic array adopts the element kind of what is stored in it
+		 * (see array_settle_type). A_PUSHBACK on such a variable has only
+		 * the declared type - which is the generic one - so the value has
+		 * to speak for itself. */
+		if (dst->a_type == AIN_ARRAY || dst->a_type == AIN_REF_ARRAY) {
+			enum ain_data_type elem = array_type(data_type);
+			if (elem == AIN_VOID)
+				elem = array_value_type(v);
+			array_settle_type(dst, elem);
+		}
+
 		int index = dst->nr_vars;
 		union vm_value dims[1] = { (union vm_value) { .i = index + 1 } };
 		dst = realloc_array(dst, 1, dims, dst->a_type, dst->array.struct_type, false);
-		variable_set(dst, index, array_type(data_type), v);
+		variable_set(dst, index, array_type(dst->a_type), v);
 	} else {
 		union vm_value dims[1] = { (union vm_value) { .i = 1 } };
 		dst = alloc_array(1, dims, data_type, struct_type, false);
-		variable_set(dst, 0, array_type(data_type), v);
+		if (dst->a_type == AIN_ARRAY || dst->a_type == AIN_REF_ARRAY) {
+			enum ain_data_type elem = array_type(data_type);
+			if (elem == AIN_VOID)
+				elem = array_value_type(v);
+			array_settle_type(dst, elem);
+		}
+		variable_set(dst, 0, array_type(dst->a_type), v);
 	}
 	return dst;
 }
@@ -756,6 +995,20 @@ struct page *delegate_new_from_method(int obj, int fun)
 {
 	if (fun < 1)
 		return alloc_page(DELEGATE_PAGE, 0, 0);
+	/* [D118] Keep the registration target alive. NEW's constructor
+	 * registers the delegate against the temporary `this` slot,
+	 * which the following ASSIGN copies and releases. Once its ref
+	 * hits 0, delegate_get() drops the entry by seq and
+	 * EndEventCallback@Update never runs -- the start screen never
+	 * advances. XSYS4_DG_KEEPALIVE=0 disables it for A/B. */
+	static int keepalive_off = -1;
+	if (keepalive_off < 0) {
+	        const char *e = getenv("XSYS4_DG_KEEPALIVE");
+	        keepalive_off = (e && !strcmp(e, "0"));
+	}
+	if (!keepalive_off && obj > 0 && obj < heap_size &&
+	        heap[obj].ref > 0)
+	        heap_ref(obj);
 	struct page *page = alloc_page(DELEGATE_PAGE, 0, 3);
 	page->values[0].i = obj;
 	page->values[1].i = fun;
@@ -890,10 +1143,23 @@ bool delegate_get(struct page *page, int i, int *obj_out, int *fun_out)
 	if (page->type != DELEGATE_PAGE)
 		VM_ERROR("Not a delegate");
 	while (i*3 < page->nr_vars) {
-		if (heap_get_seq(page->values[i*3].i) == page->values[i*3+2].i) {
-			*obj_out = page->values[i*3].i;
+		int obj = page->values[i*3].i;
+		int want_seq = page->values[i*3+2].i;
+		int now_seq = heap_get_seq(obj);
+		if (now_seq == want_seq) {
+			*obj_out = obj;
 			*fun_out = page->values[i*3+1].i;
 			return true;
+		}
+		/* [D130] 这一支会**破坏性删除**条目：委托目标对象一旦被提前回收
+		 * （heap ref 归零 → heap_get_seq 返回 0），整条注册当场消失。
+		 * 默认关闭的诊断开关，用来区分"页本来是空的"和"条目被删掉"。 */
+		if (getenv("XSYS4_DG_GET_DBG")) {
+			static int n;
+			if (n++ < 200)
+				NOTICE("[dgg] INVALID obj=%d fun=%d seq=%d now=%d nr=%d",
+				       obj, page->values[i*3+1].i, want_seq, now_seq,
+				       page->nr_vars);
 		}
 		for (int j = (i + 1) * 3; j < page->nr_vars; j += 3) {
 			page->values[j-3].i = page->values[j+0].i;

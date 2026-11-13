@@ -9,6 +9,7 @@
 
 #include "hll.h"
 #include "vm.h"
+#include "vm/heap.h"
 #include "vm/page.h"
 
 /* ---------------- Int / Float ---------------- */
@@ -421,8 +422,49 @@ static struct string *String_TrimEndChars(struct string **s, struct string *char
 	return make_string(b, (size_t)(e - b));
 }
 
-HLL_WARN_UNIMPLEMENTED(NULL, struct page *, String, Split,
-		       struct string **s, struct string *sep, bool b);
+/* String.Split(ref string s, string sep, bool keep_empty) -> ref string[]
+ * AIN lib30 f[35], used by Parts@ResolveFlatName to split flat asset paths.
+ * Byte-wise splitting is safe here: Rance10 uses ASCII separators ("/", "\\"),
+ * and the payload is kept as GBK bytes just like every other string in the VM. */
+static struct page *String_Split(struct string **s, struct string *sep, bool keep_empty)
+{
+	(void)keep_empty;
+	if (!s || !*s || !sep || !sep->text)
+		return NULL;
+	const char *text = (*s)->text;
+	const char *needle = sep->text;
+	size_t nlen = strlen(needle);
+
+	int n = 1;
+	if (nlen) {
+		for (const char *p = text; (p = strstr(p, needle)) != NULL; p += nlen)
+			n++;
+	}
+	union vm_value dims = { .i = n };
+	struct page *arr = alloc_array(1, &dims, AIN_ARRAY_STRING, -1, false);
+	if (!arr)
+		return NULL;
+
+	int i = 0;
+	const char *start = text;
+	const char *p = text;
+	while (i < n) {
+		const char *hit = nlen ? strstr(p, needle) : NULL;
+		size_t len = hit ? (size_t)(hit - start) : strlen(start);
+		heap_string_assign(arr->values[i].i, make_string(start, len));
+		i++;
+		if (!hit)
+			break;
+		p = hit + nlen;
+		start = p;
+	}
+	/* [HACK][D119-SPLIT] ret=t79 falls through ffi.c's default branch, which
+	 * pushes the raw C return value; AIN addresses pages by heap slot. Register
+	 * the array page here and hand the slot back through the pointer-typed
+	 * return. Refactor: add an explicit "returns_page" flag to static_hll_function
+	 * and let ffi.c do heap_alloc_page() generically. See TECH_DEBT. */
+	return (struct page *)(intptr_t)(int32_t)heap_alloc_page(arr);
+}
 
 HLL_LIBRARY(String,
 	HLL_EXPORT(Int, String_Int),
@@ -455,4 +497,6 @@ HLL_LIBRARY(String,
 	HLL_EXPORT(TrimStart, String_TrimStart),
 	HLL_EXPORT(TrimStartChars, String_TrimStartChars),
 	HLL_EXPORT(TrimEnd, String_TrimEnd),
-	HLL_EXPORT(TrimEndChars, String_TrimEndChars));
+	HLL_EXPORT(TrimEndChars, String_TrimEndChars),
+	/* AIN lib30 f[35]; linked by name so the table order stays compatible. */
+	HLL_EXPORT(Split, String_Split));

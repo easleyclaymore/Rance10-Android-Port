@@ -176,10 +176,47 @@ int sact_GetMainSurfaceNumber(void)
 	return -1;
 }
 
+/* [D113] Rance10 (System4 v12 / ChipmunkSpriteEngine) drives its frame from
+ * AIN: view::Update -> ChipmunkSpriteEngine.Update (lib 7 f[0]) -> here.
+ * Unlike older GUIEngine games there is NO AIN-side call to PartsEngine.Update
+ * / GUIEngine.Update, so PE_UpdateInputState() never ran: parts_began_click
+ * stayed false in the frame loop, clicked_parts stayed 0, and
+ * parts::detail::WaitForClick (fno 8309, polls GetClickNumber() > 0) could
+ * never be satisfied by a mouse click.
+ *
+ * Drive ONLY the input stage here. Calling the full PE_Update() also re-runs
+ * PE_UpdateComponent()/parts_render_update(), which invalidates the sprites
+ * the scene renderer already set up and leaves the window black (verified:
+ * mean=0.0176 -> 0.0000). The remaining per-frame parts work is driven by
+ * AIN's parts::detail::Update (fno 8292). This function is also bound by
+ * SACT2/StoatSpriteEngine; on those games the extra input pass is harmless. */
+static uint32_t sact_prev_tick;
+
 int sact_Update(void)
 {
 	handle_events();
 	sprite_call_plugins();
+
+	uint32_t now = SDL_GetTicks();
+	int passed_time = sact_prev_tick ? (int)(now - sact_prev_tick) : 16;
+	sact_prev_tick = now;
+	if (passed_time < 0) passed_time = 0;
+	if (passed_time > 100) passed_time = 100;
+	/* Only the input stage is missing from this path. Calling the full
+	 * PE_Update() also re-runs PE_UpdateComponent/parts_render_update, which
+	 * invalidates the sprites the scene renderer has already set up and
+	 * leaves the window black (D113). */
+	PE_UpdateInputState(passed_time);
+
+	/* Present every frame. Drawing used to be gated on scene_is_dirty, which
+	 * only a handful of calls ever set (scene_set_wp and friends). Nothing in
+	 * AIN marks "a scene pushed a static dialog" or "a flat part changed its
+	 * frame", so the window kept showing whatever the last 3D frame put
+	 * there: the network confirmation dialog and the whole title screen were
+	 * built, loaded, validated and never painted. The render itself is a
+	 * cheap sprite-list walk; correctness first. */
+	scene_is_dirty = true;
+
 	if (scene_is_dirty) {
 		scene_render();
 		gfx_swap();

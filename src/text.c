@@ -19,6 +19,9 @@
 #include "system4/hashtable.h"
 #include "system4/string.h"
 #include "system4/utfsjis.h"
+#ifdef HAVE_FONTCONFIG
+#include <fontconfig/fontconfig.h>
+#endif
 
 #include "gfx/gfx.h"
 #include "gfx/font.h"
@@ -47,6 +50,45 @@ struct font *font_fnl[MAX_FNL_FONTS] = {0};
 // Controls whether edge widths are taken into account during text layout.
 bool gfx_text_advance_edges = false;
 
+/* [D131] GBK 中文版缺字修复。
+ *
+ * 默认 gothic 字体是 VL-Gothic（日文字体），不含「头/载/问/爱/丽/丝」
+ * 这类简体字；g2u 码表本身是正确的（12 个字都能映射到正确 Unicode），
+ * 缺的是字形。用 fontconfig 按 lang=zh-cn 动态询问系统里的 CJK 字体，
+ * 不写死任何绝对路径；.ttc 需要 face index，一并按 path:index 传下去。
+ * 平台没有 fontconfig、或查询失败时返回 NULL，走原来的字体链。 */
+static char *cjk_font_spec(void)
+{
+#ifdef HAVE_FONTCONFIG
+	if (!FcInit())
+		return NULL;
+	FcPattern *pat = FcPatternCreate();
+	if (!pat)
+		return NULL;
+	FcPatternAddString(pat, FC_LANG, (const FcChar8 *)"zh-cn");
+	FcConfigSubstitute(NULL, pat, FcMatchPattern);
+	FcDefaultSubstitute(pat);
+	FcResult res = FcResultNoMatch;
+	FcPattern *match = FcFontMatch(NULL, pat, &res);
+	char *spec = NULL;
+	if (match) {
+		FcChar8 *file = NULL;
+		int index = 0;
+		if (FcPatternGetString(match, FC_FILE, 0, &file) == FcResultMatch && file) {
+			FcPatternGetInteger(match, FC_INDEX, 0, &index);
+			char buf[1024];
+			snprintf(buf, sizeof(buf), "%s:%d", (const char *)file, index);
+			spec = strdup(buf);
+		}
+		FcPatternDestroy(match);
+	}
+	FcPatternDestroy(pat);
+	return spec;
+#else
+	return NULL;
+#endif
+}
+
 static struct font *load_font(enum font_face type)
 {
 	static const char *local_font_paths[] = {
@@ -60,6 +102,21 @@ static struct font *load_font(enum font_face type)
 		if ((font = ft_font_load(config.font_paths[type])))
 			return font;
 		WARNING("Failed to load font '%s'; using the default font", config.font_paths[type]);
+	}
+	/* [D131] 中文版优先用系统 CJK 字体（用户显式指定的字体仍然最高优先）。
+	 * 日文版 use_gbk=false 时保持 VL-Gothic 的字形观感不变。 */
+	if (use_gbk && type == FONT_GOTHIC) {
+		char *spec = cjk_font_spec();
+		if (spec) {
+			font = ft_font_load(spec);
+			if (font) {
+				NOTICE("[font] gothic -> CJK font '%s'", spec);
+				free(spec);
+				return font;
+			}
+			WARNING("Failed to load CJK font '%s'; falling back", spec);
+			free(spec);
+		}
 	}
 	// installed default font
 	char default_path[1024];
@@ -116,6 +173,7 @@ struct font_size *gfx_font_get_size(unsigned face, float size)
 	struct font *font = get_font(face);
 	return font->get_size(font, size);
 }
+
 
 static struct font_size *text_style_font_size(struct text_style *ts)
 {
@@ -213,8 +271,20 @@ float _gfx_render_text(Texture *dst, char *msg, struct text_render_metrics *tm)
 		uint32_t code = char_to_code(msg, tm->font_size->font->charmap);
 		msg += SJIS_2BYTE(*msg) ? 2 : 1;
 		struct glyph *glyph = font_get_glyph(tm->font_size, code, tm->weight);
-		if (!glyph)
+		if (!glyph) {
+			/* XSYS4_UC_RENDER_DBG：字形缺失是"画了但纹理全透明"的
+			 * 直接原因。打印编码表/码值/字体名，区分"编码不对"和
+			 * "这个字体根本没有这个字"。 */
+			if (getenv("XSYS4_UC_RENDER_DBG")) {
+				static int gn;
+				if (gn++ < 8)
+					NOTICE("[uct] NO GLYPH charmap=%d code=0x%X "
+					       "size=%.1f",
+					       tm->font_size->font->charmap, code,
+					       tm->font_size->size);
+			}
 			continue;
+		}
 
 		// render glyph
 		Texture *t = &glyph->t[tm->weight];

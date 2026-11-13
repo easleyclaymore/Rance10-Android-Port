@@ -34,8 +34,13 @@
 
 #include "debugger.h"
 #include "input.h"
+#include "parts.h"
+#include "scene.h"
+#include "gfx/gfx.h"
 #include "savedata.h"
 #include "vm.h"
+#include "pal.h"
+#include <malloc.h>
 #include "vm/heap.h"
 #include "vm/page.h"
 #include "xsystem4.h"
@@ -70,6 +75,19 @@ int32_t call_stack_ptr = 0;
 
 struct ain *ain;
 size_t instr_ptr = 0;
+
+/* [D118] Parent local page for lambda frames, indexed by lambda fno.
+ * DG_NEW_FROM_METHOD records the creating frame (where captured variables
+ * live); X_GETENV reads it back. The frame is kept alive with heap_ref. */
+static int *lambda_parent_slot;
+static int lambda_parent_n;
+static void lambda_parent_init(void)
+{
+        if (!lambda_parent_slot && ain && ain->nr_functions > 0) {
+                lambda_parent_slot = calloc(ain->nr_functions, sizeof(int));
+                lambda_parent_n = ain->nr_functions;
+        }
+}
 
 bool vm_reset_once = false;
 
@@ -110,8 +128,85 @@ union vm_value local_get(int varno)
 	return local_page()->values[varno];
 }
 
+/* [D136] XSYS4_LVAR_DBG=<fno>:<var>: name the instruction that WRITES a
+ * given local variable of a given function, with the value written. Built to
+ * answer "who put a heap-slot number into the vtable-offset half of an
+ * interface local" (QuestMapObjectLoader@Load, var 6); a slot that is never
+ * written shows up as silence, which is itself the answer. */
+/* [MEM] XSYS4_HLL_TRACE=<lib>,<fno>：见 CALLHLL 分支的说明。 */
+static bool hll_trace_enabled(int lib, int fno)
+{
+	static int wlib = -2, wfno = -1, n;
+	if (wlib == -2) {
+		const char *e = getenv("XSYS4_HLL_TRACE");
+		if (!e || sscanf(e, "%d,%d", &wlib, &wfno) != 2) {
+			wlib = -1;
+			wfno = -1;
+		}
+	}
+	if (wlib < 0 || lib != wlib || fno != wfno)
+		return false;
+	return n++ < 60;
+}
+
+static int lvar_watch_fno = -2;
+static int lvar_watch_var = -1;
+
+static bool lvar_dbg_active(void)
+{
+	if (lvar_watch_fno == -2) {
+		const char *e = getenv("XSYS4_LVAR_DBG");
+		if (!e || sscanf(e, "%d:%d", &lvar_watch_fno, &lvar_watch_var) != 2) {
+			lvar_watch_fno = -1;
+			lvar_watch_var = -1;
+		}
+	}
+	return lvar_watch_fno >= 0;
+}
+
+static bool lvar_watch_matches(int fno)
+{
+	return lvar_dbg_active() && fno == lvar_watch_fno;
+}
+
+static void lvar_dbg(int varno, int32_t value, int32_t old)
+{
+	if (!lvar_dbg_active() || varno != lvar_watch_var || call_stack_ptr <= 0)
+		return;
+	struct function_call *cf = &call_stack[call_stack_ptr - 1];
+	if (cf->fno != lvar_watch_fno)
+		return;
+	static int n;
+	if (n++ > 40)
+		return;
+	NOTICE("[lvar] ip=0x%zX fno=%d l%d: %d -> %d csp=%d", instr_ptr, cf->fno,
+	       varno, old, value, call_stack_ptr);
+	/* 谁调进来的：只看最近 6 帧，够回答"这条链从哪来" */
+	for (int i = call_stack_ptr - 1, k = 0; i >= 0 && k < 6; i--, k++) {
+		struct ain_function *f = &ain->functions[call_stack[i].fno];
+		uint32_t addr = (i == call_stack_ptr - 1) ? instr_ptr
+							  : call_stack[i + 1].call_address;
+		NOTICE("[lvar]   #%d 0x%08X %s", k, addr,
+		       f->name ? display_sjis0(f->name) : "?");
+	}
+}
+
+static bool lvar_dbg_on(void)
+{
+	static int on = -1;
+	if (on < 0)
+		on = getenv("XSYS4_LVAR_DBG") ? 1 : 0;
+	return on > 0;
+}
+
 static void local_set(int varno, int32_t value)
 {
+	if (lvar_dbg_on()) {
+		int32_t old = local_page()->values[varno].i;
+		local_page()->values[varno].i = value;
+		lvar_dbg(varno, value, old);
+		return;
+	}
 	local_page()->values[varno].i = value;
 }
 
@@ -193,6 +288,17 @@ static union vm_value *stack_peek_ptr(int n)
 }
 
 // Pop a reference off the stack, returning the address of the referenced object.
+#define NULLREF_LOG(why) do { \
+	if (getenv("XSYS4_NULLREF_DBG")) { \
+		static int _n; \
+		if (_n++ < 200) NOTICE("[nullw] %s ip=0x%zX", why, instr_ptr); \
+	} } while (0)
+
+/* [D119] REF remembers the last member it read; DG_PLUSA uses it to lazily
+ * initialise an empty delegate member (the -1 sentinel). */
+static int last_ref_heap = -1;
+static int last_ref_index = -1;
+
 static union vm_value *stack_pop_var(void)
 {
 	int32_t page_index = stack_pop().i;
@@ -204,24 +310,95 @@ static union vm_value *stack_pop_var(void)
 	 * initialisation (TECH_DEBT). */
 	static union vm_value null_ref_slot = { .i = -1 };
 	if (unlikely(!heap_index_valid(heap_index)))
-		return &null_ref_slot;
+		{ NULLREF_LOG("site1"); return &null_ref_slot; }
 	/* D72: a valid slot may still have a NULL page pointer. */
 	if (unlikely(!heap[heap_index].page))
-		return &null_ref_slot;
+		{ NULLREF_LOG("site2"); return &null_ref_slot; }
 	/* D72: any 0-slot page (not just ARRAY_PAGE/index 0) is an
 	 * uninitialised reference during Parts UI setup. */
 	if (heap[heap_index].page && heap[heap_index].page->nr_vars == 0)
-		return &null_ref_slot;
+		{ NULLREF_LOG("site3"); return &null_ref_slot; }
+	/* [D113] Generic HLL refs (Array.First/Last/...) can hand back an
+	 * unresolved [page, -1] pair when the callee ignored the predicate.
+	 * ASSIGN on such a pair must not abort the VM; the destination is a
+	 * compiler-generated dummy return slot that is DELETEd immediately.
+	 * Same null_ref_slot strategy as D52. */
+	if (unlikely(page_index < 0))
+		{ NULLREF_LOG("site4"); return &null_ref_slot; }
 	if (unlikely(!heap[heap_index].page || page_index >= heap[heap_index].page->nr_vars)) {
 		struct page *pg = heap[heap_index].page;
-		VM_ERROR("Out of bounds page index: %d/%d (type=%d nr_vars=%d ref=%d v0=%d v1=%d)",
-			 heap_index, page_index,
-			 pg ? pg->type : -1, pg ? pg->nr_vars : -1, heap[heap_index].ref,
-			 pg && pg->nr_vars > 0 ? pg->values[0].i : -9999,
-			 pg && pg->nr_vars > 1 ? pg->values[1].i : -9999);
+		/* XSYS4_REFDBG=1：越界读一个 slot 时，把操作数栈顶和本帧的
+		 * 局部变量一起打出来。只报"越界"没法判断是索引错还是 this 错。
+		 * 注意必须放在 VM_ERROR 前面：后者是 _Noreturn，编译器会把
+		 * 它之后的代码全部当作不可达删掉。 */
+		if (getenv("XSYS4_REFDBG")) {
+			NOTICE("[ref] ip=0x%zX page=%d idx=%d nstack=%d", instr_ptr,
+			       heap_index, page_index, stack_ptr);
+			if (pg && pg->type == STRUCT_PAGE && pg->index >= 0 &&
+			    pg->index < ain->nr_structures)
+				NOTICE("[ref]   struct='%s'",
+				       display_sjis0(ain->structures[pg->index].name));
+			for (int k = 0; k < 8 && k < stack_ptr; k++)
+				NOTICE("[ref]   sp-%d = %d", k, stack[stack_ptr - 1 - k].i);
+			if (call_stack_ptr > 0) {
+				int lp_slot = call_stack[call_stack_ptr - 1].page_slot;
+				struct page *lp = heap_get_page(lp_slot);
+				if (lp) {
+					NOTICE("[ref]   locals slot=%d nr=%d", lp_slot, lp->nr_vars);
+					for (int k = 0; k < lp->nr_vars && k < 8; k++)
+						NOTICE("[ref]     l%d = %d", k, lp->values[k].i);
+				}
+			}
+		}
+		/* [D120] 默认不再中止进程：这里读到的是"空对象的成员"，语义上
+		 * 与 D52 的 null_ref_slot 同类（Rance10 的 TextButton 菜单数组在
+		 * 场景 init 阶段还是空数组，创建事件却已经被回调）。中止进程会让
+		 * 标题场景永远跑不起来；给一个 -1 哨兵槽，让调用方自己的空判断
+		 * 生效。XSYS4_STRICT_REF=1 可以恢复成硬错误，供定位用。 */
+		if (getenv("XSYS4_STRICT_REF"))
+			VM_ERROR("Out of bounds page index: %d/%d (type=%d index=%d nr_vars=%d ref=%d v0=%d v1=%d)",
+				 heap_index, page_index,
+				 pg ? pg->type : -1, pg ? pg->index : -1, pg ? pg->nr_vars : -1,
+				 heap[heap_index].ref,
+				 pg && pg->nr_vars > 0 ? pg->values[0].i : -9999,
+				 pg && pg->nr_vars > 1 ? pg->values[1].i : -9999);
+		static int _oob_n;
+		if (_oob_n++ < 20)
+			WARNING("Out of bounds page index: %d/%d (type=%d index=%d nr_vars=%d) "
+				"ip=0x%zX -> null slot (D120)",
+				heap_index, page_index, pg ? pg->type : -1,
+				pg ? pg->index : -1, pg ? pg->nr_vars : -1, instr_ptr);
+		return &null_ref_slot;
 	}
 	return &heap[heap_index].page->values[page_index];
 }
+
+/*
+ * [D105] AIN v12 SR_ASSIGN is an ARRAY-ELEMENT struct assignment:
+ * the stack holds [array, index, value] (three values). The old 2-operand
+ * implementation popped (value, index) and treated the index as a heap slot,
+ * so `global[i] = copy(struct)` overwrote heap[i].page with the copied page.
+ * menu::detail::Init does exactly that with i=26, which is the live
+ * CASTimerManager slot: the manager was replaced by an unrelated 57-member
+ * struct, CheckHandle then read a stale member and the frame timer stopped.
+ */
+static void sr_assign_element(int arr, int idx, int val)
+{
+	if (arr <= 0 || (size_t)arr >= heap_size)
+		return;
+	struct page *ap = heap[arr].page;
+	if (!ap || ap->type != ARRAY_PAGE)
+		return;
+	if (idx < 0 || idx >= ap->nr_vars)
+		return;
+	int old = ap->values[idx].i;
+	if (val > 0 && val != -1 && (size_t)val < heap_size && heap[val].ref > 0)
+		heap_ref(val);
+	ap->values[idx].i = val;
+	if (old > 0 && old != val && (size_t)old < heap_size && heap[old].ref > 0)
+		heap_unref(old);
+}
+
 
 union vm_value *stack_peek_var(void)
 {
@@ -243,7 +420,11 @@ static void stack_push_string(struct string *s)
 
 static struct string *stack_peek_string(int n)
 {
-	return heap[stack_peek(n).i].s;
+	/* [D123] 走统一的槽校验/降级路径，不要直接读 heap[].s。
+	 * 后者绕过了 heap_get_string() 对"已释放槽"的兜底：点击标题菜单进入
+	 * 新游戏初始化时一批槽被重复 unref，S_NOTE 在这里拿到野指针，
+	 * strcmp 直接段错误（core 栈：vm.c S_NOTE -> libc strcmp）。 */
+	return heap_get_string(stack_peek(n).i);
 }
 
 int vm_string_ref(struct string *s)
@@ -266,13 +447,32 @@ union vm_value vm_copy(union vm_value v, enum ain_data_type type)
 	 * copying it must not call heap_get_page(-1). */
 	if (v.i < 0)
 		return v;
+	/* [L1] "Is this a reference at all?" uses the shared predicate; the
+	 * switch below only decides HOW each kind is copied. */
+	if (!variable_owns_ref(type))
+		return v;
 	switch (type) {
 	case AIN_STRING:
 		return (union vm_value) { .i = vm_string_ref(heap_get_string(v.i)) };
 	case AIN_STRUCT:
 	case AIN_DELEGATE:
-	case AIN_ARRAY_TYPE:
-		return (union vm_value) { .i = vm_copy_page(heap_get_page(v.i)) };
+	case AIN_ARRAY_TYPE: {
+		union vm_value r = { .i = vm_copy_page(heap_get_page(v.i)) };
+		/* [D116] XSYS4_CP_DBG=1：结构体深拷贝时打源/副本的成员 0。
+		 * Parts(1114) 的 m_partsNumber 若在拷贝时还是 0，副本就永远是 0。 */
+		if (getenv("XSYS4_CP_DBG") && type == AIN_STRUCT) {
+			struct page *sp = heap_get_page(v.i);
+			struct page *dp = heap_get_page(r.i);
+			if (sp && dp && sp->type == STRUCT_PAGE && sp->index == 1114) {
+				static int n;
+				if (n++ < 60)
+					NOTICE("[cp] src=%d m0=%d -> dst=%d m0=%d ip=0x%zX",
+					       v.i, sp->values[0].i, r.i, dp->values[0].i,
+					       instr_ptr);
+			}
+		}
+		return r;
+	}
 	case AIN_REF_TYPE:
 		heap_ref(v.i);
 		return v;
@@ -341,7 +541,7 @@ static int alloc_scenario_page(const char *fname)
 			 * can copy into them; -1 silently discarded the copy. */
 			heap[slot].page->values[i].i = heap_alloc_page(alloc_page(DELEGATE_PAGE, 0, 0));
 		} else {
-			heap[slot].page->values[i] = variable_initval(f->vars[i].type.data);
+			heap[slot].page->values[i] = variable_initval_typed(&f->vars[i].type);
 		}
 	}
 	return slot;
@@ -420,12 +620,55 @@ static void scenario_call(int slot)
  *   - callee pushes return value on the stack
  *   - RETURN jumps to return address (saved in stack frame)
  */
+static void call_trace_probe(int fno);
+
+/* Number of operand-stack slots the parameters of `fn` occupy.
+ *
+ * AIN stores an AIN_IFACE (and AIN_WRAP) value in TWO consecutive variable
+ * slots - [object, vtable offset] - and declares the second one as void. The
+ * `nr_args` counter only counts logical parameters, so popping that many
+ * values leaves half of every interface argument on the stack and shifts the
+ * frame's locals by one slot. Both the argument pop and the local-variable
+ * initialisation have to walk slots, not parameters. */
+static int function_argument_slots(struct ain_function *fn)
+{
+	int slots = 0, args = 0;
+	while (args < fn->nr_args && slots < fn->nr_vars) {
+		enum ain_data_type t = fn->vars[slots].type.data;
+		args++;
+		slots++;
+		/* A multi-slot parameter declares its remaining slots as void. */
+		if (t == AIN_IFACE || t == AIN_WRAP || t == AIN_OPTION)
+			while (slots < fn->nr_vars &&
+			       fn->vars[slots].type.data == AIN_VOID)
+				slots++;
+	}
+	return slots;
+}
+
+/* Same rule for delegate signatures. */
+static int delegate_argument_slots(struct ain_function_type *dg)
+{
+	int slots = 0, args = 0;
+	while (args < dg->nr_arguments && slots < dg->nr_variables) {
+		enum ain_data_type t = dg->variables[slots].type.data;
+		args++;
+		slots++;
+		if (t == AIN_IFACE || t == AIN_WRAP || t == AIN_OPTION)
+			while (slots < dg->nr_variables &&
+			       dg->variables[slots].type.data == AIN_VOID)
+				slots++;
+	}
+	return slots;
+}
+
 static int _function_call(int fno, int return_address)
 {
+	/* [D114] Probe here, not in function_call(): delegate_call() bypasses
+	 * function_call() and jumps straight to _function_call(), so the old
+	 * placement made every DG_CALL-dispatched function look "never called". */
+	call_trace_probe(fno);
 	struct ain_function *f = &ain->functions[fno];
-	if (fno == 147) {
-		NOTICE(">>> CASTimer@0 构造函数被调用 (ptr=%d)", call_stack_ptr);
-	}
 	if (f->address == 0) {
 		NOTICE("_function_call: fno=%d (%s) address=0, ret=0x%x, ptr=%d",
 		       fno, f->name ? f->name : "?", return_address, call_stack_ptr);
@@ -447,15 +690,16 @@ static int _function_call(int fno, int return_address)
 		.return_address = return_address,
 		.page_slot = slot,
 		.struct_page = -1,
+		.entry_sp = -1,
 	};
 	// initialize local variables
-	for (int i = f->nr_args; i < f->nr_vars; i++) {
+	for (int i = function_argument_slots(f); i < f->nr_vars; i++) {
 		if (f->vars[i].type.data == AIN_DELEGATE) {
 			/* D67: delegate locals need a real page slot before DG_ASSIGN
 			 * can copy into them; -1 silently discarded the copy. */
 			heap[slot].page->values[i].i = heap_alloc_page(alloc_page(DELEGATE_PAGE, 0, 0));
 		} else {
-			heap[slot].page->values[i] = variable_initval(f->vars[i].type.data);
+			heap[slot].page->values[i] = variable_initval_typed(&f->vars[i].type);
 		}
 		if (ain->version <= 1 && f->vars[i].type.data == AIN_STRUCT) {
 			create_struct(f->vars[i].type.struc, &heap[slot].page->values[i]);
@@ -465,6 +709,40 @@ static int _function_call(int fno, int return_address)
 	instr_ptr = ain->functions[fno].address;
 
 	return slot;
+}
+
+/* [D111d] Per-function entry probe: XSYS4_CALL_TRACE=<fno,fno,...>
+ * Prints the first 3 hits and then every 200th, so a "does this AIN function
+ * ever run?" question can be answered without a trace window. */
+static struct { int fno; int hits; } call_trace[16];
+static int call_trace_n = -1;
+
+static void call_trace_probe(int fno)
+{
+	if (call_trace_n < 0) {
+		const char *env = getenv("XSYS4_CALL_TRACE");
+		call_trace_n = 0;
+		if (env) {
+			const char *p = env;
+			while (*p && call_trace_n < 16) {
+				call_trace[call_trace_n].fno = atoi(p);
+				call_trace[call_trace_n].hits = 0;
+				call_trace_n++;
+				while (*p && *p != ',') p++;
+				if (*p == ',') p++;
+			}
+		}
+	}
+	for (int i = 0; i < call_trace_n; i++) {
+		if (call_trace[i].fno != fno)
+			continue;
+		int n = ++call_trace[i].hits;
+		if (n <= 3 || n % 200 == 0) {
+			struct ain_function *f = &ain->functions[fno];
+			NOTICE("[call] #%d %s (%d) from 0x%zX", n, display_sjis0(f->name), fno,
+			       instr_ptr);
+		}
+	}
 }
 
 static void function_call(int fno, int return_address)
@@ -488,14 +766,86 @@ static void function_call(int fno, int return_address)
 
 	// pop arguments, store in local page
 	struct ain_function *f = &ain->functions[fno];
-	for (int i = f->nr_args - 1; i >= 0; i--) {
+	int nslots = function_argument_slots(f);
+	for (int i = nslots - 1; i >= 0; i--) {
 		heap[slot].page->values[i] = stack_pop();
+		/* Deliberately NOT variable_owns_ref(): only ref-typed arguments
+		 * are borrowed here; the rest transfer ownership. Widening this
+		 * was disproved by an A/B run (13720 -> 13720), see page.h. */
 		switch (f->vars[i].type.data) {
 		case AIN_REF_TYPE:
 			heap_ref(heap[slot].page->values[i].i);
 			break;
 		default:
 			break;
+		}
+	}
+	call_stack[call_stack_ptr-1].entry_sp = stack_ptr;
+
+	/* [D114-probe] XSYS4_FN_DUMP=<fno>: 打印该 AIN 函数前 3 次调用的实参/局部，
+	 * 用来回答"参数到底是 0 还是 -1"这种只能靠观测的问题。默认关闭。 */
+	if (getenv("XSYS4_FN_DUMP")) {
+		static int fn_fno = -2, fn_n;
+		if (fn_fno == -2)
+			fn_fno = atoi(getenv("XSYS4_FN_DUMP"));
+		/* XSYS4_FN_DUMP_SKIP=<v>：跳过首参等于 v 的调用（例如把每帧的悬停
+		 * 消息 6 滤掉，只留点击/按键），否则转储全被噪音占满。 */
+		static int fn_skip = -1;
+		if (fn_skip == -1) {
+			const char *sv = getenv("XSYS4_FN_DUMP_SKIP");
+			fn_skip = sv ? atoi(sv) : -2;
+		}
+		/* [D122] XSYS4_FN_DUMP_ALL=1 关掉这个独立的 3 次闸门。
+		 * 之前只改了 method_call 分支，普通函数仍有硬上限，导致
+		 * "CreateComponent 只调 3 次"这类结论全是假的。 */
+		if (fno == fn_fno && fn_skip != -2 && heap[slot].page->values[0].i == fn_skip)
+			;
+		else if (fno == fn_fno && (getenv("XSYS4_FN_DUMP_ALL") || fn_n++ < 3)) {
+			struct page *lp = heap[slot].page;
+			NOTICE("[fn] %s(%d) slot=%d nargs=%d nvars=%d",
+			       display_sjis0(f->name), fno, slot, f->nr_args, f->nr_vars);
+			for (int i = 0; i < f->nr_vars && i < 24; i++)
+				NOTICE("[fn]   v%-2d type=%-3d i=%-8d f=%.3f", i,
+				       f->vars[i].type.data, lp->values[i].i, lp->values[i].f);
+			/* [D122] 字符串实参连文本一起打。之前只打 slot 号，
+			 * GetActivityPartsNumber(activity, parts) 这类"按名字查"
+			 * 的调用完全看不出传的是哪个名字。 */
+			for (int i = 0; i < f->nr_vars && i < 24; i++) {
+				if (f->vars[i].type.data != AIN_STRING)
+					continue;
+				int ss = lp->values[i].i;
+				struct string *str =
+					(ss > 0 && (size_t)ss < heap_size &&
+					 heap[ss].type == VM_STRING) ? heap[ss].s : NULL;
+				NOTICE("[fn]     v%d text='%s'", i,
+				       str && str->text ? display_sjis0(str->text) : "(null)");
+			}
+			/* this 结构体成员也 dump 出来：SceneStack@IsActive 这类判据
+			 * 全靠 this[6] 之类的字段，只打印实参看不到。 */
+			int sp = lp->local.struct_ptr;
+			if (sp > 0) {
+				struct page *tp = heap_get_page(sp);
+				if (tp && tp->type == STRUCT_PAGE) {
+					NOTICE("[fn]   this slot=%d nr=%d struct='%s'", sp,
+					       tp->nr_vars,
+					       (tp->index >= 0 && tp->index < ain->nr_structures)
+					       ? display_sjis0(ain->structures[tp->index].name) : "?");
+					for (int i = 0; i < tp->nr_vars && i < 12; i++) {
+						/* 成员也可能是一个 page 槽（闭包捕获的对象、
+						 * 数组、结构体）。把它的 type/index/nr_vars
+						 * 一起打出来，才能区分"空指针"与"类型不对"。 */
+						int m = tp->values[i].i;
+						struct page *mp = (m > 0 && (size_t)m < heap_size)
+							? heap_get_page(m) : NULL;
+						if (mp)
+							NOTICE("[fn]     m%-2d i=%d -> page type=%d"
+							       " index=%d nr=%d", i, m, mp->type,
+							       mp->index, mp->nr_vars);
+						else
+							NOTICE("[fn]     m%-2d i=%d", i, m);
+					}
+				}
+			}
 		}
 	}
 }
@@ -507,6 +857,9 @@ static void method_call_fno(int fno, int return_address)
 	int struct_page = stack_pop().i;
 	set_struct_page(struct_page);
 	heap[call_stack[call_stack_ptr-1].page_slot].page->local.struct_ptr = struct_page;
+	/* The `this` slot is popped after function_call() recorded the operand
+	 * depth; the frame's baseline is therefore one value lower. */
+	call_stack[call_stack_ptr-1].entry_sp = stack_ptr;
 }
 
 /* CALLMETHOD 用：栈布局 [obj, fno, args...]，fno 在 args 下面一层 */
@@ -515,22 +868,192 @@ static int struct_no_from_function(int fno);
 static void method_call(int nargs, int return_address)
 {
 	int fno = stack_peek(nargs).i;
-	if (fno < 0 || fno >= ain->nr_functions)
-		VM_ERROR("CALLMETHOD: invalid function index %d", fno);
+	/* XSYS4_MC_WATCH=<hex>：只在某一个 CALLMETHOD 站点打印现场。用来回答
+	 * "这条 CALLMETHOD 到底派发到哪个函数、obj 是哪个堆槽"——栈宽度对不上
+	 * 时（callee 声明 N 槽、call site 只压了 1 槽）只能靠猜。 */
+	if (getenv("XSYS4_MC_WATCH") && instr_ptr == (size_t)strtoul(getenv("XSYS4_MC_WATCH"), NULL, 16)) {
+		static int _mn;
+		if (_mn++ < 20) {
+			int _obj = stack_peek(nargs + 1).i;
+			struct page *_op = (_obj > 0 && (size_t)_obj < heap_size)
+				? heap[_obj].page : NULL;
+			NOTICE("[mcw] ip=0x%zX nargs=%d fno=%d obj=%d(page type=%d idx=%d nr=%d) sp=%d",
+			       instr_ptr, nargs, fno, _obj, _op ? _op->type : -1,
+			       _op ? _op->index : -1, _op ? _op->nr_vars : -1, stack_ptr);
+			for (int k = 0; k <= nargs + 2 && k <= 4; k++)
+				NOTICE("[mcw]   t%d = %d", k, stack_peek(k).i);
+			if (fno >= 0 && fno < ain->nr_functions)
+				NOTICE("[mcw]   -> %s nr_args=%d nr_vars=%d",
+				       display_sjis0(ain->functions[fno].name),
+				       ain->functions[fno].nr_args,
+				       ain->functions[fno].nr_vars);
+			if (_op) {
+				for (int k = 0; k < _op->nr_vars && k < 6; k++)
+					NOTICE("[mcw]   obj.m%d = %d", k, _op->values[k].i);
+			}
+		}
+	}
+	if (fno < 0 || fno >= ain->nr_functions) {
+		/* [D112] Interface dispatch: the compiled call site reads the method
+		 * slot out of the interface's vtable with REF. When the vtable is not
+		 * resolved (D3) that REF yields the vtable ARRAY_PAGE itself instead of
+		 * vtable[offset]. An out-of-range "fno" that is a live array page of
+		 * function numbers is unambiguous: use its first element (offset 0),
+		 * which is what the call site asked for. */
+		if (fno > 0 && (size_t)fno < heap_size && heap[fno].page &&
+		    heap[fno].page->type == ARRAY_PAGE && heap[fno].page->nr_vars > 0) {
+			int real = heap[fno].page->values[0].i;
+			static int _n = 0;
+			if (_n++ < 20)
+				NOTICE("[iface] vtable resolve: %d -> %d (obj=%d nargs=%d)",
+				       fno, real, stack_peek(nargs + 1).i, nargs);
+			fno = real;
+		}
+		if (fno < 0 || fno >= ain->nr_functions)
+			VM_ERROR("CALLMETHOD: invalid function index %d", fno);
+	}
+	/* [L2] XSYS4_MC_SLOT_DBG=1: why does `this` end up as heap slot 1?
+	 * CALLMETHOD's immediate (nargs) is a LOGICAL argument count, while
+	 * function_call() pops function_argument_slots(f) PHYSICAL slots.
+	 * The [obj, fno] pair sits underneath those arguments, so a mismatch
+	 * shifts what the two stack_pop() calls below actually retrieve. */
+	static int mcslot = -1;
+	if (mcslot < 0)
+		mcslot = getenv("XSYS4_MC_SLOT_DBG") ? 1 : 0;
+	int sp_before = stack_ptr;
+	int csp_before = call_stack_ptr;
+	int mc_slots = -1;
+	int mc_peek[8] = { 0 };
+	if (mcslot) {
+		mc_slots = function_argument_slots(&ain->functions[fno]);
+		for (int k = 0; k < 8 && k < stack_ptr; k++)
+			mc_peek[k] = stack_peek(k).i;
+	}
 	function_call(fno, return_address);   /* 弹掉 nargs 个 args */
+	/* [L2] A fno==0 NULL call takes function_call()'s no-op branch, which
+	 * creates NO frame. Everything below assumes a fresh frame exists:
+	 * set_struct_page() and local.struct_ptr would then overwrite the
+	 * CALLER's `this`, so every later PUSHSTRUCTPAGE in that caller
+	 * resolves to the wrong object. Observed in the party screen: `this`
+	 * became heap slot 1 (the 3-member CASConstructionProcess), producing
+	 * the whole `Out of bounds page index: 1/N` cascade and a core dump.
+	 * Consume the call-site slots and return without touching any frame.
+	 * XSYS4_NULLMETHOD_FIX=0 restores the old behaviour for A/B. */
+	static int nullm_fix = -1;
+	if (nullm_fix < 0) {
+		const char *e = getenv("XSYS4_NULLMETHOD_FIX");
+		nullm_fix = (e && !strcmp(e, "0")) ? 0 : 1;
+	}
+	if (nullm_fix && call_stack_ptr == csp_before) {
+		stack_ptr = sp_before - (nargs + 2);  /* obj, fno, args */
+		if (stack_ptr < 0)
+			stack_ptr = 0;
+		return;
+	}
 	stack_pop();                          /* 弹掉 fno */
 	int obj = stack_pop().i;              /* 弹 obj */
+	if (mcslot && (obj == 1 || mc_slots != nargs)) {
+		static int mc_n;
+		if (mc_n++ < 120)
+			NOTICE("[mcslot] ip=0x%zX fno=%d %s nargs=%d slots=%d sp=%d->%d obj=%d top=[%d,%d,%d,%d,%d,%d]",
+			       instr_ptr, fno, display_sjis0(ain->functions[fno].name),
+			       nargs, mc_slots, sp_before, stack_ptr, obj,
+			       mc_peek[0], mc_peek[1], mc_peek[2],
+			       mc_peek[3], mc_peek[4], mc_peek[5]);
+	}
+	/* `obj` and `fno` sit between the callee's baseline and the arguments,
+	 * so the frame's operand depth is only final after both are popped. */
+	call_stack[call_stack_ptr-1].entry_sp = stack_ptr;
+	/* [D116] XSYS4_BADTHIS=1：this 拿到了一个不是堆槽的值（例如 parts 编号），
+	 * 后续对成员的写会落到错误地址且不报错。记下函数与调用 IP。 */
+	if (getenv("XSYS4_BADTHIS")) {
+		bool bad = obj <= 0 || (size_t)obj >= heap_size || !heap[obj].page;
+		if (!bad) {
+			enum page_type pt = heap[obj].page->type;
+			bad = pt != STRUCT_PAGE && pt != IFACE_PAGE;
+		}
+		const char *nm = (fno > 0 && fno < ain->nr_functions) ?
+			display_sjis0(ain->functions[fno].name) : "?";
+		if (bad && obj > 0 && nm && strstr(nm, "Parts@")) {
+			static int n;
+			if (n++ < 30)
+				NOTICE("[badthis] fno=%d %s obj=%d ip=0x%zX",
+				       fno, nm, obj, instr_ptr);
+		}
+	}
 	/* D48/D71: empty obj -> materialise the owning struct. Prefer the
-	 * name-derived struct no; the AIN struct_type field is wrong on v12. */
-	if (obj <= 0) {
+	 * name-derived struct no; the AIN struct_type field is wrong on v12.
+	 * [HACK-POC D83] Also rebuild when `this` resolves to a live slot that no
+	 * longer holds a STRUCT/IFACE page: that means an object was released while
+	 * a holder still referenced its slot, and the slot has since been recycled
+	 * (observed: a LOCAL_PAGE handed to CPartsFunctionSet@Init). Rebuilding
+	 * loses the old state, but the object is already gone; see TECH_DEBT D83. */
+	/* Only the LOCAL_PAGE case is the known slot-recycling symptom; rebuilding on
+	 * every non-STRUCT page destroyed live containers (CASTimerManager.handles
+	 * got replaced by a fresh empty array, so every handle went stale). */
+	bool _obj_bad = obj > 0 && (size_t)obj < heap_size && heap[obj].page &&
+		heap[obj].page->type != STRUCT_PAGE && heap[obj].page->type != IFACE_PAGE;
+	if (obj <= 0 || _obj_bad) {
 		int sno = struct_no_from_function(fno);
 		if (sno < 0)
 			sno = ain->functions[fno].struct_type;
 		if (sno >= 0 && sno < ain->nr_structures)
 			obj = alloc_struct(sno);
 	}
+	/* [D132] `this` 指向了错误的结构体类型（例如本该是 CommonStatus(842)
+	 * 却拿到 CASConstructionProcess(0, 3 成员)），成员访问必然越界。
+	 * 默认关闭，用来定位是谁把对象建成了 struct #0。 */
+	if (getenv("XSYS4_BADSTRUCT_DBG")) {
+		int want = struct_no_from_function(fno);
+		if (want > 0 && obj > 0 && (size_t)obj < heap_size && heap[obj].page &&
+		    heap[obj].page->type == STRUCT_PAGE &&
+		    heap[obj].page->index != want) {
+			static int n;
+			if (n++ < 80)
+				NOTICE("[badstruct] fno=%d %s obj=%d got=%d want=%d ip=0x%zX",
+				       fno, display_sjis0(ain->functions[fno].name), obj,
+				       heap[obj].page->index, want, instr_ptr);
+		}
+	}
 	set_struct_page(obj);
 	heap[call_stack[call_stack_ptr-1].page_slot].page->local.struct_ptr = obj;
+
+	/* [D116] CALLMETHOD 的 `this` 要等 method_call 才知道（function_call 里
+	 * struct_ptr 还是 -1），所以 this 成员转储放在这里。 */
+	if (getenv("XSYS4_FN_DUMP") && atoi(getenv("XSYS4_FN_DUMP")) == fno) {
+		static int mn;
+		int _mn = mn++;
+		/* [D122] XSYS4_FN_DUMP_ALL=1 关掉"前 3 次 + 每 300 次"的闸门。
+		 * 低频函数（例如 AFL_Parts_AddMouseLClickEvent 全程只调 5 次）
+		 * 用原闸门只能看到前 3 次，剩下的永远看不到。 */
+		if (getenv("XSYS4_FN_DUMP_ALL") || _mn < 3 || _mn % 300 == 0) {
+			if (getenv("XSYS4_CENSUS")) {
+				int cnt = 0, zero = 0;
+				for (int s2 = 1; s2 < heap_size && cnt < 40; s2++) {
+					struct page *pp = heap[s2].page;
+					if (!pp || pp->type != STRUCT_PAGE || pp->index != 1114)
+						continue;
+					cnt++;
+					if (pp->values[0].i == 0) zero++;
+					NOTICE("[census] slot=%d m0=%d nr=%d", s2, pp->values[0].i, pp->nr_vars);
+				}
+				NOTICE("[census] Parts 实例=%d 其中 m0==0 的=%d", cnt, zero);
+			}
+			struct page *tp = heap_get_page(obj);
+			if (tp && tp->type == STRUCT_PAGE) {
+				NOTICE("[fn] this(fno=%d) slot=%d nr=%d", fno, obj, tp->nr_vars);
+				for (int i = 0; i < tp->nr_vars && i < 12; i++) {
+					int v = tp->values[i].i;
+					struct page *mp = v > 0 ? heap_get_page(v) : NULL;
+					NOTICE("[fn]   m%-2d i=%-8d page=%d nr=%d", i, v,
+					       mp ? mp->type : -1, mp ? mp->nr_vars : -1);
+				}
+			} else {
+				NOTICE("[fn] this(fno=%d) slot=%d 不是 STRUCT（type=%d）",
+				       fno, obj, tp ? tp->type : -1);
+			}
+		}
+	}
 }
 
 /* D71: AIN v12 function->struct_type is unreliable (CreateOld reports 0
@@ -554,21 +1077,98 @@ static int struct_no_from_function(int fno)
 }
 static void vm_execute(void);
 
+/* AIN_IFACE / AIN_WRAP occupy two stack slots ([object, vtable offset]).
+ * A delegate whose return type is one of them must therefore leave two values
+ * behind; a single value leaves the caller's R_ASSIGN with a misaligned pair
+ * and the interface variable keeps -1 (D112). */
+static int delegate_return_slots(const struct ain_function_type *dg)
+{
+	switch (dg->return_type.data) {
+	case AIN_VOID:
+		return 0;
+	case AIN_IFACE:
+	case AIN_WRAP:
+		return 2;
+	default:
+		return 1;
+	}
+}
+
 static void delegate_call(int dg_no, int return_address)
 {
 	if (dg_no < 0 || dg_no >= ain->nr_delegates)
 		VM_ERROR("Invalid delegate index");
 
 	// stack: [arg0, ..., dg_page, dg_index, [return_value]]
-	int return_values = (ain->delegates[dg_no].return_type.data != AIN_VOID) ? 1 : 0;
+	int return_values = delegate_return_slots(&ain->delegates[dg_no]);
 	int dg_page = stack_peek(1 + return_values).i;
 	int dg_index = stack_peek(0 + return_values).i;
-	int obj, fun;
-	if (delegate_get(heap_get_delegate_page(dg_page), dg_index, &obj, &fun)) {
-		// pop previous return value
-		if (ain->delegates[dg_no].return_type.data != AIN_VOID) {
-			stack_pop();
+	/* [L2] XSYS4_DG_PAGE_DBG=1: `dg_page` sometimes resolves to a live
+	 * VM_STRING slot (heap_get_page then warns "Invalid page index (type=1)"
+	 * right before the party-screen core dump). Decide whether the return
+	 * slot count is wrong or DG_CALLBEGIN picked the wrong stack slot. */
+	static int dgpage_dbg = -1;
+	if (dgpage_dbg < 0) {
+		const char *e = getenv("XSYS4_DG_PAGE_DBG");
+		dgpage_dbg = e ? atoi(e) : 0;
+	}
+	/* =1 prints only type mismatches; =2 traces every hit of one delegate
+	 * number (170 here) so the iteration that corrupts the frame is visible. */
+	bool dgpage_force = dgpage_dbg >= 2 && dg_no == 170;
+	bool dgpage_bad = dg_page > 0 && (size_t)dg_page < heap_size &&
+		heap_index_valid(dg_page) && heap[dg_page].type != VM_PAGE;
+	if (dgpage_dbg && (dgpage_force || dgpage_bad)) {
+		static int n;
+		if (n++ < 60) {
+			int t[6] = { 0 };
+			for (int k = 0; k < 6 && k < stack_ptr; k++)
+				t[k] = stack_peek(k).i;
+			NOTICE("[dgpage] ip=0x%zX fno=%d dg_no=%d rv=%d ret=%d nargs=%d dg_page=%d(type=%d ref=%d) idx=%d sp=%d top=[%d,%d,%d,%d,%d,%d]",
+			       instr_ptr,
+			       call_stack_ptr > 0 ? call_stack[call_stack_ptr-1].fno : -1,
+			       dg_no, return_values,
+			       ain->delegates[dg_no].return_type.data,
+			       ain->delegates[dg_no].nr_arguments,
+			       dg_page, heap[dg_page].type, heap[dg_page].ref,
+			       dg_index, stack_ptr,
+			       t[0], t[1], t[2], t[3], t[4], t[5]);
 		}
+	}
+	int obj, fun;
+	/* [D115] XSYS4_DG_MISS_DBG=1：DG_CALL 打空炮时也留痕。
+	 * 场景的点击处理器若根本没注册进去，这里能看到 dg_no=37601 之后的
+	 * 目标 delegate 是"空". */
+	struct page *dp = heap_get_delegate_page(dg_page);
+	int snap_nr = dp ? dp->nr_vars : -1;
+	int snap_obj = (snap_nr >= 3) ? dp->values[0].i : -1;
+	int snap_seq = (snap_nr >= 3) ? dp->values[2].i : -1;
+	bool dg_ok = delegate_get(dp, dg_index, &obj, &fun);
+        if (!dg_ok && getenv("XSYS4_DG_MISS_DBG")) {
+                static int miss_n;
+                /* [D119] a 40-hit cap fills up during startup; allow filtering
+                 * by dg_no for long-running click diagnostics (see §6.13). */
+                const char *flt = getenv("XSYS4_DG_MISS_FILTER");
+		if ((flt && atoi(flt) == dg_no && miss_n++ < 500) ||
+		    (!flt && miss_n++ < 40))
+			NOTICE("[dgm] MISS dg_no=%d page=%d idx=%d nr=%d obj0=%d seq0=%d now0=%d ip=0x%zX",
+			       dg_no, dg_page, dg_index, snap_nr, snap_obj,
+			       snap_seq, heap_get_seq(snap_obj), instr_ptr);
+        }
+	if (dg_ok) {
+		/* [D114] XSYS4_DG_CALL_DBG=1: which AIN function does a per-frame
+		 * delegate actually dispatch to? Used to locate the broken
+		 * parts::detail::CallPartsUpdateEvent -> CASTask@UpdateEvent chain. */
+		static int dgc_dbg_n;
+		if (getenv("XSYS4_DG_CALL_DBG") && dgc_dbg_n++ < 20000) {
+			const char *nm = "?";
+			if (fun > 0 && fun < ain->nr_functions)
+				nm = ain->functions[fun].name;
+			NOTICE("[dgc] dg_no=%d obj=%d fun=%d %s page=%d idx=%d",
+			       dg_no, obj, fun, nm, dg_page, dg_index);
+		}
+		// pop previous return value
+		for (int rv = 0; rv < return_values; rv++)
+			stack_pop();
 		// increment dg_index
 		stack[stack_ptr - 1].i++;
 
@@ -576,20 +1176,79 @@ static void delegate_call(int dg_no, int return_address)
 
 		// copy arguments into local page
 		struct ain_function_type *dg = &ain->delegates[dg_no];
-		for (int i = 0; i < dg->nr_arguments; i++) {
-			union vm_value arg = stack_peek((dg->nr_arguments + 1) - i);
+		int dg_slots = delegate_argument_slots(dg);
+		for (int i = dg_slots - 1; i >= 0; i--) {
+			/* Stack: [arg slot 0 ... arg slot n-1, dg_page, dg_index] */
+			union vm_value arg = stack_peek(2 + (dg_slots - 1 - i));
 			heap[slot].page->values[i] = vm_copy(arg, dg->variables[i].type.data);
+		}
+
+		/* [D116] delegate 调用直接走 _function_call，绕开了 function_call 里的
+		 * FN_DUMP 探针；这里补一份，否则"委托调用的函数"永远 dump 不到。 */
+		if (getenv("XSYS4_FN_DUMP") && atoi(getenv("XSYS4_FN_DUMP")) == fun) {
+			static int dn;
+			int k = dn++;
+			if ((k < 3 || k % 300 == 0) && fun > 0 && fun < ain->nr_functions) {
+				NOTICE("[fn] %s(%d) [delegate obj=%d slot=%d]",
+				       display_sjis0(ain->functions[fun].name), fun, obj,
+				       slot, call_stack_ptr);
+				for (int i = 0; i < dg->nr_arguments && i < 8; i++) {
+					NOTICE("[fn]   a%d type=%d i=%d f=%.3f", i,
+					       dg->variables[i].type.data,
+					       heap[slot].page->values[i].i,
+					       heap[slot].page->values[i].f);
+					/* 字符串实参连内容一起打：委托的参数到底传了
+					 * 哪个名字，只有看到文本才能和 AIN 里的字面量比对。 */
+					if (dg->variables[i].type.data == AIN_STRING) {
+						int ss = heap[slot].page->values[i].i;
+						struct string *str =
+							(ss > 0 && (size_t)ss < heap_size &&
+							 heap[ss].type == VM_STRING) ? heap[ss].s : NULL;
+						NOTICE("[fn]     text='%s'",
+						       str && str->text ? display_sjis0(str->text) : "(null)");
+					}
+				}
+				struct page *tp2 = obj > 0 ? heap_get_page(obj) : NULL;
+				if (tp2 && tp2->type == STRUCT_PAGE) {
+					NOTICE("[fn]   this slot=%d nr=%d struct='%s'", obj,
+					       tp2->nr_vars,
+					       (tp2->index >= 0 && tp2->index < ain->nr_structures)
+					       ? display_sjis0(ain->structures[tp2->index].name) : "?");
+					for (int i = 0; i < tp2->nr_vars && i < 10; i++) {
+						int m = tp2->values[i].i;
+						struct page *mp = (m > 0 && (size_t)m < heap_size)
+							? heap_get_page(m) : NULL;
+						if (mp)
+							NOTICE("[fn]     m%-2d i=%d -> type=%d idx=%d nr=%d",
+							       i, m, mp->type, mp->index, mp->nr_vars);
+						else
+							NOTICE("[fn]     m%-2d i=%d", i, m);
+						/* 数组/结构成员的内容也打出来：闭包捕获的
+						 * "菜单对象数组"是否被填过，只看类型看不出来。 */
+						if (mp && i < 4)
+							for (int j = 0; j < mp->nr_vars && j < 8; j++)
+								NOTICE("[fn]       [%d] = %d", j, mp->values[j].i);
+					}
+				}
+			}
 		}
 
 		set_struct_page(obj);
 	} else {
 		// call finished: clean up stack and jump to return address
-		union vm_value r;
-		if (return_values) {
-			r = stack_pop();
-		}
+		/* An AIN_IFACE / AIN_WRAP return value occupies two slots; popping
+		 * only one left the second half on the stack, which shifted every
+		 * later operand (Scenes::RunIScene then stored a SceneStack into the
+		 * `s` variable instead of the scene the factory returned). */
+		union vm_value r[2];
+		for (int rv = 0; rv < return_values; rv++)
+			r[rv] = stack_pop();
 		stack_pop(); // dg_index
 		stack_pop(); // dg_page
+		/* [L2] Offline check (tools/dgcheck) proved that for all 1276
+		 * delegates nr_variables == delegate_argument_slots(), so this
+		 * teardown is already symmetric with DG_CALLBEGIN. The suspected
+		 * "pops too many" hypothesis is disproved; do not change it. */
 		for (int i = ain->delegates[dg_no].nr_variables - 1; i >= 0; i--) {
 			union vm_value v = stack_pop();
 			enum ain_data_type type = ain->delegates[dg_no].variables[i].type.data;
@@ -601,9 +1260,8 @@ static void delegate_call(int dg_no, int return_address)
 				break;
 			}
 		}
-		if (return_values) {
-			stack_push(r);
-		}
+		for (int rv = return_values - 1; rv >= 0; rv--)
+			stack_push(r[rv]);
 		instr_ptr = get_argument(1);
 	}
 }
@@ -634,6 +1292,151 @@ void vm_call(int fno, int struct_page)
 	instr_ptr = saved_ip;
 }
 
+/* An AIN_IFACE (or AIN_WRAP-wrapped interface) value occupies two stack slots:
+ * [object heap slot, vtable offset]. The object's leading struct member is its
+ * vtable, i.e. an array page holding AIN function numbers; a method call adds
+ * the interface's vtable offset to the method's slot index and looks the
+ * function number up there.
+ *
+ * `ref_slot` is a reference to the implementing object. Its struct index
+ * selects the row in ain_interface (e.g. CSpriteParts(329) declares
+ * IParts(358)->0 and ISpriteParts(363)->309). Returns false when the object
+ * does not implement `iface_no`, which the AIN call sites represent as a null
+ * reference (-1). */
+bool vm_iface_pair(int iface_no, int ref_slot, int *obj, int *offset)
+{
+	*obj = -1;
+	*offset = 0;
+	if (ref_slot <= 0 || (size_t)ref_slot >= heap_size || !heap[ref_slot].page)
+		return false;
+
+	struct page *p = heap[ref_slot].page;
+	if (p->type == STRUCT_PAGE && p->index >= 0 && p->index < ain->nr_structures) {
+		struct ain_struct *st = &ain->structures[p->index];
+		for (int i = 0; i < st->nr_interfaces; i++) {
+			if (st->interfaces[i].struct_type != iface_no)
+				continue;
+			*obj = ref_slot;
+			*offset = st->interfaces[i].vtable_offset;
+			return true;
+		}
+		if (p->index == iface_no) {
+			*obj = ref_slot;
+			return true;
+		}
+		/* A cast to a concrete class only succeeds for an object of exactly
+		 * that class, or one that declares the class as an interface (handled
+		 * above). The earlier blanket "any live object is a valid downcast"
+		 * fallback let a Stack pass as a SceneQuestMap, and the caller then
+		 * read member 22 of an 8-member struct. AIN carries no class
+		 * inheritance table, so an unverifiable cast must fail and leave the
+		 * null reference that every call site already checks for. */
+		return false;
+	}
+	/* Already-populated two-slot interface wrapper. */
+	if (p->type == IFACE_PAGE && p->nr_vars >= 2 && p->values[0].i > 0) {
+		*obj = ref_slot;
+		*offset = p->values[1].i;
+		return true;
+	}
+	return false;
+}
+
+/* Invoke the AIN function an AIN_HLL_FUNC argument refers to.
+ *
+ * AIN v12 pushes a function value as a [this, fno] pair; ffi.c keeps only the
+ * function index, so an HLL body sees a bare fno. Rance10 uses these for the
+ * predicate / comparator overloads of the Array and Container libraries:
+ * `args` are the logical arguments (one element for a predicate, two for a
+ * comparator).
+ *
+ * The function is a closure: it reaches its captured variables through
+ * X_GETENV, which resolves the frame that *created* it. For an HLL callback
+ * that frame is the caller of the HLL function (the delegate-object path
+ * records the same association at DG_NEW_FROM_METHOD), so bind it here.
+ *
+ * Returns false when an argument cannot be converted to the declared parameter
+ * type; the caller then treats the callback as "no match" rather than calling
+ * a function with a bogus argument. */
+bool vm_call_hll_closure(int fno, const union vm_value *args, int nargs,
+			 union vm_value *ret)
+{
+	if (fno <= 0 || fno >= ain->nr_functions)
+		return false;
+	struct ain_function *fn = &ain->functions[fno];
+	if (fn->address == 0)
+		return false;
+	if (nargs > fn->nr_args)
+		return false;
+
+	lambda_parent_init();
+	if (lambda_parent_slot) {
+		int lp = local_page_slot();
+		if (lp > 0 && (size_t)lp < heap_size && heap[lp].ref > 0 &&
+		    lambda_parent_slot[fno] != lp) {
+			/* [MEM] 只加不减就是泄漏：闭包每换一次父帧就给旧父帧留一份
+			 * 永久的引用，那个局部页于是永远 free 不掉。地图装载时
+			 * `QuestMapObjectCollection@Find` 每次谓词调用都会走到这里，
+			 * 实测 24 秒内 live 从 2 万涨到 46 万、pages 涨到 25 万，
+			 * 正是 [MAP-LOAD-STORM] 的直接来源。旧槽必须先 unref。 */
+			int prev = lambda_parent_slot[fno];
+			if (prev > 0 && prev != lp && (size_t)prev < heap_size)
+				heap_unref(prev);
+			lambda_parent_slot[fno] = lp;
+			heap_ref(lp);
+		}
+	}
+
+	int pushed = 0;
+	for (int i = 0; i < nargs; i++) {
+		struct ain_type *param = &fn->vars[i].type;
+		if (param->data == AIN_IFACE || param->data == AIN_WRAP) {
+			int obj, offset;
+			if (!vm_iface_pair(param->struc, args[i].i, &obj, &offset)) {
+				/* Undo the slots already pushed for earlier args. */
+				while (pushed-- > 0)
+					stack_pop();
+				return false;
+			}
+			stack_push((union vm_value){ .i = obj });
+			stack_push((union vm_value){ .i = offset });
+			pushed += 2;
+		} else {
+			stack_push(args[i]);
+			pushed++;
+		}
+	}
+	/* AIN declares the tail of a multi-slot parameter list as void (the
+	 * second half of an AIN_IFACE parameter, for example). function_call()
+	 * pops nr_args slots unconditionally, so pad them here. */
+	while (pushed < fn->nr_args) {
+		stack_push((union vm_value){ .i = 0 });
+		pushed++;
+	}
+
+	vm_call(fno, -1);
+	/* A callback returning AIN_IFACE / AIN_WRAP leaves two slots behind (see
+	 * delegate_return_slots); popping one would leave the operand stack
+	 * permanently one value deep. */
+	int ret_slots = fn->return_type.data == AIN_VOID ? 0
+		: (fn->return_type.data == AIN_IFACE ||
+		   fn->return_type.data == AIN_WRAP) ? 2 : 1;
+	union vm_value result = { .i = 0 };
+	if (ret_slots > 0)
+		result = stack_pop();
+	if (ret_slots > 1)
+		stack_pop();
+	if (ret)
+		*ret = result;
+	return true;
+}
+
+/* One-argument form: the Array element predicates. */
+bool vm_call_hll_func(int fno, union vm_value elem, union vm_value *ret)
+{
+	return vm_call_hll_closure(fno, &elem, 1, ret);
+}
+
 static void function_return(void)
 {
 	if (call_stack_ptr <= 0) {
@@ -642,6 +1445,26 @@ static void function_return(void)
 		return;
 	}
 	struct function_call *cf = &call_stack[call_stack_ptr - 1];
+	/* Frames entered through _function_call() (delegate calls, vm_call) never
+	 * had their operand stack recorded, hence entry_sp == -1. */
+	if (getenv("XSYS4_SP_BALANCE") && cf->entry_sp >= 0 &&
+	    cf->fno > 0 && cf->fno < ain->nr_functions) {
+		int rt = ain->functions[cf->fno].return_type.data;
+		int want = cf->entry_sp + (rt == AIN_VOID ? 0 :
+			(rt == AIN_IFACE || rt == AIN_WRAP) ? 2 : 1);
+		if (stack_ptr != want) {
+			static int n;
+			static int cap = -1;
+			if (cap < 0) {
+				const char *c = getenv("XSYS4_SP_BALANCE");
+				cap = c && *c && *c != '1' ? atoi(c) : 40;
+			}
+			if (n++ < cap)
+				NOTICE("[sp] fno=%d %s want=%d got=%d (entry=%d ret_type=%d)",
+				       cf->fno, display_sjis0(ain->functions[cf->fno].name),
+				       want, stack_ptr, cf->entry_sp, rt);
+		}
+	}
 	if (cf->return_address == 0) {
 		const char *nm = "?";
 		if (cf->fno >= 0 && cf->fno < ain->nr_functions && ain->functions[cf->fno].name)
@@ -993,21 +1816,82 @@ static enum opcode execute_instruction(enum opcode opcode)
 			instr_ptr, instructions[opcode].name ? instructions[opcode].name : "?",
 			stack_ptr, a, b, c, get_argument(0));
 	}
-	/* XSYS4_DUMP_AT=hex: one-shot VM stack + heap slot dump at one ip.
-	 * Diagnostic facility: env-gated, address-gated, no effect on execution. */
+	/* [MEM] XSYS4_RSS_LIMIT=<MB>：进程 RSS 超过阈值就报错中止，并在错误里
+	 * 带上 fno/ip 与完整 AIN 调用栈。
+	 * 为什么需要它：一旦代码停在一次很长的 vm_call 里（例如场景装载），
+	 * 帧泵不再运行，`[mem]` 探针一行也不会输出 —— 这时只能靠在指令级检查，
+	 * 否则只能看到"进程 RSS 涨到几个 G 然后被杀"，没有任何栈可查。
+	 * 每 65536 条指令查一次，代价可忽略。默认关（0）。 */
+	static long rss_limit = -2;
+	static uint32_t rss_tick;
+	if (rss_limit == -2) {
+		const char *e = getenv("XSYS4_RSS_LIMIT");
+		rss_limit = (e && *e) ? atol(e) : 0;
+	}
+	if (rss_limit > 0 && (++rss_tick & 0xFFFF) == 0) {
+		uint64_t rss_b = 0, peak_b = 0;
+		if (pal_get()->mem && pal_get()->mem->usage)
+			pal_get()->mem->usage(&rss_b, &peak_b);
+		if (rss_b > (uint64_t)rss_limit * 1024u * 1024u) {
+			extern size_t gfx_texture_count, gfx_texture_pixels;
+			VM_ERROR("RSS limit exceeded (%llu MB > %ld MB), live slots=%zu "
+				 "textures=%zu tex_mb=%zu: runaway allocation outside the "
+				 "VM heap. Raise with XSYS4_RSS_LIMIT",
+				 (unsigned long long)(rss_b / (1024 * 1024)), rss_limit,
+				 heap_free_ptr, gfx_texture_count,
+				 gfx_texture_pixels * 4 / (1024 * 1024));
+		}
+	}
+	/* [DBG] XSYS4_DUMP_AT=<hex>[,<hits>]：在指定 ip 停下并转储现场。
+	 * 原来只打一次、只看栈；现在默认打 1 次、可用逗号调到多次，并把
+	 * **当前帧的局部变量（带名字和声明类型）**与 8 帧 AIN 调用栈一并输出。
+	 * 这是"原生断点"：不必起 gdb，也不必为每个问题临时加探针。 */
 	static uint32_t dump_ip = 0;
-	static int dump_ready = 0, dumped = 0;
+	static int dump_ready = 0, dumped = 0, dump_max = 1;
 	if (!dump_ready) {
 		const char *d = getenv("XSYS4_DUMP_AT");
-		if (d) sscanf(d, "%x", &dump_ip);
+		if (d) {
+			sscanf(d, "%x,%d", &dump_ip, &dump_max);
+			if (dump_max <= 0)
+				dump_max = 1;
+		}
 		dump_ready = 1;
 	}
-	if (dump_ip && !dumped && instr_ptr == dump_ip) {
-		dumped = 1;
-		NOTICE("[dump] ip=0x%08zx sp=%d heap_size=%d", instr_ptr, stack_ptr, heap_size);
+	if (dump_ip && dumped < dump_max && instr_ptr == dump_ip) {
+		dumped++;
+		NOTICE("[dump] ip=0x%08zx sp=%d heap_size=%zu hit=%d", instr_ptr, stack_ptr,
+		       heap_size, dumped);
+		if (call_stack_ptr > 0) {
+			struct function_call *cf = &call_stack[call_stack_ptr - 1];
+			struct ain_function *fn = &ain->functions[cf->fno];
+			NOTICE("[dump] frame %s(%d) fno=%d", display_sjis0(fn->name), cf->fno,
+			       cf->fno);
+			struct page *lp = local_page();
+			for (int i = 0; lp && i < lp->nr_vars && i < fn->nr_vars; i++) {
+				struct ain_type *vt = &fn->vars[i].type;
+				char *ts = ain_strtype_d(ain, vt);
+				int32_t v = lp->values[i].i;
+				/* 引用型局部要连"它指向的页"一起打出来（长度/类型），
+				 * 否则看不出这个容器是不是在长。 */
+				char extra[96] = "";
+				if (v > 0 && (size_t)v < heap_size && heap[v].page) {
+					struct page *pp = heap[v].page;
+					snprintf(extra, sizeof(extra),
+						 "  [page type=%d a_type=%d nr=%d ref=%d]",
+						 pp->type, pp->a_type, pp->nr_vars, heap[v].ref);
+				}
+				NOTICE("[dump]   l%d %-16s %-20s = %d%s", i,
+				       fn->vars[i].name ? display_sjis0(fn->vars[i].name) : "?",
+				       ts ? ts : "?", v, extra);
+				free(ts);
+			}
+			for (int i = call_stack_ptr - 1, k = 0; i >= 0 && k < 8; i--, k++)
+				NOTICE("[dump]   #%d %s", k,
+				       display_sjis0(ain->functions[call_stack[i].fno].name));
+		}
 		for (int i = stack_ptr - 1; i >= 0 && i >= stack_ptr - 10; i--) {
 			int32_t v = stack[i].i;
-			if (v > 0 && v < heap_size) {
+			if (v > 0 && (size_t)v < heap_size) {
 				struct page *p = heap[v].page;
 				NOTICE("[dump]  st[%d]=%d ref=%d nr_vars=%d type=%d v0=%d v1=%d", i, v,
 					heap[v].ref, p ? p->nr_vars : -1, p ? p->type : -1,
@@ -1036,11 +1920,93 @@ static enum opcode execute_instruction(enum opcode opcode)
 	}
 	case REF: {
 		// Dereference a reference to a value.
-		stack_push(stack_pop_var()->i);
+		int _hidx = stack_peek(1).i, _pidx = stack_peek(0).i;
+		union vm_value *_v = stack_pop_var();
+		if (getenv("XSYS4_MGRBT") && instr_ptr >= 0x53f0 && instr_ptr <= 0x5424) {
+			struct page *_tp = (_hidx > 0 && (size_t)_hidx < heap_size) ? heap[_hidx].page : NULL;
+			NOTICE("[THIS] checkhandle this_slot=%d type=%d index=%d nr=%d ref=%d memb1=%d ip=0x%zX",
+			       _hidx, _tp ? _tp->type : -1, _tp ? _tp->index : -1,
+			       _tp ? _tp->nr_vars : -1,
+			       (_hidx > 0 && (size_t)_hidx < heap_size) ? heap[_hidx].ref : -1,
+			       (_tp && _tp->nr_vars > 1) ? _tp->values[1].i : -999, instr_ptr);
+			NOTICE("[THIS] global[14] declared data=%d struc=%d rank=%d value=%d",
+			       ain->globals[14].type.data, ain->globals[14].type.struc,
+			       ain->globals[14].type.rank,
+			       heap[0].page ? heap[0].page->values[14].i : -999);
+			NOTICE("[THIS] struct225: nr_members=%d nr_vmethods=%d name_ok=%d struct5_members=%d",
+			       ain->structures[225].nr_members, ain->structures[225].nr_vmethods,
+			       ain->structures[225].name != NULL, ain->structures[5].nr_members);
+		}
+		if (getenv("XSYS4_ARR_DBG")) {
+			struct page *_mp = (_hidx > 0 && (size_t)_hidx < heap_size) ? heap[_hidx].page : NULL;
+			if (_mp && _mp->type == STRUCT_PAGE && _mp->index == 5) {
+				static int _mlim = 0;
+				if (_mlim++ < 60) {
+					int _v0 = _mp->nr_vars > 0 ? _mp->values[0].i : -1;
+					int _v2 = _mp->nr_vars > 2 ? _mp->values[2].i : -1;
+					int _v3 = _mp->nr_vars > 3 ? _mp->values[3].i : -1;
+					NOTICE("[MGR] read memb=%d val=%d ref=%d slot=%d nr=%d v0=%d v2=%d v3=%d ip=0x%zX",
+					       _pidx, _v->i,
+					       (_v->i > 0 && (size_t)_v->i < heap_size) ? heap[_v->i].ref : -2,
+					       _hidx, _mp->nr_vars, _v0, _v2, _v3, instr_ptr);
+				}
+			}
+		}
+		if (getenv("XSYS4_ARR_DBG") && _v->i > 0 && (size_t)_v->i < heap_size &&
+		    heap[_v->i].ref <= 0) {
+			struct page *_sp = (_hidx > 0 && (size_t)_hidx < heap_size) ? heap[_hidx].page : NULL;
+			static int _lim = 0;
+			if (_lim < 200 && _v->i != 255) {
+				_lim++;
+				char _buf[256]; int _o = 0;
+				for (int _k = 0; _k < _sp->nr_vars && _k < 5; _k++) {
+					int _m = _sp->values[_k].i;
+					int _r = (_m > 0 && (size_t)_m < heap_size) ? heap[_m].ref : -1;
+					_o += snprintf(_buf + _o, sizeof(_buf) - _o, "%s[%d]slot=%d(ref=%d)",
+					               _k ? " " : "", _k, _m, _r);
+				}
+				NOTICE("[ARR] dead struct=%d type=%d no=%d nvars=%d member=%d val=%d page=%p %s",
+				       _hidx, _sp ? _sp->type : -1, _sp ? _sp->index : -1,
+				       _sp ? _sp->nr_vars : -1, _pidx, _v->i, (void*)_sp, _buf);
+			}
+		}
+		last_ref_heap = _hidx;
+		last_ref_index = _pidx;
+		stack_push(_v->i);
 		break;
 	}
 	case REFREF: {
 		// Dereference a reference to a reference.
+		/* [D136] XSYS4_REFREF_DBG=<hex ip>: dump the page a specific REFREF
+		 * is reading from -- type, settled element kind, struct type, size
+		 * and the first slots with their heap kinds. Built to identify the
+		 * container behind QuestMapObjectLoader@Load's 2-slot elements
+		 * (0x37cb90), whose second half is a heap slot instead of a vtable
+		 * offset. Address comes from the env so no address is baked in. */
+		static long rrdbg = -2;
+		if (rrdbg == -2) {
+			const char *e = getenv("XSYS4_REFREF_DBG");
+			rrdbg = (e && *e) ? strtol(e, NULL, 16) : -1;
+		}
+		if (rrdbg >= 0 && (long)instr_ptr == rrdbg) {
+			int hs = stack_peek(1).i, pi = stack_peek(0).i;
+			struct page *pg = heap_index_valid(hs) ? heap[hs].page : NULL;
+			NOTICE("[refref] ip=0x%zX page=%d idx=%d type=%d a_type=%d struc=%d rank=%d nr=%d",
+			       instr_ptr, hs, pi, pg ? pg->type : -1, pg ? pg->a_type : -1,
+			       pg ? pg->array.struct_type : -1, pg ? pg->array.rank : -1,
+			       pg ? pg->nr_vars : -1);
+			for (int k = 0; pg && k < pg->nr_vars && k < 8; k++) {
+				int v = pg->values[k].i;
+				const char *ht = "int";
+				if (heap_index_valid(v) && v > 0) {
+					struct page *hp = heap[v].page;
+					if (heap[v].type == VM_STRING) ht = "string";
+					else ht = hp ? (hp->type == STRUCT_PAGE ? "struct"
+						: hp->type == ARRAY_PAGE ? "array" : "page") : "nullpage";
+				}
+				NOTICE("[refref]   v[%d] = %d (%s)", k, v, ht);
+			}
+		}
 		union vm_value *ref = stack_pop_var();
 		stack_push(ref[0].i);
 		stack_push(ref[1].i);
@@ -1108,7 +2074,77 @@ static enum opcode execute_instruction(enum opcode opcode)
 		stack_push(struct_page_slot());
 		break;
 	}
-	case ASSIGN:
+	case ASSIGN: {
+		/* [D116] XSYS4_IP_WATCH=<hex_lo>:<hex_hi>：只看某个地址区间内的赋值，
+		 * 直接看到"写到了哪个 slot、写了什么值"。 */
+		if (getenv("XSYS4_IP_WATCH")) {
+			static size_t lo = (size_t)-1, hi;
+			if (lo == (size_t)-1) {
+				const char *w = getenv("XSYS4_IP_WATCH");
+				sscanf(w, "%zx:%zx", &lo, &hi);
+			}
+			if ((size_t)instr_ptr >= lo && (size_t)instr_ptr <= hi) {
+				static int n;
+				if (n++ < 40)
+					NOTICE("[ipw] ip=0x%zX heap=%d page=%d val=%d",
+					       instr_ptr, stack_peek(2).i, stack_peek(1).i,
+					       stack_peek(0).i);
+			}
+		}
+		/* [D126] XSYS4_OBJ_WATCH=<heap_slot>:<member>：盯着某个对象的某个
+		 * 成员被谁写。用来抓"AIN 绕过属性 setter、直接改成员"这类写入
+		 * （典型：GameContext.m_gamePhase 在进章节前就变成 1，
+		 * 而 Phase::set 全程只被调用一次）。命中时打印 ip，再用
+		 * `ain_at atf:0x...` 定位到函数。
+		 * 例：XSYS4_OBJ_WATCH=2617:3 */
+		if (getenv("XSYS4_OBJ_WATCH")) {
+			static long ws = -1, wm = -1;
+			static int wstruct = -1;
+			if (ws == -1) {
+				const char *w = getenv("XSYS4_OBJ_WATCH");
+				if (w[0] == '#') {
+					if (sscanf(w, "#%d:%ld", &wstruct, &wm) != 2)
+						wstruct = -2;
+				} else if (sscanf(w, "%ld:%ld", &ws, &wm) != 2) {
+					ws = -2;
+				}
+			}
+			/* 栈布局（顶→底）：value, member_index, heap_slot。
+			 * stack_pop_var() 先弹 page_index 再弹 heap_index，
+			 * 所以探测时 peek(0)=新值、peek(1)=成员号、peek(2)=槽号。 */
+			int _dh = stack_peek(2).i, _dp = stack_peek(1).i;
+			bool _hit = false;
+			if (ws > 0 && _dh == ws && _dp == wm)
+				_hit = true;
+			else if (wstruct >= 0 && _dp == wm && _dh > 0 &&
+				 (size_t)_dh < heap_size && heap[_dh].page &&
+				 heap[_dh].page->type == STRUCT_PAGE &&
+				 heap[_dh].page->index == wstruct)
+				_hit = true;
+			if (_hit) {
+				static int _wn;
+				if (_wn++ < 40)
+					NOTICE("[objw] slot=%d m=%d val=%d ip=0x%zX fno=%d",
+					       _dh, _dp, stack_peek(0).i, instr_ptr, hll_current_fno());
+			}
+		}
+		union vm_value val = stack_pop();
+		/* [D136] ASSIGN writes the slot directly, so local_set() never sees
+		 * it and XSYS4_LVAR_DBG had a blind spot for the most common way a
+		 * local is assigned. Strictly opt-in: with the switch off this is
+		 * the original one-liner, so the default path stays byte-identical. */
+		if (lvar_dbg_on()) {
+			union vm_value *dstv = stack_pop_var();
+			struct page *lp = local_page();
+			if (lp && dstv >= lp->values && dstv < lp->values + lp->nr_vars)
+				lvar_dbg((int)(dstv - lp->values), val.i, dstv->i);
+			dstv[0] = val;
+		} else {
+			stack_pop_var()[0] = val;
+		}
+		stack_push(val);
+		break;
+	}
 	case F_ASSIGN: {
 		union vm_value val = stack_pop();
 		stack_pop_var()[0] = val;
@@ -1148,68 +2184,116 @@ static enum opcode execute_instruction(enum opcode opcode)
 	 * Observed form at MapPair@... @0xd918f2: [member_ref, copy] -> one
 	 * value left for the following DELETE. Full semantics over all 300
 	 * call sites still needs a static census. */
+/* [D118] X_GETENV (0x103): in [local_page] -> out [parent_local_page].
+         * The parent is the frame that CREATED this lambda (recorded at
+         * DG_NEW_FROM_METHOD), not the current caller: FadeIn's onFinish
+         * lambdas read the captured DG_Event from FadeIn's var[2]. */
+        case X_GETENV: {
+                stack_pop();
+                int fno = call_stack[call_stack_ptr-1].fno;
+                int parent = (fno > 0 && fno < lambda_parent_n) ? lambda_parent_slot[fno] : -1;
+                if (parent > 0 && parent < heap_size && heap[parent].page) {
+                        /* [D137] XSYS4_ENV_DBG=2：连"捕获成功"的情况也把父帧
+                         * 内容打出来。比较 lambda 靠这里取 key；如果父帧里的
+                         * 值不是预期的键，闭包捕获就是坏的，二分必然恒定走
+                         * 同一边（实测 `KeyValueMap@Find` 的 lambda 恒返回 -1）。 */
+                        static int envdbg = -1;
+                        if (envdbg < 0) {
+                                const char *e = getenv("XSYS4_ENV_DBG");
+                                envdbg = e ? atoi(e) : 0;
+                        }
+                        if (envdbg >= 2) {
+                                static int n;
+                                if (n++ < 30) {
+                                        struct page *pp = heap[parent].page;
+                                        NOTICE("[env] fno=%d %s parent=%d nr=%d v0=%d v1=%d v2=%d v3=%d",
+                                               fno, display_sjis0(ain->functions[fno].name),
+                                               parent, pp->nr_vars,
+                                               pp->nr_vars > 0 ? pp->values[0].i : -9999,
+                                               pp->nr_vars > 1 ? pp->values[1].i : -9999,
+                                               pp->nr_vars > 2 ? pp->values[2].i : -9999,
+                                               pp->nr_vars > 3 ? pp->values[3].i : -9999);
+                                }
+                        }
+                        stack_push(parent);
+                } else {
+                        static int n;
+                        if (getenv("XSYS4_ENV_DBG") && n++ < 40)
+                                NOTICE("[env] fno=%d %s has no parent frame (slot=%d)",
+                                       fno, display_sjis0(ain->functions[fno].name), parent);
+                        stack_push(-1);
+                }
+                break;
+        }
 	case X_SET: {
-		int v = stack_pop().i;
-		stack_pop();
-		stack_push((union vm_value){ .i = v });
+		/* Store through a reference: [destination, value] -> [value].
+		 *
+		 * Rance10's main use is array assignment (`member = <array>`, e.g.
+		 * SceneQuestSelect@LoadQuestList filling m_questIds). AIN array
+		 * assignment copies the payload into the destination object, so the
+		 * destination slot keeps its identity and the elements are copied
+		 * over. The previous implementation popped both values without
+		 * storing anything, which left every such member empty.
+		 *
+		 * Other shapes are left untouched for now: a census of the 300 call
+		 * sites is still outstanding (D44). */
+		union vm_value value = stack_pop();
+		int dst = stack_pop().i;
+		bool copied = false;
+		if (dst > 0 && (size_t)dst < heap_size && heap[dst].page &&
+		    heap[dst].page->type == ARRAY_PAGE &&
+		    value.i > 0 && (size_t)value.i < heap_size &&
+		    heap[value.i].page && heap[value.i].page->type == ARRAY_PAGE) {
+			struct page *d = heap[dst].page;
+			struct page *src = heap[value.i].page;
+			union vm_value dim = { .i = src->nr_vars };
+			struct page *np = realloc_array(d, 1, &dim, src->a_type,
+							src->array.struct_type, false);
+			if (np) {
+				np->nr_vars = src->nr_vars;
+				enum ain_data_type elem = array_type(src->a_type);
+				for (int i = 0; i < src->nr_vars; i++) {
+					np->values[i] = src->values[i];
+					if (elem != AIN_STRUCT && elem != AIN_STRING &&
+					    elem != AIN_DELEGATE && elem != AIN_ARRAY)
+						continue;
+					int v = np->values[i].i;
+					if (v > 0 && (size_t)v < heap_size && heap[v].ref > 0)
+						heap_ref(v);
+				}
+				heap[dst].page = np;
+				copied = true;
+				if (getenv("XSYS4_XSET_DBG")) {
+					static int n;
+					if (n++ < 20)
+						NOTICE("[xset] copy dst=%d nr=%d a_type=%d -> value=%d nr=%d",
+						       dst, d->nr_vars, np->a_type,
+						       value.i, np->nr_vars);
+				}
+			}
+		}
+		if (!copied && getenv("XSYS4_XSET_DBG")) {
+			static int n;
+			if (n++ < 20)
+				NOTICE("[xset] unrelated shapes dst=%d value=%d ip=0x%zX",
+				       dst, value.i, instr_ptr);
+		}
+		stack_push(value);
 		break;
 	}
 	case X_ICAST: {
-		static int icast_trace = -1;
-		static int icast_trace_count = 0;
-		if (icast_trace < 0) {
-			const char *t = getenv("XSYS4_ICAST_TRACE");
-			icast_trace = t ? 1 : 0;
-		}
 		int iface_no = get_argument(0);
-		int32_t ref_slot = stack_peek(0).i;
-		int32_t impl = -1;
-		int32_t vtable_offset = 0;
-		int32_t sno = -1;
-		int matched = 0;
-		int target_is_iface = iface_no >= 0 && iface_no < ain->nr_structures
-			&& ain->structures[iface_no].is_interface;
-
-		if (ref_slot > 0 && ref_slot < heap_size && heap[ref_slot].page) {
-			struct page *p = heap[ref_slot].page;
-			if (p->type == STRUCT_PAGE && p->index >= 0
-			    && p->index < ain->nr_structures) {
-				/* The reference IS the implementing object. Its struct
-				 * index selects the row in ain_interface; e.g.
-				 * CSpriteParts(329) declares IParts(358)->0 and
-				 * ISpriteParts(363)->309. */
-				sno = p->index;
-				struct ain_struct *st = &ain->structures[sno];
-				for (int j = 0; j < st->nr_interfaces; j++) {
-					if (st->interfaces[j].struct_type == iface_no) {
-						vtable_offset = st->interfaces[j].vtable_offset;
-						matched = 1;
-						break;
-					}
-				}
-				if (!matched && sno == iface_no) matched = 1;
-				/* A concrete-class operand (is_interface=0) is a
-				 * downcast: the AIN carries no inheritance table, so only
-				 * object validity can be checked here. Keep the offset
-				 * already stored in the reference (D28). */
-				if (!matched && !target_is_iface && p->nr_vars >= 2) {
-					vtable_offset = p->values[1].i;
-					matched = 1;
-				}
-				if (matched) impl = ref_slot;
-			} else if (p->type == IFACE_PAGE && p->nr_vars >= 2
-			           && p->values[0].i > 0) {
-				/* Populated 2-slot interface wrapper. */
-				vtable_offset = p->values[1].i;
-				impl = ref_slot;
-				matched = 1;
-			}
-		}
-		if (icast_trace && icast_trace_count++ < 200)
-			NOTICE("[icast] target=%d ref=%d sno=%d matched=%d off=%d impl=%d",
-			       iface_no, ref_slot, sno, matched, vtable_offset, impl);
-		stack_push((union vm_value){ .i = vtable_offset });
-		stack_push((union vm_value){ .i = impl });
+		int ref_slot = stack_peek(0).i;
+		int obj, offset;
+		bool ok = vm_iface_pair(iface_no, ref_slot, &obj, &offset);
+		/* [object, vtable offset] - object in the lower slot. Bytecode
+		 * consumes the pair positionally: `X_ICAST` is immediately followed
+		 * by R_ASSIGN (dst_page, dst_var, src_page, src_var) and by REFREF
+		 * inside method calls, both of which need the object first. Pushing
+		 * the offset first made R_ASSIGN copy from a bogus page and handed
+		 * GetResult a different object than the one LoadQuestList filled. */
+		stack_push((union vm_value){ .i = offset });
+		stack_push((union vm_value){ .i = ok ? obj : -1 });
 		break;
 	}
 	case _EOF: // In Ain v0, opcode 0x62 is not EOF but SH_STRUCTREF
@@ -1251,6 +2335,40 @@ static enum opcode execute_instruction(enum opcode opcode)
 		int src_page = stack_pop().i;
 		int dst_var = stack_pop().i;
 		struct page *dst = heap_get_page(stack_pop().i);
+		if (getenv("XSYS4_ARR_DBG") && dst && dst->type == STRUCT_PAGE &&
+		    dst_var >= 0 && dst_var < dst->nr_vars) {
+			static int _n = 0;
+			if (_n++ < 60)
+				NOTICE("[ARR] R_ASSIGN struct=%d no=%d dstvar=%d old=%d <- page=%d var=%d",
+				       dst->index, dst->index, dst_var, dst->values[dst_var].i,
+				       src_page, src_var);
+		}
+		if (getenv("XSYS4_RA_DBG") && instr_ptr >= 0x408f00 && instr_ptr <= 0x408f40) {
+			NOTICE("[ra] ip=0x%zX dstPage=%p dstType=%d dstVar=%d src=(%d,%d)",
+			       instr_ptr, (void*)dst, dst ? dst->type : -1, dst_var,
+			       src_page, src_var);
+		}
+		/* [N100-x86_64] heap_get_page() returns NULL for a dead/invalid slot
+		 * (see D96 in heap.c: "Callers already handle NULL"). R_ASSIGN was the
+		 * one caller that did not: on x86_64 an invalid index (e.g. 314950,
+		 * an AIN code address rather than a heap slot) reaches here and
+		 * page_set_var() dereferences NULL -> SIGSEGV.
+		 * Keep the reference pair on the stack (stack balance) and skip the
+		 * store, exactly like the other tolerant callers. */
+		if (unlikely(!dst)) {
+			static int _ra_null_n = 0;
+			if (_ra_null_n++ < 20)
+				WARNING("[R_ASSIGN] null dst page ip=0x%zX src=(%d,%d) dstvar=%d - skipped",
+				        instr_ptr, src_page, src_var, dst_var);
+			stack_push(src_page);
+			stack_push(src_var);
+			break;
+		}
+		if (dst == local_page()) {
+			lvar_dbg(dst_var, src_page, dst->values[dst_var].i);
+			if (dst_var + 1 < dst->nr_vars)
+				lvar_dbg(dst_var+1, src_var, dst->values[dst_var+1].i);
+		}
 		page_set_var(dst, dst_var, src_page);
 		page_set_var(dst, dst_var+1, src_var);
 		stack_push(src_page);
@@ -1332,6 +2450,34 @@ static enum opcode execute_instruction(enum opcode opcode)
 		 * (or -1 when untyped). Pass it to the FFI layer so that
 		 * AIN_REF_HLL_PARAM results can be materialised by type. */
 		int tag = ain->version >= 11 ? get_argument(2) : -1;
+		/* [MEM] XSYS4_HLL_TRACE=<lib>,<fno>：打印某 HLL 调用的栈顶实参
+		 * （整数原样，页引用给出它的 nr_vars/a_type）。用于回答"这个调用
+		 * 每次拿到的容器是不是在变长"——Numof 的返回值一路涨，说明循环
+		 * 里在追加，而不是循环边界算错。 */
+		if (hll_trace_enabled(get_argument(0), get_argument(1))) {
+			int a0 = stack_peek(0).i;
+			struct page *p0 = heap_index_valid(a0) ? heap[a0].page : NULL;
+			if (p0)
+				NOTICE("[hll] lib=%d fno=%d arg0=slot %d -> page type=%d "
+				       "a_type=%d nr_vars=%d struc=%d ip=0x%zX",
+				       get_argument(0), get_argument(1), a0, p0->type,
+				       p0->a_type, p0->nr_vars, p0->array.struct_type,
+				       instr_ptr);
+			else
+				NOTICE("[hll] lib=%d fno=%d arg0=%d ip=0x%zX",
+				       get_argument(0), get_argument(1), a0, instr_ptr);
+			/* 第一次命中时把 AIN 调用栈打一遍：回答"谁在反复插入"。
+			 * 只在第一次打印，避免风暴期间刷屏（实测 40 秒 2.7 万次）。 */
+			static bool traced;
+			if (!traced) {
+				traced = true;
+				for (int i = call_stack_ptr - 1, k = 0; i >= 0 && k < 10; i--, k++) {
+					struct ain_function *f = &ain->functions[call_stack[i].fno];
+					NOTICE("[hll]   #%d %s", k,
+					       f->name ? display_sjis0(f->name) : "?");
+				}
+			}
+		}
 		hll_call(get_argument(0), get_argument(1), tag);
 		break;
 	}
@@ -1712,6 +2858,16 @@ static enum opcode execute_instruction(enum opcode opcode)
 	// --- Floating Point Arithmetic ---
 	//
 	case FTOI: {
+		/* [MEM] XSYS4_LVAR_DBG=<fno>:<var> 打开时，在被观察函数里把每次
+		 * 浮点→整数转换的原始值打出来。`QuestMapObjectLoader@Load` 的循环
+		 * 上界 rIndex 正是这样来的，垃圾浮点在这一步就能看见。 */
+		if (call_stack_ptr > 0 && lvar_watch_matches(call_stack[call_stack_ptr-1].fno)) {
+			static int nf;
+			if (nf++ < 40)
+				NOTICE("[ftoi] ip=0x%zX fno=%d float=%.9g -> %d", instr_ptr,
+				       call_stack[call_stack_ptr-1].fno,
+				       (double)stack_peek(0).f, (int32_t)stack_peek(0).f);
+		}
 		stack_set(0, (int32_t)stack_peek(0).f);
 		break;
 	}
@@ -2017,13 +3173,52 @@ static enum opcode execute_instruction(enum opcode opcode)
 		heap_unref(stack_pop().i);
 		break;
 	}
-	case SR_ASSIGN: {
+case SR_ASSIGN: {
 		/* AIN v12 no longer pushes a separate struct-type operand for
 		 * SR_ASSIGN (same simplification as CALLMETHOD/NEW). Popping it
 		 * underflowed the stack and produced garbage page indices like
 		 * 0x8011. Older AIN versions still carry it. */
 		if (ain->version > 1 && ain->version < 12)
 			stack_pop(); // struct type
+		/* v12 form: [array, index, value]. Decide from the operands
+		 * themselves: the two-operand form has a struct destination on
+		 * the bottom of the triple, never a live ARRAY_PAGE. */
+		int _a0 = stack_peek(2).i, _a1 = stack_peek(1).i, _a2 = stack_peek(0).i;
+		if (getenv("XSYS4_SRDBG")) {
+			static int _n = 0;
+			if (_n++ < 200) {
+				struct page *_p0 = (_a0 > 0 && (size_t)_a0 < heap_size) ? heap[_a0].page : NULL;
+				NOTICE("[SR] ip=0x%zX a0=%d(%s/%d) a1=%d a2=%d sp=%d",
+				       instr_ptr, _a0, _p0 ? (_p0->type == ARRAY_PAGE ? "ARR" :
+				       _p0->type == STRUCT_PAGE ? "STRUCT" :
+				       _p0->type == LOCAL_PAGE ? "LOCAL" : "PG") : "nil",
+				       _p0 ? _p0->nr_vars : -1, _a1, _a2, stack_ptr);
+				if (instr_ptr == 0x187F82) {
+					int g67 = heap[0].page ? heap[0].page->values[67].i : -1;
+					struct page *ap = (g67 > 0 && (size_t)g67 < heap_size) ? heap[g67].page : NULL;
+					NOTICE("[SR]   g67=%d pt=%d nr=%d v0..5=%d,%d,%d,%d,%d,%d a1page=%p",
+					       g67, ap ? ap->type : -1, ap ? ap->nr_vars : -1,
+					       ap && ap->nr_vars > 0 ? ap->values[0].i : -9,
+					       ap && ap->nr_vars > 1 ? ap->values[1].i : -9,
+					       ap && ap->nr_vars > 2 ? ap->values[2].i : -9,
+					       ap && ap->nr_vars > 3 ? ap->values[3].i : -9,
+					       ap && ap->nr_vars > 4 ? ap->values[4].i : -9,
+					       ap && ap->nr_vars > 5 ? ap->values[5].i : -9,
+					       (_a1 > 0 && (size_t)_a1 < heap_size) ? (void*)heap[_a1].page : NULL);
+				}
+			}
+		}
+		bool _elem = _a0 > 0 && (size_t)_a0 < heap_size && heap[_a0].page &&
+			heap[_a0].page->type == ARRAY_PAGE && _a1 >= 0 &&
+			_a1 < heap[_a0].page->nr_vars;
+		if (_elem) {
+			int rval = stack_pop().i;
+			int idx = stack_pop().i;
+			int arr = stack_pop().i;
+			sr_assign_element(arr, idx, rval);
+			stack_push(rval);
+			break;
+		}
 		int rval = stack_pop().i;
 		int lval = stack_pop().i;
 		heap_struct_assign(lval, rval);
@@ -2612,6 +3807,14 @@ static enum opcode execute_instruction(enum opcode opcode)
 		int dst_i = stack_pop().i;
 		struct page *set = heap_get_delegate_page(set_i);
 		struct page *new_dg = copy_page(set);
+		/* [D114] XSYS4_DG_ASSIGN_DBG=1: verify the source delegate really
+		 * carries entries before it is copied into an event registration. */
+		static int dga_dbg_n;
+		if (getenv("XSYS4_DG_ASSIGN_DBG") && dga_dbg_n++ < 60)
+			NOTICE("[dga] set_i=%d dst_i=%d set=%p type=%d nr=%d new=%p nr=%d",
+			       set_i, dst_i, (void*)set, set ? set->type : -1,
+			       set ? set->nr_vars : -1, (void*)new_dg,
+			       new_dg ? new_dg->nr_vars : -1);
 		/* dst_i == -1 is an empty delegate target; delete_page(-1) would
 		 * call heap_get_page on an invalid slot (D57). heap_set_page()
 		 * already ignores negative slots. */
@@ -2630,9 +3833,70 @@ static enum opcode execute_instruction(enum opcode opcode)
 		int dst_i = stack_pop().i;
 		struct page *add = heap_get_delegate_page(add_i);
 		struct page *dst = heap_get_delegate_page(dst_i);
+		/* [D119 probe] which delegate page receives the OK/Cancel lambdas */
+		if (getenv("XSYS4_DGPLUSA_DBG")) {
+			static int dgp_n;
+			/* [D122] 上限可调：默认 400，排查"某个注册到底有没有发生"时
+			 * 前 400 条会被 startup 的 CParts@Attach 占满。 */
+			const char *mx = getenv("XSYS4_DGPLUSA_MAX");
+			int limit = mx ? atoi(mx) : 400;
+			if (dgp_n++ < limit) {
+				/* 打印发起注册的 AIN 函数，才能把"谁注册的"和
+				 * "谁没注册"对上。 */
+				int cf = -1;
+				for (int i = 0; i < ain->nr_functions; i++)
+					if ((size_t)ain->functions[i].address <= instr_ptr &&
+					    (cf < 0 || ain->functions[i].address > ain->functions[cf].address))
+						cf = i;
+				NOTICE("[dg+] add_i=%d fun=%d dst_i=%d dst_nr=%d refheap=%d refidx=%d from=%d %s",
+				       add_i, add ? add->values[1].i : -1, dst_i,
+				       dst ? dst->nr_vars : -1,
+				       last_ref_heap, last_ref_index, cf,
+				       cf >= 0 ? display_sjis0(ain->functions[cf].name) : "?");
+				/* [D129] 注册为什么失败：delegate_plusa() 会逐个校验
+				 * heap_get_seq(obj) == 创建时的 seq，对象一旦被提前回收
+				 * 就静默丢弃整条注册。这里把校验现场打出来。 */
+				if (add && add->type == DELEGATE_PAGE) {
+					for (int k = 0; k + 2 < add->nr_vars; k += 3)
+						NOTICE("[dg+seq] obj=%d fun=%d seq=%d now=%d dst_i=%d",
+						       add->values[k].i, add->values[k+1].i,
+						       add->values[k+2].i,
+						       heap_get_seq(add->values[k].i), dst_i);
+				} else {
+					NOTICE("[dg+seq] add_i=%d not a delegate page dst_i=%d",
+					       add_i, dst_i);
+				}
+			}
+		}
+		/* [D119] -1/0 is the "empty delegate" sentinel. AIN compiles
+		 * `button.OnClick += lambda` as REF(member) + DG_PLUSA; if the member
+		 * was never initialised the registration is silently dropped (the
+		 * NetworkConfirmation OK/Cancel lambdas 37115/37116). Lazily create a
+		 * delegate page and write its slot back into that member. */
+		if (dst_i <= 0 && getenv("XSYS4_DG_LAZY") && add) {
+			struct page *fresh = delegate_plusa(NULL, add);
+			int new_i = heap_alloc_page(fresh);
+			if (last_ref_heap > 0 && (size_t)last_ref_heap < heap_size &&
+			    heap[last_ref_heap].page && last_ref_index >= 0 &&
+			    last_ref_index < heap[last_ref_heap].page->nr_vars) {
+				heap[last_ref_heap].page->values[last_ref_index].i = new_i;
+				static int lazy_n;
+				if (lazy_n++ < 20)
+					NOTICE("[dgl] lazy delegate slot=%d heap=%d member=%d",
+					       new_i, last_ref_heap, last_ref_index);
+			}
+			stack_push(add_i);
+			break;
+		}
 		/* D76: dst_i==0 is the reserved GLOBAL_PAGE, not a delegate. */
-		if (dst_i > 0)
-			heap_set_page(dst_i, delegate_plusa(dst, add));
+		if (dst_i > 0) {
+			struct page *merged = delegate_plusa(dst, add);
+			heap_set_page(dst_i, merged);
+			if (getenv("XSYS4_DGPLUSA_DBG"))
+				NOTICE("[dg+after] dst_i=%d nr=%d (add_nr=%d)", dst_i,
+				       merged ? merged->nr_vars : -1,
+				       add ? add->nr_vars : -1);
+		}
 		stack_push(add_i);
 		break;
 	}
@@ -2654,6 +3918,17 @@ static enum opcode execute_instruction(enum opcode opcode)
 	case DG_NEW_FROM_METHOD: {
 		int fun = stack_pop().i;
 		int obj = stack_pop().i;
+                /* [D118] remember the creating frame's local page for X_GETENV */
+                if (!lambda_parent_slot)
+                        lambda_parent_init();
+                if (fun > 0 && fun < lambda_parent_n) {
+                        int lp = local_page_slot();
+                        if (lp > 0 && lp < heap_size && heap[lp].ref > 0 &&
+                            lambda_parent_slot[fun] != lp) {
+                                lambda_parent_slot[fun] = lp;
+                                heap_ref(lp);
+                        }
+                }
 		stack_push(heap_alloc_page(delegate_new_from_method(obj, fun)));
 		break;
 	}
@@ -2665,19 +3940,44 @@ static enum opcode execute_instruction(enum opcode opcode)
 
 		// Stack before: [dg_page, arg0, ...]
 		// Stack after:  [arg0, ..., dg_page, 0(dg_index)]
-		int dg_page = stack_peek(dg->nr_arguments).i;
-		for (int i = 0; i < dg->nr_arguments; i++) {
-			int pos = (stack_ptr - dg->nr_arguments) + i;
+		int dg_slots = delegate_argument_slots(dg);
+		int dg_page = stack_peek(dg_slots).i;
+		/* [L2] XSYS4_DG_PAGE_DBG=1: DG_CALL later sees a VM_STRING slot as
+		 * dg_page. Check whether CALLBEGIN already picked the wrong stack
+		 * slot here (i.e. delegate_argument_slots() undercounts). */
+		static int dgbegin_dbg = -1;
+		if (dgbegin_dbg < 0)
+			dgbegin_dbg = getenv("XSYS4_DG_PAGE_DBG") ? 1 : 0;
+		if (dgbegin_dbg && dg_page > 0 && (size_t)dg_page < heap_size &&
+		    heap_index_valid(dg_page) && heap[dg_page].type != VM_PAGE) {
+			static int n;
+			if (n++ < 60) {
+				int t[8] = { 0 }, ty[8];
+				for (int k = 0; k < 8 && k < stack_ptr; k++) {
+					t[k] = stack_peek(k).i;
+					ty[k] = (t[k] > 0 && (size_t)t[k] < heap_size &&
+						 heap_index_valid(t[k])) ? heap[t[k]].type : -1;
+				}
+				NOTICE("[dgbegin] ip=0x%zX fno=%d dg_no=%d slots=%d nargs=%d dg_page=%d(type=%d) sp=%d top=[%d,%d,%d,%d,%d,%d,%d,%d] ty=[%d,%d,%d,%d,%d,%d,%d,%d]",
+				       instr_ptr,
+				       call_stack_ptr > 0 ? call_stack[call_stack_ptr-1].fno : -1,
+				       dg_no, dg_slots, dg->nr_arguments,
+				       dg_page, heap[dg_page].type, stack_ptr,
+				       t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7],
+				       ty[0], ty[1], ty[2], ty[3], ty[4], ty[5], ty[6], ty[7]);
+			}
+		}
+		for (int i = 0; i < dg_slots; i++) {
+			int pos = (stack_ptr - dg_slots) + i;
 			stack[pos-1] = stack[pos];
 		}
 		stack[stack_ptr-1].i = dg_page;
 		stack_push(0);
 
-		// XXX: If the delegate has a return value, we push a dummy value
-		//      so that DG_CALL can replace it
-		if (dg->return_type.data != AIN_VOID) {
+		// XXX: If the delegate has a return value, we push dummy value(s)
+		//      so that DG_CALL can replace them. AIN_IFACE takes two slots.
+		for (int rv = delegate_return_slots(dg); rv > 0; rv--)
 			stack_push(0);
-		}
 		break;
 	}
 	case DG_NEW: {
@@ -2736,16 +4036,176 @@ void vm_dump_call_stack(int max)
 	}
 }
 
+/* --- VM frame pump (see XSYS4_PUMP) -------------------------------------- */
+static bool vm_frame_pump_on = false;
+static bool vm_frame_pump_checked = false;
+
+static bool vm_frame_pump_enabled(void)
+{
+	if (!vm_frame_pump_checked) {
+		/* 默认开启。XSYS4_NO_PUMP=1 可关掉（对照实验用）。 */
+		vm_frame_pump_on = getenv("XSYS4_NO_PUMP") == NULL;
+		vm_frame_pump_checked = true;
+	}
+	return vm_frame_pump_on;
+}
+
+void vm_frame_pump(void)
+{
+	/* The animation clock has to be driven here as well. When AIN spins inside
+	 * parts::detail::WaitForClick (or any other pure-AIN wait), it never
+	 * reaches PartsEngine.Update, so every flat part stays on frame 0: the
+	 * title logo (75 frames, first frame blank) and the dialog fades never
+	 * advanced and the screen looked frozen even though the sprites were
+	 * rendered every frame. Only the clock is advanced -- not the full
+	 * PE_Update(), which would invalidate the prepared sprites (D113). */
+	static uint32_t last_tick;
+	static bool auto_map_done;
+	uint32_t now = SDL_GetTicks();
+	/* 这个函数每 4096 条指令被调用一次（一秒可达数千次）。没有时间闸门时，
+	 * 输入阶段会给消息队列喂进成百上千条重复的 MOUSE_ON，AIN 侧每帧消费不
+	 * 完，点击消息就被淹没。按 ~60 fps 限流。 */
+	if (last_tick && now - last_tick < 16)
+		return;
+	int dt = last_tick ? (int)(now - last_tick) : 16;
+	last_tick = now;
+	if (dt > 100)
+		dt = 100;
+	/* [MEM] XSYS4_MEM_STAT=1: every ~2 s print what the VM heap is made of.
+	 * RSS alone cannot tell a slot leak (heap array growth) from a page leak
+	 * from a string leak; this walks the heap and counts each. Bounded cost:
+	 * one pass over the slot array every 2 s. */
+	if (getenv("XSYS4_MEM_STAT")) {
+		static uint32_t last_mem;
+		if (!last_mem || now - last_mem >= 2000) {
+			last_mem = now ? now : 1;
+			size_t live = 0, pages = 0, strs = 0, page_bytes = 0, str_bytes = 0;
+			for (size_t i = 0; i < heap_size; i++) {
+				if (heap[i].ref <= 0)
+					continue;
+				live++;
+				if (heap[i].type == VM_PAGE && heap[i].page) {
+					pages++;
+					page_bytes += sizeof(struct page) +
+						      sizeof(union vm_value) *
+						      (size_t)heap[i].page->nr_vars;
+				} else if (heap[i].type == VM_STRING && heap[i].s) {
+					strs++;
+					str_bytes += sizeof(struct string) + (size_t)heap[i].s->size + 1;
+				}
+			}
+			/* RSS vs glibc breakdown: if rss grows while malloc_inuse
+			 * stays flat, the growth is outside our allocator (GL driver
+			 * / llvmpipe buffers, textures). */
+			uint64_t rss_b = 0, peak_b = 0;
+			if (pal_get()->mem && pal_get()->mem->usage)
+				pal_get()->mem->usage(&rss_b, &peak_b);
+			long rss_kb = (long)(rss_b / 1024), hwm_kb = (long)(peak_b / 1024);
+			{
+				extern size_t gfx_texture_count, gfx_texture_pixels;
+				extern size_t heap_alloc_count, heap_free_count;
+				NOTICE("[mem] textures=%zu tex_pixels_mb=%zu allocs=%zu "
+				       "frees=%zu free_ptr=%zu",
+				       gfx_texture_count,
+				       gfx_texture_pixels * 4 / (1024 * 1024),
+				       heap_alloc_count, heap_free_count, heap_free_ptr);
+			}
+			NOTICE("[mem] up=%us heap_slots=%zu live=%zu pages=%zu page_mb=%zu "
+			       "strings=%zu str_mb=%zu rss_mb=%ld peak_mb=%ld "
+			       "malloc_inuse_mb=%zu malloc_mmap_mb=%zu",
+			       (unsigned)(now / 1000), heap_size, live, pages,
+			       page_bytes / (1024 * 1024), strs,
+			       str_bytes / (1024 * 1024), rss_kb / 1024, hwm_kb / 1024,
+			       (size_t)(mallinfo2().uordblks / (1024 * 1024)),
+			       (size_t)(mallinfo2().hblkhd / (1024 * 1024)));
+		}
+	}
+
+	/* [AUTO] XSYS4_AUTO_MAP=1：启动若干毫秒后直接调用
+	 * `Rance10@RunGameChapter1`(fno 22579)，跳过"点标题菜单"这一步。
+	 * 理由：xdotool 单次点击命中率实测 ~30%，而一次跑测 3 分钟，
+	 * 靠点击复现地图路径既慢又不稳定。延时可用 XSYS4_AUTO_MAP_DELAY 调。 */
+	if (!auto_map_done) {
+		static uint32_t auto_map_delay;
+		static bool auto_map_on, auto_map_init;
+		if (!auto_map_init) {
+			auto_map_on = getenv("XSYS4_AUTO_MAP") != NULL;
+			const char *d = getenv("XSYS4_AUTO_MAP_DELAY");
+			auto_map_delay = d && *d ? (uint32_t)atoi(d) : 4000;
+			auto_map_init = true;
+		}
+		if (auto_map_on && now >= auto_map_delay) {
+			auto_map_done = true;
+			NOTICE("[auto] calling Rance10@RunGameChapter1 (fno 22579) "
+			       "after %ums", now);
+			vm_call(22579, -1);
+			NOTICE("[auto] returned from RunGameChapter1");
+		}
+	}
+
+	parts_advance_animation(dt);
+
+	PE_AdvanceMotionClock(dt);
+
+	/* [D120] 输入阶段也属于帧心跳。只泵 SDL 事件不跑命中测试的话，
+	 * AIN 在 WaitForClick 里自旋时 clicked_parts 永远是 0，点击随机丢失。 */
+	PE_PumpInput(dt);
+	if (scene_is_dirty) {
+		scene_render();
+		gfx_swap();
+		scene_is_dirty = false;
+	}
+}
+
+/* XSYS4_SP_WATCH=<fno>: log ip/opcode/stack depth for every instruction of one
+ * AIN function. Used to locate where a function's operand-stack effect drifts
+ * away from "pop nr_args, push return value(s)". */
+static int sp_watch_fno = -2;
+
 static void vm_execute(void)
 {
+	/* [D111e] Stack sampler: XSYS4_STACK_SAMPLE=1 prints the AIN call stack
+	 * once per second, so a busy loop can be located without a trace window. */
+	static unsigned long long _insn;
+	static time_t _last;
+	if (sp_watch_fno == -2) {
+		const char *w = getenv("XSYS4_SP_WATCH");
+		sp_watch_fno = w && *w ? atoi(w) : -1;
+	}
 	for (;;) {
 		uint16_t opcode;
+		++_insn;
+		/* 帧心跳：在 AIN 指令流里定期提交一帧（XSYS4_NO_PUMP=1 关闭）。
+		 *
+		 * 有些界面（parts::detail::WaitForClick）在 AIN 层自旋等输入，永远
+		 * 回不到 sact_Update()；那条路上既没有 handle_events() 也没有
+		 * scene_render()，于是画面停在旧帧、点击也读不到。这里每 4096 条
+		 * 指令泵一次事件并提交一帧，让纯 AIN 的等待循环也能被驱动。 */
+		if (unlikely((_insn & 0xFFF) == 0) && vm_frame_pump_enabled())
+			vm_frame_pump();
+		if (((_insn & 0xFFFF) == 0) && getenv("XSYS4_STACK_SAMPLE")) {
+			time_t now = time(NULL);
+			if (now != _last) {
+				_last = now;
+				union vm_value g6 = global_get(6);
+				fprintf(stderr, "[sample] ip=0x%zX g6=%d g4=%d\n", instr_ptr, g6.i,
+					global_get(4).i);
+				vm_dump_call_stack(10);
+			}
+		}
 		if (instr_ptr == VM_RETURN)
 			return;
 		if (unlikely(instr_ptr >= ain->code_size)) {
 			VM_ERROR("Illegal instruction pointer: 0x%08lX", instr_ptr);
 		}
 		opcode = get_opcode(instr_ptr);
+		if (sp_watch_fno >= 0 && call_stack_ptr > 0 &&
+		    call_stack[call_stack_ptr - 1].fno == sp_watch_fno) {
+			static int n;
+			if (n++ < 400)
+				NOTICE("[spw] ip=0x%zX %-18s sp=%d", instr_ptr,
+				       instructions[opcode & ~0xC000].name, stack_ptr);
+		}
 		opcode = execute_instruction(opcode);
 		instr_ptr += instructions[opcode].ip_inc;
 	}
@@ -2824,7 +4284,7 @@ int vm_execute_ain(struct ain *program)
 			 * （如 g_ASTimerManager 的数组）永远不初始化 */
 			create_struct(ain->globals[i].type.struc, &heap[0].page->values[i]);
 		} else {
-			heap[0].page->values[i] = variable_initval(ain->globals[i].type.data);
+			heap[0].page->values[i] = variable_initval_typed(&ain->globals[i].type);
 		}
 	}
 	for (int i = 0; i < ain->nr_initvals; i++) {

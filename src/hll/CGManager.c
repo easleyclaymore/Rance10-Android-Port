@@ -49,6 +49,39 @@ static bool CGManager_GetInfo(struct string *cg_name, int *width, int *height, i
 	return true;
 }
 
+/*
+ * D103: Rance10.ain imports GetSize/GetWidth/GetHeight (fno 2..4) but neither
+ * this fork nor upstream implements them. They are thin wrappers over the CG
+ * metrics we already use in GetInfo, so a missing CG yields 0 instead of
+ * aborting the VM at call time (VM_ERROR is _Noreturn).
+ */
+static void CGManager_GetSize(struct string *cg_name, int *width, int *height)
+{
+	struct cg_metrics metrics;
+	*width = 0;
+	*height = 0;
+	if (!cg_name || !asset_cg_get_metrics_by_name(cg_name->text, &metrics))
+		return;
+	*width = metrics.w;
+	*height = metrics.h;
+}
+
+static int CGManager_GetWidth(struct string *cg_name)
+{
+	struct cg_metrics metrics;
+	if (!cg_name || !asset_cg_get_metrics_by_name(cg_name->text, &metrics))
+		return 0;
+	return metrics.w;
+}
+
+static int CGManager_GetHeight(struct string *cg_name)
+{
+	struct cg_metrics metrics;
+	if (!cg_name || !asset_cg_get_metrics_by_name(cg_name->text, &metrics))
+		return 0;
+	return metrics.h;
+}
+
 //static int CGManager_GetCountOfDataFromArchive(void);
 //static void CGManager_GetTitleByIndexFromArchive(int index, struct string **cg_name);
 //static int CGManager_SearchTitleFromArchive(struct string *cg_name);
@@ -62,6 +95,9 @@ HLL_LIBRARY(CGManager,
 	    HLL_EXPORT(LoadArchive, CGManager_LoadArchive),
 	    HLL_EXPORT(IsExist, CGManager_IsExist),
 	    HLL_EXPORT(GetInfo, CGManager_GetInfo),
+	    HLL_EXPORT(GetSize, CGManager_GetSize),
+	    HLL_EXPORT(GetWidth, CGManager_GetWidth),
+	    HLL_EXPORT(GetHeight, CGManager_GetHeight),
 	    HLL_TODO_EXPORT(GetCountOfDataFromArchive, CGManager_GetCountOfDataFromArchive),
 	    HLL_TODO_EXPORT(GetTitleByIndexFromArchive, CGManager_GetTitleByIndexFromArchive),
 	    HLL_TODO_EXPORT(SearchTitleFromArchive, CGManager_SearchTitleFromArchive),

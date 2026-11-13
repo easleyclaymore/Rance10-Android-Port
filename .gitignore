@@ -22,3 +22,4 @@ logs/
 # local debugging artefacts
 *.core
 *.swp
+subprojects/.wraplock

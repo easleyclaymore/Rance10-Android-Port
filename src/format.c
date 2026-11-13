@@ -146,8 +146,20 @@ static void append_fmt(struct string **s, struct fmt_spec *spec, union vm_value 
 		string_append_cstr(s, buf, len);
 		break;
 	case FMT_STRING: {
-		struct string *val = heap_get_string(arg.i);
-		int pad_len = spec->padding - val->size;
+		/* The value is a string reference, but Rance10 also formats optional
+		 * fields that were never set: a null, freed or non-string slot must
+		 * read as the empty string instead of dereferencing whatever the slot
+		 * holds (heap_get_string() only rejects out-of-range indices). */
+		struct string *val = NULL;
+		if (arg.i > 0 && (size_t)arg.i < heap_size &&
+		    heap[arg.i].type == VM_STRING)
+			val = heap[arg.i].s;
+		if (!val) {
+			heap_unref(arg.i);
+			val = &EMPTY_STRING;
+			break;
+		}
+		int pad_len = spec->padding - (int)val->size;
 		if (pad_len > 0) {
 			for (int i = 0; i < pad_len; i++) {
 				string_push_back(s, ' ');

@@ -208,6 +208,17 @@ static bool Math_BezierCurve(struct page **x_array, struct page **y_array, int n
 	return true;
 }
 
+/* AIN Math f[37]: int Clamp(int v, int lo, int hi). The float overload
+ * (f[38]) shares this symbol; only the integer form is implemented. */
+static int Math_Clamp(int v, int lo, int hi)
+{
+	if (v < lo)
+		return lo;
+	if (v > hi)
+		return hi;
+	return v;
+}
+
 HLL_LIBRARY(Math,
 	    HLL_EXPORT(Cos, Math_Cos),
 	    HLL_EXPORT(Sin, Math_Sin),
@@ -238,5 +249,6 @@ HLL_LIBRARY(Math,
 	    HLL_EXPORT(Log, logf),
 	    HLL_EXPORT(Log10, log10f),
 	    HLL_EXPORT(Ceil, Math_Ceil),
-	    HLL_EXPORT(BezierCurve, Math_BezierCurve));
+	    HLL_EXPORT(BezierCurve, Math_BezierCurve),
+	    HLL_EXPORT(Clamp, Math_Clamp));
 

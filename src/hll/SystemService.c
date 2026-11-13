@@ -455,6 +455,192 @@ static void SystemService_ShowWaitMessage(int show)
 {
 	(void)show;
 }
+/* AIN SystemService f[7] GetDefaultViewWidth. [HACK-POC D91] Android/SystemService stub. */
+static int SS_Stub_GetDefaultViewWidth(void)
+{
+
+	return 0;
+}
+
+/* AIN SystemService f[8] GetDefaultViewHeight. [HACK-POC D91] Android/SystemService stub. */
+static int SS_Stub_GetDefaultViewHeight(void)
+{
+
+	return 0;
+}
+
+/* AIN SystemService f[13] SetViewSize. [HACK-POC D91] Android/SystemService stub. */
+static void SS_Stub_SetViewSize(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SystemService f[14] SetWindowPos. [HACK-POC D91] Android/SystemService stub. */
+static void SS_Stub_SetWindowPos(int a0, int a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SystemService f[15] GetWindowPosX. [HACK-POC D91] Android/SystemService stub. */
+static int SS_Stub_GetWindowPosX(void)
+{
+
+	return 0;
+}
+
+/* AIN SystemService f[16] GetWindowPosY. [HACK-POC D91] Android/SystemService stub. */
+static int SS_Stub_GetWindowPosY(void)
+{
+
+	return 0;
+}
+
+/* AIN SystemService f[19] SetViewResizableMode. [HACK-POC D91] Android/SystemService stub. */
+static void SS_Stub_SetViewResizableMode(int a0)
+{
+	(void)a0;
+}
+
+/* AIN SystemService f[20] IsViewResizableMode. [HACK-POC D91] Android/SystemService stub. */
+static int SS_Stub_IsViewResizableMode(void)
+{
+
+	return 0;
+}
+
+/* AIN SystemService f[21] SaveScreenshot. [HACK-POC D91] Android/SystemService stub. */
+static int SS_Stub_SaveScreenshot(struct string * a0, int a1, int a2, int a3, int a4)
+{
+	(void)a0;
+	(void)a1;
+	(void)a2;
+	(void)a3;
+	(void)a4;
+	return 0;
+}
+
+/* AIN SystemService f[24] SetWaitVSyncMode. [HACK-POC D91] Android/SystemService stub. */
+static int SS_Stub_SetWaitVSyncMode(int a0)
+{
+	(void)a0;
+	return 0;
+}
+
+/* AIN SystemService f[25] GetWaitVSyncMode. [HACK-POC D91] Android/SystemService stub. */
+static int SS_Stub_GetWaitVSyncMode(void)
+{
+
+	return 0;
+}
+
+/* AIN SystemService f[35] SystemVariable_IsExist. [HACK-POC D91] Android/SystemService stub. */
+static int SS_Stub_SystemVariable_IsExist(struct string * a0)
+{
+	(void)a0;
+	return 0;
+}
+
+/* AIN SystemService f[36] SystemVariable_Set. [HACK-POC D91] Android/SystemService stub. */
+static void SS_Stub_SystemVariable_Set(struct string * a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SystemService f[38] SystemVariable_NumofKey. [HACK-POC D91] Android/SystemService stub. */
+static int SS_Stub_SystemVariable_NumofKey(void)
+{
+
+	return 0;
+}
+
+/* AIN SystemService f[40] SystemVariable_Erase. [HACK-POC D91] Android/SystemService stub. */
+static void SS_Stub_SystemVariable_Erase(struct string * a0)
+{
+	(void)a0;
+}
+
+/* AIN SystemService f[42] GameVariable_Set. [HACK-POC D91] Android/SystemService stub. */
+static void SS_Stub_GameVariable_Set(struct string * a0, struct string * a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SystemService f[44] GameVariable_NumofKey. [HACK-POC D91] Android/SystemService stub. */
+static int SS_Stub_GameVariable_NumofKey(void)
+{
+
+	return 0;
+}
+
+/* AIN SystemService f[46] GameVariable_Erase. [HACK-POC D91] Android/SystemService stub. */
+static void SS_Stub_GameVariable_Erase(struct string * a0)
+{
+	(void)a0;
+}
+
+/* AIN SystemService f[47] GetPlatformType. [HACK-POC D91] Android/SystemService stub. */
+static int SS_Stub_GetPlatformType(void)
+{
+
+	return 0;
+}
+
+/* AIN SystemService f[48] SetAndroidViewOrientation. [HACK-POC D91] Android/SystemService stub. */
+static void SS_Stub_SetAndroidViewOrientation(int a0)
+{
+	(void)a0;
+}
+
+/* AIN SystemService f[49] SetAndroidViewKeepScreen. [HACK-POC D91] Android/SystemService stub. */
+static void SS_Stub_SetAndroidViewKeepScreen(int a0)
+{
+	(void)a0;
+}
+
+/* AIN SystemService f[56] SetHookCloseApp. [HACK-POC D91] Android/SystemService stub. */
+static void SS_Stub_SetHookCloseApp(int a0)
+{
+	(void)a0;
+}
+
+/* AIN SystemService f[57] IsHookCloseApp. [HACK-POC D91] Android/SystemService stub. */
+static int SS_Stub_IsHookCloseApp(void)
+{
+
+	return 0;
+}
+
+/* AIN SystemService f[59] GetMemoryInfo. [HACK-POC D91] Android/SystemService stub. */
+static void SS_Stub_GetMemoryInfo(float a0, float a1)
+{
+	(void)a0;
+	(void)a1;
+}
+
+/* AIN SystemService f[63] Debug_GetUseMemorySize. [HACK-POC D91] Android/SystemService stub. */
+static int SS_Stub_Debug_GetUseMemorySize(void)
+{
+
+	return 0;
+}
+
+/* AIN SystemService f[65] Debug_SetShowMipmapLevel. [HACK-POC D91] Android/SystemService stub. */
+static void SS_Stub_Debug_SetShowMipmapLevel(int a0)
+{
+	(void)a0;
+}
+
+/* AIN SystemService f[66] Debug_IsShowMipmapLevel. [HACK-POC D91] Android/SystemService stub. */
+static int SS_Stub_Debug_IsShowMipmapLevel(void)
+{
+
+	return 0;
+}
+
 HLL_LIBRARY(SystemService,
 	    HLL_EXPORT(SetGameViewScaleRate, SystemService_SetGameViewScaleRate),
 	    HLL_EXPORT(GetGameViewScaleRate, SystemService_GetGameViewScaleRate),
@@ -511,7 +697,34 @@ HLL_LIBRARY(SystemService,
 	    HLL_EXPORT(Test, SystemService_Test),
 	    HLL_EXPORT(DRPKT, SystemService_DRPKT),
 	    HLL_EXPORT(Rance96161988, SystemService_Rance96161988)
-	);
+	,
+	    HLL_EXPORT(GetDefaultViewWidth, SS_Stub_GetDefaultViewWidth),
+	    HLL_EXPORT(GetDefaultViewHeight, SS_Stub_GetDefaultViewHeight),
+	    HLL_EXPORT(SetViewSize, SS_Stub_SetViewSize),
+	    HLL_EXPORT(SetWindowPos, SS_Stub_SetWindowPos),
+	    HLL_EXPORT(GetWindowPosX, SS_Stub_GetWindowPosX),
+	    HLL_EXPORT(GetWindowPosY, SS_Stub_GetWindowPosY),
+	    HLL_EXPORT(SetViewResizableMode, SS_Stub_SetViewResizableMode),
+	    HLL_EXPORT(IsViewResizableMode, SS_Stub_IsViewResizableMode),
+	    HLL_EXPORT(SaveScreenshot, SS_Stub_SaveScreenshot),
+	    HLL_EXPORT(SetWaitVSyncMode, SS_Stub_SetWaitVSyncMode),
+	    HLL_EXPORT(GetWaitVSyncMode, SS_Stub_GetWaitVSyncMode),
+	    HLL_EXPORT(SystemVariable_IsExist, SS_Stub_SystemVariable_IsExist),
+	    HLL_EXPORT(SystemVariable_Set, SS_Stub_SystemVariable_Set),
+	    HLL_EXPORT(SystemVariable_NumofKey, SS_Stub_SystemVariable_NumofKey),
+	    HLL_EXPORT(SystemVariable_Erase, SS_Stub_SystemVariable_Erase),
+	    HLL_EXPORT(GameVariable_Set, SS_Stub_GameVariable_Set),
+	    HLL_EXPORT(GameVariable_NumofKey, SS_Stub_GameVariable_NumofKey),
+	    HLL_EXPORT(GameVariable_Erase, SS_Stub_GameVariable_Erase),
+	    HLL_EXPORT(GetPlatformType, SS_Stub_GetPlatformType),
+	    HLL_EXPORT(SetAndroidViewOrientation, SS_Stub_SetAndroidViewOrientation),
+	    HLL_EXPORT(SetAndroidViewKeepScreen, SS_Stub_SetAndroidViewKeepScreen),
+	    HLL_EXPORT(SetHookCloseApp, SS_Stub_SetHookCloseApp),
+	    HLL_EXPORT(IsHookCloseApp, SS_Stub_IsHookCloseApp),
+	    HLL_EXPORT(GetMemoryInfo, SS_Stub_GetMemoryInfo),
+	    HLL_EXPORT(Debug_GetUseMemorySize, SS_Stub_Debug_GetUseMemorySize),
+	    HLL_EXPORT(Debug_SetShowMipmapLevel, SS_Stub_Debug_SetShowMipmapLevel),
+	    HLL_EXPORT(Debug_IsShowMipmapLevel, SS_Stub_Debug_IsShowMipmapLevel));
 
 static struct ain_hll_function *get_fun(int libno, const char *name)
 {

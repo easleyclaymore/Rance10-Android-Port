@@ -1,160 +1,133 @@
-> **Rance10 Android 原生移植专用 fork** —— 项目说明见 [PROJECT.md](PROJECT.md)；开发文档见阿林笔记。
+<div align="center">
 
-xsystem4
-========
+# xsystem4 · Rance10 原生移植 fork
 
-xsystem4 is an implementation of AliceSoft's System 4 game engine for unix-like
-operating systems.
+**让《ランス10》（Rance10）在 Linux / Android 上以原生方式运行**，不走 proot、不套转译层。
 
-Compatiblity
-------------
+本仓库是 [nunuhara/xsystem4](https://github.com/nunuhara/xsystem4) 的下游 fork。
+上游是 AliceSoft **System4** 引擎在类 Unix 系统上的开源实现（C + SDL2 + OpenGL）。
 
-See the [game compatibility table](game_compatibility.md) for a list of games
-that can be played on xsystem4.
+</div>
 
-Building
---------
+---
 
-First install the dependencies (corresponding Debian package in parentheses):
+## 这是什么
 
-* chibi-scheme [optional, for debugger]
-* bison (bison)
-* cglm (libcglm-dev) [optional, fetched by meson if not available]
-* flex (flex)
-* freetype (libfreetype-dev)
-* glew (libglew-dev)
-* meson (meson)
-* libffi (libffi-dev)
-* libpng (libpng-dev)
-* libsndfile (libsndfile-dev)
-* libturbojpeg (libturbojpeg0-dev)
-* libwebp (libwebp-dev)
-* SDL2 (libsdl2-dev)
-* zlib (zlib1g-dev)
+上游 `xsystem4` 能跑一部分 System4 游戏；Rance10 用的是 **AIN v12** 字节码，
+在值表示、接口派发、泛型容器、存档格式上都有上游没覆盖的情况。
+本 fork 的工作是：**只用字节码和存档文件，把 v12 的语义一条条取证并补齐**，
+直到游戏能真正跑起来。
 
-Then fetch the git submodules,
+目标交付物是 arm64 APK（验收设备 realme RMX3700），当前先在 Linux 桌面推进。
 
-    git submodule init
-    git submodule update
+## 当前状态
 
-(Alternatively, pass `--recurse-submodules` when cloning this repository)
+**进行中，尚未通关。** 启动链、标题界面、第一章任务地图均已跑通并出画。
 
-Then build the xsystem4 executable with meson,
+| 环节 | 状态 |
+|---|---|
+| 构建 / 启动 | ✅ `ninja` 无 error，门禁 `check_core_deps.py` PASS |
+| 平台 / 登录 / 网络确认 | ✅ 自动化跑测可稳定通过 |
+| 标题 → 章节 | ✅ 可进第一章（后门直接调用 `Rance10@RunGameChapter1`） |
+| 第一章任务地图 `SceneQuestMap` | ⚠️ 场景装载、出画正常，但对象装载卡在接口派发 |
+| 存档 `GroupSave / GroupLoad` | ✅ 写读闭环，含泛型 `array`；离线检查器可验 |
+| 内存 | ✅ 长跑稳定（地图装载约 370 MB，不再失控） |
 
-    mkdir build
-    meson build
-    ninja -C build
-    
-Finally install it to your system (optional),
+**当前卡点**：`QuestMapObjectLoader@Load` 在 `0x37CBCA` 报
+`CALLMETHOD: invalid function index -1` —— 接口元素 `[对象槽, vtable 偏移]`
+的偏移是 `-1`，方法派发不出去。取证方式：`XSYS4_DUMP_AT=37CBCA,4`。
 
-    ninja -C build install
+未结债务与已证伪的假设都记在根目录的 `TECH_DEBT.md`（不在本仓库内，见「文档」）。
 
-### Windows
+## 这套 fork 主要改了什么
 
-xsystem4 can be built on Windows using MSYS2.
+- **值表示**：`AIN_IFACE` / `AIN_WRAP` 是**两槽** `[对象, vtable 偏移]`，`nr_args`
+  只数逻辑参数；泛型 `array` 由首个存入的元素定型，不能默认成 int 数组。
+- **HLL 返回槽宽**：由 `CALLHLL` 第三立即数（具体元素类型）决定，**不是**声明类型。
+  判错的后果是操作数栈整体错位，几层调用之外才炸。
+- **接口元素数组**：2 槽/元素，字节码用 `i*2` 索引，所以**分配 / 增长 / 计数**
+  三处必须同时按槽处理（少一处就会出现"数组翻倍"式的内存雪崩）。
+- **存档子系统**：`system.GroupSave / GroupLoad / ExistSaveFile / DeleteSaveFile /
+  CopySaveFile` 接到 `src/savedata.c`，实现 gsave 读写。
+- **内存**：堆槽回收、存活对象硬上限、`XSYS4_MEM_STAT` 构成统计。
+- **诊断**：一批默认关闭的 `XSYS4_*` 开关（见根目录 README 第 5 节）。
 
-First install MSYS2, and then open the MINGW64 shell and run the following command,
+## 构建
 
-    pacman -S make flex bison \
-        mingw-w64-x86_64-gcc \
-        mingw-w64-x86_64-meson \
-        mingw-w64-x86_64-pkg-config \
-        mingw-w64-x86_64-SDL2 \
-        mingw-w64-x86_64-freetype \
-        mingw-w64-x86_64-libjpeg-turbo \
-        mingw-w64-x86_64-libwebp \
-        mingw-w64-x86_64-libsndfile \
-        mingw-w64-x86_64-glew \
-        mingw-w64-x86_64-nasm \
-        mingw-w64-x86_64-diffutils
+依赖（括号内为 Debian/Ubuntu 包名）：
 
-To build with FFmpeg support, you must compile FFmpeg as a static library:
+| 库 | 包 |
+|---|---|
+| meson / ninja | `meson` `ninja-build` |
+| SDL2 | `libsdl2-dev` |
+| GLEW | `libglew-dev` |
+| freetype | `libfreetype-dev` |
+| libpng / libwebp / libturbojpeg | `libpng-dev` `libwebp-dev` `libturbojpeg0-dev` |
+| libsndfile | `libsndfile-dev` |
+| libffi / zlib / libdeflate | `libffi-dev` `zlib1g-dev` `libdeflate-dev` |
+| bison / flex | `bison` `flex` |
+| cglm（可缺省） | `libcglm-dev`，缺省时 meson 自动拉取 |
+| chibi-scheme（可选，调试器） | — |
 
-    git clone https://github.com/FFmpeg/FFmpeg.git
-    cd FFmpeg
-    git checkout n7.1.2
-    ./configure --disable-everything \
-        --enable-decoder=mpegvideo \
-        --enable-decoder=mpeg1video \
-        --enable-decoder=mpeg2video \
-        --enable-decoder=mp2 \
-        --enable-parser=mpegaudio \
-        --enable-parser=mpegvideo \
-        --enable-demuxer=mpegps \
-        --enable-demuxer=mpegts \
-        --enable-demuxer=mpegtsraw \
-        --enable-demuxer=mpegvideo \
-        --enable-decoder=vc1 \
-        --enable-decoder=wmapro \
-        --enable-parser=vc1 \
-        --enable-hwaccel=vc1_d3d11va \
-        --enable-hwaccel=vc1_d3d11va2 \
-        --enable-hwaccel=vc1_dxva2 \
-        --enable-demuxer=asf \
-        --enable-protocol=file \
-        --enable-filter=scale \
-        --enable-static \
-        --disable-shared \
-        --extra-libs=-static \
-        --extra-cflags=--static
-    make
-    make install
-    cd ..
-    export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
+```bash
+git submodule init && git submodule update     # 或 clone 时加 --recurse-submodules
+mkdir build && meson build && ninja -C build
+```
 
-Then build the xsystem4 executable with meson,
+> **构建踩坑**：桌面环境里 `PYTHONHOME` / `PYTHONPATH` 指向别的 Python 时，
+> meson 会直接死在 `ModuleNotFoundError: encodings`。构建命令请把变量摘掉：
+>
+> ```bash
+> env -u PYTHONPATH -u PYTHONHOME -u PYTHONDONTWRITEBYTECODE ninja -C build
+> ```
 
-    mkdir build
-    meson build
-    ninja -C build
+## 运行
 
-To create a portable executable, it is neccessary to copy some DLLs into the same directory as xsystem4.exe.
-You can determine the required DLLs with the following command,
+```bash
+build/src/xsystem4 /path/to/game_directory
+# 或者进入游戏目录后直接
+build/src/xsystem4
+```
 
-    ldd build/src/xsystem4.exe | grep mingw64
+### 跑测脚本（`tools/`）
 
-The `fonts` and `shaders` directories must also be shipped together with xsystem4.exe.
+| 脚本 | 用途 |
+|---|---|
+| `tools/run-headless.sh tag 150 /tmp/a.png` | **首选**：独立 Xvfb + 完整点击序列 |
+| `tools/baseline.sh tag 120` | 全默认配置基线，输出六项指标 |
+| `tools/storm.sh tag 60` | 直冲地图（后门调 `RunGameChapter1`，不点菜单） |
 
-Installing
-----------
+**两条硬纪律**（都是踩过 OOM 换来的）：
 
-If building from source, run:
+1. **不要在真实桌面上跑。** `run-live.sh` 会 `xdotool` 移动鼠标、`x11grab` 截屏；
+   它只接受 `:90..:129` 的独立 Xvfb，其余 `DISPLAY` 直接 `exit 3`。
+2. **每个入口都有内存上限。** `run-headless.sh` 与 `run-live.sh` 都默认
+   `systemd-run -p MemoryMax=3G -p MemorySwapMax=0` 自包一层。
 
-    ninja -C build install
+## 离线工具
 
-to install xsystem4 on your system.
+`Rance10_Port/tools/`（相对本仓库的 `../tools/`）里有只读 AIN / 存档的小工具：
+`ain_at`（反汇编、按名字查函数、库函数签名、结构体成员）、`gsave_dump`（存档能否读回）、
+`ain_xref`（交叉引用）等。它们**不启动游戏、不需要 X**，秒级返回 —— 排查问题应当先用它们。
 
-### Windows
+```bash
+tools/build.sh
+tools/bin/ain_at game/Rance10.ain findsym:Chapter1@Run
+tools/bin/gsave_dump logs/savedir/<tag>/GlobalSave.asd
+```
 
-The recommended way to install on Windows is to copy the xsystem4 directory
-into the game directory. E.g. if Sengoku Rance is installed at
-`C:\Games\AliceSoft\Sengoku Rance`, then your filesystem should look something
-like this:
+## 文档
 
-    C:\
-        Games\
-            AliceSoft\
-                Sengoku Rance\
-                    System40.ini
-                    xsystem4\
-                        xsystem4.exe
-                        ...
-                    ...
+| 位置 | 内容 |
+|---|---|
+| `PROJECT.md` | 移植进度与里程碑（本仓库） |
+| `../README.md` | 主文档：现状、跑测、必读契约、卡点 |
+| `../TECH_DEBT.md` | 未结债务（A 结构性 / B 会炸的 / C 长尾） |
+| `../GUIDE/` | 《黑盒字节码引擎移植实战指南》，独立成书 |
+| `notes/` | 字节码规范取证笔记（AIN v12 引用槽宽等） |
 
-Running
--------
+## 上游与许可
 
-You can run a game by passing the path to its game directory to the xsystem4
-executable,
-
-    build/src/xsystem4 /path/to/game_directory
-
-Alternatively, run xsystem4 from within the game directory,
-
-    cd /path/to/game_directory
-    xsystem4
-
-### Windows
-
-If you've installed xsystem4 into the game directory as described above, simply
-double-click `xsystem4.exe` to run the game.
+- 上游：[nunuhara/xsystem4](https://github.com/nunuhara/xsystem4)
+- 许可：**GPL-2.0**（见 `COPYING`）。本 fork 同样以 GPL-2.0 发布。
+- 游戏本体、图像、音频等素材版权归 AliceSoft 所有，**不包含在本仓库内**。

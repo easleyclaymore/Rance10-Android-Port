@@ -1,6 +1,6 @@
 /* system - implementation for Rance X bring-up.
  *
- * Save/load functions are stubs (return false) for now; the rest are real.
+ * 存档/读档已接上 src/savedata.c 的 gsave 实现（D127）；ResumeSave/Load 仍是桩。
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +12,8 @@
 #include "hll.h"
 #include "vm.h"
 #include "vm/page.h"
+#include "savedata.h"
+#include "xsystem4.h"
 
 /* ---------------- save / load (stubs) ---------------- */
 
@@ -36,29 +38,85 @@ static bool System_ResumeReadComment(struct string *a, struct string *b, struct 
 	return false;
 }
 
-static bool System_GroupSave(struct string *a, struct string *b, struct string *c, int *d)
+/* ---------------- save / load ----------------
+ *
+ * [D127] 这四个原本是 `return false` 的空桩，导致：
+ *   - 每次改配置都弹 `[Error] 存档文件「 AFConfig.asd 」保存失败`
+ *     （`gamesave::detail::配置文件存档` → `system.GroupSave` → false → `system.Error`）；
+ *   - 游戏永远存不了档，`ExistSaveFile` 恒 false，读档路径全部走不通。
+ *
+ * `src/savedata.c` 里早就有一套完整的 gsave 读写（`save_globals`/`load_globals`，
+ * 内部会调 `savedir_path()` 解析存档目录），签名与本库一一对应，直接接上即可。
+ */
+
+static bool System_GroupSave(struct string *key, struct string *file, struct string *group, int *n)
 {
-	return false;
+	if (!key || !file)
+		return false;
+	return save_globals(key->text, file->text, group ? group->text : NULL, n) != 0;
 }
 
-static bool System_GroupLoad(struct string *a, struct string *b, struct string *c, int *d)
+static bool System_GroupLoad(struct string *key, struct string *file, struct string *group, int *n)
 {
-	return false;
+	if (!key || !file)
+		return false;
+	return load_globals(key->text, file->text, group ? group->text : NULL, n) != 0;
 }
 
 static bool System_ExistSaveFile(struct string *name)
 {
-	return false;
+	if (!name)
+		return false;
+	char *path = savedir_path(name->text);
+	FILE *fp = fopen(path, "rb");
+	bool exists = fp != NULL;
+	if (fp)
+		fclose(fp);
+	free(path);
+	return exists;
 }
 
 static bool System_DeleteSaveFile(struct string *name)
 {
-	return false;
+	if (!name)
+		return false;
+	char *path = savedir_path(name->text);
+	bool ok = remove(path) == 0;
+	free(path);
+	return ok;
 }
 
 static bool System_CopySaveFile(struct string *src, struct string *dst)
 {
-	return false;
+	if (!src || !dst)
+		return false;
+	char *sp = savedir_path(src->text), *dp = savedir_path(dst->text);
+	FILE *in = fopen(sp, "rb");
+	if (!in) {
+		free(sp); free(dp);
+		return false;
+	}
+	FILE *out = fopen(dp, "wb");
+	if (!out) {
+		fclose(in);
+		free(sp); free(dp);
+		return false;
+	}
+	char buf[8192];
+	size_t n;
+	bool ok = true;
+	while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+		if (fwrite(buf, 1, n, out) != n) {
+			ok = false;
+			break;
+		}
+	}
+	fclose(in);
+	if (fclose(out) != 0)
+		ok = false;
+	free(sp);
+	free(dp);
+	return ok;
 }
 
 /* ---------------- simple ---------------- */

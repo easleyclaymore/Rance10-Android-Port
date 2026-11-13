@@ -15,12 +15,14 @@
  */
 
 #include "system4.h"
+#include <stdlib.h>
 
 #include "asset_manager.h"
 #include "audio.h"
 #include "input.h"
 #include "xsystem4.h"
 #include "parts_internal.h"
+#include "vm.h"
 
 // true between calls to BeginClick and EndClick
 bool parts_began_click = false;
@@ -34,12 +36,83 @@ static int clicked_parts = 0;
 // the current (partially) clicked parts number
 static int click_down_parts = 0;
 
+/* [D119 probe] CPartsFunctionSet@CallFunctionMouseClick dispatches on the
+ * third message variable (KeyCode): 1 -> this[7], 2 -> this[8], 4 -> this[9].
+ * xsystem4 passes VK_LBUTTON (1); Rance10's AIN may expect 4 for left click.
+ * XSYS4_KEYCODE_PROBE=N overrides it for a controlled A/B test. */
+static int click_keycode(void)
+{
+	static int k = -1;
+	if (k < 0) {
+		const char *e = getenv("XSYS4_KEYCODE_PROBE");
+		k = e ? atoi(e) : VK_LBUTTON;
+	}
+	return k;
+}
+
 // drag state
 static struct parts *drag_parts = NULL;
 static bool is_dragging = false;
 static Point drag_initial_pos;
 static Point drag_start_cursor;
 static struct parts *drop_target = NULL;
+
+/* [D123] 命中测试必须按"当前" z 从高到低遍历，不能直接走
+ * PARTS_LIST_FOREACH_REVERSE。
+ *
+ * parts_list 的顺序在部件插入时就定下来了，那时子活动的父链还没挂，
+ * global.z 全是 0/1；之后 PE_RefreshGlobalTree() 重算了 global.z
+ * （用户组件容器 gz=13、其子活动按钮 gz=16），却没有重排链表——
+ * 实测逐个 resort 也会留下乱序，全量 remove/insert 又会触发精灵重复
+ * 释放导致核心转储。最安全的做法是在输入阶段现算 z、现排序，不动
+ * 全局链表与精灵注册。
+ *
+ * 不这么做的话，父容器会抢在本该盖在它上面的子按钮之前消费
+ * hover/click，点击落到没注册委托的容器 part，DG_CALL 打空炮。 */
+static int parts_input_z(struct parts *p)
+{
+	return parts_multi_controller ? p->controller_no : p->global.z;
+}
+
+static int parts_input_z2(struct parts *p)
+{
+	return parts_multi_controller ? p->global.z : 0;
+}
+
+static int parts_input_z_cmp(const void *a, const void *b)
+{
+	struct parts *pa = *(struct parts *const *)a;
+	struct parts *pb = *(struct parts *const *)b;
+	int za = parts_input_z(pa), zb = parts_input_z(pb);
+	if (za != zb)
+		return za > zb ? -1 : 1;   /* 高 z 优先 */
+	int z2a = parts_input_z2(pa), z2b = parts_input_z2(pb);
+	if (z2a != z2b)
+		return z2a > z2b ? -1 : 1;
+	/* 同层保持稳定：编号大的（后创建的）在前 */
+	return pa->no > pb->no ? -1 : (pa->no < pb->no ? 1 : 0);
+}
+
+static struct parts **input_z_sorted;
+static int input_z_cap;
+
+static struct parts **parts_input_collect(int *out_nr)
+{
+	int nr = 0;
+	struct parts *p;
+	PARTS_LIST_FOREACH(p) {
+		if (nr == input_z_cap) {
+			input_z_cap = input_z_cap ? input_z_cap * 2 : 64;
+			input_z_sorted = xrealloc_array(input_z_sorted, nr,
+					input_z_cap, sizeof(*input_z_sorted));
+		}
+		input_z_sorted[nr++] = p;
+	}
+	if (nr > 1)
+		qsort(input_z_sorted, nr, sizeof(*input_z_sorted), parts_input_z_cmp);
+	*out_nr = nr;
+	return input_z_sorted;
+}
 
 static bool parts_hittest(struct parts *parts, int state, Point pos)
 {
@@ -70,7 +143,9 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 		int passed_time, bool *hover_consumed, bool *click_consumed)
 {
 	// Always use DEFAULT state hitbox regardless of the current display state.
-	bool is_hovered = parts_hittest(parts, PARTS_STATE_DEFAULT, cur_pos)
+	/* [D128] 隐藏的图层不参与命中（否则旧场景的按钮还挡在新场景前面）。 */
+	bool is_hovered = parts_is_visible(parts)
+		&& parts_hittest(parts, PARTS_STATE_DEFAULT, cur_pos)
 		&& !*hover_consumed;
 
 	bool was_hovered = parts->is_hovered;
@@ -147,29 +222,117 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 		parts_set_state(parts, PARTS_STATE_HOVERED);
 	}
 
-	// click event: only if the click down event had same parts number
-	if (parts->clickable && prev_clicking && !cur_clicking
-			&& click_down_parts == parts->no) {
-		audio_play_sound(parts->on_click_sound);
+	/* [D113] GetClickNumber() reports the parts that captured this click,
+	 * independent of Parts_SetClickable. clickable only gates the CLICK/KEY_UP
+	 * messages (button callbacks). xsystem4 tied both to clickable, which
+	 * makes scenes whose parts are all 点击許可=0 -- e.g. Rance10's
+	 * "click anywhere to continue" start screen -- impossible to leave:
+	 * parts::detail::WaitForClick polls GetClickNumber() > 0 forever.
+	 * click_down_parts is only set for click_eligible parts above, so this
+	 * still respects pass_cursor / front-to-back consumption. */
+	if (prev_clicking && !cur_clicking && click_down_parts == parts->no) {
 		clicked_parts = parts->no;
-
-		parts_msg_push(parts, PARTS_MSG_MOUSE_CLICK,
-				"iii", cur_pos.x, cur_pos.y, VK_LBUTTON);
+		/* [D114] Queue the CLICK/KEY_UP messages for every captured click,
+		 * not just for clickable parts.  The AIN side registers
+		 * "whole screen" mouse delegates (AFL_Parts_AddWholeMouseLClickEvent)
+		 * on the parts message manager; SceneStack@Join uses one of them to
+		 * call SceneStack@Exit, which is the only writer of IsFinish.
+		 * Rance10's start screen has 点击許可=0 on all three parts ("click
+		 * anywhere to continue"), so gating the message on clickable left
+		 * IsFinish=0 forever: WaitForClick kept exiting on GetClickNumber,
+		 * Join immediately re-entered 効果設定待ち, and Scenes::RunTitle
+		 * never started.  clickable still controls the button sound. */
+		if (parts->clickable)
+			audio_play_sound(parts->on_click_sound);
+		/* [D115] 用 PARTS_MSG_MOUSE_CLICK（=5）发出去，AIN 的
+		 * CPartsMessageManager@CallDelegate 会落到 CallDelegateMouseDoubleClick
+		 * ——AIN 侧的 switch 编号与 xsystem4 枚举错位，左键点击是 4。
+		 * 实测 4 → CallDelegateMouseClick → SceneStack@RegisterEvent 的 lambda，
+		 * 这是 start screen 唯一能收到点击的入口。 */
+		parts_msg_push(parts, PARTS_MSG_MOUSE_CLICK_AIN,
+				"iii", cur_pos.x, cur_pos.y, click_keycode());
 		parts_msg_push(parts, PARTS_MSG_KEY_UP, "i", VK_LBUTTON);
+		/* [D115] 同一此点击还要以“全屏”身份入队一份：AIN 的
+		 * AFL_Parts_AddWholeMouseLClickEvent 系列把委托注册在 parts_no=0 的
+		 * 函数集上，只有 parts_no==0 的消息才会派发到它们。
+		 * SceneStack@RegisterEvent 注册左键 lambda → SceneStack@Exit →
+		 * IsFinish，是 start screen 推进到标题场景的另一条入口。 */
+		parts_msg_push(NULL, PARTS_MSG_MOUSE_CLICK_AIN,
+				"iii", cur_pos.x, cur_pos.y, click_keycode());
 	}
+}
+
+void PE_UpdateInputState(int passed_time);
+
+/* [D120] 帧心跳的输入阶段。
+ *
+ * sact_Update() 与 vm_frame_pump() 都必须经过这里。此前只有 sact_Update 调
+ * PE_UpdateInputState，而 AIN 在 parts::detail::WaitForClick 这类纯 AIN 等待
+ * 循环里自旋时永远回不到 sact_Update：SDL 事件被 handle_events() 泵进来，却没
+ * 有人跑命中测试，clicked_parts 恒为 0，于是"点一下没反应"随机发生——
+ * 实际取决于那一刻 AIN 恰好停在哪个循环里。 */
+void PE_PumpInput(int passed_time)
+{
+	handle_events();
+	PE_UpdateInputState(passed_time);
 }
 
 void PE_UpdateInputState(int passed_time)
 {
 	Point cur_pos;
-	bool cur_clicking = key_is_down(VK_LBUTTON);
+	/* [D120] 输入窗口没开（AIN 尚未 PartsEngine.BeginInput）时不要把按键
+	 * 脉冲消费掉。parts_update_mouse() 在 !parts_began_click 时直接 return，
+	 * 这一轮拿到的脉冲不会被任何人用掉，却被永久清除——于是"BeginInput
+	 * 之前 0.2 秒到达的点击"必然丢失，表现为随机点不动。
+	 * 留着脉冲，等输入窗口开启后的第一轮再消费。 */
+	bool pulse = parts_began_click && mouse_consume_press_pulse();
+	bool cur_clicking = key_is_down(VK_LBUTTON) || pulse;
 	mouse_get_pos(&cur_pos.x, &cur_pos.y);
+
+	/* [D113] input probe: XSYS4_INPUT_DBG=1 prints the first frames of every
+	 * update so a lost click can be attributed to coordinates, hitbox,
+	 * began_click, or the clickable flag. */
+	static int dbg_n;
+	int dbg = getenv("XSYS4_INPUT_DBG") &&
+		(dbg_n < 40 || dbg_n % 60 == 0 || cur_clicking || prev_clicking || clicked_parts);
+	if (dbg) {
+		dbg_n++;
+		NOTICE("[inp] pos=(%d,%d) clicking=%d pulse=%d began=%d prev=%d down=%d",
+		       cur_pos.x, cur_pos.y, cur_clicking, pulse, parts_began_click,
+		       prev_clicking, click_down_parts);
+	}
 
 	bool hover_consumed = false;
 	bool click_consumed = false;
+	/* [D123] 排序后的候选表，命中与调试打印共用同一顺序。 */
+	int sorted_nr = 0;
+	struct parts **sorted = parts_input_collect(&sorted_nr);
 	struct parts *parts;
-	// Iterate front-to-back (highest z first) for proper cursor consumption
-	PARTS_LIST_FOREACH_REVERSE(parts) {
+	if (dbg) {
+		for (int si = 0; si < sorted_nr; si++) {
+			parts = sorted[si];
+			Rectangle hb = parts->states[PARTS_STATE_DEFAULT].common.hitbox;
+			/* [D123] 命中判定实际用的是"局部 hitbox + 父 global.pos"，
+			 * 只打局部值会误判成"子活动部件都在 0,0 命中不到"。 */
+			int gx = hb.x, gy = hb.y;
+			if (parts->parent) {
+				gx += parts->parent->global.pos.x;
+				gy += parts->parent->global.pos.y;
+			}
+			NOTICE("[inp]   parts=%d pos=(%d,%d) hb=(%d,%d,%d,%d) "
+			       "global=(%d,%d) parent=%d gz=%d click=%d pass=%d show=%d "
+			       "ctrl=%d uc=%s",
+			       parts->no, parts->local.pos.x, parts->local.pos.y,
+			       hb.x, hb.y, hb.w, hb.h, gx, gy,
+			       parts->parent ? parts->parent->no : -1,
+			       parts->global.z, parts->clickable, parts->pass_cursor,
+			       parts->global.show, parts->controller_no,
+			       parts->uc_object ? parts->uc_object : "-");
+		}
+	}
+	// Highest z first: the sorted list is front-to-back.
+	for (int si = 0; si < sorted_nr; si++) {
+		parts = sorted[si];
 		parts_update_mouse(parts, cur_pos, cur_clicking, passed_time,
 				&hover_consumed, &click_consumed);
 	}
@@ -239,7 +402,15 @@ void PE_UpdateInputState(int passed_time)
 		click_down_parts = 0;
 	}
 
-	prev_clicking = cur_clicking;
+	if (dbg && clicked_parts)
+		NOTICE("[inp]   CLICKED parts=%d", clicked_parts);
+	/* [D120] 输入窗口关闭时不要推进"上一次按下状态"。一次点击的按下与抬起
+	 * 可能跨在两个窗口里：按下发生在 A 窗口，抬起发生在 B 窗口。若在窗口
+	 * 之外照样把 prev_clicking 更新成"未按下"，抬起沿就被吃掉了，
+	 * clicked_parts 永远不置位 —— 表现正是"点了没反应，但重试几次偶尔能中"。
+	 * 冻结在窗口内的最后状态，边缘检测只在窗口开的时候前进。 */
+	if (parts_began_click)
+		prev_clicking = cur_clicking;
 	parts_prev_pos = cur_pos;
 }
 
@@ -316,6 +487,11 @@ bool PE_SetClickMissSoundNumber(possibly_unused int sound_no)
 	return true;
 }
 
+bool PE_IsInputBegun(void)
+{
+	return parts_began_click;
+}
+
 void PE_BeginInput(void)
 {
 	parts_began_click = true;
@@ -323,6 +499,10 @@ void PE_BeginInput(void)
 
 void PE_EndInput(void)
 {
+	if (getenv("XSYS4_INPUT_DBG")) {
+		static int n = 0;
+		if (n++ < 30) NOTICE("[inp] EndInput (clicked=%d)", clicked_parts);
+	}
 	parts_began_click = false;
 	clicked_parts = 0;
 	drag_state_reset();
@@ -335,6 +515,12 @@ void PE_SetDrag(int parts_no, bool enable)
 
 int PE_GetClickPartsNumber(void)
 {
+	if (getenv("XSYS4_INPUT_DBG")) {
+		static int n = 0;
+		if (n < 200 && (n < 30 || clicked_parts))
+			NOTICE("[inp] GetClickNumber #%d -> %d", n, clicked_parts);
+		n++;
+	}
 	return clicked_parts;
 }
 

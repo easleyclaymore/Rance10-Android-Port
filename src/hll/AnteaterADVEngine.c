@@ -529,6 +529,22 @@ static void AnteaterADVEngine_ADVLogList_GetADVLogVoice_by_name(int log_no, int 
 	*voice = string_ref(log->voice_names[voice_no]);
 }
 
+/* Rance X 的 AnteaterADVLogList 多一个 GetADVLogVoiceFilter：返回该条语音的
+ * 过滤类型（0 = 不过滤）。Rance10 的 AIN 只声明、尚未在运行期调用到；
+ * 这里按"不过滤"实现，避免链接期变成未实现函数后一旦剧情开跑就 VM_ERROR。 */
+static int ADVLogList_GetADVLogVoiceFilter(int log_no, int voice_no)
+{
+	struct adv_log *log = log_entry(log_no);
+	if (voice_no < 0 || (unsigned)voice_no >= log->nr_voices)
+		return 0;
+	return 0;
+}
+
+/* [ADV-LOGLIST-ALIAS] Rance X 把这套接口放在名为 AnteaterADVLogList 的库里，
+ * 且函数名**没有** ADVLogList_ 前缀（日志里是 `AnteaterADVLogList.Clear`）。
+ * ffi.c 的 library_alias() 只把库名映射过来，函数名不会跟着变，于是 15 个
+ * 函数全部落到 "Unimplemented library function"。这里把不带前缀的名字一并
+ * 导出到同一张表：两边都能解析，不必改 ffi 的查找逻辑。 */
 HLL_LIBRARY(AnteaterADVEngine,
 	    HLL_EXPORT(_PreLink, AnteaterADVEngine_PreLink),
 	    HLL_EXPORT(_ModuleFini, AnteaterADVEngine_ModuleFini),
@@ -551,7 +567,23 @@ HLL_LIBRARY(AnteaterADVEngine,
 	    HLL_EXPORT(ADVSceneKeeper_GetADVScene, ADVSceneKeeper_GetADVScene),
 	    HLL_EXPORT(ADVSceneKeeper_Clear, ADVSceneKeeper_Clear),
 	    HLL_EXPORT(ADVSceneKeeper_Save, ADVSceneKeeper_Save),
-	    HLL_EXPORT(ADVSceneKeeper_Load, ADVSceneKeeper_Load)
+	    HLL_EXPORT(ADVSceneKeeper_Load, ADVSceneKeeper_Load),
+	    /* ---- AnteaterADVLogList 风格的无前缀名字（Rance X） ---- */
+	    HLL_EXPORT(Clear, ADVLogList_Clear),
+	    HLL_EXPORT(AddText, ADVLogList_AddText),
+	    HLL_EXPORT(AddNewLine, ADVLogList_AddNewLine),
+	    HLL_EXPORT(AddNewPage, ADVLogList_AddNewPage),
+	    HLL_EXPORT(AddVoice, ADVLogList_AddVoice),
+	    HLL_EXPORT(SetEnable, ADVLogList_SetEnable),
+	    HLL_EXPORT(IsEnable, ADVLogList_IsEnable),
+	    HLL_EXPORT(GetNumofADVLog, ADVLogList_GetNumofADVLog),
+	    HLL_EXPORT(GetNumofADVLogText, ADVLogList_GetNumofADVLogText),
+	    HLL_EXPORT(GetADVLogText, ADVLogList_GetADVLogText),
+	    HLL_EXPORT(GetNumofADVLogVoice, ADVLogList_GetNumofADVLogVoice),
+	    HLL_EXPORT(GetADVLogVoice, ADVLogList_GetADVLogVoice),
+	    HLL_EXPORT(GetADVLogVoiceFilter, ADVLogList_GetADVLogVoiceFilter),
+	    HLL_EXPORT(Save, ADVLogList_Save),
+	    HLL_EXPORT(Load, ADVLogList_Load)
 	);
 
 static struct ain_hll_function *get_fun(int libno, const char *name)

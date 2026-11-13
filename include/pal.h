@@ -49,12 +49,19 @@ typedef struct IPlatformInfo {
 	const char *(*data_dir)(void);
 } IPlatformInfo;
 
+typedef struct IPlatformMem {
+	/* Resident / peak resident size of this process, in bytes.
+	 * 0 means "not available on this platform". Diagnostic only. */
+	void (*usage)(uint64_t *rss_bytes, uint64_t *peak_bytes);
+} IPlatformMem;
+
 typedef struct Platform {
 	const IPlatformFile *file;
 	const IPlatformClock *clock;
 	const IPlatformThread *thread;
 	const IPlatformNet *net;
 	const IPlatformInfo *info;
+	const IPlatformMem *mem;
 } Platform;
 
 /* Inject the active platform (called once at startup). NULL restores Linux. */

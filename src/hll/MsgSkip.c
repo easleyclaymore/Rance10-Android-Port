@@ -172,7 +172,13 @@ HLL_LIBRARY(MsgSkip,
 	    HLL_EXPORT(GetState, MsgSkip_GetState),
 	    HLL_EXPORT(GetFlag, MsgSkip_GetFlag),
 	    HLL_EXPORT(GetNumofMsg, MsgSkip_GetNumofMsg),
-	    HLL_EXPORT(GetNumofFlag, MsgSkip_GetNumofFlag));
+	    HLL_EXPORT(GetNumofFlag, MsgSkip_GetNumofFlag),
+	    /* Rance X 用 SetAdvFlag/GetAdvFlag 指同一批"已读"标志位（日志里
+	     * `MsgSkip.SetAdvFlag` 一直报未实现）。按别名接到同一张位图上：
+	     * 这两个名字在 Rance10 里目前只声明、运行期尚未调用，接错也只会影响
+	     * ADV 回看是否判为已读，不会动到存档或剧情状态。 */
+	    HLL_EXPORT(SetAdvFlag, MsgSkip_SetFlag),
+	    HLL_EXPORT(GetAdvFlag, MsgSkip_GetFlag));
 
 HLL_QUIET_UNIMPLEMENTED(, void, vmMsgSkip, Init, void *imainsystem);
 
