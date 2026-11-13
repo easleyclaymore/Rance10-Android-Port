@@ -19,6 +19,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include "system4/ain.h"
 #include "vm.h"
 
@@ -100,6 +101,23 @@ static inline void _page_set_var(struct page *page, int i, union vm_value v)
 	if (i < 0 || i >= page->nr_vars)
 		VM_ERROR("Invalid page index: %d", i);
 #endif
+	/* [DBG] XSYS4_WATCH_IFACE=1：盯接口元素数组（struct_type 618）的
+	 * **奇数槽**写入 —— 那是 iface 的第二槽 [vtable 偏移]。
+	 * 用来回答"写的时候明明是 0，为什么读出来是堆槽号"。 */
+	{
+		static int on = -1;
+		if (on < 0)
+			on = getenv("XSYS4_WATCH_IFACE") ? 1 : 0;
+		if (on && page->type == ARRAY_PAGE &&
+		    page->array.struct_type == 618 && (i & 1)) {
+			extern size_t instr_ptr;
+			static int n;
+			if (n++ < 20)
+				NOTICE("[wiface] ip=0x%zX page=%p i=%d old=%d new=%d nr=%d",
+				       instr_ptr, (void *)page, i, page->values[i].i,
+				       v.i, page->nr_vars);
+		}
+	}
 	page->values[i] = v;
 }
 
