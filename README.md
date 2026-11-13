@@ -29,13 +29,14 @@
 | 构建 / 启动 | ✅ `ninja` 无 error，门禁 `check_core_deps.py` PASS |
 | 平台 / 登录 / 网络确认 | ✅ 自动化跑测可稳定通过 |
 | 标题 → 章节 | ✅ 可进第一章（后门直接调用 `Rance10@RunGameChapter1`） |
-| 第一章任务地图 `SceneQuestMap` | ⚠️ 场景装载、出画正常，但对象装载卡在接口派发 |
+| 第一章任务地图 `SceneQuestMap` | ✅ 场景装载、对象装载、出画全通；主线推进到信息对话框（`*ERROR*=0`，32 个活动） |
 | 存档 `GroupSave / GroupLoad` | ✅ 写读闭环，含泛型 `array`；支持官方 **gsave v8**，可载入 PC 原版通关档；离线检查器可验 |
 | 内存 | ✅ 长跑稳定（地图装载约 370 MB，不再失控） |
 
-**当前卡点**：`QuestMapObjectLoader@Load` 在 `0x37CBCA` 报
-`CALLMETHOD: invalid function index -1` —— 接口元素 `[对象槽, vtable 偏移]`
-的偏移是 `-1`，方法派发不出去。取证方式：`XSYS4_DUMP_AT=37CBCA,4`。
+**当前工作重点**：① 开始界面与官方说明书不符（蓝色矩形占位框 vs 红色圆形按钮，
+见 `[UI-START-SCREEN]`）；② 开场剧情未播（见 `[STORY-PHASE]`）。
+主线已无致命错误；接口派发（`CALLMETHOD invalid function index -1`）已于
+D140 修掉，根因是 `A_REF` 复制接口数组时把 vtable 偏移当成结构体引用深拷贝。
 
 未结债务与已证伪的假设都记在根目录的 `TECH_DEBT.md`（不在本仓库内，见「文档」）。
 

@@ -2037,8 +2037,9 @@ static enum opcode execute_instruction(enum opcode opcode)
 		if (rrdbg >= 0 && (long)instr_ptr == rrdbg) {
 			int hs = stack_peek(1).i, pi = stack_peek(0).i;
 			struct page *pg = heap_index_valid(hs) ? heap[hs].page : NULL;
-			NOTICE("[refref] ip=0x%zX page=%d idx=%d type=%d a_type=%d struc=%d rank=%d nr=%d",
-			       instr_ptr, hs, pi, pg ? pg->type : -1, pg ? pg->a_type : -1,
+			NOTICE("[refref] ip=0x%zX ptr=%p page=%d idx=%d type=%d a_type=%d struc=%d rank=%d nr=%d",
+			       instr_ptr, (void*)pg, hs, pi, pg ? pg->type : -1,
+			       pg ? pg->a_type : -1,
 			       pg ? pg->array.struct_type : -1, pg ? pg->array.rank : -1,
 			       pg ? pg->nr_vars : -1);
 			for (int k = 0; pg && k < pg->nr_vars && k < 8; k++) {

@@ -381,6 +381,32 @@ void delete_page(int slot)
 /*
  * Recursively copy a page.
  */
+/* [D140] A_REF -> vm_copy_page() -> copy_page() is how an interface array is
+ * handed from QuestMapObjectViewColletion@InitView to QuestMapObjectLoader@Set
+ * (and then read back by @Load). Interface elements are TWO slots
+ * [object heap slot, vtable offset], but variable_type() reports AIN_STRUCT
+ * for every slot, so the loop below used to deep-copy the odd slot too.
+ * A vtable offset of 0 was fed to heap_get_page(0) and vm_copy_page()
+ * manufactured a brand new page slot in its place -- observed as
+ * [obj, obj+16] in the copy. @Load then computed fno = vtable[offset+3]
+ * with a heap slot number as the index and died with
+ * "CALLMETHOD: invalid function index -1" at 0x37CBCA.
+ *
+ * The odd half is a small integer, never a reference: copy it verbatim.
+ * XSYS4_IFACE_COPY_FIX=0 restores the old behaviour for A/B. */
+static bool page_is_iface_elem_array(struct page *p)
+{
+	static int fix = -1;
+	if (fix < 0) {
+		const char *e = getenv("XSYS4_IFACE_COPY_FIX");
+		fix = (e && *e == '0') ? 0 : 1;
+	}
+	return fix && p->type == ARRAY_PAGE && p->array.rank == 1 &&
+	       p->array.struct_type >= 0 &&
+	       p->array.struct_type < ain->nr_structures &&
+	       ain->structures[p->array.struct_type].is_interface;
+}
+
 struct page *copy_page(struct page *src)
 {
 	if (!src)
@@ -388,8 +414,29 @@ struct page *copy_page(struct page *src)
 	struct page *dst = alloc_page(src->type, src->index, src->nr_vars);
 	dst->array = src->array;
 
+	bool iface = page_is_iface_elem_array(src);
 	for (int i = 0; i < src->nr_vars; i++) {
+		if (iface && (i & 1)) {
+			dst->values[i] = src->values[i];
+			continue;
+		}
 		dst->values[i] = vm_copy(src->values[i], variable_type(src, i, NULL, NULL));
+	}
+	if (iface && getenv("XSYS4_IFACE_COPY_DBG")) {
+		static int n;
+		if (n++ < 4)
+			NOTICE("[cpiface] src=%p dst=%p nr=%d st=%d "
+			       "src[0..3]=%d,%d,%d,%d dst[0..3]=%d,%d,%d,%d",
+			       (void*)src, (void*)dst, src->nr_vars,
+			       src->array.struct_type,
+			       src->nr_vars > 0 ? src->values[0].i : -9999,
+			       src->nr_vars > 1 ? src->values[1].i : -9999,
+			       src->nr_vars > 2 ? src->values[2].i : -9999,
+			       src->nr_vars > 3 ? src->values[3].i : -9999,
+			       src->nr_vars > 0 ? dst->values[0].i : -9999,
+			       src->nr_vars > 1 ? dst->values[1].i : -9999,
+			       src->nr_vars > 2 ? dst->values[2].i : -9999,
+			       src->nr_vars > 3 ? dst->values[3].i : -9999);
 	}
 	return dst;
 }
@@ -507,7 +554,7 @@ static bool iface_element_array(int struct_type)
 	static int fix = -1;
 	if (fix < 0) {
 		const char *e = getenv("XSYS4_IFACE_ARR_FIX");
-		fix = (e && *e == "0") ? 0 : 1;
+		fix = (e && *e == '0') ? 0 : 1;
 	}
 	return fix && struct_type >= 0 && struct_type < ain->nr_structures &&
 	       ain->structures[struct_type].is_interface;
@@ -581,7 +628,7 @@ struct page *realloc_array(struct page *src, int rank, union vm_value *dimension
 	static int realloc_fix = -1;
 	if (realloc_fix < 0) {
 		const char *e = getenv("XSYS4_IFACE_REALLOC_FIX");
-		realloc_fix = (e && *e == "0") ? 0 : 1;
+		realloc_fix = (e && *e == '0') ? 0 : 1;
 	}
 	bool iface_elem = realloc_fix && rank == 1 && iface_element_array(struct_type);
 	int want_slots = max(0, dimensions->i) * (iface_elem ? 2 : 1);
