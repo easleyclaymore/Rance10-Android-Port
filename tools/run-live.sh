@@ -171,13 +171,44 @@ echo "SCALE=$SCALE OFF=${OFF_X},${OFF_Y} WIN=${WIN_W}x${WIN_H} VIEW=${VIEW_W}x${
 
 click() { # click <view_x> <view_y> <button>
     local wx wy
-    read -r wx wy <<< "$(awk -v x="$1" -v y="$2" -v s="$SCALE" \
-        -v ox="$OFF_X" -v oy="$OFF_Y" 'BEGIN{ printf "%d %d", ox+x*s, oy+y*s }')"
+    # [D149] 每次点击**重新解析窗口几何**，不再假设窗口固定在 (0,0)/1920x1080。
+    #
+    # 症状：跑测跑到某个场景之后再点，`[inp] pos=` 里的坐标再也不变。
+    # `mouse_get_pos()` 是直接查 `SDL_GetMouseState()`，不是缓存，所以这只可能
+    # 意味着指针真没动。用 `xdotool getmouselocation` 一验就露馅：
+    #
+    #   CLICK view=600,700 ... ptr=x:600 y:700 window:1135      ← 指针到了
+    #   （游戏窗口是 0x200034 = 2097204）                        ← 但没落在游戏上
+    #
+    # 也就是窗口在中途换了位置/尺寸（Xvfb 无 WM，引擎重设窗口时没人补焦点与几何），
+    # 而脚本用的是启动时算好的 SCALE/OFF，之后每次点击都点到别处去了。
+    local gx=0 gy=0 gw="$WIN_W" gh="$WIN_H"
     if [ -n "$WID" ]; then
-        xdotool mousemove --window "$WID" "$wx" "$wy" >/dev/null 2>&1 || \
-            xdotool mousemove "$wx" "$wy" >/dev/null 2>&1 || true
-    else
-        xdotool mousemove "$wx" "$wy" >/dev/null 2>&1 || true
+        local geom
+        geom=$(xdotool getwindowgeometry --shell "$WID" 2>/dev/null) || true
+        if [ -n "$geom" ]; then
+            gx=$(echo "$geom" | awk -F= '/^X=/{print $2}')
+            gy=$(echo "$geom" | awk -F= '/^Y=/{print $2}')
+            gw=$(echo "$geom" | awk -F= '/^WIDTH=/{print $2}')
+            gh=$(echo "$geom" | awk -F= '/^HEIGHT=/{print $2}')
+        fi
+    fi
+    read -r wx wy <<< "$(awk -v x="$1" -v y="$2" -v ww="$gw" -v wh="$gh" \
+        -v vw="$VIEW_W" -v vh="$VIEW_H" -v gx="$gx" -v gy="$gy" 'BEGIN{
+            s = ww/vw < wh/vh ? ww/vw : wh/vh;
+            ox = (ww-vw*s)/2; oy = (wh-vh*s)/2;
+            printf "%d %d", gx+ox+x*s, gy+oy+y*s
+        }')"
+    if [ -n "$WID" ]; then
+        xdotool windowfocus --sync "$WID" >/dev/null 2>&1 || true
+    fi
+    xdotool mousemove "$wx" "$wy" >/dev/null 2>&1 || true
+    if [ -n "${XSYS4_CLICK_DBG:-}" ]; then
+        echo "CLICK view=$1,$2 win=$wx,$wy btn=$3 geom=${gx},${gy},${gw}x${gh} wid=$WID ptr=$(xdotool getmouselocation 2>/dev/null | tr '\n' ' ')" >&2
+        # 落点窗口 != 游戏窗口时，把整棵窗口树打出来：Xvfb 没有 WM，
+        # 多出来的那层是谁只能靠树看。
+        echo "--- xwininfo tree ---" >&2
+        xwininfo -root -children 2>/dev/null | sed -n '5,14p' >&2
     fi
     xdotool mousedown "$3" >/dev/null 2>&1 || true
     sleep 0.12
