@@ -25,6 +25,9 @@
 #include "vm.h"
 #include "xsystem4.h"
 #include "system4/ain.h"
+/* vm.h hides instr_ptr behind VM_PRIVATE; the HLL layer only needs to read
+ * it for diagnostics. Declared here instead of widening the public header. */
+extern size_t instr_ptr;
 
 /* Defined next to the Array predicate helpers below; Array_Last_ needs them
  * before that point in the file. */
@@ -458,7 +461,7 @@ static void Array_Free_(struct page **a)
 	static int fix = -1;
 	if (fix < 0) {
 		const char *e = getenv("XSYS4_ARRAY_FREE_FIX");
-		fix = (e && *e == "0") ? 0 : 1;
+		fix = (e && *e == '0') ? 0 : 1;
 	}
 	if (!fix || !a || !*a)
 		return;
@@ -952,6 +955,10 @@ static void Array_PushBack_(struct page **a, uint64_t value)
 		at = p->a_type;
 	}
 	int st = p->array.struct_type;
+	/* p is invalidated by realloc_array(); snapshot everything the probe
+	 * needs before the call. */
+	int prank = p->array.rank;
+	struct page *pptr = p;
 	bool iface = arr_is_iface_elems(p);
 	union vm_value dim = { .i = arr_want_elems(p, old_n + (iface ? 2 : 1)) };
 	struct page *np = realloc_array(p, 1, &dim, at, st, false);
@@ -971,8 +978,11 @@ static void Array_PushBack_(struct page **a, uint64_t value)
 		if (getenv("XSYS4_IFACE_PUSH_DBG")) {
 			static int cnt;
 			if (cnt++ < 200)
-				NOTICE("[ipush] st=%d value=%d -> obj=%d off=%d at slot %d",
-				       st, (int)value, obj, off, old_n);
+				NOTICE("[ipush] ip=0x%zX p=%p np=%p st=%d rank=%d at=%d "
+				       "vlo=%d vhi=%d -> obj=%d off=%d slot=%d/%d iface=%d",
+				       instr_ptr, (void*)pptr, (void*)np, st, prank, at,
+				       (int)(uint32_t)value, (int)(uint32_t)(value >> 32),
+				       obj, off, old_n, np ? np->nr_vars : -1, (int)iface);
 		}
 		np->values[old_n].i = obj;
 		if (old_n + 1 < np->nr_vars)
@@ -983,9 +993,10 @@ static void Array_PushBack_(struct page **a, uint64_t value)
 	if (getenv("XSYS4_IFACE_PUSH_DBG") && iface) {
 		/* 写完立刻回读：区分"写错"与"写对但后来被覆盖"。 */
 		static int cnt2;
-		if (cnt2++ < 4)
-			NOTICE("[ipush2] slot %d..%d = %d,%d (nr=%d)",
-			       old_n, old_n + 1, np->values[old_n].i,
+		if (cnt2++ < 200 && st == 618)
+			NOTICE("[ipush2] p=%p np=%p slot %d..%d = %d,%d (nr=%d)",
+			       (void*)pptr, (void*)np, old_n, old_n + 1,
+			       np->values[old_n].i,
 			       old_n + 1 < np->nr_vars ? np->values[old_n + 1].i : -9999,
 			       np->nr_vars);
 	}

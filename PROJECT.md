@@ -6,30 +6,32 @@
 
 ## 状态
 
-**进行中，尚未通关。** 启动链、标题界面、第一章任务地图都已跑通并出画；
-存档写读闭环；内存长跑稳定。当前卡在任务地图的对象装载。
+**进行中，尚未通关。** 启动链、标题界面、第一章任务地图（含对象装载）都已跑通
+并出画；存档写读闭环；内存长跑稳定；主线无 `*ERROR*`。当前在做界面与剧情的正确性。
 
 | 环节 | 状态 |
 |---|---|
 | 启动链 / 平台 / 登录 | ✅ `*ERROR*=0`，零未实现 HLL |
 | 标题 → 第一章 | ✅ 可用后门直接调用 `Rance10@RunGameChapter1`(fno 22543) |
-| 第一章任务地图 `SceneQuestMap` | ⚠️ 场景装载、出画正常；`QuestMapObjectLoader@Load` 卡在接口派发 |
+| 第一章任务地图 `SceneQuestMap` | ✅ 场景装载、`QuestMapObjectLoader@Load`、出画全通；推进到 `SceneInformationDialog` |
 | 存档 `GroupSave / GroupLoad` | ✅ 泛型数组写读对称，离线检查器可验 |
 | 内存 | ✅ 地图装载 RSS 约 370 MB，不再失控 |
 
-**当前卡点**：`CALLMETHOD: invalid function index -1`（`0x37CBCA`）。
-接口元素 `[对象槽, vtable 偏移]` 的偏移为 `-1`，派发不到方法。
-取证：`XSYS4_DUMP_AT=37CBCA,4`（原生断点，打印局部变量与 AIN 栈）。
+**当前工作重点**：开始界面出画（`[UI-START-SCREEN]`，以官方说明书
+`game/Manual/img/rm02.jpg` 为基准）与开场剧情未播（`[STORY-PHASE]`）。
 
-**最近解决的三个大问题**（2026-11-13）：
+**最近解决的四个大问题**（2026-11-13）：
 
 - **D136 接口元素数组**：`AIN_IFACE` 元素是 2 槽、字节码按 `i*2` 索引，
   分配/增长/计数三处必须一致 —— 只补一处会出现"数组翻倍"式内存雪崩。
 - **D138 内存风暴**：`Array.Free` 曾是空桩（当 Clear 用则不生效），
   加上 `PushBack` 传槽数而 `realloc_array` 按元素数再乘 2，进地图 RSS 涨到 9.5 GB
   触发系统 OOM。修后稳定在 370 MB。
+- **D139 / D140 存档与接口派发**：支持官方 gsave v8（可载入 PC 原版通关档）；
+  `A_REF` → `copy_page()` 复制接口数组时奇槽（vtable 偏移）被当成结构体引用深拷贝，
+  导致 `0x37CBCA` 派发失败 —— 改为奇槽原样复制后主线推进到信息对话框。
 - **跑测夹具**：存档目录改为显式 `--save-folder`；跑测强制独立 Xvfb + 内存上限
-  （`run-live.sh` 现在拒绝在真实桌面运行）。
+  （`run-live.sh` 现在拒绝在真实桌面运行），截图/`xdotool --sync` 加超时。
 
 累计修复点 >110 个；`[HACK]` 标记集中在 `src/hll/PartsEngine.c`
 （Activity 子系统整段 stub）。**主分支交付物不含 `[HACK]` 代码。**
