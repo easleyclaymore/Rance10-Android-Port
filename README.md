@@ -30,7 +30,7 @@
 | 平台 / 登录 / 网络确认 | ✅ 自动化跑测可稳定通过 |
 | 标题 → 章节 | ✅ 可进第一章（后门直接调用 `Rance10@RunGameChapter1`） |
 | 第一章任务地图 `SceneQuestMap` | ⚠️ 场景装载、出画正常，但对象装载卡在接口派发 |
-| 存档 `GroupSave / GroupLoad` | ✅ 写读闭环，含泛型 `array`；离线检查器可验 |
+| 存档 `GroupSave / GroupLoad` | ✅ 写读闭环，含泛型 `array`；支持官方 **gsave v8**，可载入 PC 原版通关档；离线检查器可验 |
 | 内存 | ✅ 长跑稳定（地图装载约 370 MB，不再失控） |
 
 **当前卡点**：`QuestMapObjectLoader@Load` 在 `0x37CBCA` 报
@@ -109,6 +109,7 @@ build/src/xsystem4
 `Rance10_Port/tools/`（相对本仓库的 `../tools/`）里有只读 AIN / 存档的小工具：
 `ain_at`（反汇编、按名字查函数、库函数签名、结构体成员）、`gsave_dump`（存档能否读回）、
 `ain_xref`（交叉引用）等。它们**不启动游戏、不需要 X**，秒级返回 —— 排查问题应当先用它们。
+子模块的本地改动固化在 `tools/patches/`，`git submodule update` 后需重新应用。
 
 ```bash
 tools/build.sh

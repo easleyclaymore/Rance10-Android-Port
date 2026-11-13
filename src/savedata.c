@@ -719,8 +719,21 @@ int load_globals_from_gsave(struct gsave *save, const char *keyname, const char 
 		group_name = "";
 	if (!save->group)
 		save->group = strdup("");
-	if (strcmp(group_name, save->group))
-		VM_ERROR("Attempted to load save data with wrong group name: '%s'", display_sjis0(group_name));
+	if (strcmp(group_name, save->group)) {
+		/* [D139] 原版日文存档的 group 是 Shift-JIS（コレクション），
+		 * 本地化 AIN 的 global group 是 GBK（收藏），两者按字节永远不等。
+		 * 这是语言差异，不是存档损坏。默认仍严格拒绝；做「导入 PC 原版
+		 * 通关档」这类实验时可设 XSYS4_SAVE_GROUP_ANY=1 降为告警。 */
+		static int group_any = -1;
+		if (group_any < 0)
+			group_any = getenv("XSYS4_SAVE_GROUP_ANY") ? 1 : 0;
+		if (!group_any)
+			VM_ERROR("Attempted to load save data with wrong group name: '%s'",
+				 display_sjis0(group_name));
+		WARNING("save group mismatch (expected '%s', file has '%s'); "
+			"accepted because XSYS4_SAVE_GROUP_ANY=1",
+			display_sjis0(group_name), display_sjis0(save->group));
+	}
 
 	for (struct gsave_global *g = save->globals; g < save->globals + save->nr_globals; g++) {
 		int global_index = ain_get_global(ain, g->name);

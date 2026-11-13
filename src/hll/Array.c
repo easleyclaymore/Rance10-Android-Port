@@ -966,11 +966,28 @@ static void Array_PushBack_(struct page **a, uint64_t value)
 			obj = (int)value;
 			off = 0;
 		}
+		/* [DBG] XSYS4_IFACE_PUSH_DBG=1：接口数组的每次追加都记一行。
+		 * 若这里从不出现，说明该数组不是 Array.PushBack 建的。 */
+		if (getenv("XSYS4_IFACE_PUSH_DBG")) {
+			static int cnt;
+			if (cnt++ < 200)
+				NOTICE("[ipush] st=%d value=%d -> obj=%d off=%d at slot %d",
+				       st, (int)value, obj, off, old_n);
+		}
 		np->values[old_n].i = obj;
 		if (old_n + 1 < np->nr_vars)
 			np->values[old_n + 1].i = off;
 	} else {
 		np->values[old_n] = *(union vm_value *)&value;
+	}
+	if (getenv("XSYS4_IFACE_PUSH_DBG") && iface) {
+		/* 写完立刻回读：区分"写错"与"写对但后来被覆盖"。 */
+		static int cnt2;
+		if (cnt2++ < 4)
+			NOTICE("[ipush2] slot %d..%d = %d,%d (nr=%d)",
+			       old_n, old_n + 1, np->values[old_n].i,
+			       old_n + 1 < np->nr_vars ? np->values[old_n + 1].i : -9999,
+			       np->nr_vars);
 	}
 	/* The container becomes an independent owner of a heap object.
 	 * Take a reference for it: the caller still owns its own reference

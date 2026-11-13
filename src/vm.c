@@ -1921,6 +1921,33 @@ static enum opcode execute_instruction(enum opcode opcode)
 	case REF: {
 		// Dereference a reference to a value.
 		int _hidx = stack_peek(1).i, _pidx = stack_peek(0).i;
+		/* [DBG] XSYS4_REF_AT=<hex ip>：在这一条 REF 上无条件打印基址/下标
+		 * 以及基址页的形状。查"接口 vtable 取方法号"这类问题必须看这个：
+		 * 越界探针只在出错时打印，而返回 -1 的情况（下标合法但槽是 -1）
+		 * 恰恰是最常见的失败形态。 */
+		{
+			static long ref_at = -2;
+			if (ref_at == -2) {
+				const char *e = getenv("XSYS4_REF_AT");
+				ref_at = (e && *e) ? strtol(e, NULL, 16) : -1;
+			}
+			if (ref_at >= 0 && (long)instr_ptr == ref_at) {
+				struct page *bp = (_hidx > 0 && (size_t)_hidx < heap_size)
+						  ? heap[_hidx].page : NULL;
+				static int nref;
+				if (nref++ < 12)
+					NOTICE("[refat] ip=0x%zX base=%d(%s nr=%d idx=%d a_type=%d) "
+					       "index=%d -> slot=%d",
+					       instr_ptr, _hidx,
+					       bp ? (bp->type == STRUCT_PAGE ? "struct"
+						   : bp->type == ARRAY_PAGE ? "array" : "page")
+						  : "none",
+					       bp ? bp->nr_vars : -1, bp ? bp->index : -1,
+					       bp ? bp->a_type : -1, _pidx,
+					       (bp && _pidx >= 0 && _pidx < bp->nr_vars)
+					       ? bp->values[_pidx].i : -9999);
+			}
+		}
 		union vm_value *_v = stack_pop_var();
 		if (getenv("XSYS4_MGRBT") && instr_ptr >= 0x53f0 && instr_ptr <= 0x5424) {
 			struct page *_tp = (_hidx > 0 && (size_t)_hidx < heap_size) ? heap[_hidx].page : NULL;
