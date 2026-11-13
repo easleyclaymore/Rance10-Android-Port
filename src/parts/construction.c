@@ -556,6 +556,34 @@ bool PE_BuildPartsConstructionProcess(int parts_no, int state)
 	return parts_build_construction_process(parts, cproc);
 }
 
+/* [D146] `Parts_BuildPartsConstructionProcessThread`：Rance10 用它合成卡片
+ * 正面（`CardConstructorFront::CreateWithAtk` → `PlayerCardFlipView@Load`）。
+ * 真实语义是把合成丢进后台线程，调用方随后轮询
+ * `Parts_GetPartsConstructionProcessCount` 等它做完。
+ *
+ * 我们不做线程（GL 上下文不是线程安全的，而且在 llvmpipe 下这点小合成
+ * 的耗时可以忽略）：同步建完，count 立刻变 0，轮询循环第一轮就退出。
+ * 副作用是主线程多花几毫秒，换来完全确定的时序。 */
+bool PE_BuildPartsConstructionProcessThread(int parts_no, int state)
+{
+	return PE_BuildPartsConstructionProcess(parts_no, state);
+}
+
+int PE_GetPartsConstructionProcessCount(int parts_no, int state)
+{
+	if (!parts_state_valid(--state))
+		return 0;
+	struct parts *parts = parts_get(parts_no);
+	struct parts_construction_process *cproc = parts_get_construction_process(parts, state);
+	if (!cproc)
+		return 0;
+	int n = 0;
+	struct parts_cp_op *op;
+	TAILQ_FOREACH(op, &cproc->ops, entry)
+		n++;
+	return n;
+}
+
 bool parts_clear_construction_process(struct parts_construction_process *cproc)
 {
 	while (!TAILQ_EMPTY(&cproc->ops)) {
