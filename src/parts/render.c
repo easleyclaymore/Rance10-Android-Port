@@ -128,11 +128,15 @@ static bool uc_skip_dup_text(struct parts *parts, struct parts_text *t)
 	}
 	if (!fix || parts->uc_object)
 		return false;
-	if (t->common.w <= 0 || t->common.h != 16)
+	if (!parts->text_plain || !*parts->text_plain)
 		return false;
+	/* 只跳过"内容与某个可见内建控件标签完全相同"的那一层。
+	 * 早先用 t->common.h == 16 当判据，结果把任务面板正文
+	 * （同样是 16px）也吞掉了 —— 表现为"事件有框没字"。 */
 	struct parts *p;
 	PARTS_LIST_FOREACH(p) {
-		if (p->uc_object && p->global.show)
+		if (p->uc_object && p->global.show && p->uc_label && *p->uc_label &&
+		    strcmp(p->uc_label, parts->text_plain) == 0)
 			return true;
 	}
 	return false;
