@@ -303,6 +303,25 @@ static union vm_value *stack_pop_var(void)
 {
 	int32_t page_index = stack_pop().i;
 	int32_t heap_index = stack_pop().i;
+	/* [DBG] XSYS4_WATCH_IFACE=1：记录"即将通过指针读写 618 接口数组奇槽"
+	 * 的指令。ASSIGN / S_ASSIGN 走 stack_pop_var()[0] = v 直写，不经过
+	 * page_set_var，所以只盯 page_set_var 会漏掉真正的写入者。 */
+	{
+		static int on = -1;
+		if (on < 0)
+			on = getenv("XSYS4_WATCH_IFACE") ? 1 : 0;
+		if (on && heap_index_valid(heap_index) && heap[heap_index].page) {
+			struct page *wp = heap[heap_index].page;
+			if (wp->type == ARRAY_PAGE && wp->array.struct_type == 618 &&
+			    page_index >= 0 && page_index < wp->nr_vars && (page_index & 1)) {
+				static int n;
+				if (n++ < 30)
+					NOTICE("[wiface2] ip=0x%zX heap=%d idx=%d old=%d nr=%d",
+					       instr_ptr, heap_index, page_index,
+					       wp->values[page_index].i, wp->nr_vars);
+			}
+		}
+	}
 	/* D52: tolerate null / never-allocated references during Rance10's
 	 * Parts UI init (e.g. ResetPartsUpdateEventLayerID @0x1f16f4).
 	 * Both a bad heap_index and a 0-slot ARRAY_PAGE yield a -1 sentinel
