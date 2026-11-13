@@ -14,13 +14,16 @@ PORT="${RANCE10_ROOT:-$(cd "$(dirname "$(realpath "$0")")/../.." && pwd)}"
 export XSYS4_DATA_DIR="${XSYS4_DATA_DIR:-$PORT/xsystem4}"
 # [N100] desktop Linux: force the x11 EGL platform so SDL really creates a window.
 # Termux keeps its own Termux:X11 + zink/Turnip configuration untouched.
-if [ ! -d /data/data/com.termux ]; then
+# [L3] see safe_run.sh: RANCE10_PLATFORM / TERMUX_VERSION, no absolute path.
+PLAT="${RANCE10_PLATFORM:-}"
+if [ -z "$PLAT" ] && [ -n "${TERMUX_VERSION:-}" ]; then PLAT=termux; fi
+if [ "$PLAT" != termux ]; then
     export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-x11}"
     export EGL_PLATFORM="${EGL_PLATFORM:-x11}"
 fi
 GAME="$PORT/game"
 BIN="$PORT/xsystem4/build/src/xsystem4"
-LOG="${RANCE10_LOG:-/tmp/rance10_run.log}"
+LOG="${RANCE10_LOG:-${TMPDIR:-.}/rance10_run.log}"
 MAX=$((50 * 1024 * 1024))
 
 if [ $# -ge 1 ]; then export DISPLAY="$1"; fi

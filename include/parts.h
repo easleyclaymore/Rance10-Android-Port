@@ -146,6 +146,11 @@ bool PE_SaveWithoutHideParts(struct page **buffer);
 bool PE_Load(struct page **buffer);
 int PE_AddController(int index);
 void PE_RemoveController(struct page **erase_number_list, int index);
+/* [D129] 图层 ID ↔ 栈下标的边界转换。AIN 侧保存的是 ID，内部渲染/命中
+ * 用的是下标；只有跨 HLL 边界（AddLayer/GetActiveLayer/SetActiveLayer/
+ * EraseLayer/SetComponentShow/GetLayerID/GetLayerIndex）才需要转换。 */
+int PE_get_controller_id(int index);
+int PE_get_controller_index(int id);
 bool PE_CreateParts3DLayerPluginID(int parts_no, int state);
 int PE_GetParts3DLayerPluginID(int parts_no, int state);
 bool PE_ReleaseParts3DLayerPluginID(int parts_no, int state);

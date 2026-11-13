@@ -88,8 +88,44 @@ void heap_init(void)
 
 int heap_watch_slot(void);
 
+/* [MEM] Lifetime alloc/free counters, printed by [mem] (XSYS4_MEM_STAT).
+ * The gap between the two is what D95 costs: every freed slot is retired
+ * forever, so the slot array only ever grows. */
+size_t heap_alloc_count = 0;
+size_t heap_free_count = 0;
+
+/* [MEM-GUARD] Hard ceiling on LIVE slots. Normal gameplay peaks around
+ * 40k; the map-load allocation storm ([MAP-LOAD-STORM]) drives it past 800k
+ * within 13 s and keeps going, which is what exhausts memory and gets the
+ * process killed by the OS. With slot recycling on, heap_free_ptr counts
+ * live slots exactly, so this is a precise measure. Failing loudly at a
+ * small, predictable size turns "eats all RAM" into a reproducible VM error
+ * that names the offending function.
+ * XSYS4_HEAP_LIVE_LIMIT=0 disables the guard (not recommended). */
+#define HEAP_LIVE_LIMIT_DEFAULT 500000
+
+static size_t heap_live_limit(void)
+{
+	static long limit = -1;
+	if (limit < 0) {
+		const char *e = getenv("XSYS4_HEAP_LIVE_LIMIT");
+		limit = (e && *e) ? atol(e) : HEAP_LIVE_LIMIT_DEFAULT;
+	}
+	return limit > 0 ? (size_t)limit : 0;
+}
+
 int32_t heap_alloc_slot(enum vm_pointer_type type)
 {
+	heap_alloc_count++;
+	{
+		size_t lim = heap_live_limit();
+		if (lim && heap_free_ptr >= lim)
+			VM_ERROR("live object limit exceeded (%zu slots, limit %zu): "
+				 "runaway allocation, fno=%d ip=0x%zX. See "
+				 "[MAP-LOAD-STORM] in TECH_DEBT.md; "
+				 "raise with XSYS4_HEAP_LIVE_LIMIT",
+				 heap_free_ptr, lim, hll_current_fno(), instr_ptr);
+	}
 	if (heap_free_ptr >= heap_size) {
 		heap_grow(heap_size+HEAP_ALLOC_STEP);
 	}
@@ -147,13 +183,59 @@ static void heap_free_slot(int32_t slot)
 	 * Cost is a few MB over a session; the real fix is to find the unbalanced
 	 * unref and restore recycling. */
 	heap[slot].seq = 0;
-	/* Keep the (now released) payload pointer so stale holders read a dead but
-	 * mapped page instead of a NULL/aliased one. */
-	(void)slot;
+	/* [L1] XSYS4_RECYCLE_SLOTS=1 restores slot recycling for controlled A/B
+	 * experiments. Default OFF: D134 removed the bulk of the double frees,
+	 * but any remaining stale holder would now read a freshly reused slot
+	 * (different type, different object) instead of a dead one. Flip the
+	 * default only after [ARRAY-COPY] and the party-screen core dump are
+	 * cleared and a full baseline stays identical. */
+	heap_free_count++;
+	/* [MEM] 2026-11-13: recycling is ON by default. D95's comment claimed the
+	 * leak costs "a few MB over a session"; measurement says otherwise —
+	 * 4096 -> 348160 slots in 47 s of play (about 7k allocs/s, ~390 MB/hour
+	 * of slot array plus the free stack), which is what eventually pushes a
+	 * long session into swap and then OOM. D134 removed the double-free root
+	 * cause this hack was guarding, and the A/B (recA/recFull) showed
+	 * identical metrics with recycling on. XSYS4_RECYCLE_SLOTS=0 restores
+	 * the old never-recycle behaviour if a stale holder shows up. */
+	static int recycle = -1;
+	if (recycle < 0) {
+		const char *e = getenv("XSYS4_RECYCLE_SLOTS");
+		recycle = (e && !strcmp(e, "0")) ? 0 : 1;
+	}
+	if (recycle && slot > 0 && heap_free_ptr > 1)
+		heap_free_stack[--heap_free_ptr] = slot;
 }
 
 static void heap_double_free(int32_t slot)
 {
+	/* [D133] XSYS4_DF_DBG=1: log the *caller* that over-unrefs.
+	 * instr_ptr is the current AIN instruction and call_stack's top gives the
+	 * enclosing fno, so the ip histogram tells us which opcode path unrefs a
+	 * slot it does not own. Default off and capped: one run produced 13720
+	 * double frees, which would otherwise bury the rest of the log. */
+	static int df_on = -1;
+	static int df_n = 0;
+	if (df_on < 0)
+		df_on = getenv("XSYS4_DF_DBG") ? 1 : 0;
+	if (df_on) {
+		int max = 400;
+		const char *e = getenv("XSYS4_DF_MAX");
+		if (e && *e)
+			max = atoi(e);
+		df_n++;
+		if (df_n <= max) {
+			struct page *pg = heap[slot].type == VM_PAGE ? heap[slot].page : NULL;
+			NOTICE("[df] n=%d slot=%d ref=%d seq=%u type=%s ip=0x%zX fno=%d csp=%d page=%p nr=%d hll=%d",
+			       df_n, slot, heap[slot].ref, heap[slot].seq,
+			       vm_ptrtype_string(heap[slot].type), instr_ptr,
+			       call_stack_ptr > 0 ? call_stack[call_stack_ptr-1].fno : -1,
+			       call_stack_ptr, (void *)pg, pg ? pg->nr_vars : -1,
+			       hll_current_fno());
+		} else if (df_n % 2000 == 0) {
+			NOTICE("[df] ... %d double frees so far (detail capped at %d)", df_n, max);
+		}
+	}
 #ifdef DEBUG_HEAP
 		WARNING("double free of slot %d (%s)\nOriginally allocated at %X\nOriginally freed at %X",
 			 slot, vm_ptrtype_string(heap[slot].type),
@@ -226,6 +308,19 @@ void heap_unref(int slot)
 		heap[slot].ref--;
 		return;
 	}
+	/* [D134] The fatal release (ref 1 -> 0). Pair with delete_page_vars()'s
+	 * [df-free] holder line to tell "which page" from "which instruction". */
+	static int free_dbg = -1;
+	if (free_dbg < 0)
+		free_dbg = getenv("XSYS4_DF_FREE_DBG") ? 1 : 0;
+	if (free_dbg && slot == heap_watch_slot()) {
+		struct page *pg = heap[slot].type == VM_PAGE ? heap[slot].page : NULL;
+		NOTICE("[df-free] fatal slot=%d ref=%d ip=0x%zX fno=%d csp=%d pg=%p ptype=%d idx=%d nr=%d",
+		       slot, heap[slot].ref, instr_ptr,
+		       call_stack_ptr > 0 ? call_stack[call_stack_ptr-1].fno : -1,
+		       call_stack_ptr, (void *)pg, pg ? pg->type : -1,
+		       pg ? pg->index : -1, pg ? pg->nr_vars : -1);
+	}
 #ifdef DEBUG_HEAP
 	heap[slot].free_addr = instr_ptr;
 #endif
@@ -285,19 +380,12 @@ void exit_unref(int slot)
 				       slot, (void*)page, page->a_type, page->nr_vars,
 				       page->array.struct_type);
 			for (int i = 0; i < page->nr_vars; i++) {
-				switch (variable_type(page, i, NULL, NULL)) {
-				case AIN_STRING:
-				case AIN_STRUCT:
-				case AIN_DELEGATE:
-				case AIN_ARRAY_TYPE:
-				case AIN_REF_TYPE:
-					if (page->values[i].i == -1)
-						break;
-					exit_unref(page->values[i].i);
-					break;
-				default:
-					break;
-				}
+				/* [L1] Same ownership predicate as variable_fini(). */
+				if (!variable_owns_ref(variable_type(page, i, NULL, NULL)))
+					continue;
+				if (page->values[i].i == -1)
+					continue;
+				exit_unref(page->values[i].i);
 			}
 			free_page(page);
 		}
@@ -337,8 +425,15 @@ struct page *heap_get_page(int index)
 	 * parts::AddErasingLayerEvent / CModeMark@Init). Callers already handle
 	 * NULL. Real fix: keep the delegate alive until the last holder drops it. */
 	if (unlikely(!page_index_valid(index))) {
-		WARNING("Invalid page index: %d (type=%d)", index,
-			heap_index_valid(index) ? heap[index].type : -1);
+		/* [L1] D96 assumes "callers already handle NULL"; the party-screen
+		 * core dump in logs/live_fullA.log shows at least one does not.
+		 * Carry the AIN instruction and enclosing fno in the existing
+		 * warning so ain_at atf:<ip> can name that caller directly. */
+		WARNING("Invalid page index: %d (type=%d) ip=0x%zX fno=%d csp=%d",
+			index, heap_index_valid(index) ? heap[index].type : -1,
+			instr_ptr,
+			call_stack_ptr > 0 ? call_stack[call_stack_ptr-1].fno : -1,
+			call_stack_ptr);
 		return NULL;
 	}
 	return heap[index].page;

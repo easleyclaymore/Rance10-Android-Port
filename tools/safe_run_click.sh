@@ -13,8 +13,12 @@ MAX_BYTES="${MAX_LOG_BYTES:-20000000}"
 ROOT="${RANCE10_ROOT:-$(cd "$(dirname "$(realpath "$0")")/../.." && pwd)}"
 export XSYS4_DATA_DIR="${XSYS4_DATA_DIR:-$ROOT/xsystem4}"
 # [N100] see safe_run.sh: force x11 EGL/SDL so an X window exists and clicks land.
+# [L3] see safe_run.sh: platform from RANCE10_PLATFORM / TERMUX_VERSION,
+# never a hardcoded /data/data path.
+PLAT="${RANCE10_PLATFORM:-}"
+if [ -z "$PLAT" ] && [ -n "${TERMUX_VERSION:-}" ]; then PLAT=termux; fi
 if [ -z "${RANCE10_DISPLAY_MODE:-}" ]; then
-    if [ -d /data/data/com.termux ]; then RANCE10_DISPLAY_MODE=termux
+    if [ "$PLAT" = termux ]; then RANCE10_DISPLAY_MODE=termux
     else RANCE10_DISPLAY_MODE=x11; fi
 fi
 if [ "$RANCE10_DISPLAY_MODE" = x11 ]; then

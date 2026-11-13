@@ -12,8 +12,12 @@ export XSYS4_DATA_DIR="${XSYS4_DATA_DIR:-$ROOT/xsystem4}"
 # [N100] Xvfb has no DRI3; mesa falls back to surfaceless EGL and SDL creates
 # no X window at all (root 0 children, black screenshot, XTEST clicks lost).
 # Force the x11 platform on desktop Linux. Termux keeps its own X11+zink setup.
+# [L3] Platform is explicit (RANCE10_PLATFORM=termux|linux) or detected from
+# Termux's own env var. Never key off a hardcoded Android absolute path.
+PLAT="${RANCE10_PLATFORM:-}"
+if [ -z "$PLAT" ] && [ -n "${TERMUX_VERSION:-}" ]; then PLAT=termux; fi
 if [ -z "${RANCE10_DISPLAY_MODE:-}" ]; then
-    if [ -d /data/data/com.termux ]; then RANCE10_DISPLAY_MODE=termux
+    if [ "$PLAT" = termux ]; then RANCE10_DISPLAY_MODE=termux
     else RANCE10_DISPLAY_MODE=x11; fi
 fi
 if [ "$RANCE10_DISPLAY_MODE" = x11 ]; then

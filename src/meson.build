@@ -200,6 +200,9 @@ xsystem4 = [version_h,
 ]
 
 xsystem4_deps = [libm, zlib, sdl2, ft2, ffi, cglm, sndfile, libsys4_dep] + gl_deps
+if fontconfig.found()
+    xsystem4_deps += fontconfig
+endif
 
 if avcodec.found() and avformat.found() and avutil.found() and swscale.found()
     xsystem4 += 'movie_ffmpeg.c'

@@ -53,7 +53,18 @@ static void print_function(struct ain*a,int fno){
 			f->vars[v].name?f->vars[v].name:"");
 }
 int main(int argc,char**argv){
-	if(argc<3){fprintf(stderr,"usage: %s <ain> at:<hex>|atf:<hex>|struct:<name>|func:<name>|callhll [count]\n",argv[0]);return 1;}
+	if(argc<3){fprintf(stderr,
+		"usage: %s <ain> <mode> [count]\n"
+		"  at:<hex>            从任意偏移反汇编 N 条（可能未对齐）\n"
+		"  atf:<hex>           定位包含该地址的函数，从头对齐反汇编\n"
+		"  func:<name>         按函数全名打印头/局部变量并反汇编\n"
+		"  findsym:<substr>    按名字子串列出函数（fno/地址/参数/返回）\n"
+		"  lib:<n>[:<substr>]  打印库 n 的函数表与签名\n"
+		"  struct:<name>       结构体/接口布局\n"
+		"  memb:<n>            结构体 n 的成员（带类型文本）\n"
+		"  fno:<n>             按函数号打印\n"
+		"  str:<n> / dno:<n>   字符串 / 委托\n"
+		"  callhll             CALLHLL 的 tag 直方图\n",argv[0]);return 1;}
 	int err=0; struct ain*a=ain_open(argv[1],&err);
 	if(!a){fprintf(stderr,"ain_open failed %d\n",err);return 1;}
 	initialize_instructions(a->version);
@@ -142,5 +153,70 @@ int main(int argc,char**argv){
 				a->delegates[n].variables[i].type.struc,
 				a->delegates[n].variables[i].type.rank);
 		return 0;}
+	if(!strncmp(spec,"findsym:",8)){
+		const char*want=spec+8; int shown=0;
+		for(int i=0;i<a->nr_functions;i++){
+			struct ain_function*f=&a->functions[i];
+			if(!f->name||!strstr(f->name,want))continue;
+			char*rt=ain_strtype_d(a,&f->return_type);
+			printf("fno=%-7d addr=0x%-7x args=%d vars=%d struc=%d ret=%-18s %s\n",
+				i,f->address,f->nr_args,f->nr_vars,f->struct_type,
+				rt?rt:"?",f->name);
+			free(rt);
+			shown++;
+		}
+		printf("-- %d function(s) matching \"%s\"\n",shown,want);
+		return shown?0:1;}
+
+	if(!strncmp(spec,"lib:",4)){
+		const char*arg=spec+4;
+		char buf[256]; snprintf(buf,sizeof buf,"%s",arg);
+		char*sub=strchr(buf,':');
+		if(sub){*sub=0;sub++;}
+		int l=atoi(buf);
+		if(l<0||l>=a->nr_libraries){fprintf(stderr,"lib out of range\n");return 1;}
+		struct ain_library*lib=&a->libraries[l];
+		printf("lib[%d] %s nr_functions=%d\n",l,lib->name?lib->name:"?",lib->nr_functions);
+		int shown=0;
+		for(int i=0;i<lib->nr_functions;i++){
+			struct ain_hll_function*fn=&lib->functions[i];
+			if(sub&&*sub&&(!fn->name||!strstr(fn->name,sub)))continue;
+			char*rt=ain_strtype_d(a,&fn->return_type);
+			printf("  [%d] %-32s args=%d ret=%-16s",i,
+				fn->name?fn->name:"?",fn->nr_arguments,rt?rt:"?");
+			for(int k=0;k<fn->nr_arguments;k++){
+				char*at=ain_strtype_d(a,&fn->arguments[k].type);
+				printf(" %s:%s",fn->arguments[k].name?fn->arguments[k].name:"?",
+					at?at:"?");
+				free(at);
+			}
+			printf("\n");
+			free(rt);
+			shown++;
+		}
+		return shown?0:1;}
+
+	if(!strncmp(spec,"memb:",5)){
+		int n=atoi(spec+5);
+		if(n<0||n>=a->nr_structures){fprintf(stderr,"struct no out of range\n");return 1;}
+		struct ain_struct*st=&a->structures[n];
+		printf("STRUCT [%d] %s members=%d iface=%d nr_interfaces=%d vmethods=%d\n",
+			n,st->name?st->name:"?",st->nr_members,st->is_interface,
+			st->nr_interfaces,st->nr_vmethods);
+		for(int m=0;m<st->nr_members;m++){
+			char*t=ain_strtype_d(a,&st->members[m].type);
+			printf("  [%d] %-28s %s\n",m,
+				st->members[m].name?st->members[m].name:"?",t?t:"?");
+			free(t);
+		}
+		for(int j=0;j<st->nr_interfaces;j++)
+			printf("  iface[%d] struct=%d %s vtable_offset=%d\n",j,
+				st->interfaces[j].struct_type,
+				(st->interfaces[j].struct_type>=0&&
+				 st->interfaces[j].struct_type<a->nr_structures)
+				 ?a->structures[st->interfaces[j].struct_type].name:"?",
+				st->interfaces[j].vtable_offset);
+		return 0;}
+
 	fprintf(stderr,"bad spec %s\n",spec);return 1;
 }

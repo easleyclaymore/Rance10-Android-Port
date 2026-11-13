@@ -8,6 +8,38 @@
 #
 # 与 safe_run_click.sh 的区别：那个自己起 Xvfb，这个用你正在看的桌面。
 set -u
+
+# [SAFE] 内存上限必须在这一层就有：baseline.sh / storm.sh 走 run-headless.sh
+# 时已有上限，但**直接**调本脚本（调试时最容易这么做）会绕过它 —— 实测一次
+# 直接把游戏放到 9.5 GB RSS，把整台机器的 OOM killer 触发、连带桌面程序被杀。
+# 默认 3G；RANCE10_MEM_CAP=0 关闭（不推荐）。
+MEM_CAP="${RANCE10_MEM_CAP:-3G}"
+if [ -z "${RANCE10_MEM_CAP_ACTIVE:-}" ] && [ "$MEM_CAP" != "0" ]; then
+    if command -v systemd-run >/dev/null 2>&1 &&
+       systemd-run --user --scope -q -p MemoryMax="$MEM_CAP" -p MemorySwapMax=0 true 2>/dev/null; then
+        export RANCE10_MEM_CAP_ACTIVE=1
+        exec systemd-run --user --scope -q -p MemoryMax="$MEM_CAP" \
+             -p MemorySwapMax=0 bash "$0" "$@"
+    fi
+    echo "WARNING: 无 systemd-run，本次跑测不受内存上限保护（RANCE10_MEM_CAP=$MEM_CAP）" >&2
+fi
+
+# [SAFE] 桌面保护：本脚本会 xdotool 移动鼠标/点击、并用 x11grab 截屏，
+# 只能在**独立 Xvfb** 上跑。run-headless.sh 用的是 :90..:120，正常路径不会
+# 到这里；直接调本脚本时 DISPLAY 很可能是用户正在用的 :0/:1 —— 那种情况下
+# 拒绝启动，而不是在人家桌面上点鼠标。
+if [ -z "${RANCE10_LIVE_ALLOW_DESKTOP:-}" ]; then
+    case "${DISPLAY:-}" in
+        :9[0-9]|:1[0-2][0-9]) : ;;
+        *)
+            echo "拒绝在真实桌面运行：DISPLAY='${DISPLAY:-}'" >&2
+            echo "请用 tools/run-headless.sh（自带独立 Xvfb :90+）；" >&2
+            echo "确实要在当前桌面跑请显式设 RANCE10_LIVE_ALLOW_DESKTOP=1" >&2
+            exit 3
+            ;;
+    esac
+fi
+
 TAG="${1:-live}"
 SECS="${2:-180}"
 SHOT="${3:-/tmp/live_${TAG}.png}"
@@ -28,6 +60,21 @@ LOG="$LOG_DIR/live_${TAG}.log"
 BIN="$ROOT/xsystem4/build/src/xsystem4"
 mkdir -p "$LOG_DIR"
 
+# 构建新鲜度闸门：ninja 的失败信息可能是中文，用 grep -E "error|Linking"
+# 过滤会看不到，于是后面整轮都在跑旧二进制 —— 探针"没输出"、修复"没效果"
+# 全是假结论。宁可拒绝启动，也不要拿旧二进制的日志做判断。
+if [ -f "$BIN" ]; then
+    STALE="$(find "$ROOT/xsystem4/src" "$ROOT/xsystem4/include" \
+             -type f \( -name '*.c' -o -name '*.h' \) -newer "$BIN" \
+             -print -quit 2>/dev/null)"
+    if [ -n "$STALE" ]; then
+        echo "STALE BINARY: $STALE is newer than $BIN" >&2
+        echo "先跑 env -u PYTHONHOME -u PYTHONPATH ninja -C build 并确认退出码为 0" >&2
+        echo "（设 RANCE10_LIVE_ALLOW_STALE=1 可强制跳过检查）" >&2
+        [ "${RANCE10_LIVE_ALLOW_STALE:-0}" = "1" ] || exit 2
+    fi
+fi
+
 if [ -z "${DISPLAY:-}" ]; then
     echo "no DISPLAY; 请在图形会话里运行（或显式 export DISPLAY=:1）" >&2
     exit 1
@@ -38,19 +85,30 @@ cd "$ROOT/game" || exit 1
 # [D127 后续] 存档接通后，AFConfig.asd 会记住"网络已确认"，下一次启动
 # 就不再弹 NetworkConfirmation —— 而本脚本的固定时序（等第 2 个 act、
 # 再点 OK）依赖它存在，于是点击落空、只跑到 12 个活动。
-# 跑测默认清档以保证可复现；要保留存档请设 RANCE10_LIVE_KEEP_SAVE=1。
-SAVE_DIR="${HOME}/.xsystem4/$(printf '\xe5\x85\xb0\xe6\x96\xaf\xef\xbc\x91\xef\xbc\x90')/SaveData"
-if [ "${RANCE10_LIVE_KEEP_SAVE:-0}" != "1" ] && [ -d "$SAVE_DIR" ]; then
-    rm -rf "$SAVE_DIR"
-    echo "cleared saves: $SAVE_DIR"
+#
+# [L0] 存档目录必须显式、可控、可复现。默认每个 tag 一个干净目录（在工作区
+# 内），跑完保留供检查；RANCE10_SAVE_DIR=<dir> 指定目录（做「写 → 读」往返
+# 验证时复用同一份）；RANCE10_LIVE_KEEP_SAVE=1 才回落到引擎默认目录。
+#
+# 不能再依赖 `rm -rf ~/.xsystem4/...`：本机的 rm 被沙箱包了一层，删除会静默
+# 失败，于是每轮跑测都在读 11 月 12 日的旧档 —— 修好的和没修好的都看不出来，
+# 告警也全是陈年数据。改走 --save-folder 后，存档状态变成显式输入。
+DEFAULT_SAVE_DIR="${HOME}/.xsystem4/$(printf '\xe5\x85\xb0\xe6\x96\xaf\xef\xbc\x91\xef\xbc\x90')/SaveData"
+if [ "${RANCE10_LIVE_KEEP_SAVE:-0}" = "1" ]; then
+    SAVE_DIR="$DEFAULT_SAVE_DIR"
+else
+    SAVE_DIR="${RANCE10_SAVE_DIR:-$LOG_DIR/savedir/$TAG}"
 fi
+mkdir -p "$SAVE_DIR" 2>/dev/null
+echo "saves: $SAVE_DIR"
 
 echo "DISPLAY=$DISPLAY TAG=$TAG SECS=$SECS"
 echo "LOG=$LOG"
 
 # 直接重定向到文件：走 `| head -c` 时管道会在 140 KB 处断流（实测），
 # 后面的 [frame]/[act] 全都写不进去，误诊成“日志停了 = 进程卡住”。
-timeout -k 2 "$SECS" stdbuf -oL -eL "$BIN" --nodebug --encoding gbk . \
+timeout -k 2 "$SECS" stdbuf -oL -eL "$BIN" --nodebug --encoding gbk \
+    --save-folder "$SAVE_DIR" . \
     > "$LOG" 2>&1 &
 RUNPID=$!
 
@@ -206,10 +264,31 @@ if [ -n "${RANCE10_LIVE_SEQ:-}" ]; then
                     xdotool mousemove "$wx" "$wy" >/dev/null 2>&1 || true
                 sleep 0.6
                 ;;
+            # clickunless:<x,y>:<log 里的固定字符串>
+            # 只在日志里还没出现该字符串时才点。用来做"点一次没进就再点一次"
+            # 的重试链：标题菜单的出画时刻受贴图加载影响，固定 sleep 后单次
+            # 点击的命中率实测只有 ~30%，而一次跑测要 3 分钟。
+            clickunless)
+                coords="${arg%%:*}"
+                pat="${arg#*:}"
+                if grep -aqF "$pat" "$LOG"; then
+                    echo "skip click (already at '$pat')"
+                else
+                    IFS=',' read -r cx cy <<< "$coords"
+                    click "$cx" "$cy" 1
+                    sleep 1.2
+                fi
+                ;;
             click|rclick)
                 IFS=',' read -r cx cy <<< "$arg"
                 if [ "$act" = "click" ]; then btn=1; else btn=3; fi
                 click "$cx" "$cy" "$btn"
+                sleep 1.2
+                ;;
+            # key:<X11 keysym>，例如 key:Return / key:Escape
+            key)
+                [ -n "$WID" ] && xdotool windowfocus --sync "$WID" >/dev/null 2>&1 || true
+                xdotool key --clearmodifiers "$arg" >/dev/null 2>&1 || true
                 sleep 1.2
                 ;;
             *)

@@ -141,6 +141,14 @@ int PE_GetMessageType(void)
 	struct parts_message *msg = STAILQ_FIRST(&msg_queue);
 	if (!msg && getenv("XSYS4_MSG_NO_SENTINEL"))
 		return 0;   /* demo knob: reproduce the pre-D112 busy-wait (frozen start screen) */
+	/* [D130] 队头消息身份：CallDelegate 对 parts_no==0 走全屏 FunctionSet，
+	 * 对其它值走 member1[delegate_index]。分派打空炮时必须先知道走的哪条。 */
+	if (msg && getenv("XSYS4_MSGQ_DBG")) {
+		static int n;
+		if (n++ < 4000)
+			NOTICE("[msgq] type=%d parts=%d di=%d", msg->type,
+			       msg->parts_no, msg->delegate_index);
+	}
 	return msg ? msg->type : -1;
 }
 

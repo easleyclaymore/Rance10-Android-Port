@@ -49,7 +49,8 @@ static struct hll_function **libraries = NULL;
  *   - 参数仍走原有 ffi 编组路径，栈平衡/引用计数逻辑一字未改；
  *   - 每个桩首次触达在清单里记一行，之后只累加计数；
  *   - XSYS4_STUB_BT=1 时给前 32 个桩打印 VM 调用栈；
- *   - 清单默认 /tmp/xsys4_stubs.txt，可用 XSYS4_STUB_LOG 指定。
+ *   - 清单默认 $TMPDIR/xsys4_stubs.txt（未设则当前目录），
+ *     可用 XSYS4_STUB_LOG 指定；Core Layer 不写死绝对路径。
  * 不设 XSYS4_SOFT_STUB 时行为与以前完全一致（仍然 VM_ERROR 退出）。
  */
 static int soft_stub_enabled(void)
@@ -103,8 +104,15 @@ static FILE *stub_log_file(void)
 	if (!inited) {
 		inited = 1;
 		const char *p = getenv("XSYS4_STUB_LOG");
-		if (!p || !*p)
-			p = "/tmp/xsys4_stubs.txt";
+		char path[512];
+		if (!p || !*p) {
+			/* [L3] No hardcoded /tmp path in Core Layer: honour the
+			 * platform's temp directory and fall back to CWD. */
+			const char *tmp = getenv("TMPDIR");
+			snprintf(path, sizeof(path), "%s/xsys4_stubs.txt",
+				 (tmp && *tmp) ? tmp : ".");
+			p = path;
+		}
 		fp = fopen(p, "w");
 		if (fp) {
 			fprintf(fp, "# xsystem4 soft-stub hit list (XSYS4_SOFT_STUB=1)\n# lib.func  args  ret\n");
@@ -547,8 +555,8 @@ void hll_call(int libno, int fno, int result_tag)
 			}
 		}
 		if (show)
-			NOTICE("[hll] lib=%d fno=%d tag=%d nr_args=%d sp=%d ret=%d %s.%s",
-			       libno, fno, result_tag, f->nr_arguments, stack_ptr,
+			NOTICE("[hll] ip=0x%zX lib=%d fno=%d tag=%d nr_args=%d sp=%d ret=%d %s.%s",
+			       instr_ptr, libno, fno, result_tag, f->nr_arguments, stack_ptr,
 			       f->return_type.data, ain->libraries[libno].name, f->name);
 	}
 

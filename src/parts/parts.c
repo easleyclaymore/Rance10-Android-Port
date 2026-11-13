@@ -1967,11 +1967,14 @@ void PE_SetShow(int parts_no, bool show)
 	 * 一律当部件号处理，parts_get() 还会为图层号凭空造一个部件——于是
 	 * 切场景时旧场景整层都留在画面上，新背景又盖不住它。 */
 	if (parts_no_is_layer(parts_no)) {
-		if (parts_no >= PARTS_CONTROLLER_STACK_MAX)
+		/* [D129] 小整数是图层 ID，不是栈下标。 */
+		int c = PE_get_controller_index(parts_no);
+		if (c < 0 || c == PARTS_CONTROLLER_SYSTEM_OVERLAY)
 			return;
-		ctrl_stack.show[parts_no] = show;
+		ctrl_stack.show[c] = show;
 		if (getenv("XSYS4_CTRL_DBG"))
-			NOTICE("[ctrl] layer %d show=%d fno=%d", parts_no, show, hll_current_fno());
+			NOTICE("[ctrl] layer id=%d idx=%d show=%d fno=%d", parts_no, c,
+			       show, hll_current_fno());
 		if (getenv("XSYS4_LAYER_TRACE"))
 			vm_stack_trace();
 		scene_dirty();
@@ -2086,9 +2089,10 @@ bool PE_GetPartsShow(int parts_no)
 {
 	/* [D128] 图层号查询的是整层的显示状态（SceneStack@IsShow 走这条路）。 */
 	if (parts_no_is_layer(parts_no)) {
-		if (parts_no >= PARTS_CONTROLLER_STACK_MAX)
+		int c = PE_get_controller_index(parts_no);
+		if (c < 0 || c == PARTS_CONTROLLER_SYSTEM_OVERLAY)
 			return true;
-		return ctrl_stack.show[parts_no];
+		return ctrl_stack.show[c];
 	}
 	return parts_get(parts_no)->local.show;
 }
@@ -2610,6 +2614,29 @@ static void ctrl_stack_init(void)
 	PE_AddController(-1);
 }
 
+/* [D129] ID/index 边界：内部一律用栈下标，AIN 一律用稳定 ID。 */
+int PE_get_controller_id(int index)
+{
+	if (index == PARTS_CONTROLLER_SYSTEM_OVERLAY)
+		return PARTS_CONTROLLER_SYSTEM_OVERLAY;
+	if (index < 0 || index >= ctrl_stack.nr_controllers)
+		return -1;
+	return ctrl_stack.id[index];
+}
+
+int PE_get_controller_index(int id)
+{
+	if (id == PARTS_CONTROLLER_SYSTEM_OVERLAY)
+		return PARTS_CONTROLLER_SYSTEM_OVERLAY;
+	if (id < 0)
+		return -1;
+	for (int i = 0; i < ctrl_stack.nr_controllers; i++) {
+		if (ctrl_stack.id[i] == id)
+			return i;
+	}
+	return -1;
+}
+
 // Adds a new controller to the stack and makes it active. The `index`
 // parameter specifies the position in the stack at which to insert the new
 // controller; -1 means "insert directly after the currently active
@@ -2692,10 +2719,13 @@ int PE_AddController(int index)
 	int no = ctrl_stack.nr_controllers++;
 	ctrl_stack.opaque[no] = false;
 	ctrl_stack.show[no] = true;
+	/* [D129] 返回稳定 ID，不是栈下标。AIN 会把它存进
+	 * SceneStack.LayerPartsNumber，之后与 GetActiveLayer() 比较。 */
+	ctrl_stack.id[no] = ctrl_stack.next_id++;
 	ctrl_stack.active = no;
 	if (getenv("XSYS4_CTRL_DBG"))
 		PE_DebugControllerHistogram("add-controller");
-	return no;
+	return ctrl_stack.id[no];
 }
 
 // Removes the controller at position `index` from the stack, releases all
@@ -2716,9 +2746,16 @@ void PE_RemoveController(struct page **erase_number_list, int index)
 	if (index == -1) {
 		ctrl_no = ctrl_stack.active;
 	} else {
-		if (index < 0 || index >= nr)
-			VM_ERROR("Invalid controller index %d", index);
-		ctrl_no = index;
+		/* [D129] AIN 传的是 AddLayer 返回的稳定 ID，不是栈下标。 */
+		ctrl_no = PE_get_controller_index(index);
+		if (ctrl_no < 0 || ctrl_no == PARTS_CONTROLLER_SYSTEM_OVERLAY ||
+		    ctrl_no >= nr) {
+			/* 已经弹过的层再 Erase 一次是正常路径（SceneStack@1 会重复调），
+			 * 不该杀进程。 */
+			if (getenv("XSYS4_CTRL_DBG"))
+				NOTICE("[ctrl] RemoveController stale id=%d nctrl=%d", index, nr);
+			return;
+		}
 	}
 
 	// Collect and release parts belonging to this controller
@@ -2741,13 +2778,23 @@ void PE_RemoveController(struct page **erase_number_list, int index)
 		       index, ctrl_no, nr, released);
 
 	ctrl_stack.nr_controllers--;
-	/* 图层号就是栈下标，弹出后上面的下标整体左移，图层显示状态也要跟着搬。 */
+	/* 弹出后上面的下标整体左移：显示状态、稳定 ID 都要跟着搬。
+	 * [D129] 部件内部记的是下标，也必须同步左移，否则渲染分层错位。 */
 	for (int i = ctrl_no; i < ctrl_stack.nr_controllers; i++) {
 		ctrl_stack.show[i] = ctrl_stack.show[i + 1];
 		ctrl_stack.opaque[i] = ctrl_stack.opaque[i + 1];
+		ctrl_stack.id[i] = ctrl_stack.id[i + 1];
 	}
 	ctrl_stack.show[ctrl_stack.nr_controllers] = true;
 	ctrl_stack.opaque[ctrl_stack.nr_controllers] = false;
+	ctrl_stack.id[ctrl_stack.nr_controllers] = -1;
+
+	struct parts *pp;
+	PARTS_LIST_FOREACH(pp) {
+		if (pp->controller_no > ctrl_no &&
+		    pp->controller_no != PARTS_CONTROLLER_SYSTEM_OVERLAY)
+			pp->controller_no--;
+	}
 
 	if (ctrl_stack.nr_controllers == 0) {
 		PE_AddController(-1);
@@ -2758,11 +2805,18 @@ void PE_RemoveController(struct page **erase_number_list, int index)
 
 void PE_set_active_controller(int controller_no)
 {
-	if (controller_no == PARTS_CONTROLLER_SYSTEM_OVERLAY ||
-			(controller_no >= 0 && controller_no < ctrl_stack.nr_controllers))
-		ctrl_stack.active = controller_no;
-	else
-		VM_ERROR("Invalid controller number: %d", controller_no);
+	/* [D129] AIN 的 SetActiveLayer 传稳定 ID，内部 active 存下标。 */
+	int idx = controller_no == PARTS_CONTROLLER_SYSTEM_OVERLAY
+		? PARTS_CONTROLLER_SYSTEM_OVERLAY
+		: PE_get_controller_index(controller_no);
+	if (idx == PARTS_CONTROLLER_SYSTEM_OVERLAY ||
+			(idx >= 0 && idx < ctrl_stack.nr_controllers))
+		ctrl_stack.active = idx;
+	else if (getenv("XSYS4_CTRL_DBG"))
+		/* 场景重建后 AIN 可能拿旧 ID 来 SetActiveLayer；这是正常的迟到
+		 * 事件，不该 VM_ERROR(_Noreturn) 直接杀进程。 */
+		NOTICE("[ctrl] SetActiveLayer stale id=%d nctrl=%d", controller_no,
+		       ctrl_stack.nr_controllers);
 }
 
 int PE_get_active_controller(void)
@@ -2778,7 +2832,7 @@ int PE_get_active_controller(void)
 			NOTICE("[ctrl] #%d active=%d nctrl=%d", n, a, c);
 		la = a; ln = c;
 	}
-	return ctrl_stack.active;
+	return PE_get_controller_id(ctrl_stack.active);
 }
 
 int PE_get_system_controller(void)

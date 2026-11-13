@@ -614,8 +614,16 @@ void gfx_render_quadrilateral(struct texture *t, struct gfx_vertex vertices[4])
 	gfx_render(&job);
 }
 
+/* [MEM] Lifetime counters for [mem] (XSYS4_MEM_STAT): how many GL textures we
+ * ever created and how many pixels we ever uploaded. A rising texture count
+ * with a flat live-object count means a leak outside the VM heap. */
+size_t gfx_texture_count = 0;
+size_t gfx_texture_pixels = 0;
+
 static void init_texture(struct texture *t, int w, int h)
 {
+	gfx_texture_count++;
+	gfx_texture_pixels += (size_t)(w > 0 ? w : 0) * (size_t)(h > 0 ? h : 0);
 	glGenTextures(1, &t->handle);
 	glBindTexture(GL_TEXTURE_2D, t->handle);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -747,7 +755,10 @@ void gfx_reset_framebuffer(GLenum target, GLuint fbo)
 {
 	glBindFramebuffer(target, main_surface_fb);
 	glDeleteFramebuffers(1, &fbo);
-	glViewport(0, 0, sdl.w, sdl.h);
+	/* [L3] main_surface_fb is VIEW-sized (config.view_width/height), not
+	 * window-sized. Restoring the viewport to sdl.w/h left viewport != FBO
+	 * whenever the window was not exactly 1920x1080 (e.g. 1440x900). */
+	glViewport(0, 0, config.view_width, config.view_height);
 }
 
 SDL_Color gfx_get_pixel(Texture *t, int x, int y)

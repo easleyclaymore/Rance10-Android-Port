@@ -466,14 +466,23 @@ struct parts {
 // parts.c
 extern struct parts_list parts_list;
 
-// Controllers are identified by their position in the stack (0 = bottom). The
-// system overlay controller lives outside the stack.
+// A "controller" is stored internally by its position in the stack (0 = bottom).
+// AIN, however, distinguishes a stable layer *ID* from a stack *index*:
+//   GetLayerID(index) / GetLayerIndex(id)  (PartsFunc cases 4 / 3)
+// SceneStack remembers the ID returned by AddLayer and compares it with
+// GetActiveLayer() in IsActive. If IDs were just indices, removing a layer
+// from the middle would shift every higher index and the comparison would
+// fail forever -> SceneStack@Join never finishes (D129 / DIALOG-STUCK).
+// So the stack owns id[index] (monotonically increasing, never reused) and
+// everything crossing the HLL boundary is converted between ID and index.
 #define PARTS_CONTROLLER_STACK_MAX 10000
 #define PARTS_CONTROLLER_SYSTEM_OVERLAY PARTS_CONTROLLER_STACK_MAX
 
 struct parts_controller_stack {
 	int nr_controllers;
-	int active;  // stack index or PARTS_CONTROLLER_SYSTEM_OVERLAY
+	int active;  // stack INDEX (internal) or PARTS_CONTROLLER_SYSTEM_OVERLAY
+	int id[PARTS_CONTROLLER_STACK_MAX];  // stable AIN-visible layer id per index
+	int next_id;
 	/* [D128] 每个 controller 是一个"图层"，AIN 用 SetComponentShow(图层号)
 	 * 把整层一起显示/隐藏（SceneStack@IsShow）。show 为 false 时该层的
 	 * 全部部件都不画、也不参与命中。 */

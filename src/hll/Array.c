@@ -23,6 +23,7 @@
 #include "vm/heap.h"
 #include <stdint.h>
 #include "vm.h"
+#include "xsystem4.h"
 #include "system4/ain.h"
 
 /* Defined next to the Array predicate helpers below; Array_Last_ needs them
@@ -336,7 +337,24 @@ static void Array_Alloc_(struct page **out, int size, int type, int a, int b)
 	 * when the generic Alloc argument carries no element type (-1).
 	 * Without this, struct arrays degenerate to AIN_ARRAY_INT and their
 	 * elements never get reference-counted (D21). */
-	if (struct_type >= 0)
+	/* [D136] An element struct that is registered as an INTERFACE
+	 * (ain->structures[n].is_interface) is a 2-slot value
+	 * [object, vtable offset] everywhere else in the VM, and the bytecode
+	 * indexes such a container with i*2 (e.g. QuestMapObjectLoader@Load
+	 * @0x37cb90 does REFREF on this.member3 + i*2). Building it as a
+	 * one-slot array<struct> made values[i*2+1] the NEXT element's object
+	 * slot, which then went into `vtable[offset + 3]` as if it were a
+	 * vtable offset -> "Out of bounds page index ... (type=3 nr_vars=10)".
+	 * XSYS4_IFACE_ARR_FIX=0 restores the old behaviour for A/B. */
+	static int iface_arr_fix = -1;
+	if (iface_arr_fix < 0) {
+		const char *e = getenv("XSYS4_IFACE_ARR_FIX");
+		iface_arr_fix = (e && *e == '0') ? 0 : 1;
+	}
+	bool iface_elem = iface_arr_fix && struct_type >= 0 &&
+			  struct_type < ain->nr_structures &&
+			  ain->structures[struct_type].is_interface;
+	if (struct_type >= 0 && !iface_elem)
 		type = AIN_STRUCT;
 	/* ARRAY_PAGE 的 a_type 必须存【数组类型】（AIN_ARRAY_STRUCT 等），
 	 * 不是元素类型；否则 variable_type()/variable_fini() 会拿错类型 */
@@ -345,7 +363,7 @@ static void Array_Alloc_(struct page **out, int size, int type, int a, int b)
 	 * (CDebugFPSGraph@Create @0xb238e). size counts ELEMENTS. Use plain
 	 * AIN_ARRAY_INT storage so variable_fini() does not unref the second
 	 * slot of each element as if it were an object handle. */
-	int iface_array = (hll_generic_result_type() == AIN_IFACE);
+	int iface_array = (hll_generic_result_type() == AIN_IFACE) || iface_elem;
 	if (iface_array)
 		n *= 2;
 	struct page *p = alloc_page(ARRAY_PAGE,
@@ -362,17 +380,94 @@ static void Array_Alloc_(struct page **out, int size, int type, int a, int b)
 			create_struct(struct_type, &p->values[i]);
 			ARRDBG("[ARR]   elem[%d] = %d", i, p->values[i].i);
 		}
+	} else {
+		/* [L2] alloc_page() zeroes the value slots, but 0 is HEAP SLOT 0,
+		 * not "unset": for struct/array/delegate elements the unset value
+		 * is -1 (see variable_initval). Leaving zeros here made an
+		 * unallocated struct element look like a live int, and the save
+		 * writer then tried to serialise slot 0 as a STRUCT_PAGE
+		 * (observed on ReplayCgInfoCollection.m_list, 567 elements).
+		 * NOT flipped by default: with -1 elements the engine reaches a
+		 * different pre-existing bug (QuestMapObjectLoader@Load calls a
+		 * method on an element that was never assigned), so this is a
+		 * separate task. XSYS4_ARR_UNSET_FIX=1 evaluates it. */
+		static int unset_fix = -1;
+		if (unset_fix < 0) {
+			const char *e = getenv("XSYS4_ARR_UNSET_FIX");
+			unset_fix = (e && *e == '1') ? 1 : 0;
+		}
+		if (unset_fix) {
+			enum ain_data_type et = array_type(p->a_type);
+			for (int i = 0; i < n; i++)
+				p->values[i] = variable_initval(et);
+		}
 	}
 	*out = p;
 	ARRDBG("[ARR] alloc new=%p nr=%d st=%d at=%d", (void*)p, p->nr_vars, p->array.struct_type, p->a_type);
 }
 
+/* [D138] 单位换算点 —— 这一族 bug 的共同形状。
+ *
+ * realloc_array()/alloc_array() 的参数是**元素数**（和 AIN 的 A_REALLOC 一致，
+ * 接口元素内部再乘 2 变成槽数）。但 Array.* 的每个 helper 手里只有 nr_vars，
+ * 那是**槽数**。两边混用会怎样，实测：
+ *
+ *   QuestMapObjectViewColletion@InitView: list.PushBack(...)  // list 是
+ *   array<ILoadableQuestMapObject>（接口元素 = 2 槽/元素）
+ *   → 每轮 push 传 old_n+1（槽），realloc 再 ×2 ⇒ 0,2,6,14,30,… 翻倍增长，
+ *     123 个元素的循环把数组撑到几十万槽，RSS 以 ~500 MB/s 涨到 9.5 GB，
+ *     直接把整台机器推到 OOM。
+ *
+ * 所以：凡是要"长到这么多**槽**"的地方，先过这里换成元素数。
+ */
+static bool arr_is_iface_elems(struct page *p)
+{
+	return p->array.rank == 1 && p->array.struct_type >= 0 &&
+	       p->array.struct_type < ain->nr_structures &&
+	       ain->structures[p->array.struct_type].is_interface;
+}
+
+static int arr_want_elems(struct page *p, int want_slots)
+{
+	if (want_slots < 0)
+		want_slots = 0;
+	return arr_is_iface_elems(p) ? want_slots / 2 : want_slots;
+}
+
+/* [D138] Array.Free(array& a) 的语义是"清空"，不是"什么都不做"。
+ *
+ * 原来这里是空实现（注释写"让 GC 自己处理"），于是所有把 Free 当 Clear
+ * 用的地方都变成了"只增不减"。最典型的一处：
+ *
+ *   QuestMap@CreateRoute():
+ *     foreach (obj in MapObjects.Objects) {      // 123 个对象
+ *         Array.Free(branchType);                // ← 期望清空
+ *         branchType.PushBack(0); PushBack(1); PushBack(2);   // 每轮 3 个
+ *         foreach (bt in branchType) { ... }     // 数量决定内层循环次数
+ *     }
+ *
+ * 因为 Free 不起作用，branchType 每轮 +3（3,6,9,12,…），而内层 foreach
+ * 的边界又是它自己的长度，于是内层循环永不结束 —— 实测 `Array.Numof`
+ * 被调 35 万次、`live` 从 2 万涨到 50 万，就是 [MAP-LOAD-STORM]。
+ *
+ * 正确做法是"原地截断"：元素逐个 fini（该 unref 的 unref、该跑析构的跑），
+ * 再把 nr_vars 归零，页本身保留（调用方随后还要 PushBack，置 NULL 会让
+ * 后续 PushBack 拿到空页）。XSYS4_ARRAY_FREE_FIX=0 回到空实现做 A/B。 */
 static void Array_Free_(struct page **a)
 {
-	/* 数组对象由 VM 的引用计数管理（variable_fini -> heap_unref）。
-	 * 这里若把参数置 NULL 或直接释放，会和 VM 打架导致 double free。
-	 * 保持空实现，让 GC 自己处理。 */
-	(void)a;
+	static int fix = -1;
+	if (fix < 0) {
+		const char *e = getenv("XSYS4_ARRAY_FREE_FIX");
+		fix = (e && *e == "0") ? 0 : 1;
+	}
+	if (!fix || !a || !*a)
+		return;
+	struct page *p = *a;
+	if (p->type != ARRAY_PAGE)
+		return;
+	for (int i = p->nr_vars - 1; i >= 0; i--)
+		variable_fini(p->values[i], variable_type(p, i, NULL, NULL), true);
+	p->nr_vars = 0;
 }
 
 static int Array_Numof_(struct page **a, int rank)
@@ -461,14 +556,93 @@ static bool elem_eq(struct page *p, int i, void *v)
  * f[48] passes an AIN comparison-function number (t95) rather than a raw
  * key; a proper predicate dispatch needs vm_call (D39). Fall back to a
  * linear find with the same "not found = -1" contract as Array_Find_. */
+/* [D137] 谓词重载：f[48]/[44]/[46] 的第二个参数是 AIN 比较函数号（t95），
+ * 不是值。以前这里直接 return -1/0（TODO D39 的桩），于是游戏里"有序数组
+ * 插入"的循环永远收敛不了 —— 实测 `QuestMapRouteFinder@Find` 在 40 秒内
+ * 调了 35 万次 Numof、2.7 万次 PushBack，把内存从 2 万推到 80 万对象
+ * （[MAP-LOAD-STORM]）。
+ *
+ * 语义按 System4 的比较函数约定：`cmp(elem)` 返回 <0 / 0 / >0，
+ * 把 elem 与闭包捕获的 key 做比较。返回 false 表示该元素无法比较，
+ * 调用方按"未找到"处理，与其它桩的契约一致。 */
+static bool pred_cmp_ok;
+
+static int pred_cmp(struct page *p, int i, int func)
+{
+	union vm_value arg = p->values[i];
+	union vm_value ret;
+	pred_cmp_ok = false;
+	bool ok = vm_call_hll_closure(func, &arg, 1, &ret);
+
+	/* [D137] XSYS4_PRED_DBG=1：把"叫了谁、比哪个元素、返回什么"打出来。
+	 * 判断依据只有两条：返回值是 <0/0/>0 的比较结果，还是 0/1 的布尔？
+	 * 以及它是否随元素变化（恒定 = 约定不对，搜索永远走同一边）。 */
+	static int dbg = -1, ndbg;
+	if (dbg < 0) {
+		const char *e = getenv("XSYS4_PRED_DBG");
+		dbg = (e && *e && *e != '0') ? 1 : 0;
+	}
+	if (dbg && ndbg++ < 40) {
+		const char *nm = (func > 0 && func < ain->nr_functions &&
+				  ain->functions[func].name)
+				 ? display_sjis0(ain->functions[func].name) : "?";
+		/* 元素自身的 key 成员（struct 的第一个 int 成员）与被查 key 对照，
+		 * 用来区分"元素没填"和"比较方向反了"。 */
+		int ekey = -9999;
+		struct page *ep = heap_index_valid(arg.i) ? heap[arg.i].page : NULL;
+		if (ep && ep->type == STRUCT_PAGE && ep->nr_vars > 0)
+			ekey = ep->values[0].i;
+		NOTICE("[cmp] fno=%d %s elem[%d]=%d(struct nr=%d key=%d) -> ok=%d ret=%d",
+		       func, nm, i, arg.i, ep ? ep->nr_vars : -1, ekey, (int)ok, ret.i);
+	}
+
+	if (!ok)
+		return 0;
+	pred_cmp_ok = true;
+	if (ret.i == 0)
+		return 0;
+	return ret.i < 0 ? -1 : 1;
+}
+
+static bool pred_bound_enabled(void)
+{
+	static int on = -1;
+	if (on < 0) {
+		const char *e = getenv("XSYS4_PRED_BOUND");
+		on = (e && *e == '0') ? 0 : 1;
+	}
+	return on > 0;
+}
+
+/* 该调用是不是 t95（函数号）重载 */
+static bool bound_is_predicate(int fno)
+{
+	return fno == 44 || fno == 46 || fno == 48;
+}
+
 static int Array_BinarySearch_(struct page **a, uint64_t key)
 {
 	if (!a || !*a)
 		return -1;
-	/* f[48] passes an AIN comparison-function number, not a value key;
-	 * elem_eq() would dereference it as a heap object. Predicate dispatch
-	 * is still TODO (D39), so report "not found" and let the caller use
-	 * its FindInsertPos path. */
+	int fno = hll_current_fno();
+	if (bound_is_predicate(fno) && pred_bound_enabled()) {
+		/* 精确查找：cmp == 0 的下标 */
+		struct page *p = *a;
+		int lo = 0, hi = p->nr_vars - 1;
+		while (lo <= hi) {
+			int mid = lo + (hi - lo) / 2;
+			int c = pred_cmp(p, mid, (int)key);
+			if (!pred_cmp_ok)
+				return -1;
+			if (c == 0)
+				return mid;
+			if (c < 0)
+				lo = mid + 1;
+			else
+				hi = mid - 1;
+		}
+		return -1;
+	}
 	(void)key;
 	return -1;
 }
@@ -478,15 +652,37 @@ static int Array_BinarySearch_(struct page **a, uint64_t key)
  * is not a comparable value; full predicate dispatch is D39. Return a
  * valid insertion position (0) so the caller's Insert path stays in
  * bounds. The t74 overloads should do a real ordered lookup (D39). */
+/* LowerBound：第一个 cmp >= 0 的位置；UpperBound：第一个 cmp > 0 的位置。
+ * 两者都必须落在 [0, nr_vars] 内，调用方直接拿它当插入点。 */
+static int pred_bound(struct page *p, int func, bool upper)
+{
+	int lo = 0, hi = p->nr_vars;
+	while (lo < hi) {
+		int mid = lo + (hi - lo) / 2;
+		int c = pred_cmp(p, mid, func);
+		if (!pred_cmp_ok)
+			return 0;
+		if (c < 0 || (upper && c == 0))
+			lo = mid + 1;
+		else
+			hi = mid;
+	}
+	return lo;
+}
+
 static int Array_LowerBound_(struct page **a, uint64_t key)
 {
-	(void)a; (void)key;
+	int fno = hll_current_fno();
+	if (a && *a && bound_is_predicate(fno) && pred_bound_enabled())
+		return pred_bound(*a, (int)key, false);
 	return 0;
 }
 
 static int Array_UpperBound_(struct page **a, uint64_t key)
 {
-	(void)a; (void)key;
+	int fno = hll_current_fno();
+	if (a && *a && bound_is_predicate(fno) && pred_bound_enabled())
+		return pred_bound(*a, (int)key, true);
 	return 0;
 }
 
@@ -505,7 +701,7 @@ static void Array_Insert_(struct page **a, int index, uint64_t value)
 	if (index > n) index = n;
 	enum ain_data_type at = p->a_type;
 	int st = p->array.struct_type;
-	union vm_value dim = { .i = n + 1 };
+	union vm_value dim = { .i = arr_want_elems(p, n + 1) };
 	struct page *np = realloc_array(p, 1, &dim, at, st, false);
 	if (!np)
 		return;
@@ -571,7 +767,7 @@ static void Array_Unique_(struct page **a, uintptr_t predicate)
 		if (!dup) p->values[w++] = p->values[i];
 	}
 	if (w == n) return;
-	union vm_value dim = { .i = w };
+	union vm_value dim = { .i = arr_want_elems(p, w) };
 	enum ain_data_type at = p->a_type;
 	int st = p->array.struct_type;
 	struct page *np = realloc_array(p, 1, &dim, at, st, false);
@@ -584,6 +780,40 @@ static void Array_Unique_(struct page **a, uintptr_t predicate)
  * Stage 1: sort a shallow copy by raw int values and return its slot.
  * Predicate overloads (t95) and descending order are not implemented yet;
  * a proper cmp dispatch needs vm_call (D78). */
+/* [D134] Several stage-1 array HLL stubs return a NEW array page whose
+ * values are copied verbatim from the source. That page is later torn down
+ * by delete_page_vars(), which unrefs every reference-typed element. If the
+ * copy did not take a reference of its own, the copy and the source both
+ * release the same object: this is the 7-card cascade behind
+ * [INIT-DOUBLEFREE] ([df-free] holder ptype=3 idx=17 nr=7, i=6, slot=41079).
+ * Set XSYS4_ARRAY_REF_FIX=0 for an A/B comparison with the old behaviour. */
+static int array_ref_fix(void)
+{
+	static int v = -1;
+	if (v < 0) {
+		const char *e = getenv("XSYS4_ARRAY_REF_FIX");
+		v = (e && !strcmp(e, "0")) ? 0 : 1;
+	}
+	return v;
+}
+
+static bool array_elem_owns_ref(struct page *src, int i)
+{
+	/* [L1] Shared with variable_fini()/exit_unref() — one answer for
+	 * "which element types need their own heap reference". */
+	return variable_owns_ref(variable_type(src, i, NULL, NULL));
+}
+
+static void array_copy_values(struct page *dst, struct page *src)
+{
+	for (int i = 0; i < src->nr_vars; i++) {
+		dst->values[i] = src->values[i];
+		if (array_ref_fix() && dst->values[i].i > 0 &&
+		    array_elem_owns_ref(src, i))
+			heap_ref(dst->values[i].i);
+	}
+}
+
 /* AIN f[4]/f[5]: ShallowCopy(ref array) -> array. Stage 1: copy the page
  * and return a fresh heap slot (D80). */
 static int Array_ShallowCopy_(struct page **a)
@@ -594,8 +824,7 @@ static int Array_ShallowCopy_(struct page **a)
 	struct page *np = alloc_page(ARRAY_PAGE, src->a_type, src->nr_vars > 0 ? src->nr_vars : 1);
 	np->array = src->array;
 	np->nr_vars = src->nr_vars;
-	for (int i = 0; i < src->nr_vars; i++)
-		np->values[i] = src->values[i];
+	array_copy_values(np, src);
 	return heap_alloc_page(np);
 }
 static int Array_QuickSort_(struct page **a, uintptr_t predicate)
@@ -606,8 +835,7 @@ static int Array_QuickSort_(struct page **a, uintptr_t predicate)
 		return -1;
 	struct page *np = alloc_page(ARRAY_PAGE, src->a_type, src->nr_vars);
 	np->array = src->array;
-	for (int i = 0; i < src->nr_vars; i++)
-		np->values[i] = src->values[i];
+	array_copy_values(np, src);
 	for (int i = 1; i < np->nr_vars; i++) {
 		union vm_value key = np->values[i];
 		int j = i - 1;
@@ -626,7 +854,7 @@ static int Array_Where_(struct page **a, uintptr_t predicate)
 	struct page *src = *a;
 	struct page *np = alloc_page(ARRAY_PAGE, src->a_type, src->nr_vars);
 	np->array = src->array;
-	for (int i = 0; i < src->nr_vars; i++) np->values[i] = src->values[i];
+	array_copy_values(np, src);
 	return heap_alloc_page(np);
 }
 static int Array_Find_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3)
@@ -724,11 +952,26 @@ static void Array_PushBack_(struct page **a, uint64_t value)
 		at = p->a_type;
 	}
 	int st = p->array.struct_type;
-	union vm_value dim = { .i = old_n + 1 };
+	bool iface = arr_is_iface_elems(p);
+	union vm_value dim = { .i = arr_want_elems(p, old_n + (iface ? 2 : 1)) };
 	struct page *np = realloc_array(p, 1, &dim, at, st, false);
 	if (!np)
 		return;
-	np->values[old_n] = *(union vm_value *)&value;
+	if (iface) {
+		/* 一个接口元素占两槽 [对象槽, vtable 偏移]。偏移不是调用方传进来的
+		 * （HLL 只拿到对象槽），要按接口号从对象声明的接口表里反推 ——
+		 * 与 Array.At 返回接口值时用的是同一个函数。 */
+		int obj = -1, off = 0;
+		if (!vm_iface_pair(st, (int)value, &obj, &off)) {
+			obj = (int)value;
+			off = 0;
+		}
+		np->values[old_n].i = obj;
+		if (old_n + 1 < np->nr_vars)
+			np->values[old_n + 1].i = off;
+	} else {
+		np->values[old_n] = *(union vm_value *)&value;
+	}
 	/* The container becomes an independent owner of a heap object.
 	 * Take a reference for it: the caller still owns its own reference
 	 * and will release it with DELETE. Without this, DELETE drops the
@@ -769,7 +1012,8 @@ static void *Array_EmplaceBack_(struct page **a)
 	if (p->a_type == AIN_ARRAY || p->a_type == AIN_REF_ARRAY)
 		array_settle_type(p, tag >= 0 ? (enum ain_data_type)tag : AIN_INT);
 	ARRDBG("[ARR] emp p=%p nr=%d at=%d st=%d", (void*)p, old_n, p->a_type, st);
-	union vm_value dim = { .i = old_n + 1 };
+	bool iface = arr_is_iface_elems(p);
+	union vm_value dim = { .i = arr_want_elems(p, old_n + (iface ? 2 : 1)) };
 	struct page *np = realloc_array(p, 1, &dim, p->a_type, st, false);
 	ARRDBG("[ARR] emp np=%p nr=%d", (void*)np, np ? np->nr_vars : -1);
 	if (!np)
@@ -954,7 +1198,7 @@ static void array_append(struct page **dst, struct page *src)
 	int old_n = p->nr_vars;
 	enum ain_data_type at = p->a_type;
 	int st = p->array.struct_type;
-	union vm_value dim = { .i = old_n + src->nr_vars };
+	union vm_value dim = { .i = arr_want_elems(p, old_n + src->nr_vars) };
 	struct page *np = realloc_array(p, 1, &dim, at, st, false);
 	if (!np)
 		return;
@@ -989,7 +1233,7 @@ static void Array_Duplicate_(struct page **dst, struct page **src)
 	struct page *d = *dst, *s = *src;
 	if (d->type != ARRAY_PAGE || s->type != ARRAY_PAGE)
 		return;
-	union vm_value dim = { .i = s->nr_vars };
+	union vm_value dim = { .i = arr_want_elems(d, s->nr_vars) };
 	struct page *np = realloc_array(d, 1, &dim, d->a_type, d->array.struct_type,
 					false);
 	if (!np)

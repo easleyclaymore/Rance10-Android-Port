@@ -285,12 +285,15 @@ static int PartsEngine_PartsFunc(int func_id, struct page **array_int,
 		REQUIRE_INTS(1);
 		ints[0].i = PE_get_system_controller();
 		return 1;
-	// Layers are identified by their index in the controller stack, so the
-	// layer id and index conversions are identity functions.
+	// [D129] AIN 明确区分稳定图层 ID 与栈下标：中间层被弹掉后下标会左移，
+	// 恒等映射会让 SceneStack.LayerPartsNumber 与 GetActiveLayer() 永远对不上。
 	case 3:  // int GetLayerIndex(int layer_id)
+		REQUIRE_INTS(2);
+		ints[1].i = PE_get_controller_index(ints[0].i);
+		return 1;
 	case 4:  // int GetLayerID(int layer_index)
 		REQUIRE_INTS(2);
-		ints[1].i = ints[0].i;
+		ints[1].i = PE_get_controller_id(ints[0].i);
 		return 1;
 	case 5:  // int NumofLayer()
 		REQUIRE_INTS(1);
@@ -2277,11 +2280,12 @@ static int PE_GetControllerLength(void)
 	return PE_get_nr_controllers();
 }
 
-/* Controller ids are their stack index in this port (same identity mapping the
- * layer helpers use), so GetControllerID(i) is i. */
+/* [D129] GetControllerID(index) 返回稳定 ID（不再是恒等映射）。
+ * AIN 的 parts::detail::AddLayer 拿这个返回值存进 SceneStack，
+ * 之后 GetActiveLayer() 必须返回同一个值，IsActive 才成立。 */
 static int PE_GetControllerID(int index)
 {
-	return index;
+	return PE_get_controller_id(index);
 }
 
 /* PartsEngine.SetFlatFPSRate(parts_no, rate, state), AIN lib27 f[761].

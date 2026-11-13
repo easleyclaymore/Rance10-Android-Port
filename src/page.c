@@ -23,6 +23,9 @@
 #include "vm/heap.h"
 #include "vm/page.h"
 
+/* vm.h 把 VM 全局量放在 VM_PRIVATE 段里；这里只需要当前指令地址做取证。 */
+extern size_t instr_ptr;
+
 #define NR_CACHES 8
 #define CACHE_SIZE 64
 
@@ -182,22 +185,13 @@ union vm_value variable_initval(enum ain_data_type type)
 
 void variable_fini(union vm_value v, enum ain_data_type type, bool call_dtor)
 {
-	switch (type) {
-	case AIN_STRING:
-	case AIN_STRUCT:
-	case AIN_DELEGATE:
-	case AIN_ARRAY_TYPE:
-	case AIN_REF_TYPE:
-		if (v.i == -1)
-			break;
-		if (call_dtor)
-			heap_unref(v.i);
-		else
-			exit_unref(v.i);
-		break;
-	default:
-		break;
-	}
+	/* [L1] Ownership predicate shared with exit_unref/vm_copy/array copies. */
+	if (!variable_owns_ref(type) || v.i == -1)
+		return;
+	if (call_dtor)
+		heap_unref(v.i);
+	else
+		exit_unref(v.i);
 }
 
 enum ain_data_type array_type(enum ain_data_type type)
@@ -348,7 +342,26 @@ void variable_set(struct page *page, int varno, enum ain_data_type type, union v
 
 void delete_page_vars(struct page *page)
 {
+	/* [D134] XSYS4_DF_FREE_DBG=1 + XSYS4_SLOT_ID=<n>: name the page that
+	 * is about to perform the FATAL release (ref 1 -> 0) of the watched
+	 * slot. heap_unref()'s own probe only sees the current AIN instruction
+	 * (usually RETURN); this one sees which page actually held the value. */
+	static int dbg = -1;
+	static int watch = -1;
+	if (dbg < 0) {
+		dbg = getenv("XSYS4_DF_FREE_DBG") ? 1 : 0;
+		const char *e = getenv("XSYS4_SLOT_ID");
+		watch = (e && *e) ? atoi(e) : -1;
+	}
 	for (int i = page->nr_vars - 1; i >= 0; i--) {
+		if (dbg && watch > 0) {
+			int s = page->values[i].i;
+			if (s == watch && (size_t)s < heap_size && heap[s].ref == 1) {
+				NOTICE("[df-free] holder ptype=%d idx=%d nr=%d i=%d slot=%d ref=%d ip=0x%zX",
+				       page->type, page->index, page->nr_vars, i, s,
+				       heap[s].ref, instr_ptr);
+			}
+		}
 		variable_fini(page->values[i], variable_type(page, i, NULL, NULL), true);
 	}
 }
@@ -383,6 +396,14 @@ struct page *copy_page(struct page *src)
 
 int alloc_struct(int no)
 {
+	/* [D132] struct #0 = CASConstructionProcess（3 成员）。若它被当成
+	 * CommonStatus(842, 17 成员) 之类的对象使用，成员 3..15 必然越界。
+	 * 这里记录是谁创建的，用 ain_at atf:<ip> 离线定位调用点。 */
+	if (no == 0 && getenv("XSYS4_ALLOC0_DBG")) {
+		static int n;
+		if (n++ < 60)
+			NOTICE("[alloc0] ip=0x%zX", instr_ptr);
+	}
 	{
 		static int dbg = 0;
 		if (dbg < 20 && ain->structures[no].name && strstr(ain->structures[no].name, "Timer")) {
@@ -461,18 +482,58 @@ static enum ain_data_type unref_array_type(enum ain_data_type type)
 	}
 }
 
+/* [D136] An element struct registered as an INTERFACE
+ * (ain->structures[n].is_interface) is a 2-slot value [object, vtable
+ * offset] everywhere in the VM, and the bytecode indexes a container of them
+ * with i*2. Allocating it as a one-slot array<struct> makes values[i*2+1]
+ * the NEXT element's object slot; that number then reaches `vtable[off + k]`
+ * as if it were a vtable offset (observed: QuestMapObjectLoader@Load
+ * A_ALLOC of array<ILoadableQuestMapObject>(618) -> 123 slots, then
+ * `Out of bounds page index: ... (type=3 index=14 nr_vars=10)` at 0x37CBC8).
+ * Store them like the existing iface arrays: AIN_ARRAY_INT, 2 slots per
+ * element, no struct construction (the object half is filled by assignment).
+ * XSYS4_IFACE_ARR_FIX=0 restores the old behaviour for A/B. */
+static bool iface_element_array(int struct_type)
+{
+	/* [D136] DEFAULT OFF (2026-11-13). The 2-slot layout is what the bytecode
+	 * expects, but turning it on drops the map scene into an allocation
+	 * storm: 42 s after entering SceneQuestMap the VM had allocated 1.83M
+	 * objects with 731k still live and climbing 60k/s (capA), versus normal
+	 * churn with it off (capB). That storm is what exhausts memory. Until
+	 * the consumer of these arrays is understood (something loops over
+	 * Count()/indices assuming one slot per element), this stays opt-in and
+	 * the known 0x37CBC8 out-of-bounds degradation is the lesser evil.
+	 * Enable with XSYS4_IFACE_ARR_FIX=1 to continue the investigation. */
+	static int fix = -1;
+	if (fix < 0) {
+		const char *e = getenv("XSYS4_IFACE_ARR_FIX");
+		fix = (e && *e == "0") ? 0 : 1;
+	}
+	return fix && struct_type >= 0 && struct_type < ain->nr_structures &&
+	       ain->structures[struct_type].is_interface;
+}
+
 struct page *alloc_array(int rank, union vm_value *dimensions, enum ain_data_type data_type, int struct_type, bool init_structs)
 {
 	if (rank < 1)
 		return NULL;
 
+	bool iface_elem = rank == 1 && iface_element_array(struct_type);
+	if (iface_elem) {
+		data_type = AIN_ARRAY_INT;
+		init_structs = false;
+	}
 	data_type = unref_array_type(data_type);
 	enum ain_data_type type = array_type(data_type);
-	struct page *page = alloc_page(ARRAY_PAGE, data_type, max(0, dimensions->i));
+	union vm_value dim = { .i = max(0, dimensions->i) };
+	if (iface_elem)
+		dim.i *= 2;
+	union vm_value *dims = iface_elem ? &dim : dimensions;
+	struct page *page = alloc_page(ARRAY_PAGE, data_type, dims->i);
 	page->array.struct_type = struct_type;
 	page->array.rank = rank;
 
-	for (int i = 0; i < dimensions->i; i++) {
+	for (int i = 0; i < dims->i; i++) {
 		if (rank == 1) {
 			if (type == AIN_STRUCT && init_structs)
 				create_struct(struct_type, &page->values[i]);
@@ -506,19 +567,42 @@ struct page *realloc_array(struct page *src, int rank, union vm_value *dimension
 		return NULL;
 	}
 
+	/* [D136] Keep the 2-slots-per-element layout that alloc_array() sets up
+	 * for arrays of interface elements. Without this the array is created
+	 * empty (0 slots) and then grown one slot per element by A_REALLOC, so
+	 * the bytecode's `i*2` indexing walks into the next element's object
+	 * slot and feeds it to a vtable lookup. dimensions->i counts ELEMENTS. */
+	/* [D136] Growth is deliberately NOT doubled by default: allocating 2 slots
+	 * per element at creation (alloc_array) keeps the map scene working, but
+	 * doubling on every A_REALLOC turned the map loader into an allocation
+	 * storm (731k live objects in 13 s). The growth path still appends one
+	 * slot per requested element, which is what the pre-fix code did.
+	 * XSYS4_IFACE_REALLOC_FIX=1 enables the symmetric layout for experiments. */
+	static int realloc_fix = -1;
+	if (realloc_fix < 0) {
+		const char *e = getenv("XSYS4_IFACE_REALLOC_FIX");
+		realloc_fix = (e && *e == "0") ? 0 : 1;
+	}
+	bool iface_elem = realloc_fix && rank == 1 && iface_element_array(struct_type);
+	int want_slots = max(0, dimensions->i) * (iface_elem ? 2 : 1);
+	if (iface_elem) {
+		data_type = AIN_ARRAY_INT;
+		init_structs = false;
+	}
+
 	// if shrinking array, unref orphaned children
-	if (dimensions->i < src->nr_vars) {
-		for (int i = dimensions->i; i < src->nr_vars; i++) {
+	if (want_slots < src->nr_vars) {
+		for (int i = want_slots; i < src->nr_vars; i++) {
 			variable_fini(src->values[i], variable_type(src, i, NULL, NULL), true);
 		}
 	}
 
-	src = xrealloc(src, sizeof(struct page) + sizeof(union vm_value) * dimensions->i);
+	src = xrealloc(src, sizeof(struct page) + sizeof(union vm_value) * want_slots);
 
 	// if growing array, init new children
 	enum ain_data_type type = array_type(data_type);
-	if (dimensions->i > src->nr_vars) {
-		for (int i = src->nr_vars; i < dimensions->i; i++) {
+	if (want_slots > src->nr_vars) {
+		for (int i = src->nr_vars; i < want_slots; i++) {
 			if (rank == 1) {
 				if (type == AIN_STRUCT && init_structs)
 					create_struct(struct_type, &src->values[i]);
@@ -533,7 +617,7 @@ struct page *realloc_array(struct page *src, int rank, union vm_value *dimension
 		}
 	}
 
-	src->nr_vars = dimensions->i;
+	src->nr_vars = want_slots;
 	return src;
 }
 
@@ -544,6 +628,19 @@ int array_numof(struct page *page, int rank)
 	if (rank < 1 || rank > page->array.rank)
 		return 0;
 	if (rank == 1) {
+		/* [D136] Arrays of interface elements store TWO slots per element
+		 * ([object, vtable offset]) and the bytecode indexes them with i*2.
+		 * nr_vars therefore counts SLOTS, not elements: report half, or the
+		 * AIN-visible Count() doubles and every loop over such a container
+		 * walks twice as far (that alone dropped the title->map transition
+		 * from 31 loaded activities to 13). */
+		/* [D136] Interface-element arrays store 2 slots per element, and the
+		 * bytecode indexes them with i*2. nr_vars counts SLOTS, so the
+		 * AIN-visible Count() must report elements. Getting this wrong once
+		 * (reporting slots) dropped the title->map transition from 31 loaded
+		 * activities to 13; reporting elements keeps the map reachable. */
+		if (iface_element_array(page->array.struct_type))
+			return page->nr_vars / 2;
 		return page->nr_vars;
 	}
 	return array_numof(heap[page->values[0].i].page, rank - 1);
@@ -1046,10 +1143,23 @@ bool delegate_get(struct page *page, int i, int *obj_out, int *fun_out)
 	if (page->type != DELEGATE_PAGE)
 		VM_ERROR("Not a delegate");
 	while (i*3 < page->nr_vars) {
-		if (heap_get_seq(page->values[i*3].i) == page->values[i*3+2].i) {
-			*obj_out = page->values[i*3].i;
+		int obj = page->values[i*3].i;
+		int want_seq = page->values[i*3+2].i;
+		int now_seq = heap_get_seq(obj);
+		if (now_seq == want_seq) {
+			*obj_out = obj;
 			*fun_out = page->values[i*3+1].i;
 			return true;
+		}
+		/* [D130] 这一支会**破坏性删除**条目：委托目标对象一旦被提前回收
+		 * （heap ref 归零 → heap_get_seq 返回 0），整条注册当场消失。
+		 * 默认关闭的诊断开关，用来区分"页本来是空的"和"条目被删掉"。 */
+		if (getenv("XSYS4_DG_GET_DBG")) {
+			static int n;
+			if (n++ < 200)
+				NOTICE("[dgg] INVALID obj=%d fun=%d seq=%d now=%d nr=%d",
+				       obj, page->values[i*3+1].i, want_seq, now_seq,
+				       page->nr_vars);
 		}
 		for (int j = (i + 1) * 3; j < page->nr_vars; j += 3) {
 			page->values[j-3].i = page->values[j+0].i;

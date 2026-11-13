@@ -92,6 +92,15 @@ static int get_group_index(const char *name)
 
 static int32_t add_value_to_gsave(enum ain_data_type type, union vm_value val, struct gsave *save);
 
+/* [L2] "Where am I in the object graph" for write-path diagnostics: the
+ * assertion used to fire with only a slot number, which is untraceable
+ * once the value came from a nested array/struct. Callers set this right
+ * before descending; it is the innermost owner seen so far. */
+static const char *gsave_ctx = "?";
+static const char *gsave_root = "?";
+static char gsave_ctx_buf[160];
+static char gsave_root_buf[160];
+
 static struct gsave_flat_array *collect_flat_arrays(struct page *page, struct gsave_flat_array *fa, struct gsave *save)
 {
 	if (page->array.rank > 1) {
@@ -105,6 +114,9 @@ static struct gsave_flat_array *collect_flat_arrays(struct page *page, struct gs
 	fa->values = xcalloc(fa->nr_values, sizeof(struct gsave_array_value));
 	for (int i = 0; i < page->nr_vars; i++) {
 		fa->values[i].type = type;
+		snprintf(gsave_ctx_buf, sizeof(gsave_ctx_buf), "array<%s>[%d/%d]",
+			 ain_strtype(ain, type, -1), i, page->nr_vars);
+		gsave_ctx = gsave_ctx_buf;
 		fa->values[i].value = add_value_to_gsave(type, page->values[i], save);
 	}
 	return ++fa;
@@ -122,13 +134,46 @@ static int32_t add_value_to_gsave(enum ain_data_type type, union vm_value val, s
 	case AIN_FLOAT:
 		return val.i;
 	case AIN_STRING:
+		/* [L2] -1 is the "unset" value in the gsave value space (it is also
+		 * what variable_initval() puts in a fresh reference slot). Writing
+		 * it as an empty string keeps write and read symmetric: the reader
+		 * maps both back to an empty string. */
+		if (val.i < 0)
+			return GSAVE7_EMPTY_STRING;
 		return gsave_add_string(save, heap[val.i].s);
 	case AIN_STRUCT:
 		{
+			/* [L2] A never-initialised struct (array element, optional
+			 * member) is -1; serialise it as "unset" instead of asserting.
+			 * The reader turns any out-of-range record index back into -1
+			 * (see gsave_index_ok), so the round trip is lossless. */
+			if (val.i < 0)
+				return -1;
 			struct page *page = heap_get_page(val.i);
-			assert(page->type == STRUCT_PAGE);
+			/* [L2] A struct-typed variable whose slot is not a STRUCT_PAGE
+			 * means the value was never a struct to begin with (or points
+			 * at a released slot). Say WHICH slot and type instead of
+			 * dying on a bare assert. */
+			if (!page || page->type != STRUCT_PAGE) {
+				/* [L2] A struct-typed slot that does not hold a struct page
+				 * cannot be represented in the save format; record it as
+				 * "unset" (the reader maps -1 back to a null struct) instead
+				 * of aborting the whole save. Bounded warning, not silent --
+				 * the underlying cause is tracked as [ARR-UNSET]. */
+				static int nr_bad;
+				if (nr_bad++ < 5)
+					WARNING("save: struct slot %d holds heap type %d, not a"
+						" STRUCT_PAGE; writing as unset (at %s, root %s)",
+						val.i,
+						(size_t) val.i < heap_size && heap_index_valid(val.i)
+						? heap[val.i].type : -1, gsave_ctx, gsave_root);
+				return -1;
+			}
 			struct ain_struct *st = &ain->structures[page->index];
-			assert(st->nr_members == page->nr_vars);
+			if (st->nr_members != page->nr_vars)
+				VM_ERROR("save: struct %s has %d members but page has %d slots"
+					 " (in %s)", display_sjis0(st->name), st->nr_members,
+					 page->nr_vars, gsave_ctx);
 			struct gsave_record rec = {
 				.type = GSAVE_RECORD_STRUCT,
 				.struct_name = strdup(st->name),
@@ -142,6 +187,9 @@ static int32_t add_value_to_gsave(enum ain_data_type type, union vm_value val, s
 			}
 			for (int i = 0; i < page->nr_vars; i++) {
 				enum ain_data_type type = st->members[i].type.data;
+				snprintf(gsave_ctx_buf, sizeof(gsave_ctx_buf), "%s.%s",
+					 display_sjis0(st->name), display_sjis1(st->members[i].name));
+				gsave_ctx = gsave_ctx_buf;
 				int32_t value = add_value_to_gsave(type, page->values[i], save);
 				struct gsave_keyval kv = {
 					.name = strdup(st->members[i].name),
@@ -152,6 +200,9 @@ static int32_t add_value_to_gsave(enum ain_data_type type, union vm_value val, s
 			}
 			return gsave_add_record(save, &rec);
 		}
+	/* [L2] AIN_ARRAY_TYPE is a macro over 8 concrete array types; v12's
+	 * generic AIN_ARRAY(79) is NOT included (see add_value_to_gsave). */
+	case AIN_ARRAY:
 	case AIN_ARRAY_TYPE:
 		{
 			struct page *page = heap_get_page(val.i);
@@ -160,6 +211,22 @@ static int32_t add_value_to_gsave(enum ain_data_type type, union vm_value val, s
 				return gsave_add_array(save, &array);
 			}
 			assert(page->type == ARRAY_PAGE);
+			/* [L2] A generic array keeps a_type == AIN_ARRAY until the first
+			 * store settles the element kind; array_type() then reports VOID.
+			 * Writing its elements as VOID produces a file the reader can
+			 * never accept (it allocates the array from the saved element
+			 * kind and then compares it against the type it got). "No kind"
+			 * means "cannot represent" -> record it as unset. */
+			if (array_type(page->a_type) == AIN_VOID) {
+				static int nr_untyped;
+				if (nr_untyped++ < 3)
+					WARNING("save: array with unsettled element kind"
+						" (a_type=%d, %d elements) written as unset"
+						" at %s (root %s)", page->a_type, page->nr_vars,
+						gsave_ctx, gsave_root);
+				struct gsave_array array = { .rank = -1 };
+				return gsave_add_array(save, &array);
+			}
 			struct gsave_array array = {
 				.rank = page->array.rank,
 				.dimensions = xcalloc(page->array.rank, sizeof(int32_t)),
@@ -218,6 +285,12 @@ int save_globals(const char *keyname, const char *filename, const char *group_na
 				continue;
 			global->name = strdup(ain->globals[i].name);
 			global->type = ain->globals[i].type.data;
+			snprintf(gsave_ctx_buf, sizeof(gsave_ctx_buf), "global %s",
+				 display_sjis0(ain->globals[i].name));
+			gsave_ctx = gsave_ctx_buf;
+			snprintf(gsave_root_buf, sizeof(gsave_root_buf), "%s",
+				 ain->globals[i].name ? ain->globals[i].name : "?");
+			gsave_root = gsave_root_buf;
 			global->value = add_value_to_gsave(global->type, global_get(i), save);
 			global++;
 		}
@@ -315,6 +388,9 @@ static union vm_value json_to_vm_value(enum ain_data_type type, enum ain_data_ty
 			json_load_page(heap[slot].page, json, false);
 		}
 		return vm_int(slot);
+	/* [L2] AIN_ARRAY_TYPE is a macro over 8 concrete array types; v12's
+	 * generic AIN_ARRAY(79) is NOT included (see add_value_to_gsave). */
+	case AIN_ARRAY:
 	case AIN_ARRAY_TYPE:
 		slot = heap_alloc_slot(VM_PAGE);
 		if (cJSON_IsNull(json)) {
@@ -439,6 +515,34 @@ static int struct_member_index(struct ain_struct *st, const char *name)
 	return -1;
 }
 
+/* [L2] Table indices come from the save file and must never be trusted.
+ * An older writer stored -1 for generic arrays it could not serialise, and
+ * any truncated/corrupt file can point outside the table. Both mean "no
+ * value", which every caller already knows how to handle for rank == -1.
+ * Returns true when `value` is a usable index into `n` entries. */
+static bool gsave_index_ok(int32_t value, int32_t n)
+{
+	return value >= 0 && value < n;
+}
+
+/* [L2] Reverse of array_type(): turn a saved element kind back into the
+ * concrete array type that alloc_array()/variable_type() expect. Returns
+ * AIN_VOID when the element kind cannot be typed (empty generic array). */
+static enum ain_data_type array_type_of_elem(enum ain_data_type elem)
+{
+	switch (elem) {
+	case AIN_INT:       return AIN_ARRAY_INT;
+	case AIN_FLOAT:     return AIN_ARRAY_FLOAT;
+	case AIN_STRING:    return AIN_ARRAY_STRING;
+	case AIN_STRUCT:    return AIN_ARRAY_STRUCT;
+	case AIN_FUNC_TYPE: return AIN_ARRAY_FUNC_TYPE;
+	case AIN_BOOL:      return AIN_ARRAY_BOOL;
+	case AIN_LONG_INT:  return AIN_ARRAY_LONG_INT;
+	case AIN_DELEGATE:  return AIN_ARRAY_DELEGATE;
+	default:            return AIN_VOID;
+	}
+}
+
 static union vm_value gsave_to_vm_value(struct gsave *save, enum ain_data_type type, int struct_type, int array_rank, int32_t value);
 
 static struct gsave_flat_array *gsave_load_array(struct gsave *save, struct page *page, struct gsave_flat_array *flat_array)
@@ -455,8 +559,27 @@ static struct gsave_flat_array *gsave_load_array(struct gsave *save, struct page
 	for (int i = 0; i < page->nr_vars; i++) {
 		int struct_type, array_rank;
 		enum ain_data_type data_type = variable_type(page, i, &struct_type, &array_rank);
+		if (flat_array->values[i].type == AIN_VOID) {
+			/* [L2] Files written before the writer learned to skip untyped
+			 * arrays carry VOID-typed values. They cannot be interpreted,
+			 * so leave the element at its "unset" value instead of failing
+			 * the whole load. */
+			static int nr_void;
+			if (nr_void++ < 3)
+				WARNING("save: array element %d has no recorded type;"
+					" leaving it unset", i);
+			page->values[i] = variable_initval(data_type);
+			continue;
+		}
 		if (data_type != flat_array->values[i].type)
-			VM_ERROR("Bad save file: unexpected array element type");
+			VM_ERROR("Bad save file: unexpected array element type"
+				 " (element %d/%d: page says %s(%d), file says %s(%d);"
+				 " page a_type=%d rank=%d struc=%d)",
+				 i, page->nr_vars,
+				 ain_strtype(ain, data_type, struct_type), data_type,
+				 ain_strtype(ain, flat_array->values[i].type, -1),
+				 flat_array->values[i].type,
+				 page->a_type, page->array.rank, page->array.struct_type);
 		union vm_value val = gsave_to_vm_value(save, data_type, struct_type, array_rank, flat_array->values[i].value);
 		page->values[i] = val;
 	}
@@ -474,12 +597,24 @@ static union vm_value gsave_to_vm_value(struct gsave *save, enum ain_data_type t
 		return vm_int(value);
 	case AIN_STRING:
 		{
+			/* [L2] Same bounds rule as struct/array: a file index outside
+			 * the string table means "empty string", not a trap. */
+			const struct string *s = &EMPTY_STRING;
+			if (value != GSAVE7_EMPTY_STRING && gsave_index_ok(value, save->nr_strings))
+				s = save->strings[value];
 			int slot = heap_alloc_slot(VM_STRING);
-			heap[slot].s = string_ref(value == GSAVE7_EMPTY_STRING ? &EMPTY_STRING : save->strings[value]);
+			heap[slot].s = string_ref((struct string *) s);
 			return vm_int(slot);
 		}
 	case AIN_STRUCT:
 		{
+			if (!gsave_index_ok(value, save->nr_records)) {
+				static int nr_oob;
+				if (nr_oob++ < 3)
+					WARNING("save record index %d out of range (%d records);"
+						" treating as unset", value, save->nr_records);
+				return vm_int(-1);
+			}
 			struct gsave_record *rec = &save->records[value];
 			struct ain_struct *st = &ain->structures[struct_type];
 			struct gsave_struct_def *sd =
@@ -507,20 +642,62 @@ static union vm_value gsave_to_vm_value(struct gsave *save, enum ain_data_type t
 			}
 			return vm_int(slot);
 		}
+	/* [L2] AIN_ARRAY_TYPE is a macro over 8 concrete array types; v12's
+	 * generic AIN_ARRAY(79) is NOT included (see add_value_to_gsave). */
+	case AIN_ARRAY:
 	case AIN_ARRAY_TYPE:
 		{
-			struct gsave_array *array = &save->arrays[value];
 			int slot = heap_alloc_slot(VM_PAGE);
+			if (!gsave_index_ok(value, save->nr_arrays)) {
+				/* Not a table entry: no data was ever written for this
+				 * variable (old files serialised generic arrays as -1). */
+				static int nr_oob;
+				if (nr_oob++ < 3)
+					WARNING("save array index %d out of range (%d arrays);"
+						" treating as unset", value, save->nr_arrays);
+				heap[slot].page = NULL;
+				return vm_int(slot);
+			}
+			struct gsave_array *array = &save->arrays[value];
 			if (array->rank == -1) {
 				heap[slot].page = NULL;
 				return vm_int(slot);
 			}
-			if (array_rank != array->rank)
+			int rank = array->rank;
+			enum ain_data_type data_type = type;
+			if (type == AIN_ARRAY) {
+				/* [L2] A generic array carries NO element kind in its
+				 * declaration (that is what "array<?>" means), and its
+				 * declared rank is a placeholder: 51 globals in this AIN
+				 * declare rank=1 while the instances are whatever the
+				 * script built. So for generic arrays the saved instance is
+				 * authoritative for both rank and element kind -- trusting
+				 * the declaration produced "array rank mismatch" on every
+				 * generic global at load time.
+				 * The element kind is recoverable from the save itself:
+				 * collect_flat_arrays() stores it per flat array (v7+) and
+				 * per value (v<=5), so it is present in both formats. */
+				if (rank < 1 || rank > 8)
+					VM_ERROR("Bad save file: generic array rank out of range");
+				enum ain_data_type elem = AIN_VOID;
+				if (array->nr_flat_arrays > 0 && array->flat_arrays)
+					elem = array->flat_arrays[0].type;
+				data_type = array_type_of_elem(elem);
+				if (data_type == AIN_VOID) {
+					/* Empty generic array: no element to type it from.
+					 * struct_type is the only surviving hint. */
+					data_type = struct_type >= 0 ? AIN_ARRAY_STRUCT : AIN_ARRAY_INT;
+					WARNING("generic array with rank=%d has no elements; "
+						"retyping as %s", rank,
+						struct_type >= 0 ? "array<struct>" : "array<int>");
+				}
+			} else if (array_rank != rank) {
 				VM_ERROR("Bad save file: array rank mismatch");
-			union vm_value *dims = xmalloc(sizeof(union vm_value) * array_rank);
-			for (int i = 0; i < array_rank; i++)
-				dims[i].i = array->dimensions[array_rank - 1 - i];
-			struct page *page = alloc_array(array_rank, dims, type, struct_type, false);
+			}
+			union vm_value *dims = xmalloc(sizeof(union vm_value) * rank);
+			for (int i = 0; i < rank; i++)
+				dims[i].i = array->dimensions[rank - 1 - i];
+			struct page *page = alloc_array(rank, dims, data_type, struct_type, false);
 			heap[slot].page = page;
 			free(dims);
 			gsave_load_array(save, page, array->flat_arrays);
@@ -555,6 +732,21 @@ int load_globals_from_gsave(struct gsave *save, const char *keyname, const char 
 		if (type->data != g->type) {
 			WARNING("%s: type mismatch", display_sjis0(g->name));
 			return 0;
+		}
+		/* [L2] XSYS4_GSAVE_DBG=1: name the globals whose saved array index
+		 * is out of range BEFORE gsave_to_vm_value() dereferences it. The
+		 * crash site only knows `rank`, not which global owned it.
+		 * AIN_ARRAY_TYPE is a macro (cannot be compared), so classify by
+		 * the printable type name instead. */
+		const char *tname = ain_strtype(ain, type->data, -1);
+		if (tname && strstr(tname, "array") && getenv("XSYS4_GSAVE_DBG")) {
+			int ok = g->value >= 0 && g->value < save->nr_arrays;
+			NOTICE("[gsave] %s type=%d rank=%d value=%d nr_arrays=%d in_range=%d"
+			       " rank_saved=%d flats=%d",
+			       display_sjis0(g->name), type->data, type->rank, g->value,
+			       save->nr_arrays, ok,
+			       ok ? save->arrays[g->value].rank : -99,
+			       ok ? save->arrays[g->value].nr_flat_arrays : -99);
 		}
 		bool call_dtors = false; // Destructors for old objects should not be called.
 		global_set(global_index, gsave_to_vm_value(save, type->data, type->struc, type->rank, g->value), call_dtors);

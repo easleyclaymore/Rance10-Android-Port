@@ -109,6 +109,30 @@ static inline void _page_set_var(struct page *page, int i, union vm_value v)
 union vm_value variable_initval(enum ain_data_type type);
 /* Initialise a variable with its full AIN type (carries array element struct type). */
 union vm_value variable_initval_typed(const struct ain_type *type);
+/* [L1] Single source of truth for "does a value of this type own a heap
+ * reference that page teardown (variable_fini / exit_unref) will release?".
+ * Any write-side code that copies such a value into a page must pair with it
+ * (see array_copy_values() in hll/Array.c, D134).
+ *
+ * NOTE: function_call() deliberately does NOT use this predicate. AIN's
+ * calling convention transfers ownership for non-ref arguments; widening
+ * the argument ref to every owned type was tried and DISPROVED by an A/B
+ * run (double-free count 13720 -> 13720, unchanged). Do not "fix" that
+ * asymmetry without fresh evidence. */
+static inline bool variable_owns_ref(enum ain_data_type type)
+{
+	switch (type) {
+	case AIN_STRING:
+	case AIN_STRUCT:
+	case AIN_DELEGATE:
+	case AIN_ARRAY_TYPE:
+	case AIN_REF_TYPE:
+		return true;
+	default:
+		return false;
+	}
+}
+
 void variable_fini(union vm_value v, enum ain_data_type type, bool call_dtor);
 enum ain_data_type variable_type(struct page *page, int varno, int *struct_type, int *array_rank);
 void variable_set(struct page *page, int varno, enum ain_data_type type, union vm_value val);

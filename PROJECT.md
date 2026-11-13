@@ -6,33 +6,42 @@
 
 ## 状态
 
-**进行中，尚未成功。** 启动链已彻底跑通：`*ERROR*=0`、零未实现 HLL，
-VM 进入持续主循环（`main → Run → RunLocalGame → RunStartScreen → RunIScene
-→ WaitFrame`），**但画面仍全黑**。
+**进行中，尚未通关。** 启动链、标题界面、第一章任务地图都已跑通并出画；
+存档写读闭环；内存长跑稳定。当前卡在任务地图的对象装载。
 
-关键里程碑（2026-11-10）：
+| 环节 | 状态 |
+|---|---|
+| 启动链 / 平台 / 登录 | ✅ `*ERROR*=0`，零未实现 HLL |
+| 标题 → 第一章 | ✅ 可用后门直接调用 `Rance10@RunGameChapter1`(fno 22543) |
+| 第一章任务地图 `SceneQuestMap` | ⚠️ 场景装载、出画正常；`QuestMapObjectLoader@Load` 卡在接口派发 |
+| 存档 `GroupSave / GroupLoad` | ✅ 泛型数组写读对称，离线检查器可验 |
+| 内存 | ✅ 地图装载 RSS 约 370 MB，不再失控 |
 
-- **D100/D101** 修复了启动崩溃：`heap_grow` 未零初始化 `seq`（`xrealloc` 不
-  清零，D83 守卫误判新 slot 为"仍在使用"，`heap_free_ptr` 越界写坏 glibc
-  堆元数据 → `calloc()` SEGV）；ffi 引用返回值（tag=47 非 single-value）
-  的 `hi`（数组页 slot）缺引用保护，AIN `DELETE` 把数组页 unref 到 0。
-  修后程序不再崩溃，30 秒跑满。
-- **当前卡点**：`CASTimerManager` 的 `handles` 数组（`AIN_ARRAY_STRUCT`）被
-  `Realloc(0)` 错误清空到 0/1 个元素，`CheckHandle(At(40))` 越界 → timer
-  失效 → 时间不流动 → CG 永远不加载（`Parts_SetPartsCG` 0 次）。这是 struct
-  数组元素生命周期问题，见主文档 `TECH_DEBT`。
-- 累计修复点 >110 个；`[HACK]` 标记约 259 处，集中在 `src/hll/PartsEngine.c`
-  （Activity 子系统整段 stub，约 225 处），其余少量在 heap/vm/Array/
-  SystemService。**主分支交付物不含 `[HACK]` 代码**（当前都在本地工作分支）。
+**当前卡点**：`CALLMETHOD: invalid function index -1`（`0x37CBCA`）。
+接口元素 `[对象槽, vtable 偏移]` 的偏移为 `-1`，派发不到方法。
+取证：`XSYS4_DUMP_AT=37CBCA,4`（原生断点，打印局部变量与 AIN 栈）。
 
-开发与调试文档**唯一来源**是私有笔记仓库
-<https://github.com/easleyclaymore/alinnotes>，目录
-`/sdcard/htdocs/阿林笔记/workspace/兰斯10/`：
+**最近解决的三个大问题**（2026-11-13）：
 
-- **`Rance10_接手指南-20261110.md`** —— 新协作者**先读这份**：通道实测、日志纪律、
-  复现基线、工具箱、根因索引、D81 排查步骤、提交姿势、交接检查清单。
-- `Rance10_Android原生移植_xsystem4-20261105.md` —— 主文档（修复、取证、技术债）。
-- `Rance10_AINv12_字节码规范-20261107.md` —— AIN v12 静态事实。
+- **D136 接口元素数组**：`AIN_IFACE` 元素是 2 槽、字节码按 `i*2` 索引，
+  分配/增长/计数三处必须一致 —— 只补一处会出现"数组翻倍"式内存雪崩。
+- **D138 内存风暴**：`Array.Free` 曾是空桩（当 Clear 用则不生效），
+  加上 `PushBack` 传槽数而 `realloc_array` 按元素数再乘 2，进地图 RSS 涨到 9.5 GB
+  触发系统 OOM。修后稳定在 370 MB。
+- **跑测夹具**：存档目录改为显式 `--save-folder`；跑测强制独立 Xvfb + 内存上限
+  （`run-live.sh` 现在拒绝在真实桌面运行）。
+
+累计修复点 >110 个；`[HACK]` 标记集中在 `src/hll/PartsEngine.c`
+（Activity 子系统整段 stub）。**主分支交付物不含 `[HACK]` 代码。**
+
+开发文档的**唯一来源**是工作区：
+
+- `../README.md` —— 现状、跑测、必读契约、卡点（改 VM 前先读第 4 节）
+- `../TECH_DEBT.md` —— 未结债务（A 结构性 / B 会炸的 / C 长尾）
+- `../GUIDE/` —— 《黑盒字节码引擎移植实战指南》，独立成书
+- `../tools/README.md` —— 离线工具用法（`ain_at` / `gsave_dump` / `ain_xref`）
+
+`notes/` 下是字节码规范取证（AIN v12 引用槽宽等静态事实）。
 
 按项目纪律，本仓库**不复制开发文档**，只保留指针；所有捷径验证都在
 主文档 `TECH_DEBT` 章节登记，主分支交付物不含 `[HACK]` 代码。
@@ -68,17 +77,22 @@ meson setup build && ninja -C build
 依赖：SDL2、GLESv2、libffi、freetype、cglm、libdeflate、chibi-scheme 等
 （见 `meson.build`；`tools/inst-deps.sh` 是本机环境备忘）。
 
-无头运行（Xvfb）—— **必须走 `tools/safe_run.sh`**：
+无头运行 —— **必须走 `tools/run-headless.sh`**（自带独立 Xvfb 与内存上限）：
 
 ```sh
-tools/safe_run.sh baseline 18
+tools/run-headless.sh tagA 150 /tmp/a.png
 ```
 
-该脚本提供 20 MB 日志硬上限、独立 Xvfb 回收、`timeout -k` 直接管引擎二进制，
-并在跑完自动清理 >50 MB 的历史日志。**禁止**裸跑
-`timeout ... xvfb-run ... > logs/*.log`：2026-11-09 曾因此产生 124 GB 日志
-（`xvfb-run` fork 的 `xsystem4` 成为孤儿进程，会话结束后继续写数小时）。
-完整纪律与抓屏命令见接手指南 §3 / §4。
+也可用 `tools/baseline.sh tagA 120`（六项指标基线）或 `tools/storm.sh tagA 60`
+（后门直冲地图）。三条纪律：
+
+1. **不要在真实桌面跑**：`run-live.sh` 会 `xdotool` 点鼠标、`x11grab` 截屏，
+   现在只接受 `:90..:129` 的独立 Xvfb，其余 `DISPLAY` 直接 `exit 3`。
+2. **不要在无上限的情况下跑**：任一入口都默认
+   `systemd-run -p MemoryMax=3G -p MemorySwapMax=0`；直接调最内层脚本曾绕过上限，
+   实测把游戏放到 9.5 GB 并触发系统 OOM。
+3. **不要裸跑** `timeout ... xvfb-run ... > logs/*.log`：2026-11-09 曾因此产生
+   124 GB 日志（`xvfb-run` fork 的引擎成为孤儿进程，继续写数小时）。
 
 ## 可移植性门禁
 
