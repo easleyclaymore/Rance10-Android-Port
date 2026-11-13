@@ -149,8 +149,9 @@ for _ in $(seq 1 60); do
 done
 echo "PID=$RUNPID GAMEPID=${GAMEPID:-unknown}"
 if [ -n "$WID" ]; then
-    xdotool windowfocus --sync "$WID" >/dev/null 2>&1 || true
-    xdotool windowraise "$WID" >/dev/null 2>&1 || true
+    # --sync 在窗口不响应时会无限等，同样加超时
+    timeout -k 1 5 xdotool windowfocus --sync "$WID" >/dev/null 2>&1 || true
+    timeout -k 1 5 xdotool windowraise "$WID" >/dev/null 2>&1 || true
     eval "$(xdotool getwindowgeometry --shell "$WID" 2>/dev/null)"
 fi
 echo "WINDOW=${WID:-none}"
@@ -186,12 +187,15 @@ click() { # click <view_x> <view_y> <button>
 shot() { # shot path
     # 窗口截图（import -window）在 GL 直绘时可能只拿到过期的 backing pixmap，
     # 所以在 X11 上优先用 ffmpeg 抓整个屏幕，拿到的才是合成后的真实画面。
+    # [L0] ffmpeg x11grab 在 GL 画面繁忙时会挂住不返回（实测把整轮跑测
+    # 拖到外层 90 秒硬超时），必须自己套一层超时；失败就退回 import。
     if command -v ffmpeg >/dev/null 2>&1; then
-        ffmpeg -loglevel quiet -f x11grab -video_size "${RANCE10_GRAB_SIZE:-1920x1080}" \
+        timeout -k 1 6 ffmpeg -loglevel quiet -f x11grab \
+               -video_size "${RANCE10_GRAB_SIZE:-1920x1080}" \
                -i "${DISPLAY}.0" -frames:v 1 -y "png:$1" >/dev/null 2>&1 && return 0
     fi
     [ -n "$WID" ] || return 0
-    import -window "$WID" "png:$1" >/dev/null 2>&1 || true
+    timeout -k 1 6 import -window "$WID" "png:$1" >/dev/null 2>&1 || true
 }
 
 # 2) 等网络确认框（第 2 次 loaded）
