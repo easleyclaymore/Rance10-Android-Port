@@ -720,8 +720,15 @@ void hll_call(int libno, int fno, int result_tag)
 		case AIN_REF_STRUCT:
 		case AIN_REF_ARRAY_TYPE:
 		case AIN_REF_ARRAY:   /* 80 */
-			if (heap_slots[i] > 0 && heap_slots[i] < heap_size)
+			if (heap_slots[i] > 0 && heap_slots[i] < heap_size) {
+				/* [D153] 与 Array.c 的 [arralloc] 配对：这行打不出来
+				 * 就说明 HLL 改了容器却没写回成员。 */
+				if (getenv("XSYS4_ARR_ALLOC_DBG") && libno == 5)
+					NOTICE("[arrwb] slot=%d old=%p new=%p",
+					       heap_slots[i], (void *)heap[heap_slots[i]].page,
+					       (void *)heap_ptrs[i]);
 				heap[heap_slots[i]].page = heap_ptrs[i];
+			}
 			break;
 		case AIN_REF_FUNC_TYPE:
 		case AIN_REF_DELEGATE:
@@ -1257,12 +1264,38 @@ static struct hll_function *link_static_library(struct ain_library *ainlib, stru
 
 	for (int i = 0; i < ainlib->nr_functions; i++) {
 		bool matched = false;
+		/* [D152] 同名重载按参数个数挑，不再"第一个同名就上"。
+		 *
+		 * 实锤：String.GetPart 在 AIN 里有 2 参（f21）和 3 参（f22）两个
+		 * 重载，导出表只有一条 `GetPart -> String_GetPartLen`（3 参）。
+		 * 于是 2 参调用把第三个参数读成寄存器垃圾，`GetPart("Tab1",3)`
+		 * 时好时坏地返回 "1" 或 ""，调用方 `Int(...)-1` 算出 0 或 -1，
+		 * `m_btn[-1]` 空引用 —— 这就是编成界面崩溃的间歇性来源。
+		 *
+		 * 评分：arity 相等 = 2，未标注(-1) = 1，明确不等 = 0；
+		 * 取最高分，同分保留先出现的（旧行为不变）。 */
+		struct static_hll_function *best = NULL;
+		int best_score = -1;
 		for (int j = 0; lib->functions[j].name; j++) {
-			if (!strcmp(ainlib->functions[i].name, lib->functions[j].name)) {
-				link_static_library_function(&dst[i], &ainlib->functions[i], lib->functions[j].fun);
-				matched = true;
-				break;
+			if (strcmp(ainlib->functions[i].name, lib->functions[j].name))
+				continue;
+			int score;
+			if (lib->functions[j].nr_args < 0)
+				score = 1;
+			else if (lib->functions[j].nr_args == ainlib->functions[i].nr_arguments)
+				score = 2;
+			else
+				score = 0;
+			if (score > best_score) {
+				best_score = score;
+				best = &lib->functions[j];
 			}
+			if (score == 2)
+				break;
+		}
+		if (best) {
+			link_static_library_function(&dst[i], &ainlib->functions[i], best->fun);
+			matched = true;
 		}
 		/* [HACK][ZERO-STUB] AIN functions with no C export at all still need a
 		 * prepared ffi cif so the soft-stub path can supply a correctly typed

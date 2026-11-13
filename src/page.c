@@ -460,6 +460,10 @@ int alloc_struct(int no)
 	}
 	struct ain_struct *s = &ain->structures[no];
 	int slot = heap_alloc_slot(VM_PAGE);
+	/* [D153] alloc_struct 是所有结构体创建的**唯一**入口，所以探针放这里。
+	 * 带上调用者 ip：用 `tools/bin/ain_at atf:<ip>` 就能点名是谁造的。 */
+	if (getenv("XSYS4_CTOR_DBG") && atoi(getenv("XSYS4_CTOR_DBG")) == no)
+		NOTICE("[alloc] struct=%d slot=%d ip=0x%zX", no, slot, instr_ptr);
 	heap_set_page(slot, alloc_page(STRUCT_PAGE, no, s->nr_members));
 	for (int i = 0; i < s->nr_members; i++) {
 		if (s->members[i].type.data == AIN_STRUCT) {
@@ -496,6 +500,11 @@ static void init_struct_with_ctor(int no, int slot, int ctor_fno)
 void create_struct_with_ctor(int no, int ctor_fno, union vm_value *var)
 {
 	var->i = alloc_struct(no);
+	/* [D153] XSYS4_CTOR_DBG=<struct_no>：这个结构体一共跑了多少次构造函数、
+	 * 落在哪个堆槽。与 `[arralloc]`/`[dump] this=` 对照，就能回答
+	 * "某个实例为什么成员是空的" —— 是没跑 ctor，还是跑了但写回丢了。 */
+	if (getenv("XSYS4_CTOR_DBG") && atoi(getenv("XSYS4_CTOR_DBG")) == no)
+		NOTICE("[ctor] struct=%d slot=%d ctor=%d", no, var->i, ctor_fno);
 	init_struct_with_ctor(no, var->i, ctor_fno);
 }
 
@@ -510,6 +519,8 @@ void delete_struct(int no, int slot)
 void create_struct(int no, union vm_value *var)
 {
 	var->i = alloc_struct(no);
+	if (getenv("XSYS4_CTOR_DBG") && atoi(getenv("XSYS4_CTOR_DBG")) == no)
+		NOTICE("[ctor] struct=%d slot=%d ctor=none(create_struct)", no, var->i);
 	init_struct(no, var->i);
 }
 
