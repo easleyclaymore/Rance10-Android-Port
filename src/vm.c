@@ -1143,8 +1143,35 @@ static void method_call(int nargs, int return_address)
 				       fno, display_sjis0(ain->functions[fno].name),
 				       obj, (int)_obj_bad, sno, instr_ptr);
 		}
-		if (sno >= 0 && sno < ain->nr_structures)
-			obj = alloc_struct(sno);
+		/* [D155] 补建对象按 struct 号**复用**，不要每次新建。
+		 *
+		 * 实测进编队界面 12 秒里 `[rebuild]` 打到打印上限 80 次 ——
+		 * `Admiral@*` 36 次、`InstantTimer@*`、`TrophyCardSet@GetList` …
+		 * 全是 `obj=-1`。这些调用本来就拿不到真对象，写进去也没人读，
+		 * 但每次都 `alloc_struct` 一个（成员数组还要另分配），
+		 * 在按帧调用的路径上就是稳定的泄漏。
+		 *
+		 * 复用后语义不变（都是"没有对象的临时容器"），分配次数降为
+		 * 每个 struct 号一次。XSYS4_PHANTOM_REUSE=0 可退回旧行为。 */
+		if (sno >= 0 && sno < ain->nr_structures) {
+			static int phantom_on = -1;
+			static int *phantom;
+			if (phantom_on < 0) {
+				const char *e = getenv("XSYS4_PHANTOM_REUSE");
+				phantom_on = (e && *e == '0') ? 0 : 1;
+				if (phantom_on)
+					phantom = calloc(ain->nr_structures, sizeof(int));
+			}
+			if (phantom_on && phantom && phantom[sno] > 0 &&
+			    (size_t)phantom[sno] < heap_size && heap[phantom[sno]].page &&
+			    heap[phantom[sno]].page->type == STRUCT_PAGE) {
+				obj = phantom[sno];
+			} else {
+				obj = alloc_struct(sno);
+				if (phantom_on && phantom)
+					phantom[sno] = obj;
+			}
+		}
 	}
 	/* [D132] `this` 指向了错误的结构体类型（例如本该是 CommonStatus(842)
 	 * 却拿到 CASConstructionProcess(0, 3 成员)），成员访问必然越界。
