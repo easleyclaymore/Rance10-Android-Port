@@ -405,8 +405,17 @@ static void Array_Alloc_(struct page **out, int size, int type, int a, int b)
 				p->values[i] = variable_initval(et);
 		}
 	}
+	struct page *oldp = *out;
 	*out = p;
 	ARRDBG("[ARR] alloc new=%p nr=%d st=%d at=%d", (void*)p, p->nr_vars, p->array.struct_type, p->a_type);
+	/* [D153] XSYS4_ARR_ALLOC_DBG=1：Array.Alloc 到底改没改这份容器。
+	 * 与 ffi 侧的 `[arrwb]` 配合看：alloc 打了、wb 没打 ⇒ 写回没落到
+	 * 结构体成员上（`ref array` 传的是值的典型症状）。 */
+	if (getenv("XSYS4_ARR_ALLOC_DBG"))
+		NOTICE("[arralloc] size=%d st=%d iface=%d old=%p(nr=%d) -> new=%p(nr=%d)",
+		       size, struct_type, iface_array,
+		       (void *)oldp, oldp ? oldp->nr_vars : -1,
+		       (void *)p, p->nr_vars);
 }
 
 /* [D138] 单位换算点 —— 这一族 bug 的共同形状。
