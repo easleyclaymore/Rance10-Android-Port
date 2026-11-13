@@ -287,6 +287,18 @@ static const char *uc_parse_label(const char *params)
 	return comma ? comma + 1 : params;
 }
 
+/* [D141] 参数 的第一个逗号字段是按钮样式（标题 / 幅１９６ ...）。
+ * 「标题」对应说明书 r02 里三枚红色圆形主按钮，其余对应金色小按钮。
+ * 样式名是 GBK 字节串，这里只按字节前缀判断，不做编码转换。 */
+static char *uc_parse_style(const char *params)
+{
+	if (!params)
+		return NULL;
+	const char *comma = strchr(params, ',');
+	size_t n = comma ? (size_t)(comma - params) : strlen(params);
+	return strndup(params, n);
+}
+
 static struct ex_tree *get_child(struct ex_tree *t, const char *utf8_name)
 {
 	if (!t || t->is_leaf)
@@ -654,6 +666,20 @@ static int build_part(struct activity_part *part, int parent_no)
 		/* 控件种类与显示文字交给 parts 层，绘制时用它画底板和居中文字。 */
 		PE_SetUserComponent(part->parts_no, part->uc_object,
 				uc_parse_label(part->uc_params));
+		/* 样式供绘制层区分主按钮/小按钮；用内部 key，避免与 AIN 侧
+		 * GetUserComponentData("参数") 使用的键冲突。 */
+		char *uc_style = uc_parse_style(part->uc_params);
+		if (uc_style) {
+			/* EX 字符串是 GBK；用 utf2sjis 转换后再比较，别拿源码里的
+			 * UTF-8 字面量直接比字节（uc_parse_width 也是这么做的）。
+			 * 归一化成 ASCII 标记，绘制层就不必关心编码。 */
+			char *title = utf2sjis("标题", strlen("标题"));
+			bool round = title && strncmp(uc_style, title, strlen(title)) == 0;
+			free(title);
+			PE_SetUserComponentData(part->parts_no, "__style",
+					round ? "round" : "flat");
+			free(uc_style);
+		}
 		/* [D122] 原始 数据 键值写回引擎。AIN 的 TextButton@Init 靠
 		 * GetUserComponentData(no, "参数") 取参数并按逗号 Split；
 		 * 缺了这一步 8 个标题菜单按钮全都不会注册点击委托。 */
