@@ -63,7 +63,7 @@ int main(int argc,char**argv){
 		"  struct:<name>       结构体/接口布局\n"
 		"  memb:<n>            结构体 n 的成员（带类型文本）\n"
 		"  fno:<n>             按函数号打印\n"
-		"  str:<n> / dno:<n>   字符串 / 委托\n"
+		"  str:<n> / dno:<n>   字符串 / 委托（dno 打签名；dl:<子串> 按名字找委托号）\n"
 		"  callhll             CALLHLL 的 tag 直方图\n",argv[0]);return 1;}
 	int err=0; struct ain*a=ain_open(argv[1],&err);
 	if(!a){fprintf(stderr,"ain_open failed %d\n",err);return 1;}
@@ -142,10 +142,24 @@ int main(int argc,char**argv){
 		if(n<0||n>=(int)a->nr_strings){fprintf(stderr,"str index out of range\n");return 1;}
 		printf("STR[%d] = [%s]\n",n,(a->strings[n]&&a->strings[n]->text)?a->strings[n]->text:"(null)");
 		return 0;}
+	if(!strncmp(spec,"dl:",3)){
+		const char*want=spec+3; int shown=0;
+		for(int i=0;i<(int)a->nr_delegates;i++){
+			struct ain_function_type*d=&a->delegates[i];
+			if(want[0]&&(!d->name||!strstr(d->name,want)))continue;
+			printf("DELEGATE [%d] %-48s nr_args=%d ret=%d\n",i,
+				d->name?d->name:"(anonymous)",d->nr_arguments,
+				d->return_type.data);
+			shown++;
+		}
+		printf("-- %d delegate(s)\n",shown);
+		return 0;}
 	if(!strncmp(spec,"dno:",4)){
 		int n=atoi(spec+4);
 		if(n<0||n>=(int)a->nr_delegates){fprintf(stderr,"dno out of range\n");return 1;}
-		printf("DELEGATE [%d] nr_args=%d ret=%d/%d\n",n,a->delegates[n].nr_arguments,
+		printf("DELEGATE [%d] %s nr_args=%d ret=%d/%d\n",n,
+			a->delegates[n].name?a->delegates[n].name:"(anonymous)",
+			a->delegates[n].nr_arguments,
 			a->delegates[n].return_type.data,a->delegates[n].return_type.struc);
 		for(int i=0;i<a->delegates[n].nr_arguments;i++)
 			printf("  arg[%d] type=%d struc=%d rank=%d\n",i,

@@ -1196,6 +1196,30 @@ static int struct_no_from_function(int fno)
 }
 static void vm_execute(void);
 
+/* [D150] 目标函数的 (ip, sp) 环形缓冲：栈不平才倒出来。
+ * 只记最近 256 条，所以不会因为刷屏把出问题那一次挤出日志。 */
+static struct sp_ring_ent { size_t ip; int sp; } sp_ring[256];
+static int sp_ring_n;
+static int sp_ring_fno = -1;
+
+static void sp_ring_add(size_t ip, int sp)
+{
+	sp_ring[sp_ring_n & 255].ip = ip;
+	sp_ring[sp_ring_n & 255].sp = sp;
+	sp_ring_n++;
+}
+
+static void sp_ring_dump(int fno, int want, int got)
+{
+	int cnt = sp_ring_n < 256 ? sp_ring_n : 256;
+	int start = sp_ring_n - cnt;
+	NOTICE("[spr] fno=%d want=%d got=%d：倒出最近 %d 条", fno, want, got, cnt);
+	for (int k = 0; k < cnt; k++) {
+		int i = (start + k) & 255;
+		NOTICE("[spr]   ip=0x%zX sp=%d", sp_ring[i].ip, sp_ring[i].sp);
+	}
+}
+
 /* AIN_IFACE / AIN_WRAP occupy two stack slots ([object, vtable offset]).
  * A delegate whose return type is one of them must therefore leave two values
  * behind; a single value leaves the caller's R_ASSIGN with a misaligned pair
@@ -1213,10 +1237,55 @@ static int delegate_return_slots(const struct ain_function_type *dg)
 	}
 }
 
+/* [D150] 委托循环的栈基线。
+ *
+ * `DG_CALLBEGIN` 把栈重排成 [args..., dg_page, dg_index]，之后 `DG_CALL`
+ * 在循环里按固定偏移取 dg_page；只要**被调的回调体**多留或少弹一格，
+ * 下一次迭代取到的 dg_page 就是别的什么东西（实测是一个 VM_STRING 槽，
+ * 于是 heap_get_page 报 `Invalid page index: N (type=1)`）。
+ *
+ * 所以：CALLBEGIN 时记下 sp，每次 DG_CALL 与它比对。差一格就能直接点名
+ * 是哪个 dg_no 的回调体没把栈摆平。默认关闭，XSYS4_DG_DRIFT=1 打开。 */
+static struct { int sp; int dg_no; int last_fun; } dg_drift[16];
+static int dg_drift_depth;
+static int dg_drift_on = -1;
+
+static void dg_drift_push(int dg_no)
+{
+	if (dg_drift_on < 0)
+		dg_drift_on = getenv("XSYS4_DG_DRIFT") ? 1 : 0;
+	if (!dg_drift_on || dg_drift_depth >= 16)
+		return;
+	dg_drift[dg_drift_depth].sp = stack_ptr;
+	dg_drift[dg_drift_depth].dg_no = dg_no;
+	dg_drift[dg_drift_depth].last_fun = -1;
+	dg_drift_depth++;
+}
+
+static void dg_drift_check(int dg_no)
+{
+	if (!dg_drift_on || dg_drift_depth <= 0)
+		return;
+	int want = dg_drift[dg_drift_depth - 1].sp;
+	if (stack_ptr == want)
+		return;
+	static int n;
+	if (n++ < 40) {
+		int lf = dg_drift[dg_drift_depth - 1].last_fun;
+		NOTICE("[dgdrift] dg_no=%d sp=%d want=%d delta=%d ip=0x%zX fno=%d lastfun=%d %s",
+		       dg_no, stack_ptr, want, stack_ptr - want, instr_ptr,
+		       call_stack_ptr > 0 ? call_stack[call_stack_ptr-1].fno : -1,
+		       lf, (lf > 0 && lf < ain->nr_functions)
+		       ? display_sjis0(ain->functions[lf].name) : "-");
+	}
+}
+
 static void delegate_call(int dg_no, int return_address)
 {
 	if (dg_no < 0 || dg_no >= ain->nr_delegates)
 		VM_ERROR("Invalid delegate index");
+
+	dg_drift_check(dg_no);
 
 	// stack: [arg0, ..., dg_page, dg_index, [return_value]]
 	int return_values = delegate_return_slots(&ain->delegates[dg_no]);
@@ -1237,20 +1306,45 @@ static void delegate_call(int dg_no, int return_address)
 	bool dgpage_bad = dg_page > 0 && (size_t)dg_page < heap_size &&
 		heap_index_valid(dg_page) && heap[dg_page].type != VM_PAGE;
 	if (dgpage_dbg && (dgpage_force || dgpage_bad)) {
-		static int n;
-		if (n++ < 60) {
-			int t[6] = { 0 };
-			for (int k = 0; k < 6 && k < stack_ptr; k++)
+		/* [D150] 异常命中**不受限流**。原来这里和正常轨迹共用一个
+		 * `n++ < 60` 配额，party 界面里 60 条很快就用光，真正的坏帧
+		 * 一条都没打出来——和 `[PROBE-GATED]` 同一个坑。 */
+		static int n_normal, n_bad;
+		int *cnt = dgpage_bad ? &n_bad : &n_normal;
+		if (*cnt < (dgpage_bad ? 200 : 60)) {
+			(*cnt)++;
+			int t[6] = { 0 }, ty[6];
+			for (int k = 0; k < 6 && k < stack_ptr; k++) {
 				t[k] = stack_peek(k).i;
-			NOTICE("[dgpage] ip=0x%zX fno=%d dg_no=%d rv=%d ret=%d nargs=%d dg_page=%d(type=%d ref=%d) idx=%d sp=%d top=[%d,%d,%d,%d,%d,%d]",
+				ty[k] = (t[k] > 0 && (size_t)t[k] < heap_size &&
+					 heap_index_valid(t[k])) ? heap[t[k]].type : -1;
+			}
+			NOTICE("[dgpage]%s ip=0x%zX fno=%d dg_no=%d rv=%d ret=%d nargs=%d dg_page=%d(type=%d ref=%d seq=%u) idx=%d sp=%d top=[%d,%d,%d,%d,%d,%d] ty=[%d,%d,%d,%d,%d,%d]",
+			       dgpage_bad ? " BAD" : "",
 			       instr_ptr,
 			       call_stack_ptr > 0 ? call_stack[call_stack_ptr-1].fno : -1,
 			       dg_no, return_values,
 			       ain->delegates[dg_no].return_type.data,
 			       ain->delegates[dg_no].nr_arguments,
 			       dg_page, heap[dg_page].type, heap[dg_page].ref,
+			       heap[dg_page].seq,
 			       dg_index, stack_ptr,
-			       t[0], t[1], t[2], t[3], t[4], t[5]);
+			       t[0], t[1], t[2], t[3], t[4], t[5],
+			       ty[0], ty[1], ty[2], ty[3], ty[4], ty[5]);
+			/* 坏帧额外把栈上每一格的字符串内容打出来：`dg_page`
+			 * 落到字符串槽时，那个字符串通常就是"被顶错位"的实参，
+			 * 看到文本才能反推错了几格。 */
+			if (dgpage_bad)
+				for (int k = 0; k < 8 && k < stack_ptr; k++) {
+					int v = t[k] < 0 ? 0 : t[k];
+					(void)v;
+					v = stack_peek(k).i;
+					if (v > 0 && (size_t)v < heap_size &&
+					    heap_index_valid(v) && heap[v].type == VM_STRING &&
+					    heap[v].s && heap[v].s->text)
+						NOTICE("[dgpage]   stk[%d] str=\"%.60s\"",
+						       k, display_sjis0(heap[v].s->text));
+				}
 		}
 	}
 	int obj, fun;
@@ -1292,6 +1386,8 @@ static void delegate_call(int dg_no, int return_address)
 		stack[stack_ptr - 1].i++;
 
 		int slot = _function_call(fun, instr_ptr + instruction_width(DG_CALL));
+		if (dg_drift_on && dg_drift_depth > 0)
+			dg_drift[dg_drift_depth - 1].last_fun = fun;
 
 		// copy arguments into local page
 		struct ain_function_type *dg = &ain->delegates[dg_no];
@@ -1381,6 +1477,8 @@ static void delegate_call(int dg_no, int return_address)
 		}
 		for (int rv = return_values - 1; rv >= 0; rv--)
 			stack_push(r[rv]);
+		if (dg_drift_depth > 0)
+			dg_drift_depth--;
 		instr_ptr = get_argument(1);
 	}
 }
@@ -1583,6 +1681,13 @@ static void function_return(void)
 				       cf->fno, display_sjis0(ain->functions[cf->fno].name),
 				       want, stack_ptr, cf->entry_sp, rt);
 		}
+	}
+	if (sp_ring_fno >= 0 && cf->fno == sp_ring_fno && cf->entry_sp >= 0) {
+		int rt = ain->functions[cf->fno].return_type.data;
+		int want = cf->entry_sp + (rt == AIN_VOID ? 0 :
+			(rt == AIN_IFACE || rt == AIN_WRAP) ? 2 : 1);
+		if (stack_ptr != want)
+			sp_ring_dump(cf->fno, want, stack_ptr);
 	}
 	if (cf->return_address == 0) {
 		const char *nm = "?";
@@ -2055,6 +2160,23 @@ static enum opcode execute_instruction(enum opcode opcode)
 				NOTICE("[dump]  st[%d]=%d (nonheap)", i, v);
 			}
 		}
+	}
+	/* [D150] XSYS4_SP_TRACE=<fno>：把目标函数的 (ip, sp) 记进环形缓冲，
+	 * 退出时若栈不平就整段倒出来。
+	 *
+	 * 为什么不是"边跑边打"：函数绝大多数调用是平的，刷屏只会把出问题那次
+	 * 挤出日志（本轮已经被限流探针骗过两次）。环里只留最近 256 条，
+	 * 不平才倒，倒出来的就是那一次。 */
+	{
+		static int tr_fno = -2;
+		if (tr_fno == -2) {
+			const char *e = getenv("XSYS4_SP_TRACE");
+			tr_fno = (e && *e) ? atoi(e) : -1;
+			sp_ring_fno = tr_fno;
+		}
+		if (tr_fno >= 0 && call_stack_ptr > 0 &&
+		    call_stack[call_stack_ptr - 1].fno == tr_fno)
+			sp_ring_add(instr_ptr, stack_ptr);
 	}
 	switch (opcode) {
 	//
@@ -4160,6 +4282,7 @@ case SR_ASSIGN: {
 		//      so that DG_CALL can replace them. AIN_IFACE takes two slots.
 		for (int rv = delegate_return_slots(dg); rv > 0; rv--)
 			stack_push(0);
+		dg_drift_push(dg_no);
 		break;
 	}
 	case DG_NEW: {
