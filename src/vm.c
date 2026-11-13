@@ -1139,9 +1139,11 @@ static void method_call(int nargs, int return_address)
 		if (getenv("XSYS4_BADSTRUCT_DBG")) {
 			static int n;
 			if (n++ < 80)
-				NOTICE("[rebuild] fno=%d %s obj=%d bad=%d sno=%d ip=0x%zX",
+				NOTICE("[rebuild] fno=%d %s obj=%d bad=%d sno=%d ip=0x%zX ret=0x%zX csp=%d",
 				       fno, display_sjis0(ain->functions[fno].name),
-				       obj, (int)_obj_bad, sno, instr_ptr);
+				       obj, (int)_obj_bad, sno, instr_ptr,
+				       call_stack_ptr > 0 ? call_stack[call_stack_ptr-1].return_address : 0,
+				       call_stack_ptr);
 		}
 		/* [D155] 补建对象按 struct 号**复用**，不要每次新建。
 		 *
