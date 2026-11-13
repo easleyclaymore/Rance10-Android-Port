@@ -279,14 +279,40 @@ static struct string *String_GetPart(struct string **s, int pos)
 	 *
 	 * 语义与 `GetPart(s, pos, 1)` 一致（那个实现是正确的），直接复用。 */
 	{
-		struct string *r = String_GetPartLen(s, pos, 1);
+		/* [D152] 上一条（D147）只修对了一半：`GetPart(ref string, Index)`
+		 * 是**从 Index 截到末尾**，不是"取一个字符"——三参版才是
+		 * `(Index, Length)`。证据（XSYS4_STR_INT_DBG）：
+		 *   in="Tab10" pos=3 -> "1"     ← 错：应为 "10"
+		 * 于是 Tab10 被当成 Tab1：`m_btn[0]` 初始化两次、`m_btn[9]` 永远
+		 * 是空的。编成界面有 10 个页签，越靠后的页签越容易在后续事件里
+		 * 拿到空引用。
+		 *
+		 * 按 pos 走 pos 个字符（跳过 SJIS 前导字节的低位），剩下全取。 */
+		struct string *r;
+		if (!s || !*s || pos < 0) {
+			r = string_dup(&EMPTY_STRING);
+		} else {
+			const unsigned char *p = (const unsigned char *)(*s)->text;
+			for (int i = 0; i < pos && *p; i++) {
+				p++;
+				while (*p && (*p & 0xC0) == 0x80)
+					p++;
+			}
+			r = make_string((const char *)p, strlen((const char *)p));
+		}
 		/* [D151] 同一个开关：输入/输出一起看，才能判断是"取错位"还是
 		 * "输入本身就是空的"。 */
 		if (getenv("XSYS4_STR_INT_DBG") && s && *s && (*s)->text &&
-		    !strncmp((*s)->text, "Tab", 3))
-			NOTICE("[getpart] in=\"%s\" pos=%d -> \"%s\"",
-			       display_sjis0((*s)->text), pos,
-			       (r && r->text) ? display_sjis0(r->text) : "");
+		    !strncmp((*s)->text, "Tab", 3)) {
+			/* display_sjis0 返回**静态缓冲**，一次 printf 里调两次会
+			 * 互相覆盖（本条日志一开始就把 "1" 打印成了 "Tab1"，
+			 * 差点误判成切片没生效）。先各自拷成本地串。 */
+			char in[64], out[64];
+			snprintf(in, sizeof(in), "%s", display_sjis0((*s)->text));
+			snprintf(out, sizeof(out), "%s",
+			         (r && r->text) ? display_sjis0(r->text) : "");
+			NOTICE("[getpart] in=\"%s\" pos=%d -> \"%s\"", in, pos, out);
+		}
 
 		return r;
 	}
@@ -505,8 +531,11 @@ HLL_LIBRARY(String,
 	HLL_EXPORT(Replace, String_Replace),
 /* AIN v12 f[22] GetPart(ref string,int,int)->string is 3-arg;
 	 * String_GetPart is the legacy 2-arg form (D62). */
-	HLL_EXPORT(GetPart, String_GetPartLen),
-	HLL_EXPORT(GetPartLen, String_GetPartLen),
+	/* [D152] 2 参与 3 参是两个重载，必须分开标 arity。
+	 * 以前两条都叫 GetPart 却都指向 3 参实现，2 参调用读到垃圾 count。 */
+	HLL_EXPORT_N(GetPart, String_GetPart, 2),
+	HLL_EXPORT_N(GetPart, String_GetPartLen, 3),
+	HLL_EXPORT_N(GetPartLen, String_GetPartLen, 3),
 	HLL_EXPORT(PadLeft, String_PadLeft),
 	HLL_EXPORT(PadLeftEx, String_PadLeftEx),
 	HLL_EXPORT(PadRight, String_PadRight),

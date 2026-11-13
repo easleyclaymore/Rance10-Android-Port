@@ -2176,7 +2176,16 @@ static enum opcode execute_instruction(enum opcode opcode)
 		}
 		for (int i = stack_ptr - 1; i >= 0 && i >= stack_ptr - 10; i--) {
 			int32_t v = stack[i].i;
-			if (v > 0 && (size_t)v < heap_size) {
+			if (v > 0 && (size_t)v < heap_size && heap_index_valid(v) &&
+			    heap[v].type == VM_STRING) {
+				/* [D152] 栈上的字符串槽连文本一起打。栈转储原来只认
+				 * 页，字符串槽会掉进 "(nonheap)" 或被打成脏页——
+				 * 而"这条指令要 Int() 的到底是哪个串"正是差一位类
+				 * 问题的关键证据。 */
+				NOTICE("[dump]  st[%d]=%d str=\"%s\"", i, v,
+				       heap[v].s && heap[v].s->text
+				       ? display_sjis0(heap[v].s->text) : "");
+			} else if (v > 0 && (size_t)v < heap_size) {
 				struct page *p = heap[v].page;
 				NOTICE("[dump]  st[%d]=%d ref=%d nr_vars=%d type=%d v0=%d v1=%d", i, v,
 					heap[v].ref, p ? p->nr_vars : -1, p ? p->type : -1,
