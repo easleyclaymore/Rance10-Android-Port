@@ -463,7 +463,7 @@ int alloc_struct(int no)
 	/* [D153] alloc_struct 是所有结构体创建的**唯一**入口，所以探针放这里。
 	 * 带上调用者 ip：用 `tools/bin/ain_at atf:<ip>` 就能点名是谁造的。 */
 	if (getenv("XSYS4_CTOR_DBG") && atoi(getenv("XSYS4_CTOR_DBG")) == no)
-		NOTICE("[alloc] struct=%d slot=%d ip=0x%zX", no, slot, instr_ptr);
+		vm_dbg_alloc_trace(no, slot);
 	heap_set_page(slot, alloc_page(STRUCT_PAGE, no, s->nr_members));
 	for (int i = 0; i < s->nr_members; i++) {
 		if (s->members[i].type.data == AIN_STRUCT) {

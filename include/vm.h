@@ -41,6 +41,10 @@ union vm_value {
 struct static_hll_function {
 	char *name;
 	void *fun;
+	/* [D152] 声明的参数个数；-1 = 未标注（沿用"按名字取第一个"的旧行为）。
+	 * 同名重载（String.GetPart 2/3 参）必须靠它区分：以前只比名字，
+	 * 2 参调用被绑到 3 参实现上，第三个参数直接读寄存器垃圾。 */
+	int nr_args;
 };
 
 struct static_library {
@@ -151,6 +155,10 @@ extern bool vm_reset_once;
 #define VM_ERROR(fmt, ...) \
 	_vm_error("*ERROR*(%s:%s:%d): " fmt "\n", __FILE__, __func__, __LINE__, ##__VA_ARGS__)
 #endif
+
+
+/* [D154] 结构体创建现场（探针用）：打印调用栈的返回地址。 */
+void vm_dbg_alloc_trace(int struct_no, int slot);
 
 #ifdef VM_PRIVATE
 #include "system4/little_endian.h"

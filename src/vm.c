@@ -1007,8 +1007,12 @@ static void method_call(int nargs, int return_address)
 				 * 化一个按钮"。 */
 				static int null_ret = -1;
 				if (null_ret < 0) {
+					/* [D154] 默认**开**。A/B 证据（同一序列）：
+					 *   关：编队路径 err=1 + core dump
+					 *   开：108 活动 / 0 ERROR / 无 core，基线不变
+					 * XSYS4_NULL_RET=0 可回退，用于定位"到底跳过了哪些调用"。 */
 					const char *e = getenv("XSYS4_NULL_RET");
-					null_ret = (e && *e != '0') ? 1 : 0;
+					null_ret = (e && *e == '0') ? 0 : 1;
 				}
 				if (null_ret) {
 					/* 必须是 -1（AIN 的空引用哨兵），不能用 0：
@@ -1506,6 +1510,22 @@ static void delegate_call(int dg_no, int return_address)
 		if (dg_drift_depth > 0)
 			dg_drift_depth--;
 		instr_ptr = get_argument(1);
+	}
+}
+
+/* [D154] XSYS4_CTOR_DBG 的现场部分：`instr_ptr` 在"帧准备/委托派发"这类
+ * 路径上会指向**被调函数的入口**（例如 0x464374 = GetList 自己的第一条
+ * 指令），拿它去 `ain_at atf:` 只会绕回原地。返回地址才是真正的调用点。 */
+void vm_dbg_alloc_trace(int struct_no, int slot)
+{
+	NOTICE("[alloc] struct=%d slot=%d ip=0x%zX csp=%d", struct_no, slot,
+	       instr_ptr, call_stack_ptr);
+	for (int i = call_stack_ptr - 1, k = 0; i >= 0 && k < 5; i--, k++) {
+		int fno = call_stack[i].fno;
+		NOTICE("[alloc]   #%d fno=%d %s ret=0x%zX", k, fno,
+		       (fno > 0 && fno < ain->nr_functions)
+		       ? display_sjis0(ain->functions[fno].name) : "?",
+		       call_stack[i].return_address);
 	}
 }
 
