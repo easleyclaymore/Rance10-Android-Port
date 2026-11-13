@@ -992,6 +992,32 @@ static void method_call(int nargs, int return_address)
 					stack_pop();   /* fno */
 					stack_pop();   /* obj */
 				}
+				/* [D151] XSYS4_NULL_RET=1：补一个返回值，让这次调用的
+				 * **净栈效果**和正常调用一致。
+				 *
+				 * 为什么：编译器在非 void 调用后面跟一条 POP 来丢弃
+				 * 返回值。降级只弹不压，那条 POP 就会吃掉调用者的一个
+				 * 槽 —— 判据是 `logs/live_dlg1.log:10487`：
+				 *   [nullcall] ip=0x38FF22 -> [dgdrift] delta=-1 -> 崩
+				 * 少的那一格正好是 dg_page 的位置，于是下一轮 DG_CALL
+				 * 把字符串实参当成了委托页。
+				 *
+				 * 返回值宽度未知（fno 没解析出来），这里按最常见的
+				 * "1 槽" 补；默认关，先 A/B 看能不能把崩溃变成"少初始
+				 * 化一个按钮"。 */
+				static int null_ret = -1;
+				if (null_ret < 0) {
+					const char *e = getenv("XSYS4_NULL_RET");
+					null_ret = (e && *e != '0') ? 1 : 0;
+				}
+				if (null_ret) {
+					/* 必须是 -1（AIN 的空引用哨兵），不能用 0：
+					 * 0 是保留的 GLOBAL_PAGE 槽，POP 时的
+					 * variable_fini 会去 unref 它，实测触发
+					 * 43497 次 VM_STRING double free。 */
+					union vm_value nil = { .i = -1 };
+					stack_push(nil);
+				}
 				call_stack[call_stack_ptr > 0 ? call_stack_ptr - 1 : 0].entry_sp =
 					stack_ptr;
 				return;

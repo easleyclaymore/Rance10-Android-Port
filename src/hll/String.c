@@ -7,6 +7,7 @@
 
 #include "system4/string.h"
 
+#include "xsystem4.h"
 #include "hll.h"
 #include "vm.h"
 #include "vm/heap.h"
@@ -50,6 +51,17 @@ static struct string *String_PadRightEx(struct string **s, int width, int ch);
 
 static int String_Int(struct string **s)
 {
+	/* [D151] XSYS4_STR_INT_DBG=1：把 Int() 真正读到的文本打出来。
+	 * `Int(GetPart(PartsName,3)) - 1` 当数组下标用，读空串会得 0 → 下标 -1
+	 * → `m_btn[-1]` 空引用。只有看到文本才能分清"GetPart 取错了"和
+	 * "取对了但字符串已经死了"。 */
+	if (getenv("XSYS4_STR_INT_DBG")) {
+		/* 不设总量配额：Startup 期间 Int() 会被调用几十次，配额一定在
+		 * 走到编队界面之前就烧光。只按内容过滤（空串 / "Tab" 开头）。 */
+		const char *t = (s && *s && (*s)->text) ? (*s)->text : "";
+		if (!*t || !strncmp(t, "Tab", 3))
+			NOTICE("[strint] text=\"%s\"", *t ? display_sjis0(t) : "");
+	}
 	return s && *s ? atoi((*s)->text) : 0;
 }
 
@@ -266,7 +278,18 @@ static struct string *String_GetPart(struct string **s, int pos)
 	 * `invalid function index -1`，整个部队编成界面 core dump。
 	 *
 	 * 语义与 `GetPart(s, pos, 1)` 一致（那个实现是正确的），直接复用。 */
-	return String_GetPartLen(s, pos, 1);
+	{
+		struct string *r = String_GetPartLen(s, pos, 1);
+		/* [D151] 同一个开关：输入/输出一起看，才能判断是"取错位"还是
+		 * "输入本身就是空的"。 */
+		if (getenv("XSYS4_STR_INT_DBG") && s && *s && (*s)->text &&
+		    !strncmp((*s)->text, "Tab", 3))
+			NOTICE("[getpart] in=\"%s\" pos=%d -> \"%s\"",
+			       display_sjis0((*s)->text), pos,
+			       (r && r->text) ? display_sjis0(r->text) : "");
+
+		return r;
+	}
 }
 
 static struct string *String_GetPartLen(struct string **s, int pos, int count)
