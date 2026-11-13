@@ -200,6 +200,9 @@ bool PE_AddDrawTextToPartsConstructionProcess(int parts_no, int x, int y, struct
 		int edge_r, int edge_g, int edge_b, float edge_weight,
 		int char_space, int line_space, int state);
 bool PE_BuildPartsConstructionProcess(int parts_no, int state);
+/* [D146] 线程版按同步实现；count 用来让调用方的"等合成完成"轮询第一轮就退出 */
+bool PE_BuildPartsConstructionProcessThread(int parts_no, int state);
+int PE_GetPartsConstructionProcessCount(int parts_no, int state);
 bool PE_ClearPartsConstructionProcess(int parts_no, int state);
 bool PE_SetPartsConstructionSurfaceArea(int parts_no, int x, int y, int w, int h, int state);
 

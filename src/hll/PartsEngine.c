@@ -521,6 +521,24 @@ static void PE_Noop_SetButtonSize(int a0, int a1, int a2)
 	(void)a2;
 }
 
+/* AIN f: void SuspendTexture(int PartsNumber) / void ResumeTexture(int).
+ *
+ * [D144] 这两个原来是"表里根本没有"，到 `SceneQuestMap@OpenParty`（打开部队
+ * 编成界面的那一步）就 `Unimplemented HLL function` 直接中止 —— 编成界面
+ * 因此从来进不去。语义是"切场景时先别刷新这批部件的贴图，回来再恢复"，
+ * 纯性能优化：不挂起只是多刷几帧，不影响任何可见状态。所以先按 no-op 接上，
+ * 让主线能过这一关；真要做可以给 parts 加 texture_suspended 位并在
+ * texture 提交处跳过。 */
+static void PE_Noop_SuspendTexture(int a0)
+{
+	(void)a0;
+}
+
+static void PE_Noop_ResumeTexture(int a0)
+{
+	(void)a0;
+}
+
 /* AIN f: void SetCheckBoxColor. [HACK-POC D85] setter stubbed; no state kept. */
 static void PE_Noop_SetCheckBoxColor(int a0, int a1, int a2, int a3)
 {
@@ -2621,6 +2639,8 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(AddComponentMotionRotateZ, PE_AddMotionRotateZ_curve),
 	    HLL_EXPORT(AddComponentMotionVibrationSize, PE_AddMotionVibrationSize),
 	    HLL_TODO_EXPORT(SuspendBuildView, PartsEngine_SuspendBuildView),
+	    HLL_EXPORT(SuspendTexture, PE_Noop_SuspendTexture),
+	    HLL_EXPORT(ResumeTexture, PE_Noop_ResumeTexture),
 	    HLL_TODO_EXPORT(SuspendBuildViewAt, PartsEngine_SuspendBuildViewAt),
 	    HLL_TODO_EXPORT(ResumeBuildView, PartsEngine_ResumeBuildView),
 	    HLL_EXPORT(SetButtonSize, PE_Noop_SetButtonSize),
@@ -2849,6 +2869,9 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_TODO_EXPORT(Parts_AddMulFilterToPartsConstructionProcess, PartsEngine_Parts_AddMulFilterToPartsConstructionProcess),
 	    HLL_TODO_EXPORT(Parts_AddDrawLineToPartsConstructionProcess, PartsEngine_Parts_AddDrawLineToPartsConstructionProcess),
 	    HLL_EXPORT(Parts_BuildPartsConstructionProcess, PE_BuildPartsConstructionProcess),
+	    HLL_EXPORT(Parts_BuildPartsConstructionProcessThread, PE_BuildPartsConstructionProcessThread),
+	    HLL_EXPORT(Parts_ClearPartsConstructionProcess, PE_ClearPartsConstructionProcess),
+	    HLL_EXPORT(Parts_GetPartsConstructionProcessCount, PE_GetPartsConstructionProcessCount),
 	    HLL_EXPORT(Parts_AddDrawTextToPartsConstructionProcess, PE_AddDrawTextToPartsConstructionProcess),
 	    HLL_EXPORT(Parts_AddCopyTextToPartsConstructionProcess, PE_AddCopyTextToPartsConstructionProcess),
 	    HLL_EXPORT(Parts_SetPartsConstructionSurfaceArea, PE_SetPartsConstructionSurfaceArea),

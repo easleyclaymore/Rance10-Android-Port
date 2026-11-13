@@ -656,11 +656,24 @@ static int function_argument_slots(struct ain_function *fn)
 		enum ain_data_type t = fn->vars[slots].type.data;
 		args++;
 		slots++;
-		/* A multi-slot parameter declares its remaining slots as void. */
+		/* A multi-slot parameter declares its remaining slots as void.
+		 *
+		 * [D145] 被跳过的那个 void 槽**本身也算 nr_args 里的一个参数**。
+		 * 反例（曾把编成界面整死）：`PartyModeButton@IsEnableDetail::postset`
+		 * 声明成 vars=[WRAP oldValue, VOID, dummy, dummy]、nr_args=2 ——
+		 * 编译器在调用点只压 2 槽（`[oldValue, value]`），而 nr_args 的 "2"
+		 * 已经把 WRAP 的第二槽算进去了。旧版本只跳过 void 不递增 args，
+		 * 于是把紧随其后的**局部临时变量**当成第 2 个参数，pop 3 槽，
+		 * 把 [obj,fno] 一起弹掉：`this` 变成栈里剩下的 1（struct #0，
+		 * 只有 3 个成员），紧接着 `this.m4` 越界 → 整个部队编成界面 core dump。
+		 * 跳过 void 时同步 args++，两种声明形式（nr_args 数槽 或 数逻辑参数）
+		 * 都能得到正确的槽数。 */
 		if (t == AIN_IFACE || t == AIN_WRAP || t == AIN_OPTION)
 			while (slots < fn->nr_vars &&
-			       fn->vars[slots].type.data == AIN_VOID)
+			       fn->vars[slots].type.data == AIN_VOID) {
 				slots++;
+				args++;
+			}
 	}
 	return slots;
 }
@@ -884,6 +897,20 @@ static void method_call_fno(int fno, int return_address)
 /* CALLMETHOD 用：栈布局 [obj, fno, args...]，fno 在 args 下面一层 */
 static int struct_no_from_function(int fno);
 
+/* [AUTO] XSYS4_AUTO_PARTY=1：把"部队编成界面"从点击里解耦出来。
+ *
+ * `SceneQuestMap@OpenParty`(fno 23595) 是地图左侧 [部队编制] 按钮的入口，
+ * 但它是个**方法**，必须带着地图场景实例的 `this` 才能调。地图上那排按钮
+ * 目前既没画出来也没命中盒，靠 xdotool 猜坐标不可行；所以在这里记录
+ * SceneQuestMap 的方法被调用时的 `this`（地图一装载就会跑
+ * `SceneQuestMap@InitComponent`），帧泵再拿这个页号回调 OpenParty。
+ *
+ * 这与 `XSYS4_AUTO_MAP` 同性质：只为把跑测从"点得中"变成"确定性"，
+ * 不改变任何游戏语义，默认关闭。 */
+static bool auto_party_want, auto_party_init;
+static int auto_party_page = -1;
+static uint32_t auto_party_delay;
+
 static void method_call(int nargs, int return_address)
 {
 	int fno = stack_peek(nargs).i;
@@ -928,8 +955,71 @@ static void method_call(int nargs, int return_address)
 				       fno, real, stack_peek(nargs + 1).i, nargs);
 			fno = real;
 		}
-		if (fno < 0 || fno >= ain->nr_functions)
+		if (fno < 0 || fno >= ain->nr_functions) {
+			/* [D148] 空接口引用的方法调用：降级成"跳过这一次调用"。
+			 *
+			 * fno==-1 表示调用点从**空对象**（-1，即 AIN 的 null 引用）
+			 * 的 vtable 里取方法号，取不到。真实 System4 在这里会抛
+			 * 运行时错误，游戏正常路径上不会出现；出现了就是移植侧的
+			 * 某个引用没解析出来（见 [NULL-IFACE-CALL] 债务条目）。
+			 *
+			 * 以前这里是 VM_ERROR 直接杀进程，代价太大：部队编成界面
+			 * 只在 10 个页签里的某一个上拿不到对象，整张界面就没了。
+			 * 现在按"这次调用什么都没发生"处理 —— 消费调用点的 nargs
+			 * 个参数、再消费 [obj, fno]，不压返回值（这类调用实测
+			 * 都是 void 的 Init/设置类方法）。每次记一行，用
+			 * XSYS4_NULL_METHOD=0 可恢复旧的直接中止行为，便于 A/B。 */
+			static int null_method = -1;
+			if (null_method < 0) {
+				const char *e = getenv("XSYS4_NULL_METHOD");
+				null_method = (e && *e == '0') ? 0 : 1;
+			}
+			if (null_method && fno == -1) {
+				static int n;
+				int slots = 0;
+				int obj_slot = nargs + 1 <= stack_ptr ? stack_peek(nargs + 1).i : -2;
+				if (n++ < 40)
+					NOTICE("[nullcall] ip=0x%zX nargs=%d obj=%d sp=%d "
+					       "-> 跳过（XSYS4_NULL_METHOD=0 可复现中止）",
+					       instr_ptr, nargs, obj_slot, stack_ptr);
+				/* 参数个数未知（fno 无效），只能按调用点的 nargs 消费：
+				 * 反过来用 nargs 而不是 function_argument_slots，因为
+				 * 后者需要函数声明。 */
+				slots = nargs;
+				for (int k = 0; k < slots && stack_ptr > 0; k++)
+					stack_pop();
+				if (stack_ptr >= 2) {
+					stack_pop();   /* fno */
+					stack_pop();   /* obj */
+				}
+				call_stack[call_stack_ptr > 0 ? call_stack_ptr - 1 : 0].entry_sp =
+					stack_ptr;
+				return;
+			}
 			VM_ERROR("CALLMETHOD: invalid function index %d", fno);
+		}
+	}
+	/* [AUTO] 记录 SceneQuestMap 场景实例的 `this`（见文件上方 auto_party_page
+	 * 的注释）。fno 23586..23620 整个区段都属于 SceneQuestMap，随便哪个方法
+	 * 先跑都能拿到同一个页号。 */
+	if (!auto_party_init) {
+		auto_party_init = true;
+		auto_party_want = getenv("XSYS4_AUTO_PARTY") != NULL;
+		const char *d = getenv("XSYS4_AUTO_PARTY_DELAY");
+		auto_party_delay = d && *d ? (uint32_t)atoi(d) : 6000;
+	}
+	if (auto_party_want && fno >= 23586 && fno <= 23620 &&
+	    nargs + 1 <= stack_ptr) {
+		int self = stack_peek(nargs + 1).i;
+		if (self > 0 && (size_t)self < heap_size && heap[self].page &&
+		    heap[self].page->type == STRUCT_PAGE) {
+			if (auto_party_page != self) {
+				auto_party_page = self;
+				NOTICE("[auto] SceneQuestMap instance = heap slot %d "
+				       "(struct %d) via fno %d",
+				       self, heap[self].page->index, fno);
+			}
+		}
 	}
 	/* [L2] XSYS4_MC_SLOT_DBG=1: why does `this` end up as heap slot 1?
 	 * CALLMETHOD's immediate (nargs) is a LOGICAL argument count, while
@@ -1016,6 +1106,13 @@ static void method_call(int nargs, int return_address)
 		int sno = struct_no_from_function(fno);
 		if (sno < 0)
 			sno = ain->functions[fno].struct_type;
+		if (getenv("XSYS4_BADSTRUCT_DBG")) {
+			static int n;
+			if (n++ < 80)
+				NOTICE("[rebuild] fno=%d %s obj=%d bad=%d sno=%d ip=0x%zX",
+				       fno, display_sjis0(ain->functions[fno].name),
+				       obj, (int)_obj_bad, sno, instr_ptr);
+		}
 		if (sno >= 0 && sno < ain->nr_structures)
 			obj = alloc_struct(sno);
 	}
@@ -1029,9 +1126,12 @@ static void method_call(int nargs, int return_address)
 		    heap[obj].page->index != want) {
 			static int n;
 			if (n++ < 80)
-				NOTICE("[badstruct] fno=%d %s obj=%d got=%d want=%d ip=0x%zX",
+				NOTICE("[badstruct] fno=%d %s obj=%d got=%d want=%d ip=0x%zX "
+				       "nargs=%d slots=%d sp=%d->%d csp=%d->%d",
 				       fno, display_sjis0(ain->functions[fno].name), obj,
-				       heap[obj].page->index, want, instr_ptr);
+				       heap[obj].page->index, want, instr_ptr,
+				       nargs, function_argument_slots(&ain->functions[fno]),
+				       sp_before, stack_ptr, csp_before, call_stack_ptr);
 		}
 	}
 	set_struct_page(obj);
@@ -1886,14 +1986,49 @@ static enum opcode execute_instruction(enum opcode opcode)
 			NOTICE("[dump] frame %s(%d) fno=%d", display_sjis0(fn->name), cf->fno,
 			       cf->fno);
 			struct page *lp = local_page();
+			/* `this`：AIN 的 PUSHSTRUCTPAGE 取的是当前帧 local.struct_ptr。
+			 * 定位"this 变成了别的对象"时，光看 locals 不够——必须把
+			 * this 的页本身和它的前几个成员打出来。 */
+			if (cf->struct_page > 0 && (size_t)cf->struct_page < heap_size &&
+			    heap[cf->struct_page].page) {
+				struct page *tp = heap[cf->struct_page].page;
+				NOTICE("[dump] this=slot %d type=%d struct=%d nr=%d",
+				       cf->struct_page, tp->type, tp->index, tp->nr_vars);
+				for (int i = 0; i < tp->nr_vars && i < 12; i++) {
+					int mv = tp->values[i].i;
+					NOTICE("[dump]   this.m%d = %d", i, mv);
+					/* 成员是数组时把前几个元素一起打出来：
+					 * "数组元素是空引用"和"下标算错"是两种完全不同的病。 */
+					if (mv > 0 && (size_t)mv < heap_size && heap[mv].page &&
+					    heap[mv].page->type == ARRAY_PAGE) {
+						struct page *ap = heap[mv].page;
+						char buf[256] = "";
+						size_t off = 0;
+						for (int k = 0; k < ap->nr_vars && k < 12; k++)
+							off += snprintf(buf + off, sizeof(buf) - off,
+							                " %d", ap->values[k].i);
+						NOTICE("[dump]     -> array nr=%d%s", ap->nr_vars, buf);
+					}
+				}
+			} else {
+				NOTICE("[dump] this=slot %d (no page)", cf->struct_page);
+			}
 			for (int i = 0; lp && i < lp->nr_vars && i < fn->nr_vars; i++) {
 				struct ain_type *vt = &fn->vars[i].type;
 				char *ts = ain_strtype_d(ain, vt);
 				int32_t v = lp->values[i].i;
 				/* 引用型局部要连"它指向的页"一起打出来（长度/类型），
 				 * 否则看不出这个容器是不是在长。 */
-				char extra[96] = "";
-				if (v > 0 && (size_t)v < heap_size && heap[v].page) {
+				char extra[160] = "";
+				if (v > 0 && (size_t)v < heap_size &&
+				    heap[v].type == VM_STRING) {
+					/* 字符串局部：把文本本身打出来。只看堆槽号无法判断
+					 * "GetPart 取到了第几个字符"这类差一错误。
+					 * 必须在 page 分支之前判断：字符串槽的 union 里
+					 * page 指针是脏的，会被误当成页。 */
+					snprintf(extra, sizeof(extra), "  \"%.120s\"",
+					         heap_get_string(v)->text);
+				} else if (v > 0 && (size_t)v < heap_size && heap[v].page) {
 					struct page *pp = heap[v].page;
 					snprintf(extra, sizeof(extra),
 						 "  [page type=%d a_type=%d nr=%d ref=%d]",
@@ -4187,6 +4322,26 @@ void vm_frame_pump(void)
 			       "after %ums", now);
 			vm_call(22579, -1);
 			NOTICE("[auto] returned from RunGameChapter1");
+		}
+	}
+
+	/* [AUTO] XSYS4_AUTO_PARTY=1：地图装载后直接调 `SceneQuestMap@OpenParty`，
+	 * 拿到"部队编成"界面。理由同 XSYS4_AUTO_MAP：地图上那排按钮没有命中盒，
+	 * 点击不可复现，而编成界面是下一个必须打通的界面。 */
+	{
+		static bool party_done;
+		static uint32_t party_seen_at;
+		if (auto_party_want && !party_done && auto_party_page > 0) {
+			if (!party_seen_at)
+				party_seen_at = now ? now : 1;
+			if (now - party_seen_at >= auto_party_delay) {
+				party_done = true;
+				NOTICE("[auto] calling SceneQuestMap@OpenParty (fno 23595) "
+				       "on heap slot %d after %ums",
+				       auto_party_page, now - party_seen_at);
+				vm_call(23595, auto_party_page);
+				NOTICE("[auto] returned from OpenParty");
+			}
 		}
 	}
 

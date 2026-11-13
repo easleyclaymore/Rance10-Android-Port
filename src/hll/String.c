@@ -250,25 +250,23 @@ static struct string *String_Replace(struct string **s, struct string *from, str
 HLL_WARN_UNIMPLEMENTED(string_dup(&EMPTY_STRING), struct string *, String, ReplaceRegex,
 		       struct string **s, struct string *pat, struct string *to);
 
+static struct string *String_GetPartLen(struct string **s, int pos, int count);
+
 static struct string *String_GetPart(struct string **s, int pos)
 {
-	if (!s || !*s)
-		return string_dup(&EMPTY_STRING);
-	const unsigned char *p = (const unsigned char *)(*s)->text;
-	const unsigned char *start = p;
-	int i = 0;
-	while (*p && i < pos) {
-		if ((*p & 0xC0) != 0x80) {
-			i++;
-			if (i == pos)
-				break;
-		}
-		p++;
-	}
-	start = p;
-	while (*p && ((*p & 0xC0) == 0x80 || p == start))
-		p++;
-	return make_string((const char *)start, (size_t)(p - start));
+	/* [D147] 原来的实现整体差一位：`GetPart("Tab1", 3)` 返回 'b' 而不是 '1'。
+	 *
+	 * 循环在 `i == pos` 时 **break 而没有先 p++**，于是 p 停在"第 pos 个
+	 * 字符"的前一个字符上（即下标 pos-1）。单字节字符上看不出来，因为
+	 * 调用方常把返回值当"第 pos 个字符"直接比大小写。
+	 *
+	 * 实锤：`Game/Party/OrganizationCardView@Init` 里的用户组件回调拿
+	 * `Int(GetPart(PartsName, 3)) - 1` 当 `m_btn` 的下标（部件名 Tab1..Tab10），
+	 * 差一位后 Tab1 得到 -1，`m_btn[-1]` 是空引用，CALLMETHOD 直接
+	 * `invalid function index -1`，整个部队编成界面 core dump。
+	 *
+	 * 语义与 `GetPart(s, pos, 1)` 一致（那个实现是正确的），直接复用。 */
+	return String_GetPartLen(s, pos, 1);
 }
 
 static struct string *String_GetPartLen(struct string **s, int pos, int count)
