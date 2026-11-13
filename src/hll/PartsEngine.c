@@ -1528,15 +1528,37 @@ static void PE_Noop_SetMessageWindowInactiveMultipleColor(int a0, int a1, int a2
 	(void)a3;
 }
 
-/* AIN SetMessageWindowText: void SetMessageWindowText. [HACK-POC D85] setter stubbed. */
-static void PE_Noop_SetMessageWindowText(int a0, struct string * a1, int a2, struct string * a3, int a4, int a5)
+/* [D142] 消息窗口正文必须落到 parts 的文本层。
+ *
+ * 之前这三个函数是空桩/未导出，结果是：事件场景能起来（立绘、PHASE 指示器、
+ * 消息框都在），但框里**一个字都没有** —— 看起来就像"剧情被跳过"。
+ * 实测（后门进第一章地图 → 点任务标记）确认场景确实进入 ADV 流程。
+ *
+ * AIN 签名：SetMessageWindowText(Number, Text, MsgNum, FuncName, Ver, Step)
+ * MsgNum/FuncName/Ver/Step 是语音与已读管理的参数，引擎侧暂不需要。 */
+static void PE_SetMessageWindowText(int no, struct string *text, int msg_num,
+		struct string *func_name, int ver, int step)
 {
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
-	(void)a4;
-	(void)a5;
+	(void)msg_num;
+	(void)func_name;
+	(void)ver;
+	(void)step;
+	if (!text)
+		return;
+	PE_SetText(no, text, 1);
+}
+
+/* PE_SetText 是同步排版的，Fix 没有额外工作；但 AIN 会先 Set 再 Fix，
+ * 有些脚本还会轮询 IsFixedMessageWindowText 决定是否继续。 */
+static void PE_FixMessageWindowText(int no)
+{
+	(void)no;
+}
+
+static bool PE_IsFixedMessageWindowText(int no)
+{
+	(void)no;
+	return true;
 }
 
 /* AIN SetMessageWindowTextArea: void SetMessageWindowTextArea. [HACK-POC D85] setter stubbed. */
@@ -2946,7 +2968,9 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetMessageWindowFlatName, PE_Noop_SetMessageWindowFlatName),
 	    HLL_EXPORT(SetMessageWindowFlatShowWaitFrameNumber, PE_Noop_SetMessageWindowFlatShowWaitFrameNumber),
 	    HLL_EXPORT(SetMessageWindowInactiveMultipleColor, PE_Noop_SetMessageWindowInactiveMultipleColor),
-	    HLL_EXPORT(SetMessageWindowText, PE_Noop_SetMessageWindowText),
+	    HLL_EXPORT(SetMessageWindowText, PE_SetMessageWindowText),
+	    HLL_EXPORT(FixMessageWindowText, PE_FixMessageWindowText),
+	    HLL_EXPORT(IsFixedMessageWindowText, PE_IsFixedMessageWindowText),
 	    HLL_EXPORT(SetMessageWindowTextArea, PE_Noop_SetMessageWindowTextArea),
 	    HLL_EXPORT(SetMessageWindowTextOriginPosMode, PE_Noop_SetMessageWindowTextOriginPosMode),
 	    HLL_EXPORT(SetMessageWindowTextSpace, PE_Noop_SetMessageWindowTextSpace),

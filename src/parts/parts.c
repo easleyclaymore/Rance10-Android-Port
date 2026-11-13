@@ -1130,6 +1130,7 @@ void parts_release(int parts_no)
 		parts_text_free(&parts->uc_text);
 	free(parts->uc_object);
 	free(parts->uc_label);
+	free(parts->text_plain);
 	for (int i = 0; i < parts->uc_data_n; i++)
 		free(parts->uc_data[i]);
 	free(parts->uc_data);

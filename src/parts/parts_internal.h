@@ -457,6 +457,11 @@ struct parts {
 	 * 控件真正的行为（点击、绘制）由游戏的 AIN 代码实现。 */
 	char **uc_data;
 	int uc_data_n;
+	/* [D143] 最近一次 PE_SetText/SetMessageWindowText 写入的原文（GBK）。
+	 * 渲染层用它判断"这条 EX 文字是不是某个内建 UC 控件的重复标签"，
+	 * 只跳过真正重复的那一层 —— 早先用"16px 高"当判据，把任务面板的
+	 * 正文（也是 16px）一起吞掉了。 */
+	char *text_plain;
 };
 
 #define PARTS_LIST_FOREACH(iter) TAILQ_FOREACH(iter, &parts_list, parts_list_entry)

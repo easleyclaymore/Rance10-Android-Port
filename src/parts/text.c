@@ -206,6 +206,9 @@ bool PE_SetText(int parts_no, struct string *text, int state)
 	struct parts *parts = parts_get(parts_no);
 	parts_text_clear(parts, state);
 	parts_text_append(parts, parts_get_text(parts, state), text);
+	/* 记录原文供渲染层做"是否与内建控件标签重复"的判定。 */
+	free(parts->text_plain);
+	parts->text_plain = text ? strdup(text->text) : NULL;
 	return true;
 }
 
