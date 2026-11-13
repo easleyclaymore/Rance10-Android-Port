@@ -114,8 +114,45 @@ static void parts_render_texture(struct texture *texture, mat4 mw_transform, Rec
 static struct texture uc_white;
 static bool uc_white_ready;
 
+/* [D141] 标题菜单里每个标签被画了两遍：一遍来自引擎内建 UC 控件
+ * （uc_text，common.w/h 未设置），另一遍来自 EX 里独立的 PARTS_TEXT parts
+ * （实测 common.w = 字数*16、common.h = 16，位置在按钮下方 100/42px）。
+ * 后者是原版编辑器留下的预览文字，运行时应由内建控件接管，所以只要
+ * 当前帧存在可见 UC 部件就跳过它。XSYS4_TITLE_UI_FIX=0 回退。 */
+static bool uc_skip_dup_text(struct parts *parts, struct parts_text *t)
+{
+	static int fix = -1;
+	if (fix < 0) {
+		const char *e = getenv("XSYS4_TITLE_UI_FIX");
+		fix = (e && *e == '0') ? 0 : 1;
+	}
+	if (!fix || parts->uc_object)
+		return false;
+	if (t->common.w <= 0 || t->common.h != 16)
+		return false;
+	struct parts *p;
+	PARTS_LIST_FOREACH(p) {
+		if (p->uc_object && p->global.show)
+			return true;
+	}
+	return false;
+}
+
 static void parts_render_text(struct parts *parts, struct parts_text *t)
 {
+	/* 探针保留：XSYS4_TEXT_RENDER_DBG=1 时列出非 UC 的文字层。 */
+	if (getenv("XSYS4_TEXT_RENDER_DBG") && t->nr_lines > 0 && !parts->uc_object) {
+		static int n;
+		if (n++ < 80)
+			NOTICE("[txtr] no=%d pos=(%d,%d) off=(%d,%d) wh=%dx%d "
+			       "lines=%d uc=- state=%d type=%d",
+			       parts->no, parts->global.pos.x, parts->global.pos.y,
+			       t->common.origin_offset.x, t->common.origin_offset.y,
+			       t->common.w, t->common.h, t->nr_lines,
+			       parts->state, parts->states[parts->state].type);
+	}
+	if (uc_skip_dup_text(parts, t))
+		return;
 	int x = parts->global.pos.x + t->common.origin_offset.x;
 	int y = parts->global.pos.y + t->common.origin_offset.y;
 	for (int i = 0; i < t->nr_lines; i++) {
@@ -159,6 +196,95 @@ static void render_uc_rect(int x, int y, int w, int h, SDL_Color c)
 	vec3 multiply_color = { c.r / 255.0f, c.g / 255.0f, c.b / 255.0f };
 	parts_render_texture(&uc_white, mw, &r, c.a / 255.0f, add_color,
 			multiply_color, 0, 0);
+}
+
+/* [D141] 官方说明书 game/Manual/img/rm02.jpg 里的启动界面按钮：
+ *   「标题」样式 = 红色圆形按钮 + 金色圆环边框（直径约 180px）
+ *   其余样式   = 金色圆角小按钮 + 浅金边框（196x40，与命中框同尺寸）
+ * EX 只有 データ = ['オブジェクト名','TextButton','参数','标题,从头开始']，
+ * 没有任何 CG 名 —— 按钮确实是引擎内建绘制，不存在"未加载的 CG"。
+ * 这里程序化生成两张 RGBA 纹理并缓存，每帧每个按钮只贴一次。 */
+#define UC_BTN_ROUND_D 180
+#define UC_BTN_FLAT_W  196
+#define UC_BTN_FLAT_H  40
+static struct texture uc_btn_round, uc_btn_flat;
+static bool uc_btn_ready;
+
+static void uc_btn_build(void)
+{
+	if (uc_btn_ready)
+		return;
+	uc_btn_ready = true;
+
+	int D = UC_BTN_ROUND_D, R = D / 2 - 2;
+	uint8_t *px = calloc((size_t)D * D, 4);
+	for (int y = 0; y < D; y++) {
+		for (int x = 0; x < D; x++) {
+			float dx = x - D / 2.0f + 0.5f, dy = y - D / 2.0f + 0.5f;
+			float d = sqrtf(dx * dx + dy * dy);
+			uint8_t *p = px + ((size_t)y * D + x) * 4;
+			if (d > R)
+				continue;                       /* 圆外透明 */
+			if (d > R - 7) {                 /* 金色外环 */
+				p[0] = 226; p[1] = 188; p[2] = 98; p[3] = 255;
+			} else if (d > R - 10) {         /* 内圈暗边 */
+				p[0] = 88; p[1] = 22; p[2] = 24; p[3] = 255;
+			} else {                         /* 红色渐变 + 上方高光 */
+				float t = (float)y / D;
+				float hd = sqrtf(dx * dx + (dy + 20) * (dy + 20)) / (float)R;
+				float hi = 1.0f - fminf(1.0f, hd);
+				p[0] = (uint8_t)fminf(255, 116 + 62 * (1 - t) + 50 * hi);
+				p[1] = (uint8_t)fminf(255,  20 + 20 * (1 - t) + 34 * hi);
+				p[2] = (uint8_t)fminf(255,  24 + 16 * (1 - t) + 28 * hi);
+				p[3] = 255;
+			}
+		}
+	}
+	gfx_init_texture_with_pixels(&uc_btn_round, D, D, px);
+	free(px);
+
+	int W = UC_BTN_FLAT_W, H = UC_BTN_FLAT_H, rad = 9;
+	px = calloc((size_t)W * H, 4);
+	for (int y = 0; y < H; y++) {
+		for (int x = 0; x < W; x++) {
+			int cx = x < rad ? rad : (x >= W - rad ? W - 1 - rad : x);
+			int cy = y < rad ? rad : (y >= H - rad ? H - 1 - rad : y);
+			float d = sqrtf((float)((x-cx)*(x-cx) + (y-cy)*(y-cy)));
+			uint8_t *p = px + ((size_t)y * W + x) * 4;
+			if (d > rad)
+				continue;
+			float t = (float)y / H;
+			if (x < 2 || y < 2 || x >= W-2 || y >= H-2 || d > rad-2) {
+				p[0] = 228; p[1] = 198; p[2] = 124; p[3] = 255;
+			} else {
+				p[0] = (uint8_t)(152 - 46 * t);
+				p[1] = (uint8_t)(120 - 38 * t);
+				p[2] = (uint8_t)( 56 - 22 * t);
+				p[3] = 255;
+			}
+		}
+	}
+	gfx_init_texture_with_pixels(&uc_btn_flat, W, H, px);
+	free(px);
+}
+
+static void render_uc_button(int x, int y, int w, int h, bool round, bool hover)
+{
+	struct texture *tex = round ? &uc_btn_round : &uc_btn_flat;
+	int dx = round ? (w - tex->w) / 2 : 0;
+	int dy = round ? (h - tex->h) / 2 : 0;
+	mat4 mw = GLM_MAT4_IDENTITY_INIT;
+	glm_translate(mw, (vec3){ x + dx, y + dy, 0 });
+	glm_scale(mw, (vec3){ tex->w, tex->h, 1.0f });
+	/* parts_render_texture 的 rect 是纹理内的**像素**矩形（见
+	 * parts_render_cg 用 surface_area / texture.w,h）。1x1 白底板能写
+	 * {0,0,1,1} 只是因为它确实只有 1 像素；这里必须用整张纹理尺寸，
+	 * 否则只采样左上角那个透明像素，按钮整个消失。 */
+	Rectangle r = { 0, 0, tex->w, tex->h };
+	vec3 add = { 0.0f, 0.0f, 0.0f };
+	float k = hover ? 1.25f : 1.0f;
+	vec3 mul = { k, k, k };
+	parts_render_texture(tex, mw, &r, 1.0f, add, mul, 0, 0);
 }
 
 /* 用户组件的文字纹理必须在渲染之外创建。
@@ -219,11 +345,20 @@ static void parts_render_user_component(struct parts *parts)
 	int y = parts->global.pos.y;
 	bool hover = parts->is_hovered;
 
-	/* 底板：hover 提亮；normal 保持低调，避免挡住标题画 */
-	if (hover) {
-		/* hover 态用字面量 alpha：实测 (uint8_t)(X * ga) 在这个调用点算出来是
-		 * 0，整块底板直接消失（ga 来自 parts->global.alpha，但同一帧日志里
-		 * 它是 255，原因未定位，见 TECH_DEBT [UC-ALPHA]）。 */
+	/* [D141] 按 EX 样式绘制官方外观，取代原先的蓝色占位矩形。
+	 * 圆形按钮比命中框大，但圆心与框中心重合，文字仍居中在圆心。
+	 * XSYS4_TITLE_UI_FIX=0 回退到旧的蓝色矩形（用于 A/B）。 */
+	static int ui_fix = -1;
+	if (ui_fix < 0) {
+		const char *e = getenv("XSYS4_TITLE_UI_FIX");
+		ui_fix = (e && *e == '0') ? 0 : 1;
+	}
+	if (ui_fix) {
+		const char *style = parts_get_user_component_data(parts, "__style");
+		bool round = style && strcmp(style, "round") == 0;
+		uc_btn_build();
+		render_uc_button(x, y, w, h, round, hover);
+	} else if (hover) {
 		render_uc_rect(x, y, w, h, (SDL_Color){ 96, 108, 140, 235 });
 		render_uc_rect(x, y, w, 3, (SDL_Color){ 255, 246, 214, 255 });
 		render_uc_rect(x, y + h - 3, w, 3, (SDL_Color){ 255, 246, 214, 255 });
