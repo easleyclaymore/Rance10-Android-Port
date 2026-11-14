@@ -256,7 +256,83 @@ IsActive = (GetActiveLayer() == this.LayerPartsNumber)
 
 ---
 
-## 3.10 一个提醒
+## 3.10 同名重载只实现了一个，比不实现更危险
+
+兰斯10 的 `Array.Find` 在库表里有 **8 个重载**：
+
+```
+int Find(ref array<?> self, hll_param Search);            ← 按值
+int Find(ref array<?> self, int Begin, int End, hll_param Search);
+int Find(ref array<?> self, hll_func Func);               ← 按谓词
+int Find(ref array<?> self, int Begin, int End, hll_func Func);
+        （FindLast 同样四个）
+```
+
+我们的 C 实现只认前两个（还靠硬编码 `fno == 37 || fno == 41` 区分是否带区间）。
+谓词版没有分支，于是闭包参数 `[this, fno]` 被当成普通值丢进 `elem_eq`，
+跟数组元素永远比不上 —— **返回 -1，而且不报任何错**。
+
+后果不是"编队点不动"，而是：
+
+```
+LeaderCardCollection@GetEmptyIndex()          = m_leaders.Find(l => !l.IsExist())  → -1
+Party@FindEmptyIndex()                        → index(-1) < m_availableCount(24) 成立
+                                                但返回的就是 -1
+SceneParty@OnClickCard()                      → if (emptyIndex != -1) AddCardToFormations(...)
+                                                                  ↑ 永远为假
+```
+
+上层每个 `!= -1` 判断都走了「没找到」分支，日志干净、0 ERROR、
+活动数 107、点击回调各命中一次 —— 所有指标都"正常"，只有功能是坏的。
+
+**判据一**：实现任何同名函数前，先把库表里同名项全列出来逐个对签名：
+
+```bash
+grep -n "int Find(" libs.txt      # 8 条，一眼看到 hll_func 那两版
+```
+
+**判据二**：用一个不报错的默认值（-1、0、空串）兜底之前，先问
+"上层是拿它跟什么比" —— 如果上层写的是 `if (x != -1)`，那这个默认值
+等于替上层决定了业务分支。
+
+**判据三**：`-1` 和「真的找不到」在日志里长得一模一样。要区分，
+必须在**判定点**打断点（`XSYS4_DUMP_AT=<LT 指令地址>`），而不是看返回值。
+
+## 3.11 注册的名字，和库表里的名字
+
+这一条是同一天踩的第二个坑，形态完全一样：
+
+我们注册了 `HLL_EXPORT(SetNumeralNumber, PE_SetNumeralNumber)`、
+`GetNumeralNumber`、`SetNumeralShowComma`、`SetNumeralSpace`……一整套，
+看起来 numeral 系统"已经实现了"。
+
+但 `libs.txt` 里它们的真名是：
+
+```c
+bool Parts_SetNumeralNumber(int Number, int Number, int State);
+int  Parts_GetNumeralNumber(int Number, int State);
+bool Parts_SetNumeralShowComma(int Number, bool ShowComma, int State);
+```
+
+**全带 `Parts_` 前缀。** 绑定是 `strcmp` 精确匹配，所以这十几条注册
+一个都没生效 —— 它们是**死条目**，真正被调用的那几个一直躺在
+"595 个未实现导出"的清单里。系统看起来能用，只是因为调用它们的路径
+（任务地图的 box 视图）从来没有被真正走到过。
+
+**判据**：新增导出时，名字必须从库表原文复制，不能按 C 函数名去猜。
+已经写了一整套导出之后，用一条命令自查：
+
+```bash
+# 我们注册的每个名字，是否真的在库表里
+grep -o 'HLL_EXPORT([A-Za-z_0-9]*, *PE_[A-Za-z_0-9]*)' src/hll/*.c \
+  | sed 's/HLL_EXPORT(\([^,]*\).*/\1/' | sort -u > /tmp/ours.txt
+```
+
+再和 `ain dump -l` 的成员名求差集。差集里那些，就是"以为实现了、
+其实一条都没绑上"的条目。这个自查花两分钟，能省掉几天"为什么这个
+setter 好像没效果"。
+
+## 3.12 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
 
