@@ -25,7 +25,7 @@ tools/
 │   └── safe_run_click.sh     兼容层，被 run-local 调
 │
 ├── build/               ← 构建（2 个）
-│   ├── build.sh              离线工具：src/*.c → ../tools/bin/
+│   ├── build.sh              离线工具：src/*.c → bin/
 │   └── build-xsys.sh         从零重建（rm -rf build + meson + ninja）
 │
 ├── env/                 ← 环境（2 个）
@@ -33,10 +33,15 @@ tools/
 │   └── inst-deps.sh          装依赖（Debian 系）
 │
 ├── src/                 ← 离线工具源码（14 个 .c）
+├── offline/             ← 离线辅助（不在构建链里）
+│   ├── afa_ls.py            列 .afa 压缩包条目（GBK 感知）
+│   ├── pactex_dump.py       dump .pactex 全字段
+│   └── alice.sh             包装外部 alice-tools，固定 GBK 编码参数
+├── bin/                 ← 离线工具产物（已 gitignore）
 ├── dev/                 ← 开发辅助（不参与构建/跑测）
 │   ├── ain_arity_check.py    批量校验 AIN 函数 arity
-│   └── rebuild_hll_table.py  重生成 HLL 表
-├── patches/             ← 补丁
+│   ├── rebuild_hll_table.py  重生成 HLL 表
+│   └── patches/              历史补丁脚本（**只读参照，不要重跑**）
 │
 ├── check_core_deps.py   ← 门禁（xsys4 check 调）
 ├── gen-switches.py      ← 生成 docs/SWITCHES.md
@@ -111,5 +116,5 @@ run-rance10.sh ─→ safe_run.sh
 4. **调 python 前清 `PYTHONPATH`**：我们的 python 脚本只用标准库，但外部
    环境可能往里塞坏掉的 shim（实测裸 `python3` 直接 abort）。用 `PY()`。
 
-5. **产物不入库**：`xsystem4/build/` 已在 `.gitignore`；`Rance10_Port/tools/bin/`
-   在仓库外，天然不提交（换机器要重跑 `xsys4 build tools`）。
+5. **产物不入库**：`build/` 和 `tools/bin/` 都在 `.gitignore` 里。
+   换机器要重跑 `xsys4 build tools`。

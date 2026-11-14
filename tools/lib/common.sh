@@ -28,7 +28,7 @@ ENGINE_BIN="${ENGINE_BIN:-$XSYS4_DIR/build/src/xsystem4}"
 GAME_AIN="${GAME_AIN:-$PORT_DIR/game/Rance10.ain}"
 GAME_DIR="${GAME_DIR:-$PORT_DIR/game}"
 LOGS_DIR="${LOGS_DIR:-$PORT_DIR/logs}"
-OFFLINE_BIN="${OFFLINE_BIN:-$PORT_DIR/tools/bin}"
+OFFLINE_BIN="${OFFLINE_BIN:-$TOOLS_DIR/bin}"   # [D171] 产物并入 xsystem4/tools/bin（已 gitignore）
 AIN_AT="${AIN_AT:-$OFFLINE_BIN/ain_at}"
 
 # --- 共用函数 ---
