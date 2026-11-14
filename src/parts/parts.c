@@ -2745,7 +2745,13 @@ void PE_DebugControllerHistogram(const char *tag)
 
 /* [D128] 一次性部件快照：把"此刻还在显示"的部件连同所属 controller、z、
  * 尺寸、UC 名一起打出来。诊断"场景切走了但旧图层还画着"时靠它定位。
- * XSYS4_PARTS_DUMP=1 时在每次活动装载后调用。 */
+ * XSYS4_PARTS_DUMP=1 时在每次活动装载后调用。
+ *
+ * [D167] 补 `a=`(alpha) `st=`(内容类型) `tex=`(有没有纹理)。
+ * 起因：任务地图的菜单 `MenuContext:7..13` 明明装载了、坐标也正常
+ * （`(0,608) 512x91`），画面上却一个像素都没有。原格式只有 w/h，
+ * "有尺寸但没画"的三种原因（alpha=0 / 内容类型不是 CG / 纹理没加载）
+ * 一个都区分不出来。 */
 void PE_DebugDumpParts(const char *tag)
 {
 	struct parts *p;
@@ -2753,11 +2759,17 @@ void PE_DebugDumpParts(const char *tag)
 	TAILQ_FOREACH(p, &parts_list, parts_list_entry) {
 		if (!p->global.show)
 			continue;
-		NOTICE("[parts] %s no=%d ctrl=%d z=%d pos=(%d,%d) %dx%d uc=%s",
+		/* [D167] 必须打**当前状态**（`p->state`），不是 DEFAULT。
+		 * 绘制读的是 `states[p->state]`：一个 DEFAULT 有 CG 的部件，
+		 * 在 HOVERED/CLICKED 状态里可能是空的 —— 那才是"show=1、
+		 * alpha=255、坐标正常却不显示"的第四种可能。 */
+		struct parts_state *st = &p->states[p->state];
+		NOTICE("[parts] %s no=%d ctrl=%d z=%d pos=(%d,%d) %dx%d a=%d ps=%d st=%d tex=%d uc=%s",
 		       tag, p->no, p->controller_no, p->global.z,
 		       p->global.pos.x, p->global.pos.y,
-		       p->states[PARTS_STATE_DEFAULT].common.w,
-		       p->states[PARTS_STATE_DEFAULT].common.h,
+		       st->common.w, st->common.h,
+		       p->global.alpha, (int)p->state, (int)st->type,
+		       st->common.texture.handle != 0,
 		       p->uc_object ? p->uc_object : "-");
 		if (++n > 400) {
 			NOTICE("[parts] %s ... truncated", tag);
