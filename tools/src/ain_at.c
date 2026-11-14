@@ -187,7 +187,17 @@ int main(int argc,char**argv){
 		char buf[256]; snprintf(buf,sizeof buf,"%s",arg);
 		char*sub=strchr(buf,':');
 		if(sub){*sub=0;sub++;}
-		int l=atoi(buf);
+		/* [D172] 以前直接 atoi(buf)：`lib:Array` 会被解析成 0，静默返回
+		 * lib[0] system —— 用户以为查到了 Array，实际是另一个库。
+		 * 这种"看起来成功"的错误比报错更危险。现在：纯数字当编号，
+		 * 否则按库名精确匹配，匹配不到就报错退出。 */
+		int l=-1;
+		if(buf[0]>='0'&&buf[0]<='9'){l=atoi(buf);}
+		else{
+			for(int i=0;i<a->nr_libraries;i++)
+				if(a->libraries[i].name&&!strcmp(a->libraries[i].name,buf)){l=i;break;}
+			if(l<0){fprintf(stderr,"no library named '%s'\n",buf);return 1;}
+		}
 		if(l<0||l>=a->nr_libraries){fprintf(stderr,"lib out of range\n");return 1;}
 		struct ain_library*lib=&a->libraries[l];
 		printf("lib[%d] %s nr_functions=%d\n",l,lib->name?lib->name:"?",lib->nr_functions);

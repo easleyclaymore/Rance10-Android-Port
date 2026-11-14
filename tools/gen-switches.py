@@ -124,10 +124,14 @@ def main():
     undocumented = 0
     for name in sorted(found):
         where = found[name][0]
-        comment = manual.get(name) or nearby_comment(where[2], where[1] - 1)
+        if name in manual:
+            comment, src = manual[name], "manual"
+        else:
+            comment = nearby_comment(where[2], where[1] - 1)
+            src = "comment" if comment else "none"
         if not comment:
             undocumented += 1
-        rows.append((name, group_of(name), "%s:%d" % (where[0], where[1]), comment))
+        rows.append((name, group_of(name), "%s:%d" % (where[0], where[1]), comment, src))
 
     if check_only:
         print("XSYS4 switches: %d total, %d undocumented" % (len(rows), undocumented))
@@ -152,11 +156,22 @@ def main():
     out.append("新增开关必须带一行用途说明，否则本表会显示 `—`，")
     out.append("它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。\n")
     out.append("共 **%d** 个开关，其中 **%d** 个没有就近注释。\n" % (len(rows), undocumented))
+    out.append("**用途一栏的两种来源**：")
+    out.append("")
+    out.append("- 正常文字 = `tools/switch-desc.txt` 里人工写的一句话（可信）")
+    out.append("- 带 `〔摘〕` = 从源码就近注释摘的片段，**可能是背景说明而不是用途**，用前请核对源码")
+    out.append("")
     out.append("| 分组 | 开关 | 位置 | 用途 |")
     out.append("|---|---|---|---|")
     for group in order:
-        for name, _g, loc, comment in sorted(by_group.get(group, [])):
-            out.append("| %s | `%s` | `%s` | %s |" % (group, name, loc, comment or "—"))
+        for name, _g, loc, comment, src in sorted(by_group.get(group, [])):
+            if not comment:
+                text = "—"
+            elif src == "comment":
+                text = "〔摘〕" + comment
+            else:
+                text = comment
+            out.append("| %s | `%s` | `%s` | %s |" % (group, name, loc, text))
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:

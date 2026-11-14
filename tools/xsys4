@@ -41,9 +41,9 @@ xsys4 — 兰斯10 移植工具链入口
   xsys4 check               引擎门禁 + 开关标注自检
 
 【跑测】
-  xsys4 run <tag> [秒] [png]      无头跑一次，出日志和截图
+  xsys4 run <tag> [秒] [png]      无头跑一次，出日志和截图（shot 是它的别名）
   xsys4 seq <tag> <动作序列> [秒]  同上，带点击序列（语法见下）
-  xsys4 dump <地址>[,次数] <tag>   在指定指令处停下 dump 一次
+  xsys4 dump <地址>[,次数] <tag> [秒]  在指定指令处停下 dump 一次
 
   动作序列（用分号分隔，坐标是 1920x1080 下的绝对坐标）：
     wait:3000                 等 3 秒
@@ -59,6 +59,8 @@ xsys4 — 兰斯10 移植工具链入口
   xsys4 disas <符号名|fno:N|0x地址>   反汇编（走 ain_at）
   xsys4 at <0x地址> [条数]            从任意地址反汇编（可未对齐）
   xsys4 sym <子串>                    按名字找函数
+  xsys4 lib <编号|库名>[:子串]        列某个 HLL 库的函数表（库名和编号都认）
+  xsys4 struct <结构体名>              看结构体成员类型
   xsys4 switches [关键词]             查诊断开关（例：xsys4 switches ARR）
   xsys4 debt [关键词]                 查技术债台账
 
@@ -69,7 +71,7 @@ xsys4 — 兰斯10 移植工具链入口
 脚本分工与依赖关系见 `tools/MAP.md`（为什么 11 个脚本不合并，那里写了）。
 
 例：
-  xsys4 build && xsys4 seq demo "wait:16000;click:600,700;until:SceneQuestMap" 110 /tmp/demo.png
+  xsys4 build && xsys4 seq demo "wait:16000;click:600,700;until:SceneQuestMap" 110
   xsys4 switches CALL_TRACE
   xsys4 disas Party@FindEmptyIndex
 EOF
@@ -117,9 +119,9 @@ seq)
     RANCE10_LIVE_SEQ="$steps" exec "$TOOLS_DIR/run/run-headless.sh" "$tag" "$secs" "/tmp/$tag.png" ;;
 
 dump)
-    at="${1:-}"; tag="${2:-dump}"
-    [ -n "$at" ] || die "用法：xsys4 dump <地址>[,次数] <tag>"
-    XSYS4_DUMP_AT="$at" exec "$TOOLS_DIR/run/run-headless.sh" "$tag" 110 "/tmp/$tag.png" ;;
+    at="${1:-}"; tag="${2:-dump}"; secs="${3:-110}"
+    [ -n "$at" ] || die "用法：xsys4 dump <地址>[,次数] <tag> [秒]"
+    XSYS4_DUMP_AT="$at" exec "$TOOLS_DIR/run/run-headless.sh" "$tag" "$secs" "/tmp/$tag.png" ;;
 
 disas|at|sym|lib|struct)
     [ -x "$AIN_AT" ] || die "ain_at 未构建，先跑 xsys4 build tools"

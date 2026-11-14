@@ -33,6 +33,8 @@
 | `lib:<n>[:<子串>]` | 打印库 n 的函数表与完整签名 |
 | `struct:<名字>` / `memb:<n>` | 结构体成员类型 / 接口表 / vtable |
 | `fno:<n>` | 按函数号查 |
+| `dl:<子串>` | 按名字找委托类型（`DELEGATE [n] 全名`） |
+| `sno:<n>` | 按编号看结构体（同 `struct:`，少一次按名查找） |
 | `str:<n>` / `dno:<n>` | 字符串 / 委托类型 |
 | `callhll` | 全代码 CALLHLL 的 tag 直方图 |
 
@@ -90,7 +92,7 @@ tools/bin/gsave_dump logs/savedir/<tag>/GlobalSave.asd
 - `ain_hllarity`：HLL 调用参数个数体查
 - `aindump`：导出整体结构
 
-## 外部工具：alice-tools（`tools/alice.sh` 包装）
+## 外部工具：alice-tools（`../tools/offline/alice.sh` 包装）
 
 `nunuhara/alice-tools` 是 AliceSoft 文件格式的官方级工具集（同一作者的 libsys4 与我们
 子模块是同一份代码，所以解析结果可以直接当"基准答案"用）。**不在仓库内**，只在开发机装：
@@ -101,7 +103,7 @@ cd alice-tools && env -u PYTHONPATH -u PYTHONHOME meson setup build && ninja -C 
 ```
 
 **中文版必须加编码参数**，否则 `ar list` 会 `ERROR: iconv: Invalid or incomplete
-multibyte` 并截断、`ar extract -n "<名字>"` 永远匹配不到。`tools/alice.sh` 就是干这个的：
+multibyte` 并截断、`ar extract -n "<名字>"` 永远匹配不到。`../tools/offline/alice.sh` 就是干这个的：
 它把 `--input-encoding gbk --output-encoding utf-8` 插到子命令后面。
 
 ### 它补上了自家工具缺的两块信息
@@ -109,7 +111,7 @@ multibyte` 并截断、`ar extract -n "<名字>"` 永远匹配不到。`tools/al
 1. **反汇编带符号**（`ain_at` 只给编号，要人肉查）：
 
    ```sh
-   tools/alice.sh ain dump --function "SceneQuestMap@CheckNoLeader" -o /tmp/f.x game/Rance10.ain
+   ../tools/offline/alice.sh ain dump --function "SceneQuestMap@CheckNoLeader" -o /tmp/f.x game/Rance10.ain
    ```
 
    ```
@@ -128,8 +130,8 @@ multibyte` 并截断、`ar extract -n "<名字>"` 永远匹配不到。`tools/al
    日志里那些 `Unknown part type for 'Atk'` 就是猜漏的后果）：
 
    ```sh
-   tools/alice.sh ar extract -i 155 -o /tmp/ocv.pactex game/Rance10Pact.afa   # 155 = afa_ls.py 查到的序号
-   tools/alice.sh ex dump -o /tmp/ocv.x /tmp/ocv.pactex
+   ../tools/offline/alice.sh ar extract -i 155 -o /tmp/ocv.pactex game/Rance10Pact.afa   # 155 = afa_ls.py 查到的序号
+   ../tools/offline/alice.sh ex dump -o /tmp/ocv.x /tmp/ocv.pactex
    ```
 
    输出是 `tree / list` 的 C 风格文本，每个部件都有 `パーツ类型 / サーフェイスエリア /
@@ -158,6 +160,6 @@ multibyte` 并截断、`ar extract -n "<名字>"` 永远匹配不到。`tools/al
 ## 与跑测脚本的分工
 
 跑测脚本（`baseline.sh` / `storm.sh` / `run-headless.sh` / `run-live.sh`）留在
-`xsystem4/tools/run/` —— 它们依赖引擎目录结构，且**必须在独立 Xvfb 里跑**：
+`../tools/run/` —— 它们依赖引擎目录结构，且**必须在独立 Xvfb 里跑**：
 `run-live.sh` 会 `xdotool` 点鼠标、`x11grab` 截屏，跑在真实桌面上会干扰你正在用的会话。
 详见项目根 `README.md` 的「两条硬纪律」。
