@@ -88,7 +88,7 @@ for f in 24317 24300; do echo "$f=$(grep -ac "($f)" ../logs/live_probe1.log)"; d
 
 ```bash
 # 442eb2 是 FindEmptyIndex 里 LT 指令的地址
-XSYS4_DUMP_AT=442eb2,4 ./tools/xsys4 dump 442eb2,4 ise1 110
+./tools/xsys4 dump 442eb2,4 ise1 110     # verb 自己会设 XSYS4_DUMP_AT
 ```
 
 输出帧名、`this` 每个成员、局部变量、操作数栈、以及 AIN 调用栈。
@@ -147,6 +147,15 @@ grep 'click=1' ../logs/live_c1.log | head
 3. `./tools/xsys4 check` —— 它会重新生成 `docs/SWITCHES.md`
 
 没写说明也能跑，但 `SWITCHES.md` 里会显示 `—`，且 `check` 的返回值会带着这个数。
+
+### 两个使用边界
+
+**`xsys4 switches <词>` 是整行 grep**，不是只匹配开关名。查 `CTRL` 会连
+描述里含 "controller" 的条目一起出来。想要精确，用完整名字。
+
+**`xsys4 debt` 读的是项目根的 `TECH_DEBT.md`**，它在 git 仓库之外。
+clone 仓库的人只有引擎和工具，`debt` 会报"找不到"。同理 `xsys4 check`
+里的"未标注开关数"依赖仓库内的 `tools/switch-desc.txt`（这个在）。
 
 ## 诊断输出的契约
 

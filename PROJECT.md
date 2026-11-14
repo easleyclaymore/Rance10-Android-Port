@@ -47,7 +47,7 @@
 - `../README.md` —— 现状、跑测、必读契约、卡点（改 VM 前先读第 4 节）
 - `../TECH_DEBT.md` —— 未结债务（A 结构性 / B 会炸的 / C 长尾）
 - `../GUIDE/` —— 《黑盒字节码引擎移植实战指南》，独立成书
-- `../tools/README.md` —— 离线工具用法（`ain_at` / `gsave_dump` / `ain_xref`）
+- `docs/OFFLINE.md` —— 离线工具用法（`ain_at` / `gsave_dump` / `ain_xref`）
 
 `notes/` 下是字节码规范取证（AIN v12 引用槽宽等静态事实）。
 

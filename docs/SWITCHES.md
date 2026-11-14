@@ -8,6 +8,11 @@
 
 共 **116** 个开关，其中 **24** 个没有就近注释。
 
+**用途一栏的两种来源**：
+
+- 正常文字 = `tools/switch-desc.txt` 里人工写的一句话（可信）
+- 带 `〔摘〕` = 从源码就近注释摘的片段，**可能是背景说明而不是用途**，用前请核对源码
+
 | 分组 | 开关 | 位置 | 用途 |
 |---|---|---|---|
 | 断点与快照 | `XSYS4_CALL_TRACE` | `src/vm.c:755` | 逗号分隔的 AIN 函数号；命中时打印调用点与返回地址（"有没有被调到"的第一手证据） |
@@ -33,7 +38,7 @@
 | 容器与内存 | `XSYS4_DF_FREE_DBG` | `src/heap.c:315` | 委托释放的逐次释放诊断 |
 | 容器与内存 | `XSYS4_DF_MAX` | `src/heap.c:223` | 委托释放的最大迭代次数（防死循环） |
 | 容器与内存 | `XSYS4_DGPLUSA_DBG` | `src/vm.c:4333` | — |
-| 容器与内存 | `XSYS4_DGPLUSA_MAX` | `src/vm.c:4337` | 前 400 条会被 startup 的 CParts@Attach 占满。 |
+| 容器与内存 | `XSYS4_DGPLUSA_MAX` | `src/vm.c:4337` | 〔摘〕前 400 条会被 startup 的 CParts@Attach 占满。 |
 | 容器与内存 | `XSYS4_DG_ASSIGN_DBG` | `src/vm.c:4309` | 委托赋值诊断 |
 | 容器与内存 | `XSYS4_DG_CALL_DBG` | `src/vm.c:1482` | 委托调用诊断 |
 | 容器与内存 | `XSYS4_DG_DBG` | `src/hll/Delegate.c:65` | 委托（Delegate）诊断总开关 |
@@ -62,39 +67,39 @@
 | 运行环境 | `XSYS4_DATA_DIR` | `src/pal.c:43` | 数据目录（缺省用编译期默认值） |
 | 运行环境 | `XSYS4_SOFT_STUB` | `src/ffi.c:60` | 未实现的导出用零桩顶替（诊断用：判断"缺实现"还是"走错路"） |
 | 一次性探针 | `XSYS4_DBG_EIP` | `src/hll/PartsEngine.c:489` | 打印 SetEnableInputProcess 的每次调用与参数（实测 242 次里 238 次 enable=0） |
-| 其它 | `XSYS4_CP_DBG` | `src/vm.c:482` | Parts(1114) 的 m_partsNumber 若在拷贝时还是 0，副本就永远是 0。 |
-| 其它 | `XSYS4_DI_FALLBACK` | `src/parts/message.c:87` | Controlled experiment: fall back to index 0 when explicitly enabled. |
+| 其它 | `XSYS4_CP_DBG` | `src/vm.c:482` | 〔摘〕Parts(1114) 的 m_partsNumber 若在拷贝时还是 0，副本就永远是 0。 |
+| 其它 | `XSYS4_DI_FALLBACK` | `src/parts/message.c:87` | 〔摘〕Controlled experiment: fall back to index 0 when explicitly enabled. |
 | 其它 | `XSYS4_DUMP_EVERY` | `src/video.c:452` | 每隔 N 次执行 dump 一次，用于观察循环里的状态漂移 |
 | 其它 | `XSYS4_DUMP_FRAME` | `src/video.c:448` | 指定帧的完整快照（配合 DUMP_AT 的扩展模式） |
 | 其它 | `XSYS4_ENV_DBG` | `src/vm.c:2673` | — |
-| 其它 | `XSYS4_EX_DBG` | `src/hll/MainEXFile.c:531` | 所有任务都会被判成地图任务、剧情整段跳过——所以必须能看见。 |
-| 其它 | `XSYS4_GSAVE_DBG` | `src/savedata.c:755` | the printable type name instead. |
+| 其它 | `XSYS4_EX_DBG` | `src/hll/MainEXFile.c:531` | 〔摘〕所有任务都会被判成地图任务、剧情整段跳过——所以必须能看见。 |
+| 其它 | `XSYS4_GSAVE_DBG` | `src/savedata.c:755` | 〔摘〕the printable type name instead. |
 | 其它 | `XSYS4_HEAP_LIVE_LIMIT` | `src/heap.c:111` | 堆存活槽上限，超了报警 |
 | 其它 | `XSYS4_HLL_ARGDBG` | `src/ffi.c:895` | 打印 HLL 调用的实际参数值（排查"参数顺序/位宽错"时用） |
-| 其它 | `XSYS4_ICAST_DBG` | `src/vm.c:2766` | "对象类型确实不对" 和 "我们的转型判定太严"。 |
+| 其它 | `XSYS4_ICAST_DBG` | `src/vm.c:2766` | 〔摘〕"对象类型确实不对" 和 "我们的转型判定太严"。 |
 | 其它 | `XSYS4_IFACE_ARR_FIX` | `src/page.c:567` | — |
 | 其它 | `XSYS4_IFACE_COPY_DBG` | `src/page.c:425` | — |
 | 其它 | `XSYS4_IFACE_COPY_FIX` | `src/page.c:401` | — |
-| 其它 | `XSYS4_IFACE_PUSH_DBG` | `src/hll/Array.c:1060` | 若这里从不出现，说明该数组不是 Array.PushBack 建的。 |
+| 其它 | `XSYS4_IFACE_PUSH_DBG` | `src/hll/Array.c:1060` | 〔摘〕若这里从不出现，说明该数组不是 Array.PushBack 建的。 |
 | 其它 | `XSYS4_IFACE_REALLOC_FIX` | `src/page.c:641` | — |
 | 其它 | `XSYS4_IP_WATCH` | `src/vm.c:2551` | 监视指令指针，抓"跑到不该跑的地方" |
 | 其它 | `XSYS4_KEYCODE_PROBE` | `src/parts/input.c:47` | 打印收到的原始键码 |
 | 其它 | `XSYS4_LAYER_TRACE` | `src/parts/parts.c:2022` | 图层顺序追踪 |
 | 其它 | `XSYS4_LVAR_DBG` | `src/vm.c:158` | — |
 | 其它 | `XSYS4_MC_SLOT_DBG` | `src/vm.c:1095` | — |
-| 其它 | `XSYS4_MC_WATCH` | `src/vm.c:954` | 时（callee 声明 N 槽、call site 只压了 1 槽）只能靠猜。 |
+| 其它 | `XSYS4_MC_WATCH` | `src/vm.c:954` | 〔摘〕时（callee 声明 N 槽、call site 只压了 1 槽）只能靠猜。 |
 | 其它 | `XSYS4_MGRBT` | `src/vm.c:2395` | — |
-| 其它 | `XSYS4_MSGQ_DBG` | `src/parts/message.c:167` | 对其它值走 member1[delegate_index]。分派打空炮时必须先知道走的哪条。 |
-| 其它 | `XSYS4_MSG_DBG` | `src/parts/message.c:49` | 只打非悬停消息，否则前 60 条全被 MOUSE_ON 占满，看不到点击。 |
-| 其它 | `XSYS4_MSG_NO_SENTINEL` | `src/parts/message.c:163` | busy loop that froze SceneStack@WaitFrame. |
-| 其它 | `XSYS4_MSG_POPDBG` | `src/parts/message.c:127` | 这里能看到 type=5 被 pop 而没有对应 dispatch。 |
+| 其它 | `XSYS4_MSGQ_DBG` | `src/parts/message.c:167` | 〔摘〕对其它值走 member1[delegate_index]。分派打空炮时必须先知道走的哪条。 |
+| 其它 | `XSYS4_MSG_DBG` | `src/parts/message.c:49` | 〔摘〕只打非悬停消息，否则前 60 条全被 MOUSE_ON 占满，看不到点击。 |
+| 其它 | `XSYS4_MSG_NO_SENTINEL` | `src/parts/message.c:163` | 〔摘〕busy loop that froze SceneStack@WaitFrame. |
+| 其它 | `XSYS4_MSG_POPDBG` | `src/parts/message.c:127` | 〔摘〕这里能看到 type=5 被 pop 而没有对应 dispatch。 |
 | 其它 | `XSYS4_MSG_TRACE` | `src/parts/message.c:142` | — |
 | 其它 | `XSYS4_NO_AUDIO` | `src/audio_mixer.c:705` | 关闭音频输出 |
 | 其它 | `XSYS4_NO_PUMP` | `src/vm.c:4544` | 事件泵空转诊断 |
 | 其它 | `XSYS4_NULLMETHOD_FIX` | `src/vm.c:1117` | — |
-| 其它 | `XSYS4_NULLREF_DBG` | `src/vm.c:292` | Pop a reference off the stack, returning the address of the referen… |
+| 其它 | `XSYS4_NULLREF_DBG` | `src/vm.c:292` | 〔摘〕Pop a reference off the stack, returning the address of the referen… |
 | 其它 | `XSYS4_NULL_METHOD` | `src/vm.c:1008` | — |
-| 其它 | `XSYS4_NULL_RET` | `src/vm.c:1048` | XSYS4_NULL_RET=0 可回退，用于定位"到底跳过了哪些调用"。 |
+| 其它 | `XSYS4_NULL_RET` | `src/vm.c:1048` | 〔摘〕XSYS4_NULL_RET=0 可回退，用于定位"到底跳过了哪些调用"。 |
 | 其它 | `XSYS4_OBJ_WATCH` | `src/vm.c:2571` | 监视指定堆槽的读写 |
 | 其它 | `XSYS4_PE_DBG` | `src/hll/PartsEngine.c:39` | PartsEngine 调用诊断 |
 | 其它 | `XSYS4_PHANTOM_REUSE` | `src/vm.c:1196` | 幽灵槽复用诊断 |
@@ -102,7 +107,7 @@
 | 其它 | `XSYS4_PRED_DBG` | `src/hll/Array.c:594` | — |
 | 其它 | `XSYS4_RA_DBG` | `src/vm.c:2842` | — |
 | 其它 | `XSYS4_RECYCLE_SLOTS` | `src/heap.c:203` | 复用已释放的堆槽（默认关） |
-| 其它 | `XSYS4_REFDBG` | `src/vm.c:353` | 它之后的代码全部当作不可达删掉。 |
+| 其它 | `XSYS4_REFDBG` | `src/vm.c:353` | 〔摘〕它之后的代码全部当作不可达删掉。 |
 | 其它 | `XSYS4_REFREF_DBG` | `src/vm.c:2458` | — |
 | 其它 | `XSYS4_REF_AT` | `src/vm.c:2374` | — |
 | 其它 | `XSYS4_RSS_LIMIT` | `src/vm.c:2175` | 进程 RSS 上限，超了报警 |
@@ -111,14 +116,14 @@
 | 其它 | `XSYS4_SP_BALANCE` | `src/vm.c:1790` | 每次函数返回校验栈平衡（失败即报） |
 | 其它 | `XSYS4_SP_TRACE` | `src/vm.c:2340` | 环形缓冲记录栈指针变化，抓"玄学栈漂移" |
 | 其它 | `XSYS4_SP_WATCH` | `src/vm.c:4689` | 监视指定帧的栈指针 |
-| 其它 | `XSYS4_SRDBG` | `src/vm.c:3683` | the bottom of the triple, never a live ARRAY_PAGE. |
+| 其它 | `XSYS4_SRDBG` | `src/vm.c:3683` | 〔摘〕the bottom of the triple, never a live ARRAY_PAGE. |
 | 其它 | `XSYS4_STACK_SAMPLE` | `src/vm.c:4703` | 周期性采样调用栈（抓谁在长时间占栈） |
 | 其它 | `XSYS4_STRICT_REF` | `src/vm.c:377` | 严格引用计数检查（会把"漏 ref/unref"变成显式报错） |
-| 其它 | `XSYS4_STR_INT_DBG` | `src/hll/String.c:58` | "取对了但字符串已经死了"。 |
+| 其它 | `XSYS4_STR_INT_DBG` | `src/hll/String.c:58` | 〔摘〕"取对了但字符串已经死了"。 |
 | 其它 | `XSYS4_STUB_BT` | `src/ffi.c:164` | 软桩命中时附带回溯 |
 | 其它 | `XSYS4_STUB_LOG` | `src/ffi.c:106` | 软桩命中清单写到该文件 |
 | 其它 | `XSYS4_SUBST_BT` | `src/ffi.c:642` | 静态库替换（subst）时打印回溯 |
-| 其它 | `XSYS4_SWAP_LOG` | `src/video.c:438` | launcher can freeze the process right after the first presented frame. |
+| 其它 | `XSYS4_SWAP_LOG` | `src/video.c:438` | 〔摘〕launcher can freeze the process right after the first presented frame. |
 | 其它 | `XSYS4_TEXT_RENDER_DBG` | `src/parts/render.c:148` | 文字渲染诊断（字体/码表/基线） |
 | 其它 | `XSYS4_TITLE_UI_FIX` | `src/parts/render.c:126` | — |
 | 其它 | `XSYS4_TRACE` | `src/vm.c:2154` | — |
