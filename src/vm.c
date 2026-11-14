@@ -746,7 +746,7 @@ static int _function_call(int fno, int return_address)
 /* [D111d] Per-function entry probe: XSYS4_CALL_TRACE=<fno,fno,...>
  * Prints the first 3 hits and then every 200th, so a "does this AIN function
  * ever run?" question can be answered without a trace window. */
-static struct { int fno; int hits; } call_trace[16];
+static struct { int fno; int hits; int nret; int rets[8]; } call_trace[16];
 static int call_trace_n = -1;
 
 static void call_trace_probe(int fno, int ret_addr)
@@ -759,6 +759,7 @@ static void call_trace_probe(int fno, int ret_addr)
 			while (*p && call_trace_n < 16) {
 				call_trace[call_trace_n].fno = atoi(p);
 				call_trace[call_trace_n].hits = 0;
+				call_trace[call_trace_n].nret = 0;
 				call_trace_n++;
 				while (*p && *p != ',') p++;
 				if (*p == ',') p++;
@@ -769,7 +770,23 @@ static void call_trace_probe(int fno, int ret_addr)
 		if (call_trace[i].fno != fno)
 			continue;
 		int n = ++call_trace[i].hits;
-		if (n <= 3 || n % 200 == 0) {
+		/* [D160] **按调用站点去重**，不是按次数。
+		 *
+		 * 原来只打前 3 次 + 每 200 次一条：同一个函数的多个调用点里，
+		 * 先跑的那个会把名额占满，后跑的点一条都打不出来。这一轮就被
+		 * 坑了 —— `Parts@SetOnClickEvent` 前 3 条全是 FormationView 的
+		 * 0x38D27C，看不出 `PartyCard@InitPartsDragTarget` 到底注册了没有。
+		 * 现在：见到**新的 ret** 就打一条，每个 fno 记 8 个站点。 */
+		bool new_site = false;
+		bool seen = false;
+		for (int k = 0; k < call_trace[i].nret; k++)
+			if (call_trace[i].rets[k] == ret_addr)
+				seen = true;
+		if (!seen && call_trace[i].nret < 8) {
+			call_trace[i].rets[call_trace[i].nret++] = ret_addr;
+			new_site = true;
+		}
+		if (new_site || n <= 3 || n % 200 == 0) {
 			struct ain_function *f = &ain->functions[fno];
 			/* [D159] `instr_ptr` 在这里指向**被调函数自己**的第一条指令
 			 * （0x...374 之类），拿它反汇编只会绕回原地 —— 上几轮据此
