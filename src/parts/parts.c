@@ -1434,6 +1434,31 @@ bool PE_SetPartsCG(int parts_no, struct string *cg_name, int sprite_deform, int 
 	return parts_cg_set(parts, cg, cg_name);
 }
 
+/* AIN PartsEngine: bool SetPartsCGThread(int Number, string CGName, int State).
+ *
+ * 异步设定 CG 的入口。参数比同步版少一个 sprite_deform：原版异步路径只
+ * 按名字换图，形变沿用部件当前值。我们不做后台线程（见
+ * PE_BuildPartsConstructionProcessThread 的理由），直接走同步版，形变显式
+ * 取当前值，避免顺手把已设好的 deform 清成 0。
+ *
+ * [D164] 谓词版 Array.Find 修好后，QuestMapBoxView@InitBoxLight 第一次
+ * 真的走到这里；这个导出之前完全没注册，一进就是 Unimplemented HLL
+ * ERROR，把启动画面卡在 WaitForClick，整局只加载 19 个活动。 */
+bool PE_SetPartsCGThread(int parts_no, struct string *cg_name, int state)
+{
+	struct parts *p = parts_try_get(parts_no);
+	return PE_SetPartsCG(parts_no, cg_name, p ? p->sprite_deform : 0, state);
+}
+
+/* AIN PartsEngine: bool IsThreadLoading(int Number, int State).
+ *
+ * 所有 *Thread 导出我们都同步做完再返回（见上面两处注释），所以"还在
+ * 后台加载"永远为假。返回 false 让调用方的轮询循环第一轮就退出。 */
+bool PE_IsThreadLoading(int parts_no, int state)
+{
+	return false;
+}
+
 bool PE_SetPartsCG_by_index(int parts_no, int cg_no, int sprite_deform, int state)
 {
 	if (!parts_state_valid(--state))
@@ -1852,6 +1877,24 @@ bool PE_SetNumeralNumber(int parts_no, int n, int state)
 	struct parts *parts = parts_get(parts_no);
 	struct parts_numeral *numeral = parts_get_numeral(parts, state);
 	return parts_numeral_set_number(parts, numeral, n);
+}
+
+/* AIN PartsEngine: int GetNumeralNumber(int Number, int State).
+ *
+ * 读回 SetNumeralNumber 设进去的值。只读，不改状态：状态还不是 numeral
+ * 时返回 0，而不是像 parts_get_numeral 那样顺手把该状态重建成 numeral
+ * （getter 不该有副作用，否则"查询"会把一个 CG 状态换成数字状态）。
+ *
+ * [D164] 谓词版 Array.Find 修好后，任务地图的 box 视图第一次真的被建
+ * 出来；QuestMapBoxView@InitBox 系列要读数字贴图的当前值来排布。 */
+int PE_GetNumeralNumber(int parts_no, int state)
+{
+	if (!parts_state_valid(--state))
+		return 0;
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts || parts->states[state].type != PARTS_NUMERAL)
+		return 0;
+	return parts->states[state].num.have_num ? parts->states[state].num.num : 0;
 }
 
 bool PE_SetNumeralShowComma(int parts_no, bool show_comma, int state)
