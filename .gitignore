@@ -23,3 +23,6 @@ logs/
 *.core
 *.swp
 subprojects/.wraplock
+
+# 离线工具构建产物（源码在 tools/src/，二进制不入库）
+tools/bin/

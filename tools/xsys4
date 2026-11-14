@@ -85,7 +85,7 @@ help|-h|--help) usage ;;
 build)
     case "${1:-engine}" in
     engine) exec ninja -C "$XSYS4/build" ;;
-    tools)  exec "$PORT/tools/build.sh" ${2:+"$2"} ;;
+    tools)  exec "$TOOLS_DIR/build/build.sh" ${2:+"$2"} ;;
     *)      die "build 只接受 engine|tools" ;;
     esac ;;
 

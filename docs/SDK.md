@@ -1,7 +1,7 @@
 # xsystem4 移植工具链（SDK 参考）
 
 > 这份文档回答「我要做 X，该用哪条命令」。
-> 工具清单在 `../tools/README.md`，开关总表在 `SWITCHES.md`（自动生成）。
+> 离线工具的详细用法看 [`OFFLINE.md`](OFFLINE.md)，开关总表看 `SWITCHES.md`（自动生成）。
 > 方法论在项目根的 `GUIDE/`，**不要往这份文档里写踩坑经过**。
 
 ## 这是什么
@@ -16,7 +16,7 @@
 
 | 层 | 工具 | 特点 | 何时用 |
 |---|---|---|---|
-| 离线分析 | `ain_at` `ain_audit` `ain_xref` `exdump` `gsave_dump` | 不启动游戏、不需要 X、秒级 | 读代码、查符号、对签名 |
+| 离线分析 | `ain_at` `ain_audit` `ain_xref` `exdump` `gsave_dump` | 不启动游戏、不需要 X、秒级 | 读代码、查符号、对签名（详见 [`OFFLINE.md`](OFFLINE.md)） |
 | 运行时 | `build/src/xsystem4` + `XSYS4_*` 开关 | 需要 X（或 Xvfb）、能看真实状态 | 查"跑起来为什么不对" |
 | 自动化 | `run-headless.sh` + `RANCE10_LIVE_SEQ` | Xvfb 里跑、出日志和截图 | 回归验证、复现点击流程 |
 
@@ -193,7 +193,9 @@ grep 'click=1' ../logs/live_c1.log | head
         │   ├── run/         跑测（8 个）
         │   ├── build/       构建（2 个）
         │   ├── env/         依赖（2 个）
-        │   └── src/         离线工具源码（*.c）
+        │   ├── src/         离线工具源码（*.c）
+        │   ├── offline/     离线辅助（afa_ls / pactex_dump / alice.sh）
+        │   └── bin/         离线工具产物（已 gitignore）
         ├── docs/SDK.md      本文档
         ├── docs/SWITCHES.md 开关总表（生成）
         └── src/             引擎源码
