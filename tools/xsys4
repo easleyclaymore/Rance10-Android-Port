@@ -23,6 +23,11 @@ BIN="$XSYS4/build/src/xsystem4"
 
 die() { echo "xsys4: $*" >&2; exit 1; }
 
+# [D169] 这里用到的 python 脚本只依赖标准库，所以**清掉** PYTHONPATH/PYTHONHOME
+# 再跑：一来更可重现，二来有些环境会往 PYTHONPATH 里塞坏掉的 shim
+# （实测裸 python3 直接 abort，而 `env -u PYTHONPATH` 正常）。
+PY() { env -u PYTHONPATH -u PYTHONHOME python3 "$@"; }
+
 usage() {
     cat <<'EOF'
 xsys4 — 兰斯10 移植工具链入口
@@ -83,11 +88,11 @@ build)
 
 check)
     echo "== 门禁 =="
-    ( cd "$XSYS4" && python3 tools/check_core_deps.py ) || exit 1
+    ( cd "$XSYS4" && PY tools/check_core_deps.py ) || exit 1
     echo "== 开关标注 =="
     # 未标注的开关是**已知债**，默认只警告：否则每次 check 都失败，
     # 很快就会被无视。要卡 CI 用 `xsys4 check --strict`。
-    if python3 "$HERE/gen-switches.py" --check; then
+    if PY "$HERE/gen-switches.py" --check; then
         :
     elif [ "${1:-}" = "--strict" ]; then
         echo "  (--strict：未标注开关导致失败)" >&2
