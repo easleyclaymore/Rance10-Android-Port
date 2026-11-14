@@ -31,10 +31,16 @@ BANNED = [
     'unistd.h', 'dlfcn.h', 'execinfo.h', 'termios.h', 'glob.h', 'ftw.h',
 ]
 ABS_PATH = re.compile(r'["\'](/usr/|/home/|/data/|/sdcard/|/etc/|/proc/|/system/|/tmp/|/var/)')
+# [D170] 门禁扫描的脚本清单 —— 按 tools/ 的角色分层后的新路径。
+# 这份清单**必须跟着目录结构走**：路径写错时 scan_scripts 会静默跳过，
+# 门禁照样 PASS，等于这道检查悄悄失效了。
 SCRIPTS = [
-    'tools/safe_run.sh', 'tools/safe_run_click.sh', 'tools/run-rance10.sh',
-    'tools/run-live.sh', 'tools/run-headless.sh', 'tools/baseline.sh',
-    'tools/run-local.sh',
+    'tools/run/safe_run.sh', 'tools/run/safe_run_click.sh', 'tools/run/run-rance10.sh',
+    'tools/run/run-live.sh', 'tools/run/run-headless.sh', 'tools/run/baseline.sh',
+    'tools/run/run-local.sh', 'tools/run/storm.sh',
+    'tools/build/build.sh', 'tools/build/build-xsys.sh',
+    'tools/env/dep.sh', 'tools/env/inst-deps.sh',
+    'tools/lib/common.sh', 'tools/xsys4',
 ]
 # /tmp is fine for screenshot/log scratch files in test tooling, but a
 # hardcoded Android absolute path is not: platform detection must go through

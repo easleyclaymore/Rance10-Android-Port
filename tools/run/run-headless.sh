@@ -32,7 +32,10 @@ fi
 TAG="${1:-headless}"
 SECS="${2:-180}"
 SHOT="${3:-/tmp/headless_${TAG}.png}"
-HERE="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
+# [D170] 路径锚点：向上找到 tools/lib/common.sh —— 这样一来脚本放到
+# 任何子目录（run/ build/ env/）都不用改路径计算，只改这一行不用动。
+_d="$(dirname "$(realpath "$0")")"; while [ ! -f "$_d/lib/common.sh" ] && [ "$_d" != "/" ]; do _d="$(dirname "$_d")"; done; . "$_d/lib/common.sh"
+HERE="$TOOLS_DIR"
 
 # 硬约束：切断与本机图形会话的一切联系
 unset DISPLAY WAYLAND_DISPLAY XAUTHORITY
@@ -83,7 +86,7 @@ echo "本机显示器未参与；日志与截图仍写到 run-live.sh 的既有�
 # 的等待上（实测卡了 7 分钟不退）。外层再包一层硬超时，保证 Xvfb 一定
 # 被 trap 回收，不把后续跑测堵死。
 HARD=$((SECS + 90))
-timeout -k 5 "$HARD" "$HERE/run-live.sh" "$TAG" "$SECS" "$SHOT"
+timeout -k 5 "$HARD" "$TOOLS_DIR/run/run-live.sh" "$TAG" "$SECS" "$SHOT"
 RC=$?
 if [ "$RC" -eq 124 ] || [ "$RC" -eq 137 ]; then
     echo "run-live.sh 未在 ${HARD}s 内结束（rc=$RC），已强制收尾；看 logs/live_${TAG}.log" >&2

@@ -10,8 +10,11 @@
 set -u
 TAG="${1:-base}"
 SECS="${2:-120}"
-HERE="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
-ROOT="$(cd "$HERE/../.." && pwd)"
+# [D170] 路径锚点：向上找到 tools/lib/common.sh —— 这样一来脚本放到
+# 任何子目录（run/ build/ env/）都不用改路径计算，只改这一行不用动。
+_d="$(dirname "$(realpath "$0")")"; while [ ! -f "$_d/lib/common.sh" ] && [ "$_d" != "/" ]; do _d="$(dirname "$_d")"; done; . "$_d/lib/common.sh"
+HERE="$TOOLS_DIR"
+ROOT="$PORT_DIR"
 
 # RANCE10_BASE_KEEP="XSYS4_FOO XSYS4_BAR" lets a controlled A/B switch
 # through while still clearing every other diagnostic variable.
@@ -32,9 +35,9 @@ SAVE_DIR="${RANCE10_BASE_SAVE_DIR:-$ROOT/logs/savedir/$TAG}"
 export RANCE10_SAVE_DIR="$SAVE_DIR"
 SHOT="${RANCE10_BASE_SHOT:-/tmp/baseline_${TAG}.png}"
 LOG="$ROOT/logs/live_${TAG}.log"
-OUT="$ROOT/logs/baseline_${TAG}.txt"
+OUT="$LOGS_DIR/baseline_${TAG}.txt"
 
-"$HERE/run-headless.sh" "$TAG" "$SECS" "$SHOT" > "/tmp/baseline_${TAG}.stdout" 2>&1
+"$TOOLS_DIR/run/run-headless.sh" "$TAG" "$SECS" "$SHOT" > "/tmp/baseline_${TAG}.stdout" 2>&1
 RC=$?
 
 # grep -c prints "0" but exits 1 when there is no match; `|| echo 0` would

@@ -7,7 +7,9 @@ export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/lib/${MULTIARCH}/pkgconfig
 # [D169] 原来这里写死 `/home/alin/Rance10_Port/xsystem4` —— 那是另一台
 # 机器（aarch64）的绝对路径，换到任何别的机器上直接 cd 失败。
 # 按脚本自身位置定位：tools/ 的上一级就是 xsystem4/。
-cd "$(cd "$(dirname "$0")/.." && pwd)" || exit 1
+# [D170] 路径锚点：向上找到 tools/lib/common.sh。
+_d="$(dirname "$(realpath "$0")")"; while [ ! -f "$_d/lib/common.sh" ] && [ "$_d" != "/" ]; do _d="$(dirname "$_d")"; done; . "$_d/lib/common.sh"
+cd "$XSYS4_DIR" || exit 1
 rm -rf build
 
 echo "=========== meson setup ==========="

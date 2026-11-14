@@ -104,9 +104,9 @@ build/src/xsystem4
 
 | 脚本 | 用途 |
 |---|---|
-| `tools/run-headless.sh tag 150 /tmp/a.png` | **首选**：独立 Xvfb + 完整点击序列 |
-| `tools/baseline.sh tag 120` | 全默认配置基线，输出六项指标 |
-| `tools/storm.sh tag 60` | 直冲地图（后门调 `RunGameChapter1`，不点菜单） |
+| `tools/run/run-headless.sh tag 150 /tmp/a.png` | **首选**：独立 Xvfb + 完整点击序列 |
+| `tools/run/baseline.sh tag 120` | 全默认配置基线，输出六项指标 |
+| `tools/run/storm.sh tag 60` | 直冲地图（后门调 `RunGameChapter1`，不点菜单） |
 
 **两条硬纪律**（都是踩过 OOM 换来的）：
 
@@ -123,9 +123,9 @@ build/src/xsystem4
 子模块的本地改动固化在 `tools/patches/`，`git submodule update` 后需重新应用。
 
 ```bash
-tools/build.sh
-tools/bin/ain_at game/Rance10.ain findsym:Chapter1@Run
-tools/bin/gsave_dump logs/savedir/<tag>/GlobalSave.asd
+../tools/build.sh
+../tools/bin/ain_at game/Rance10.ain findsym:Chapter1@Run
+../tools/bin/gsave_dump logs/savedir/<tag>/GlobalSave.asd
 ```
 
 ## 文档

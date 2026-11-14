@@ -48,23 +48,26 @@ OK_X="${RANCE10_LIVE_OK_X:-963}"
 OK_Y="${RANCE10_LIVE_OK_Y:-817}"
 RC_LIMIT="${RANCE10_LIVE_RCLICKS:-8}"
 
-ROOT="${RANCE10_ROOT:-$(cd "$(dirname "$(realpath "$0")")/../.." && pwd)}"
+# [D170] 路径锚点：向上找到 tools/lib/common.sh —— 这样一来脚本放到
+# 任何子目录（run/ build/ env/）都不用改路径计算，只改这一行不用动。
+_d="$(dirname "$(realpath "$0")")"; while [ ! -f "$_d/lib/common.sh" ] && [ "$_d" != "/" ]; do _d="$(dirname "$_d")"; done; . "$_d/lib/common.sh"
+ROOT="$PORT_DIR"
 export XSYS4_DATA_DIR="${XSYS4_DATA_DIR:-$ROOT/xsystem4}"
 export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-x11}"
 export EGL_PLATFORM="${EGL_PLATFORM:-x11}"
 export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
 export GALLIUM_DRIVER="${GALLIUM_DRIVER:-llvmpipe}"
 
-LOG_DIR="$ROOT/logs"
+LOG_DIR="$LOGS_DIR"
 LOG="$LOG_DIR/live_${TAG}.log"
-BIN="$ROOT/xsystem4/build/src/xsystem4"
+BIN="$ENGINE_BIN"
 mkdir -p "$LOG_DIR"
 
 # 构建新鲜度闸门：ninja 的失败信息可能是中文，用 grep -E "error|Linking"
 # 过滤会看不到，于是后面整轮都在跑旧二进制 —— 探针"没输出"、修复"没效果"
 # 全是假结论。宁可拒绝启动，也不要拿旧二进制的日志做判断。
 if [ -f "$BIN" ]; then
-    STALE="$(find "$ROOT/xsystem4/src" "$ROOT/xsystem4/include" \
+    STALE="$(find "$XSYS4_DIR/src" "$XSYS4_DIR/include" \
              -type f \( -name '*.c' -o -name '*.h' \) -newer "$BIN" \
              -print -quit 2>/dev/null)"
     if [ -n "$STALE" ]; then
@@ -80,7 +83,7 @@ if [ -z "${DISPLAY:-}" ]; then
     exit 1
 fi
 
-cd "$ROOT/game" || exit 1
+cd "$GAME_DIR" || exit 1
 
 # [D127 后续] 存档接通后，AFConfig.asd 会记住"网络已确认"，下一次启动
 # 就不再弹 NetworkConfirmation —— 而本脚本的固定时序（等第 2 个 act、

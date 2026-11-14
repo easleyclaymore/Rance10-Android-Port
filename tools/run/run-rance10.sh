@@ -10,7 +10,10 @@
 #    同时负责在桌面/终端退出时把引擎一起杀掉。
 set -u
 
-PORT="${RANCE10_ROOT:-$(cd "$(dirname "$(realpath "$0")")/../.." && pwd)}"
+# [D170] 路径锚点：向上找到 tools/lib/common.sh —— 这样一来脚本放到
+# 任何子目录（run/ build/ env/）都不用改路径计算，只改这一行不用动。
+_d="$(dirname "$(realpath "$0")")"; while [ ! -f "$_d/lib/common.sh" ] && [ "$_d" != "/" ]; do _d="$(dirname "$_d")"; done; . "$_d/lib/common.sh"
+PORT="$PORT_DIR"
 export XSYS4_DATA_DIR="${XSYS4_DATA_DIR:-$PORT/xsystem4}"
 # [N100] desktop Linux: force the x11 EGL platform so SDL really creates a window.
 # Termux keeps its own Termux:X11 + zink/Turnip configuration untouched.
@@ -22,7 +25,7 @@ if [ "$PLAT" != termux ]; then
     export EGL_PLATFORM="${EGL_PLATFORM:-x11}"
 fi
 GAME="$PORT/game"
-BIN="$PORT/xsystem4/build/src/xsystem4"
+BIN="$ENGINE_BIN"
 LOG="${RANCE10_LOG:-${TMPDIR:-.}/rance10_run.log}"
 MAX=$((50 * 1024 * 1024))
 
