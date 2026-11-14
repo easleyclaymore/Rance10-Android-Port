@@ -714,13 +714,16 @@ static void parts_render_flat(struct parts *parts, struct parts_flat *f)
 	 * 每个部件号只打一次：地图层每帧重复渲染同一批部件，全局计数会被
 	 * 最先出现的那几个吃满（[PROBE-GATED]）。 */
 	if (getenv("XSYS4_FLAT_DBG")) {
-		static int seen[32], nr_seen;
-		bool dup = false;
-		for (int i = 0; i < nr_seen; i++)
-			if (seen[i] == parts->no)
-				dup = true;
-		if (!dup && nr_seen < 32) {
-			seen[nr_seen++] = parts->no;
+		/* [D199] 每号最多打 8 次：只打一次会把「容器滑入过程中的旧坐标」
+		 * 当成稳态值。305 的 pos 走 0→585→-73→0，首次快照恰好落在 585，
+		 * 于是 306 被记成 1920，误导了 D195–D199 好几轮。 */
+		static int cnt[64], ids[64], nr;
+		int slot = -1;
+		for (int i = 0; i < nr; i++)
+			if (ids[i] == parts->no) { slot = i; break; }
+		if (slot < 0 && nr < 64) { slot = nr++; ids[slot] = parts->no; }
+		if (slot >= 0 && cnt[slot] < 8) {
+			cnt[slot]++;
 			int cg = 0;
 			for (size_t i = 0; i < f->nr_libraries; i++)
 				if (f->textures[i].handle)
