@@ -310,6 +310,15 @@ static int sites_hll(struct ain *ain, int lib, int func, int ctx)
 
 static int sites_op(struct ain *ain, int opcode, int ctx)
 {
+	/* [D197] 原先硬编码「打满 400 个 site 就停」。AIN 里 CALLHLL 有 11653 处，
+	 * 400 个只扫到 fno=833，战斗函数（24000+）一个都进不来 ——
+	 * 结果被误读成「战斗路径不用 HLL」。改成环境变量控制，默认全量。
+	 * `AIN_XREF_MAX=400` 可恢复旧的截断行为。 */
+	static int max_sites = -1;
+	if (max_sites < 0) {
+		const char *e = getenv("AIN_XREF_MAX");
+		max_sites = e ? atoi(e) : 0;   /* 0 = 不限 */
+	}
 	int n = 0;
 	for (size_t ip = 0; ip + 2 <= ain->code_size;) {
 		struct dec d;
@@ -319,7 +328,7 @@ static int sites_op(struct ain *ain, int opcode, int ctx)
 			printf("---- site #%d  %s(fno=%d) 0x%08zx ----\n", ++n,
 			       f ? f->name : "?", fno, ip);
 			print_window(ain, ip, ctx);
-			if (n >= 400) break;
+			if (max_sites > 0 && n >= max_sites) break;
 		}
 		ip += d.w;
 	}

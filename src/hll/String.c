@@ -1,6 +1,7 @@
 /* String / Int / Float - System 4.3 string & number helpers for Rance X.
  */
 #include <ctype.h>
+#include <regex.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -259,8 +260,66 @@ static struct string *String_Replace(struct string **s, struct string *from, str
 	return out;
 }
 
-HLL_WARN_UNIMPLEMENTED(string_dup(&EMPTY_STRING), struct string *, String, ReplaceRegex,
-		       struct string **s, struct string *pat, struct string *to);
+/* [D197] `String.ReplaceRegex(ref string, string Regex, string Replacer) -> string`。
+ *
+ * 之前这里只有 HLL_WARN_UNIMPLEMENTED 的函数体，却**没登记进下面的
+ * HLL_LIBRARY(String, …)** —— 所以 C 侧 `fun = NULL`，运行时会直接
+ * VM_ERROR("Unimplemented HLL function")。全量 HLL 普查显示它在 AIN 里有
+ * 4 个调用点，其中两个是 `BattleLog@Width::get`（战斗日志排版）：
+ * 战斗一开就会撞上。模式串是 GBK 字节串，POSIX regex 按字节处理即可。
+ *
+ * 编译失败时原样返回（降级），宁可多留几个标记也不能把整段日志吞掉。 */
+static struct string *String_ReplaceRegex(struct string **s,
+		struct string *pat, struct string *to)
+{
+	if (!s || !*s || !pat || !to)
+		return string_dup(s && *s ? *s : &EMPTY_STRING);
+
+	regex_t re;
+	if (pat->text[0] == '\0' || regcomp(&re, pat->text, REG_EXTENDED) != 0)
+		return string_dup(*s);
+
+	size_t cap = strlen((*s)->text) + 1, len = 0;
+	char *buf = malloc(cap);
+	buf[0] = '\0';
+	const char *p = (*s)->text;
+	regmatch_t m;
+	size_t tl = strlen(to->text);
+
+	while (*p && regexec(&re, p, 1, &m, 0) == 0) {
+		size_t so = (size_t)m.rm_so, eo = (size_t)m.rm_eo;
+		size_t rest = strlen(p + eo);
+		if (len + so + tl + rest + 1 > cap) {
+			cap = (len + so + tl + rest + 1) * 2;
+			buf = realloc(buf, cap);
+		}
+		memcpy(buf + len, p, so);
+		len += so;
+		memcpy(buf + len, to->text, tl);
+		len += tl;
+		p += eo;
+		/* 零长度匹配（如 `^` / `a*`）会让 p 不前进，必须推进一个字节，
+		 * 否则就是死循环。多字节字符按字节推进不影响结果正确性。 */
+		if (eo == so) {
+			if (!*p) break;
+			if (len + 1 + strlen(p + 1) + 1 > cap) {
+				cap = (len + strlen(p) + 1) * 2;
+				buf = realloc(buf, cap);
+			}
+			buf[len++] = *p++;
+		}
+	}
+	size_t rest = strlen(p);
+	if (len + rest + 1 > cap) {
+		cap = len + rest + 1;
+		buf = realloc(buf, cap);
+	}
+	memcpy(buf + len, p, rest + 1);
+	struct string *out = make_string(buf, len + rest);
+	free(buf);
+	regfree(&re);
+	return out;
+}
 
 static struct string *String_GetPartLen(struct string **s, int pos, int count);
 
@@ -529,6 +588,7 @@ HLL_LIBRARY(String,
 	HLL_EXPORT(StartsWith, String_StartsWith),
 	HLL_EXPORT(EndsWith, String_EndsWith),
 	HLL_EXPORT(Replace, String_Replace),
+	HLL_EXPORT(ReplaceRegex, String_ReplaceRegex),
 /* AIN v12 f[22] GetPart(ref string,int,int)->string is 3-arg;
 	 * String_GetPart is the legacy 2-arg form (D62). */
 	/* [D152] 2 参与 3 参是两个重载，必须分开标 arity。
