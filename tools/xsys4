@@ -14,12 +14,15 @@
 # 用法：xsys4 help
 set -u
 
-HERE="$(cd "$(dirname "$(realpath "$0")")" && pwd)"       # xsystem4/tools
-XSYS4="$(cd "$HERE/.." && pwd)"                            # xsystem4
-PORT="$(cd "$XSYS4/.." && pwd)"                            # Rance10_Port
-PROJ="$(cd "$PORT/.." && pwd)"                             # 兰斯10
-GAME="${GAME:-$PORT/game/Rance10.ain}"
-BIN="$XSYS4/build/src/xsystem4"
+# [D170] 路径从 lib/common.sh 取（唯一锚点）。xsys4 放在 tools/ 顶层，
+# 但它启动的子脚本在 run/ build/ env/ 下 —— 各自用同一个锚点，互不依赖深度。
+. "$(cd "$(dirname "$(realpath "$0")")" && pwd)/lib/common.sh"
+HERE="$TOOLS_DIR"
+XSYS4="$XSYS4_DIR"
+PORT="$PORT_DIR"
+PROJ="$PROJ_DIR"
+GAME="$GAME_AIN"
+BIN="$ENGINE_BIN"
 
 die() { echo "xsys4: $*" >&2; exit 1; }
 
@@ -105,33 +108,33 @@ check)
 run|shot)
     tag="${1:-run}"; secs="${2:-110}"; png="${3:-/tmp/$tag.png}"
     [ -n "${1:-}" ] || die "用法：xsys4 run <tag> [秒] [png]"
-    exec "$HERE/run-headless.sh" "$tag" "$secs" "$png" ;;
+    exec "$TOOLS_DIR/run/run-headless.sh" "$tag" "$secs" "$png" ;;
 
 seq)
     tag="${1:-}"; steps="${2:-}"; secs="${3:-110}"
     [ -n "$tag" ] && [ -n "$steps" ] || die "用法：xsys4 seq <tag> <动作序列> [秒]"
     # 序列里的分号会被 shell 当命令分隔，所以必须整体加引号传进来
-    RANCE10_LIVE_SEQ="$steps" exec "$HERE/run-headless.sh" "$tag" "$secs" "/tmp/$tag.png" ;;
+    RANCE10_LIVE_SEQ="$steps" exec "$TOOLS_DIR/run/run-headless.sh" "$tag" "$secs" "/tmp/$tag.png" ;;
 
 dump)
     at="${1:-}"; tag="${2:-dump}"
     [ -n "$at" ] || die "用法：xsys4 dump <地址>[,次数] <tag>"
-    XSYS4_DUMP_AT="$at" exec "$HERE/run-headless.sh" "$tag" 110 "/tmp/$tag.png" ;;
+    XSYS4_DUMP_AT="$at" exec "$TOOLS_DIR/run/run-headless.sh" "$tag" 110 "/tmp/$tag.png" ;;
 
 disas|at|sym|lib|struct)
-    [ -x "$PORT/tools/bin/ain_at" ] || die "ain_at 未构建，先跑 xsys4 build tools"
+    [ -x "$AIN_AT" ] || die "ain_at 未构建，先跑 xsys4 build tools"
     case "$cmd" in
     disas)
         a="${1:-}"; [ -n "$a" ] || die "用法：xsys4 disas <符号名|fno:N|0x地址>"
         case "$a" in
-        fno:*)  exec "$PORT/tools/bin/ain_at" "$GAME" "fno:${a#fno:}" 400 ;;
-        0x*)    exec "$PORT/tools/bin/ain_at" "$GAME" "atf:$a" ;;
-        *)      exec "$PORT/tools/bin/ain_at" "$GAME" "func:$a" ;;
+        fno:*)  exec "$AIN_AT" "$GAME" "fno:${a#fno:}" 400 ;;
+        0x*)    exec "$AIN_AT" "$GAME" "atf:$a" ;;
+        *)      exec "$AIN_AT" "$GAME" "func:$a" ;;
         esac ;;
-    at)     exec "$PORT/tools/bin/ain_at" "$GAME" "at:${1:-}" "${2:-20}" ;;
-    sym)    exec "$PORT/tools/bin/ain_at" "$GAME" "findsym:${1:-}" ;;
-    lib)    exec "$PORT/tools/bin/ain_at" "$GAME" "lib:${1:-}" ;;
-    struct) exec "$PORT/tools/bin/ain_at" "$GAME" "struct:${1:-}" ;;
+    at)     exec "$AIN_AT" "$GAME" "at:${1:-}" "${2:-20}" ;;
+    sym)    exec "$AIN_AT" "$GAME" "findsym:${1:-}" ;;
+    lib)    exec "$AIN_AT" "$GAME" "lib:${1:-}" ;;
+    struct) exec "$AIN_AT" "$GAME" "struct:${1:-}" ;;
     esac ;;
 
 switches)
@@ -163,7 +166,7 @@ doctor)
     echo "== 检查 =="
     [ -x "$BIN" ] && echo "  [ok] 引擎已构建" || echo "  [!!] 引擎未构建（xsys4 build）"
     [ -f "$GAME" ] && echo "  [ok] 游戏数据可见" || echo "  [!!] 找不到 $GAME（设 GAME=...）"
-    [ -x "$PORT/tools/bin/ain_at" ] && echo "  [ok] ain_at 可用" || echo "  [!!] ain_at 未构建（xsys4 build tools）"
+    [ -x "$AIN_AT" ] && echo "  [ok] ain_at 可用" || echo "  [!!] ain_at 未构建（xsys4 build tools）"
     command -v Xvfb >/dev/null && echo "  [ok] Xvfb" || echo "  [!!] 缺 Xvfb（无头跑测需要）"
     command -v xdotool >/dev/null && echo "  [ok] xdotool" || echo "  [!!] 缺 xdotool（点击序列需要）"
     command -v ffmpeg >/dev/null && echo "  [ok] ffmpeg（截图转 jpg）" || echo "  [--] 缺 ffmpeg（不影响跑测）"

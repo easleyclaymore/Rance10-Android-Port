@@ -10,7 +10,10 @@ CLICKS="${2:-6}"
 SECS="${3:-25}"
 SHOT="${4:-/tmp/${TAG}.png}"
 MAX_BYTES="${MAX_LOG_BYTES:-20000000}"
-ROOT="${RANCE10_ROOT:-$(cd "$(dirname "$(realpath "$0")")/../.." && pwd)}"
+# [D170] 路径锚点：向上找到 tools/lib/common.sh —— 这样一来脚本放到
+# 任何子目录（run/ build/ env/）都不用改路径计算，只改这一行不用动。
+_d="$(dirname "$(realpath "$0")")"; while [ ! -f "$_d/lib/common.sh" ] && [ "$_d" != "/" ]; do _d="$(dirname "$_d")"; done; . "$_d/lib/common.sh"
+ROOT="$PORT_DIR"
 export XSYS4_DATA_DIR="${XSYS4_DATA_DIR:-$ROOT/xsystem4}"
 # [N100] see safe_run.sh: force x11 EGL/SDL so an X window exists and clicks land.
 # [L3] see safe_run.sh: platform from RANCE10_PLATFORM / TERMUX_VERSION,
@@ -27,9 +30,9 @@ if [ "$RANCE10_DISPLAY_MODE" = x11 ]; then
     export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
     export GALLIUM_DRIVER="${GALLIUM_DRIVER:-llvmpipe}"
 fi
-LOG_DIR="$ROOT/logs"
+LOG_DIR="$LOGS_DIR"
 LOG="$LOG_DIR/safe_${TAG}.log"
-BIN="$ROOT/xsystem4/build/src/xsystem4"
+BIN="$ENGINE_BIN"
 mkdir -p "$LOG_DIR"
 
 DISP=":$((90 + RANDOM % 8))"
@@ -41,7 +44,7 @@ Xvfb "$DISP" -screen 0 "$SCREEN_RES" -nolisten tcp >/dev/null 2>&1 &
 XPID=$!
 sleep 1
 
-cd "$ROOT/game" || { kill "$XPID" 2>/dev/null; exit 1; }
+cd "$GAME_DIR" || { kill "$XPID" 2>/dev/null; exit 1; }
 DISPLAY="$DISP" timeout -k 2 "$SECS" stdbuf -oL -eL "$BIN" --nodebug --encoding gbk . 2>&1 \
     | head -c "$MAX_BYTES" > "$LOG" &
 RUNPID=$!

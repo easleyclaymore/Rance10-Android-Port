@@ -7,7 +7,10 @@ set -u
 TAG="${1:-run}"
 SECS="${2:-20}"
 MAX_BYTES="${MAX_LOG_BYTES:-20000000}"
-ROOT="${RANCE10_ROOT:-$(cd "$(dirname "$(realpath "$0")")/../.." && pwd)}"
+# [D170] 路径锚点：向上找到 tools/lib/common.sh —— 这样一来脚本放到
+# 任何子目录（run/ build/ env/）都不用改路径计算，只改这一行不用动。
+_d="$(dirname "$(realpath "$0")")"; while [ ! -f "$_d/lib/common.sh" ] && [ "$_d" != "/" ]; do _d="$(dirname "$_d")"; done; . "$_d/lib/common.sh"
+ROOT="$PORT_DIR"
 export XSYS4_DATA_DIR="${XSYS4_DATA_DIR:-$ROOT/xsystem4}"
 # [N100] Xvfb has no DRI3; mesa falls back to surfaceless EGL and SDL creates
 # no X window at all (root 0 children, black screenshot, XTEST clicks lost).
@@ -26,9 +29,9 @@ if [ "$RANCE10_DISPLAY_MODE" = x11 ]; then
     export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
     export GALLIUM_DRIVER="${GALLIUM_DRIVER:-llvmpipe}"
 fi
-LOG_DIR="$ROOT/logs"
+LOG_DIR="$LOGS_DIR"
 LOG="$LOG_DIR/safe_${TAG}.log"
-BIN="$ROOT/xsystem4/build/src/xsystem4"
+BIN="$ENGINE_BIN"
 mkdir -p "$LOG_DIR"
 
 # 1) 独立 Xvfb, 绕开 xvfb-run 的 shell 包装(昨天的孤儿进程来源)
@@ -43,7 +46,7 @@ Xvfb "$DISP" -screen 0 "$SCREEN_RES" -nolisten tcp >/dev/null 2>&1 &
 XPID=$!
 sleep 1
 
-cd "$ROOT/game" || { kill "$XPID" 2>/dev/null; exit 1; }
+cd "$GAME_DIR" || { kill "$XPID" 2>/dev/null; exit 1; }
 # 2) 管道硬截断: 写满上限后 head 退出, 引擎失去 fd (SIGPIPE) 必然停止;
 #    timeout -k 再兜一层 SIGKILL, 杜绝会话结束后继续写文件。
 DISPLAY="$DISP" timeout -k 2 "$SECS" stdbuf -oL -eL "$BIN" --nodebug --encoding gbk . 2>&1 \

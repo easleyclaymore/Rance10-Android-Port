@@ -10,13 +10,15 @@
 # 依赖：引擎已构建过（需要 xsystem4/build/subprojects/libsys4/libsys4.a）。
 set -u
 
-HERE="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
-SYS4="${RANCE10_SYS4:-$(dirname "$HERE")}"
+# [D170] 路径锚点：向上找到 tools/lib/common.sh。
+_d="$(dirname "$(realpath "$0")")"; while [ ! -f "$_d/lib/common.sh" ] && [ "$_d" != "/" ]; do _d="$(dirname "$_d")"; done; . "$_d/lib/common.sh"
+HERE="$TOOLS_DIR"
+SYS4="$XSYS4_DIR"
 INC="$SYS4/subprojects/libsys4/include"
 LIB="$SYS4/build/subprojects/libsys4/libsys4.a"
-SRC="$HERE"
+SRC="$TOOLS_DIR/src"
 # 产物落到项目级 tools/bin（与源码分开：源码进 git，二进制不进）
-OUT="${RANCE10_TOOLS_BIN:-$(dirname "$SYS4")/tools/bin}"
+OUT="$OFFLINE_BIN"
 
 # 需要暴露的离线工具。加新工具就加到这里（并在 tools/README.md 记一行）。
 TOOLS_DEFAULT="ain_at gsave_dump ain_xref ain_audit ain_locals ain_spec \

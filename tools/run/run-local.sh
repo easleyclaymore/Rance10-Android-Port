@@ -14,7 +14,10 @@ SECS="${2:-90}"
 SHOT="${3:-/tmp/local_${TAG}.png}"
 MAX_BYTES="${MAX_LOG_BYTES:-20000000}"
 
-ROOT="${RANCE10_ROOT:-$(cd "$(dirname "$(realpath "$0")")/../.." && pwd)}"
+# [D170] 路径锚点：向上找到 tools/lib/common.sh —— 这样一来脚本放到
+# 任何子目录（run/ build/ env/）都不用改路径计算，只改这一行不用动。
+_d="$(dirname "$(realpath "$0")")"; while [ ! -f "$_d/lib/common.sh" ] && [ "$_d" != "/" ]; do _d="$(dirname "$_d")"; done; . "$_d/lib/common.sh"
+ROOT="$PORT_DIR"
 export XSYS4_DATA_DIR="${XSYS4_DATA_DIR:-$ROOT/xsystem4}"
 
 # 真实桌面下用 SDL 自己的后端；只有当 X11 可用时才强制 x11/EGL。
@@ -28,12 +31,12 @@ if [ "${RANCE10_DISPLAY_MODE:-}" = x11 ]; then
     export GALLIUM_DRIVER="${GALLIUM_DRIVER:-llvmpipe}"
 fi
 
-LOG_DIR="$ROOT/logs"
+LOG_DIR="$LOGS_DIR"
 LOG="$LOG_DIR/local_${TAG}.log"
-BIN="$ROOT/xsystem4/build/src/xsystem4"
+BIN="$ENGINE_BIN"
 mkdir -p "$LOG_DIR"
 
-cd "$ROOT/game" || exit 1
+cd "$GAME_DIR" || exit 1
 echo "DISPLAY=${DISPLAY:-none} TAG=$TAG SECS=$SECS"
 echo "LOG=$LOG"
 

@@ -1,4 +1,6 @@
 #!/bin/bash
+# [D170] 路径锚点：向上找到 tools/lib/common.sh。
+_d="$(dirname "$(realpath "$0")")"; while [ ! -f "$_d/lib/common.sh" ] && [ "$_d" != "/" ]; do _d="$(dirname "$_d")"; done; . "$_d/lib/common.sh"
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # [D169] 别硬编码 aarch64：换个架构这里就指向不存在的目录。
 MULTIARCH="$(uname -m)-linux-gnu"

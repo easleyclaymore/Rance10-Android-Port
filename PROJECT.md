@@ -83,15 +83,15 @@ meson setup build && ninja -C build
 ```
 
 依赖：SDL2、GLESv2、libffi、freetype、cglm、libdeflate、chibi-scheme 等
-（见 `meson.build`；`tools/inst-deps.sh` 是本机环境备忘）。
+（见 `meson.build`；`tools/env/inst-deps.sh` 是本机环境备忘）。
 
-无头运行 —— **必须走 `tools/run-headless.sh`**（自带独立 Xvfb 与内存上限）：
+无头运行 —— **必须走 `tools/run/run-headless.sh`**（自带独立 Xvfb 与内存上限）：
 
 ```sh
-tools/run-headless.sh tagA 150 /tmp/a.png
+tools/run/run-headless.sh tagA 150 /tmp/a.png
 ```
 
-也可用 `tools/baseline.sh tagA 120`（六项指标基线）或 `tools/storm.sh tagA 60`
+也可用 `tools/run/baseline.sh tagA 120`（六项指标基线）或 `tools/run/storm.sh tagA 60`
 （后门直冲地图）。三条纪律：
 
 1. **不要在真实桌面跑**：`run-live.sh` 会 `xdotool` 点鼠标、`x11grab` 截屏，

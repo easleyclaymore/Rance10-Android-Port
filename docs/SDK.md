@@ -186,12 +186,17 @@ grep 'click=1' ../logs/live_c1.log | head
     ├── logs/            跑测日志（不入库）
     ├── tools/           离线工具 + 构建脚本
     └── xsystem4/
-        ├── tools/xsys4  统一入口
-        ├── tools/MAP.md 脚本分工地图（谁调谁、该用哪个）
-        ├── tools/*.c    离线工具源码
-        ├── docs/SDK.md  本文档
-        ├── docs/SWITCHES.md  开关总表（生成）
-        └── src/         引擎源码
+        ├── tools/
+        │   ├── xsys4        统一入口
+        │   ├── MAP.md       脚本分工地图（谁调谁、该用哪个）
+        │   ├── lib/common.sh 路径锚点（所有脚本从这里取路径）
+        │   ├── run/         跑测（8 个）
+        │   ├── build/       构建（2 个）
+        │   ├── env/         依赖（2 个）
+        │   └── src/         离线工具源码（*.c）
+        ├── docs/SDK.md      本文档
+        ├── docs/SWITCHES.md 开关总表（生成）
+        └── src/             引擎源码
 ```
 
 **文档只维护三处**（README / TECH_DEBT / GUIDE），加这份 SDK 参考和生成的

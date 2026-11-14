@@ -23,7 +23,10 @@
 set -u
 TAG="${1:-storm}"
 SECS="${2:-60}"
-HERE="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
+# [D170] 路径锚点：向上找到 tools/lib/common.sh —— 这样一来脚本放到
+# 任何子目录（run/ build/ env/）都不用改路径计算，只改这一行不用动。
+_d="$(dirname "$(realpath "$0")")"; while [ ! -f "$_d/lib/common.sh" ] && [ "$_d" != "/" ]; do _d="$(dirname "$_d")"; done; . "$_d/lib/common.sh"
+HERE="$TOOLS_DIR"
 
 export XSYS4_AUTO_MAP=1
 export XSYS4_AUTO_MAP_DELAY="${XSYS4_AUTO_MAP_DELAY:-9000}"
@@ -34,4 +37,4 @@ export XSYS4_HEAP_LIVE_LIMIT="${XSYS4_HEAP_LIVE_LIMIT:-500000}"
 # 之后全是等待，进度完全由 XSYS4_AUTO_MAP 决定。
 export RANCE10_LIVE_SEQ="${RANCE10_LIVE_SEQ:-wait:2000}"
 
-exec "$HERE/run-headless.sh" "$TAG" "$SECS" "/tmp/${TAG}.png"
+exec "$TOOLS_DIR/run/run-headless.sh" "$TAG" "$SECS" "/tmp/${TAG}.png"
