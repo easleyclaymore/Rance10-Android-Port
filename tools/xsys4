@@ -1,0 +1,167 @@
+#!/bin/bash
+# xsys4 — 这套移植工具链的统一入口。
+#
+# 为什么要有它：引擎有 12 个脚本、14 个离线工具、116 个诊断开关，
+# 每个都有自己的参数约定（有的吃秒数、有的吃毫秒、有的要 GAME 环境变量）。
+# 半年后回来的人（包括我自己）记不住这些。所以这里只做**分派 + 默认值**，
+# 每个 verb 对应一份已经存在的逻辑，绝不在这里重写第二份行为。
+#
+# 设计约束：
+#   - 薄。一个 verb 最多十几行，逻辑全在被调用的脚本里。
+#   - 可发现。`xsys4 help` 必须能回答"我要做 X 该用哪条"。
+#   - 不猜。拿不准的参数直接报错退出，不静默用默认值。
+#
+# 用法：xsys4 help
+set -u
+
+HERE="$(cd "$(dirname "$(realpath "$0")")" && pwd)"       # xsystem4/tools
+XSYS4="$(cd "$HERE/.." && pwd)"                            # xsystem4
+PORT="$(cd "$XSYS4/.." && pwd)"                            # Rance10_Port
+PROJ="$(cd "$PORT/.." && pwd)"                             # 兰斯10
+GAME="${GAME:-$PORT/game/Rance10.ain}"
+BIN="$XSYS4/build/src/xsystem4"
+
+die() { echo "xsys4: $*" >&2; exit 1; }
+
+usage() {
+    cat <<'EOF'
+xsys4 — 兰斯10 移植工具链入口
+
+【构建】
+  xsys4 build               构建引擎（ninja）
+  xsys4 build tools         构建离线工具（ain_at 等）
+  xsys4 check               引擎门禁 + 开关标注自检
+
+【跑测】
+  xsys4 run <tag> [秒] [png]      无头跑一次，出日志和截图
+  xsys4 seq <tag> <动作序列> [秒]  同上，带点击序列（语法见下）
+  xsys4 dump <地址>[,次数] <tag>   在指定指令处停下 dump 一次
+
+  动作序列（用分号分隔，坐标是 1920x1080 下的绝对坐标）：
+    wait:3000                 等 3 秒
+    click:135,576             左键点
+    rclick:135,576            右键点
+    move:135,576              移动鼠标
+    key:Return                按键（X11 keysym）
+    until:SceneParty:20000    等到日志出现该字符串（默认超时 60 秒）
+    clickunless:135,576:SceneParty
+                              日志里没有该字符串时才点 —— 命中率低时的重试链
+
+【查询】
+  xsys4 disas <符号名|fno:N|0x地址>   反汇编（走 ain_at）
+  xsys4 at <0x地址> [条数]            从任意地址反汇编（可未对齐）
+  xsys4 sym <子串>                    按名字找函数
+  xsys4 switches [关键词]             查诊断开关（例：xsys4 switches ARR）
+  xsys4 debt [关键词]                 查技术债台账
+
+【环境】
+  xsys4 doctor              检查依赖、二进制、数据、X、门禁
+  xsys4 log <tag> [关键词]   在最近一次跑测日志里 grep
+
+例：
+  xsys4 build && xsys4 seq demo "wait:16000;click:600,700;until:SceneQuestMap" 110 /tmp/demo.png
+  xsys4 switches CALL_TRACE
+  xsys4 disas Party@FindEmptyIndex
+EOF
+}
+
+need_bin() { [ -x "$BIN" ] || die "$BIN 不存在，先跑 xsys4 build"; }
+
+cmd="${1:-help}"; shift || true
+
+case "$cmd" in
+help|-h|--help) usage ;;
+
+build)
+    case "${1:-engine}" in
+    engine) exec ninja -C "$XSYS4/build" ;;
+    tools)  exec "$PORT/tools/build.sh" ${2:+"$2"} ;;
+    *)      die "build 只接受 engine|tools" ;;
+    esac ;;
+
+check)
+    echo "== 门禁 =="
+    ( cd "$XSYS4" && python3 tools/check_core_deps.py ) || exit 1
+    echo "== 开关标注 =="
+    # 未标注的开关是**已知债**，默认只警告：否则每次 check 都失败，
+    # 很快就会被无视。要卡 CI 用 `xsys4 check --strict`。
+    if python3 "$HERE/gen-switches.py" --check; then
+        :
+    elif [ "${1:-}" = "--strict" ]; then
+        echo "  (--strict：未标注开关导致失败)" >&2
+        exit 1
+    else
+        echo "  (已知债，不阻塞；加 --strict 才失败)"
+    fi
+    ;;
+
+run|shot)
+    tag="${1:-run}"; secs="${2:-110}"; png="${3:-/tmp/$tag.png}"
+    [ -n "${1:-}" ] || die "用法：xsys4 run <tag> [秒] [png]"
+    exec "$HERE/run-headless.sh" "$tag" "$secs" "$png" ;;
+
+seq)
+    tag="${1:-}"; steps="${2:-}"; secs="${3:-110}"
+    [ -n "$tag" ] && [ -n "$steps" ] || die "用法：xsys4 seq <tag> <动作序列> [秒]"
+    # 序列里的分号会被 shell 当命令分隔，所以必须整体加引号传进来
+    RANCE10_LIVE_SEQ="$steps" exec "$HERE/run-headless.sh" "$tag" "$secs" "/tmp/$tag.png" ;;
+
+dump)
+    at="${1:-}"; tag="${2:-dump}"
+    [ -n "$at" ] || die "用法：xsys4 dump <地址>[,次数] <tag>"
+    XSYS4_DUMP_AT="$at" exec "$HERE/run-headless.sh" "$tag" 110 "/tmp/$tag.png" ;;
+
+disas|at|sym|lib|struct)
+    [ -x "$PORT/tools/bin/ain_at" ] || die "ain_at 未构建，先跑 xsys4 build tools"
+    case "$cmd" in
+    disas)
+        a="${1:-}"; [ -n "$a" ] || die "用法：xsys4 disas <符号名|fno:N|0x地址>"
+        case "$a" in
+        fno:*)  exec "$PORT/tools/bin/ain_at" "$GAME" "fno:${a#fno:}" 400 ;;
+        0x*)    exec "$PORT/tools/bin/ain_at" "$GAME" "atf:$a" ;;
+        *)      exec "$PORT/tools/bin/ain_at" "$GAME" "func:$a" ;;
+        esac ;;
+    at)     exec "$PORT/tools/bin/ain_at" "$GAME" "at:${1:-}" "${2:-20}" ;;
+    sym)    exec "$PORT/tools/bin/ain_at" "$GAME" "findsym:${1:-}" ;;
+    lib)    exec "$PORT/tools/bin/ain_at" "$GAME" "lib:${1:-}" ;;
+    struct) exec "$PORT/tools/bin/ain_at" "$GAME" "struct:${1:-}" ;;
+    esac ;;
+
+switches)
+    f="$XSYS4/docs/SWITCHES.md"
+    [ -f "$f" ] || die "先跑 xsys4 check 生成 $f"
+    if [ -n "${1:-}" ]; then
+        grep -i -- "$1" "$f" | grep -v '^#' | head -30
+    else
+        head -12 "$f"; echo "..."; echo "（共 $(grep -c '^| ' "$f") 行，用关键词收窄：xsys4 switches ARR）"
+    fi ;;
+
+debt)
+    f="$PROJ/TECH_DEBT.md"
+    [ -f "$f" ] || die "找不到 $f"
+    if [ -n "${1:-}" ]; then grep -i -- "$1" "$f" | head -20; else sed -n '1,30p' "$f"; fi ;;
+
+log)
+    tag="${1:-}"; pat="${2:-}"
+    [ -n "$tag" ] || die "用法：xsys4 log <tag> [关键词]"
+    f="$PORT/logs/live_$tag.log"
+    [ -f "$f" ] || die "没有 $f"
+    if [ -n "$pat" ]; then grep -a -- "$pat" "$f" | tail -40; else tail -40 "$f"; fi ;;
+
+doctor)
+    echo "== 路径 =="
+    echo "  engine : $BIN"
+    echo "  game   : $GAME"
+    echo "  离线工具: $PORT/tools/bin"
+    echo "== 检查 =="
+    [ -x "$BIN" ] && echo "  [ok] 引擎已构建" || echo "  [!!] 引擎未构建（xsys4 build）"
+    [ -f "$GAME" ] && echo "  [ok] 游戏数据可见" || echo "  [!!] 找不到 $GAME（设 GAME=...）"
+    [ -x "$PORT/tools/bin/ain_at" ] && echo "  [ok] ain_at 可用" || echo "  [!!] ain_at 未构建（xsys4 build tools）"
+    command -v Xvfb >/dev/null && echo "  [ok] Xvfb" || echo "  [!!] 缺 Xvfb（无头跑测需要）"
+    command -v xdotool >/dev/null && echo "  [ok] xdotool" || echo "  [!!] 缺 xdotool（点击序列需要）"
+    command -v ffmpeg >/dev/null && echo "  [ok] ffmpeg（截图转 jpg）" || echo "  [--] 缺 ffmpeg（不影响跑测）"
+    echo "  开关: $(grep -c '^| ' "$XSYS4/docs/SWITCHES.md" 2>/dev/null || echo '未生成')"
+    ;;
+
+*) die "未知命令 '$cmd'，试 xsys4 help" ;;
+esac
