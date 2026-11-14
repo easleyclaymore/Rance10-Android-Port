@@ -64,6 +64,25 @@ ls /tmp/first_*_wait.png                   # 每一步都会截图
   110
 ```
 
+**序列点击必须落在游戏进程存活期内。** 旧版 `run-live.sh` 在序列之前有固定
+前置流程（等网络确认、OK 重试、右键推进标题 9 次、每步 ffmpeg 截图），实测
+会把第一次 `click` 推到跑测第 85 秒；SECS 给 55/90 时点击落在 timeout 之后，
+X 树变 `0 children`、`xdotool` 报 `window:1135`（root）——这**不是** SDL 窗口
+消失，是游戏已被 kill（D181 用每秒 `xwininfo -root -children` 采样证实窗口
+一直存在到跑测结束）。
+
+D182 已砍掉前置耗时：`AUTO_MAP` 时跳过无效的右键循环，序列逐步截图默认
+关闭（要逐帧对照设 `RANCE10_STEP_SHOT=1`）。现在用 `until:<场景名>` 代替
+固定 `wait`，**SECS=55 即可**跑完编队两击。
+判据：开 `XSYS4_CLICK_DBG=1`，每一次 `CLICK` 行都必须是
+`ptr=... window:2097204`（游戏窗口）且 `xwininfo` 为 `2 children`。
+`SHOT` 会在序列结束后补拍一次，避免拍到场景切换的 clear color。
+
+**等场景要等到「子视图」就绪。** 编队界面用 `until:Game/Party/SceneParty` 太早——
+那一刻 `OrganizationCardView` 还没装载，卡片列表是空的，`GetCardId` 返回空串，
+点击会被 `OnClickCard` 提前 return（D179 的症状换个形态复现）。要等
+`until:Game/Party/OrganizationCardView` 再 `wait:4000`，两击闭环才稳定。
+
 ## 配方
 
 ### 我要知道「这个函数到底有没有被调用」
@@ -130,6 +149,33 @@ grep 'click=1' ../logs/live_c1.log | head
 `[inp]` 会列出点击位置的候选部件（`hb` 命中盒、`global` 绝对坐标、`click/pass/show`）。
 **先证明点击落在了目标上，再讨论功能对不对。**
 
+#### 进/出「部队编成」的真实路径（D191，无需任何后门）
+
+```bash
+XSYS4_AUTO_MAP=1 XSYS4_CALL_TRACE=26394,24290,24301,29658 \
+./tools/xsys4 seq party "
+  until:SceneQuestMap:30000; wait:6000;
+  click:1819,1002; until:Game/Party/OrganizationCardView:30000; wait:6000;
+  rclick:960,540; wait:12000" 80
+```
+
+| 动作 | 坐标 | 命中 |
+|---|---|---|
+| 进编队 | `1819,1002`（地图右下 `TextButton` 中心） | `Scenes::RunParty(26394)` |
+| 出编队 | 任意位置**右键** | `SceneParty@OnRClick(24290)` → `Close(24301)` → `SceneStack@Exit(29658)` |
+
+三条容易踩的：
+
+1. **「戻る／決定」是右键，不是界面按钮**。屏幕上 (1542,782) 那个空按钮是
+   `PartyModeButton`（模式切换），`[inp]` 里 `ck=0`，点了不会有业务动作。
+2. **右键靠消息第三变量区分**：AIN `CallDelegateMouseClick` 用 KeyCode 选
+   delegate 列表（1→this[7]、2→this[8]、4→this[9]），
+   `AFL_Parts_AddWholeMouseRClickEvent` 注册的是 index 8。所以右键不是新消息
+   类型，而是同一个 `PARTS_MSG_MOUSE_CLICK_AIN` + `VK_RBUTTON`。
+3. **别用 `XSYS4_AUTO_RUNPARTY` 验退出**：它从帧泵里重入 `vm_call(26394)`，
+   会和 AIN 自己的 `AddLayer/Join` 叠层，退出后图层残留、画面变黑——那是后门
+   的锅，不是引擎的。验进出闭环必须走真实点击。
+
 ### 我要复现某次历史跑测
 
 **环境变量是复现条件的一部分**，漏一个数值就会对不上，而且看起来像回归。
@@ -141,6 +187,7 @@ grep 'click=1' ../logs/live_c1.log | head
 | `XSYS4_PARTS_DUMP=1` | 部件快照 | 只是少日志，不改行为 |
 | `XSYS4_CALL_TRACE=<fno,…>` | 调用追踪 | 只是少日志 |
 | `RANCE10_LIVE_SEQ` | 动作序列（`seq` 已处理） | — |
+| `RANCE10_STEP_SHOT=1` | 自动推进路径下也保留每步截图 | 不设只影响诊断产物，不改游戏行为 |
 
 实测教训：复现 D167 的菜单测试时漏了 `XSYS4_AUTO_MAP=1`，得到
 `35 acts / err=1`，与历史的 `49 acts / err=1` 不符，一度怀疑是工具目录
