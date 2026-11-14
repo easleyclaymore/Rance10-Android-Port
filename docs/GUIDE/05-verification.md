@@ -81,10 +81,10 @@ frame->entry_sp = stack_ptr;  /* ← 重新记一次 */
 
 ```sh
 # A：新代码
-XSYS4_HLL_ARGDBG=1 tools/run.sh a 70
+XSYS4_HLL_ARGDBG=1 tools/xsys4 run a 70
 
 # B：把改动临时关掉（if (0 && ...)）
-XSYS4_HLL_ARGDBG=1 tools/run.sh b 70
+XSYS4_HLL_ARGDBG=1 tools/xsys4 run b 70
 
 diff <(key_lines logs/a.log) <(key_lines logs/b.log)
 ```
