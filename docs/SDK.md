@@ -187,6 +187,7 @@ grep 'click=1' ../logs/live_c1.log | head
     ├── tools/           离线工具 + 构建脚本
     └── xsystem4/
         ├── tools/xsys4  统一入口
+        ├── tools/MAP.md 脚本分工地图（谁调谁、该用哪个）
         ├── tools/*.c    离线工具源码
         ├── docs/SDK.md  本文档
         ├── docs/SWITCHES.md  开关总表（生成）

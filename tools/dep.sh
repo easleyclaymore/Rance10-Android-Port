@@ -1,6 +1,8 @@
 #!/bin/bash
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+# [D169] 别硬编码 aarch64：换个架构这里就指向不存在的目录。
+MULTIARCH="$(uname -m)-linux-gnu"
+export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/lib/${MULTIARCH}/pkgconfig:/usr/share/pkgconfig"
 
 echo "=== 依赖检查 ==="
 for p in sdl2 freetype2 libpng libwebp libjpeg libsndfile libffi zlib glew cglm; do
