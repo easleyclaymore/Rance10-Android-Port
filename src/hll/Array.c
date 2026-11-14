@@ -905,12 +905,42 @@ static int Array_Where_(struct page **a, uintptr_t predicate)
 	}
 	return heap_alloc_page(np);
 }
+static bool array_has_predicate(void);
+static bool array_predicate_matches(uintptr_t predicate, union vm_value elem);
+static int array_decl_arity(void);
+
+/* [D164] AIN Array f[35..42] 的 Find / FindLast 一共 8 个重载：
+ *   35/36  Find(self, Search)                  按值
+ *   37/38  Find(self, Begin, End, Search)      按值 + 区间
+ *   39/40  Find(self, Func)                    按谓词
+ *   41/42  Find(self, Begin, End, Func)        按谓词 + 区间
+ * 原来只按硬编码 fno(37/41) 认"带区间"，谓词版根本没分支：闭包的
+ * `[this, fno]` 槽号被当成值丢进 elem_eq，永远比不上 → 恒 -1。
+ *
+ * 实锤：`LeaderCardCollection@GetEmptyIndex`(27140) 就是
+ * `m_leaders.Find(l => !l.IsExist())`，恒 -1 让
+ * `Party@FindEmptyIndex`(27797) 也恒 -1（`-1 < m_availableCount` 成立，
+ * 但返回的就是 -1），`SceneParty@OnClickCard`(24300) 于是永远跳过
+ * `AddCardToFormations` —— 编队点了没反应，卡片始终加不进去。
+ *
+ * 判 ranged 不再靠 fno：Direct 用声明里的 nr_arguments（含 self），
+ * 4 参即区间版。声明取不到时回退到旧的 fno 判断。 */
+static bool array_find_is_ranged(bool findlast)
+{
+	int arity = array_decl_arity();
+	if (arity >= 0)
+		return arity == 4;
+	int fno = hll_current_fno();
+	return findlast ? (fno == 38 || fno == 42) : (fno == 37 || fno == 41);
+}
+
 static int Array_Find_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
-	int fno = hll_current_fno();
-	bool ranged = (fno == 37 || fno == 41);
+	bool ranged = array_find_is_ranged(false);
+	bool pred = array_has_predicate();
 	struct page **a = (void*)p0;
-	uint64_t value = ranged ? p3 : p1;
+	uintptr_t sel = ranged ? p3 : p1;
+	uint64_t value = sel;
 	int from = ranged ? (int)p1 : 0;
 	int to = ranged ? (int)p2 : 0;
 	if (!a || !*a)
@@ -918,23 +948,27 @@ static int Array_Find_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 	struct page *p = *a;
 	if (ranged && (from < 0 || to > p->nr_vars || to < from)) return -1;
 	int begin = ranged ? from : 0, end = ranged ? to : p->nr_vars;
-	for (int i = begin; i < end; i++)
-		if (elem_eq(p, i, &value)) {
-			ARRDBG("[ARR] find p=%p nr=%d v=%llu -> %d", (void*)p, p->nr_vars,
-			       (unsigned long long)value, i);
+	for (int i = begin; i < end; i++) {
+		bool hit = pred ? array_predicate_matches(sel, p->values[i])
+		                : elem_eq(p, i, &value);
+		if (hit) {
+			ARRDBG("[ARR] find p=%p nr=%d %s-> %d", (void*)p, p->nr_vars,
+			       pred ? "(pred) " : "", i);
 			return i;
 		}
-	ARRDBG("[ARR] find p=%p nr=%d v=%llu -> -1", (void*)p, p->nr_vars,
-	       (unsigned long long)value);
+	}
+	ARRDBG("[ARR] find p=%p nr=%d %s-> -1", (void*)p, p->nr_vars,
+	       pred ? "(pred) " : "");
 	return -1;
 }
 
 static int Array_FindLast_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 {
-	int fno = hll_current_fno();
-	bool ranged = (fno == 38 || fno == 42);
+	bool ranged = array_find_is_ranged(true);
+	bool pred = array_has_predicate();
 	struct page **a = (void*)p0;
-	uint64_t value = ranged ? p3 : p1;
+	uintptr_t sel = ranged ? p3 : p1;
+	uint64_t value = sel;
 	int from = ranged ? (int)p1 : 0;
 	int to = ranged ? (int)p2 : 0;
 	if (!a || !*a)
@@ -942,9 +976,12 @@ static int Array_FindLast_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p
 	struct page *p = *a;
 	if (ranged && (from < 0 || to > p->nr_vars || to < from)) return -1;
 	int begin = ranged ? from : 0, end = ranged ? to : p->nr_vars;
-	for (int i = end - 1; i >= begin; i--)
-		if (elem_eq(p, i, &value))
+	for (int i = end - 1; i >= begin; i--) {
+		bool hit = pred ? array_predicate_matches(sel, p->values[i])
+		                : elem_eq(p, i, &value);
+		if (hit)
 			return i;
+	}
 	return -1;
 }
 
@@ -1205,6 +1242,18 @@ static bool array_has_predicate(void)
 	struct ain_hll_function *decl = &ain->libraries[lib].functions[fno];
 	return decl->nr_arguments > 0 &&
 		decl->arguments[decl->nr_arguments - 1].type.data == AIN_HLL_FUNC;
+}
+
+/* [D164] 当前 Array.<name> 声明里的参数个数（含 self），取不到返回 -1。
+ * 同名重载靠它区分"2 参 = 无区间 / 4 参 = 带 Begin,End"，比硬编码
+ * fno 稳：库表插一个新重载，fno 就整体错位。 */
+static int array_decl_arity(void)
+{
+	int lib = ain_get_library(ain, "Array");
+	int fno = hll_current_fno();
+	if (lib < 0 || fno < 0 || fno >= ain->libraries[lib].nr_functions)
+		return -1;
+	return (int)ain->libraries[lib].functions[fno].nr_arguments;
 }
 
 /* Evaluate the predicate on one element. `predicate` is the AIN function index

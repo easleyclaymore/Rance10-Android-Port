@@ -894,6 +894,21 @@ bool PE_SetPartsFlat(int parts_no, struct string *filename, int state)
 	return false;
 }
 
+/* AIN PartsEngine: bool SetPartsFlatThread(int Number, string FileName, int State).
+ *
+ * 原版是"后台线程去读 flat，调用方轮询 IsPartsFlatEnd"的异步入口。我们
+ * 的 flat 加载本来就是一次读完的同步实现，所以直接复用同步路径并回报
+ * 成功：调用方紧接着用 IsPartsFlatEnd 轮询，而同步实现此时帧已经就位，
+ * 天然返回"已结束"。
+ *
+ * [D164] 这个导出原来**完全没注册**（连 HLL_TODO_EXPORT 都没有）。
+ * 谓词版 Array.Find 修好后，QuestMapBoxView@InitFlatAsync 走到这条路径，
+ * 一进来就是 Unimplemented HLL ERROR，把启动画面卡在 WaitForClick。 */
+bool PE_SetPartsFlatThread(int parts_no, struct string *filename, int state)
+{
+	return PE_SetPartsFlat(parts_no, filename, state);
+}
+
 /* AIN PartsEngine f[733]: string GetPartsFlatName(int parts_no, int state).
  *
  * The name last given to PE_SetPartsFlat() for that state. Rance10 reads it

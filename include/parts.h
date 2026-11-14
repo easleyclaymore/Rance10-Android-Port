@@ -33,6 +33,8 @@ void PE_UpdateParts(int passed_time, bool is_skip, bool message_window_show);
 void PE_SetDelegateIndex(int parts_no, int delegate_index);
 int PE_GetDelegateIndex(int parts_no);
 bool PE_SetPartsCG(int parts_no, struct string *cg_name, int sprite_deform, int state);
+bool PE_SetPartsCGThread(int parts_no, struct string *cg_name, int state);
+bool PE_IsThreadLoading(int parts_no, int state);
 bool PE_SetPartsCG_by_index(int parts_no, int cg_no, int sprite_deform, int state);
 bool PE_SetPartsCG_by_string_index(int parts_no, struct string *cg_no,
 		int sprite_deform, int state);
@@ -63,6 +65,7 @@ bool PE_SetNumeralLinkedCGNumberWidthWidthList(int parts_no, struct string *cg_n
 		int w0, int w1, int w2, int w3, int w4, int w5, int w6, int w7, int w8,
 		int w9, int w_minus, int w_comma, int state);
 bool PE_SetNumeralNumber(int parts_no, int n, int state);
+int PE_GetNumeralNumber(int parts_no, int state);
 bool PE_SetNumeralShowComma(int parts_no, bool show_comma, int state);
 bool PE_SetNumeralSpace(int parts_no, int space, int state);
 bool PE_SetNumeralLength(int parts_no, int length, int state);
@@ -324,6 +327,7 @@ int PE_GetPartsFlashEndFrame(int parts_no, int state);
 // flat.c
 bool PE_ExistsFlatFile(struct string *filename);
 bool PE_SetPartsFlat(int parts_no, struct string *filename, int state);
+bool PE_SetPartsFlatThread(int parts_no, struct string *filename, int state);
 bool PE_IsPartsFlatEnd(int parts_no, int state);
 int PE_GetPartsFlatCurrentFrameNumber(int parts_no, int state);
 bool PE_BackPartsFlatBeginFrame(int parts_no, int state);
