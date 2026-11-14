@@ -2188,6 +2188,19 @@ static enum opcode execute_instruction(enum opcode opcode)
 							off += snprintf(buf + off, sizeof(buf) - off,
 							                " %d", ap->values[k].i);
 						NOTICE("[dump]     -> array nr=%d%s", ap->nr_vars, buf);
+					} else if (mv > 0 && (size_t)mv < heap_size && heap[mv].page &&
+						   heap[mv].page->type == DELEGATE_PAGE) {
+						/* [D157] 委托成员也展开元素数。`m9`(`<OnClickEvent>`)
+						 * 里有没有元素，直接决定"注册成功没有"——
+						 * 这是"点击没反应"最需要回答的一个数。 */
+						struct page *dp = heap[mv].page;
+						char buf[256] = "";
+						size_t off = 0;
+						for (int k = 0; k + 1 < dp->nr_vars && k < 24; k += 2)
+							off += snprintf(buf + off, sizeof(buf) - off,
+							                " [obj=%d,fun=%d]",
+							                dp->values[k].i, dp->values[k + 1].i);
+						NOTICE("[dump]     -> delegate nr=%d%s", dp->nr_vars, buf);
 					}
 				}
 			} else {
