@@ -99,6 +99,14 @@ static bool parse_fmt_spec(const char **_fmt, struct fmt_spec *spec, enum string
 			spec->type = FMT_BOOL;
 			r = is_integer_type(target);
 			goto end;
+		case '%':
+			/* [D201] AIN 的零填充全角整数格式写作 `%%0ND`
+			 * （%%01D … %%09D）。第二个 % 是格式前缀的一部分，
+			 * 不是 C 的转义百分号；原来落进 default 会让整条格式串
+			 * 解析失败、返回原串，于是 `GetKeyName` 拼出的 EX key
+			 * 中间那段编号为空（`任务数据.… ..传送`），全部查不到。 */
+			fmt++;
+			break;
 		case '0':
 			spec->zero_pad = true;
 			fmt++;
