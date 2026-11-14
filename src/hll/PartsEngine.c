@@ -470,9 +470,25 @@ static int PartsEngine_CreateUserPartsNumber(void)
 	return PE_GetFreeNumber();
 }
 /* AIN f[66]: void SetEnableInputProcess(int parts_no, bool enable).
- * [HACK-POC D85] no per-parts state is kept yet; the call must not abort. */
+ *
+ * [D165] 仍然是空桩 —— 这是**试过实现之后退回**的结论，不是偷懒。
+ *
+ * 一开始把它映射成 `PE_SetClickable(no, enable)`，理由是 input.c 的
+ * `click_eligible = parts->clickable || !parts->pass_cursor`。结果整局
+ * 只加载 27 个活动、停在任务地图：`XSYS4_DBG_EIP=1` 计数 242 次调用里
+ * **238 次是 enable=0**（活动初始化时统一"先关一遍"），于是活动文件里
+ * 靠 `点击許可` 打开的按钮全被关掉，连编队界面都进不去。
+ *
+ * 结论：`输入处理开关` ≠ `可点击`。前者是"AIN 自己要不要派发"，后者是
+ * "这个部件在活动里声明为按钮"。在没有弄清 AIN 侧怎么用这个开关之前，
+ * 保持空桩比猜一个映射安全。
+ *
+ * 已登记 TECH_DEBT `[EIP-NOT-CLICKABLE]`。 */
 static void PartsEngine_SetEnableInputProcess(int parts_no, int enable)
 {
+	if (getenv("XSYS4_DBG_EIP"))
+		NOTICE("[eip] no=%d enable=%d", parts_no, enable);
+	/* 故意不写 parts->clickable，见上面的说明。 */
 	(void)parts_no;
 	(void)enable;
 }
