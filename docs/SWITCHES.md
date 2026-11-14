@@ -139,7 +139,7 @@
 | 其它 | `XSYS4_SRDBG` | `src/vm.c:3787` | 〔摘〕the bottom of the triple, never a live ARRAY_PAGE. |
 | 其它 | `XSYS4_STACK_SAMPLE` | `src/vm.c:4936` | 周期性采样调用栈（抓谁在长时间占栈） |
 | 其它 | `XSYS4_STRICT_REF` | `src/vm.c:377` | 严格引用计数检查（会把"漏 ref/unref"变成显式报错） |
-| 其它 | `XSYS4_STR_INT_DBG` | `src/hll/String.c:58` | 〔摘〕"取对了但字符串已经死了"。 |
+| 其它 | `XSYS4_STR_INT_DBG` | `src/hll/String.c:59` | 〔摘〕"取对了但字符串已经死了"。 |
 | 其它 | `XSYS4_STUB_BT` | `src/ffi.c:164` | 软桩命中时附带回溯 |
 | 其它 | `XSYS4_STUB_LOG` | `src/ffi.c:106` | 软桩命中清单写到该文件 |
 | 其它 | `XSYS4_SUBST_BT` | `src/ffi.c:642` | 静态库替换（subst）时打印回溯 |
