@@ -18,6 +18,7 @@
 #include <string.h>
 
 #include "hll.h"
+#include <stdio.h>
 #include "system4/string.h"
 #include "vm/page.h"
 #include "vm/heap.h"
@@ -613,6 +614,22 @@ static bool elem_eq(struct page *p, int i, void *v)
 	case AIN_STRING: {
 		struct string *a = heap_get_string(p->values[i].i);
 		struct string *b = *(struct string **)v;
+		if (!a || !b)
+			return a == b;
+		return !strcmp(a->text, b->text);
+	}
+	case AIN_ARRAY_STRING: {
+		/* [D202] typed string arrays (MainEXFile.GetNodeNameList 等) 的
+		 * a_type 是 AIN_ARRAY_STRING(16)，不是 AIN_STRING(12)。走 default
+		 * 会按整数比较 heap slot 号：ResolveStringNodeId 用 Array.Find
+		 * 在 `００１`…`０３０` 里找格式化出的 `００１`，两者内容相同但
+		 * slot 不同 → 恒 -1 → 返回空串 → KeyBase `任务数据.<地图>.`
+		 * 缺编号段 → GetQuestEventList 查不到 故事/战斗/动画 →
+		 * RunAdvAndBattleEvent 提前返回，第一章卡死。
+		 * Array.Find / IsExist 传进来的 v 指向 uint64_t，其低 32 位是
+		 * 搜索字符串的 heap slot，不是 struct string*。 */
+		struct string *a = heap_get_string(p->values[i].i);
+		struct string *b = heap_get_string((int)*(uint64_t *)v);
 		if (!a || !b)
 			return a == b;
 		return !strcmp(a->text, b->text);

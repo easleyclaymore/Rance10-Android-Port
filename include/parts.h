@@ -147,6 +147,11 @@ bool PE_SetPartsCGDetectionSize(int parts_no, struct string *cg_name, int state)
 bool PE_Save(struct page **buffer);
 bool PE_SaveWithoutHideParts(struct page **buffer);
 bool PE_Load(struct page **buffer);
+/* [D202] 背景画面快照（消息窗口弹出/收起时 AIN 会 Save/Load）。
+ * 复用部件引擎的完整序列化；Save 必须返回 true，否则 AIN 打
+ * "[画面保管においてパーツライブラリの保存失败]" 并中断剧情。 */
+bool PE_SaveBackScene(struct page **buffer);
+bool PE_LoadBackScene(struct page **buffer);
 int PE_AddController(int index);
 void PE_RemoveController(struct page **erase_number_list, int index);
 /* [D129] 图层 ID ↔ 栈下标的边界转换。AIN 侧保存的是 ID，内部渲染/命中
