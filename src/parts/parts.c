@@ -162,6 +162,9 @@ struct parts *parts_try_get(int parts_no)
 	return NULL;
 }
 
+/* [D174] 定义在下方（parts_exists 之前），parts_get 里要先用。 */
+void parts_cb_drop(int parts_no);
+
 struct parts *parts_get(int parts_no)
 {
 	struct ht_slot *slot = ht_put_int(parts_table, parts_no, NULL);
@@ -173,9 +176,95 @@ struct parts *parts_get(int parts_no)
 	parts->controller_no = ctrl_stack.active;
 	slot->value = parts;
 	parts_list_insert(parts);
+	/* [D174] 部件号会被回收复用。复选框状态存在旁路表里（见下方实现），
+	 * 新建部件时必须清掉该号的旧记录，否则新菜单的复选框会继承上一次
+	 * 的勾选状态。 */
+	parts_cb_drop(parts_no);
 	/* [D128] 部件分布变了，覆盖推断要跟着更新（不放在每帧钩子上：
 	 * parts_render_update() 并不是所有等待路径都会走到）。 */
 	return parts;
+}
+
+
+/* [D174] 复选框状态：勾选 / 可用。
+ *
+ * 为什么不加进 `struct parts`：
+ * `save.c` 按**顺序** `iarray_write` / `iarray_read` 序列化部件字段
+ * （`clickable`、`draggable` 都在其中），中间插字段会让存档格式错位 ——
+ * 为一个 UI 勾选状态付这个代价不值得。而且这个状态本来也不需要持久化：
+ * 菜单重建时 AIN 会把勾选状态重新设一遍。
+ *
+ * 所以用固定容量的旁路表。容量 64 远大于任何一屏的复选框数量；满了按
+ * 环形覆盖。部件创建时（parts_get）清掉该号旧记录，避免号复用后串味。
+ *
+ * 这一族原来全是空桩或 TODO：
+ *   SetCheckBoxSize / SetCheckBoxColor / SetCheckBoxEnable -> 空桩
+ *   CheckBoxChecked / IsCheckBoxChecked                   -> TODO
+ * 于是 `CommonMenu@SetCheckBoxState` 一进来就撞 Unimplemented。 */
+#define PARTS_CB_MAX 64
+static struct parts_cb_state {
+	int no;            /* 0 = 空槽（部件号从 1 开始） */
+	bool checked;
+	bool enabled;
+} parts_cb_table[PARTS_CB_MAX];
+static unsigned parts_cb_cursor;
+
+static struct parts_cb_state *parts_cb_slot(int parts_no)
+{
+	for (unsigned i = 0; i < PARTS_CB_MAX; i++)
+		if (parts_cb_table[i].no == parts_no)
+			return &parts_cb_table[i];
+	struct parts_cb_state *e = &parts_cb_table[parts_cb_cursor++ % PARTS_CB_MAX];
+	e->no = parts_no;
+	e->checked = false;
+	e->enabled = false;
+	return e;
+}
+
+/* 只读查询：不创建条目，查不到就是"默认未勾选/未启用"。 */
+static bool parts_cb_lookup(int parts_no, bool *checked, bool *enabled)
+{
+	for (unsigned i = 0; i < PARTS_CB_MAX; i++)
+		if (parts_cb_table[i].no == parts_no) {
+			*checked = parts_cb_table[i].checked;
+			*enabled = parts_cb_table[i].enabled;
+			return true;
+		}
+	return false;
+}
+
+void parts_cb_drop(int parts_no)
+{
+	for (unsigned i = 0; i < PARTS_CB_MAX; i++)
+		if (parts_cb_table[i].no == parts_no) {
+			parts_cb_table[i].no = 0;
+			parts_cb_table[i].checked = false;
+			parts_cb_table[i].enabled = false;
+		}
+}
+
+void PE_CheckBoxChecked(int parts_no, bool check)
+{
+	parts_cb_slot(parts_no)->checked = check;
+}
+
+bool PE_IsCheckBoxChecked(int parts_no)
+{
+	bool checked = false, enabled = false;
+	parts_cb_lookup(parts_no, &checked, &enabled);
+	return checked;
+}
+
+void PE_SetCheckBoxEnable(int parts_no, bool enable)
+{
+	parts_cb_slot(parts_no)->enabled = enable;
+}
+
+bool PE_IsCheckBoxEnable(int parts_no)
+{
+	bool checked = false, enabled = false;
+	parts_cb_lookup(parts_no, &checked, &enabled);
+	return enabled;
 }
 
 bool parts_exists(int parts_no)

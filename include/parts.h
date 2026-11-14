@@ -217,6 +217,11 @@ void PE_PumpInput(int passed_time);
 void PE_SetPassCursor(int parts_no, bool pass);
 bool PE_GetPartsPassCursor(int parts_no);
 void PE_SetClickable(int parts_no, bool clickable);
+/* [D174] 复选框状态（旁路表，不进 struct parts / 存档） */
+void PE_CheckBoxChecked(int parts_no, bool check);
+bool PE_IsCheckBoxChecked(int parts_no);
+void PE_SetCheckBoxEnable(int parts_no, bool enable);
+bool PE_IsCheckBoxEnable(int parts_no);
 bool PE_GetPartsClickable(int parts_no);
 void PE_SetDrag(int parts_no, bool enable);
 void PE_SetPartsGroupDecideOnCursor(int group_no, bool decide_on_cursor);
