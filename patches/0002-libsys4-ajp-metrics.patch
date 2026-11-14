@@ -1,0 +1,46 @@
+diff --git a/include/system4/ajp.h b/include/system4/ajp.h
+index fc86642..c7bae5e 100644
+--- a/include/system4/ajp.h
++++ b/include/system4/ajp.h
+@@ -25,5 +25,6 @@ struct cg;
+ 
+ bool ajp_checkfmt(const uint8_t *data);
+ void ajp_extract(const uint8_t *data, size_t size, struct cg *cg);
++void ajp_get_metrics(const uint8_t *data, struct cg_metrics *dst);
+ 
+ #endif /* SYSTEM4_AJP_H */
+diff --git a/src/ajp.c b/src/ajp.c
+index 2b0dd73..458bfb4 100644
+--- a/src/ajp.c
++++ b/src/ajp.c
+@@ -136,6 +136,15 @@ static uint8_t *load_mask(uint8_t *pixels, uint8_t *mask_data, struct ajp_header
+ 	return out;
+ }
+ 
++/* [D202] cg_get_metrics_internal 需要 AJP 的尺寸/alpha 信息；
++ * ajp_extract 已用同一组字段初始化 cg->metrics，这里复用。 */
++void ajp_get_metrics(const uint8_t *data, struct cg_metrics *dst)
++{
++	struct ajp_header ajp;
++	ajp_extract_header(data, &ajp);
++	ajp_init_metrics(&ajp, dst);
++}
++
+ void ajp_extract(const uint8_t *data, size_t size, struct cg *cg)
+ {
+ 	uint8_t *buf = NULL, *jpeg_data = NULL, *mask_data = NULL;
+diff --git a/src/cg.c b/src/cg.c
+index 6e886be..e0dfef8 100644
+--- a/src/cg.c
++++ b/src/cg.c
+@@ -83,8 +83,8 @@ bool cg_get_metrics_internal(uint8_t *buf, size_t buf_size, struct cg_metrics *d
+ 		qnt_get_metrics(buf, dst);
+ 		break;
+ 	case ALCG_AJP:
+-		WARNING("AJP GetMetrics not implemented");
+-		return false;
++		ajp_get_metrics(buf, dst);
++		break;
+ 	case ALCG_PNG:
+ 		png_cg_get_metrics(buf, buf_size, dst);
+ 		break;
