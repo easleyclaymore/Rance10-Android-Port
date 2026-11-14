@@ -2,7 +2,7 @@
 
 > 这份文档回答「我要做 X，该用哪条命令」。
 > 离线工具的详细用法看 [`OFFLINE.md`](OFFLINE.md)，开关总表看 `SWITCHES.md`（自动生成）。
-> 方法论在项目根的 `GUIDE/`，**不要往这份文档里写踩坑经过**。
+> 方法论在 `docs/GUIDE/`（仓库内唯一副本，工作区不再保留写作副本），**不要往这份文档里写踩坑经过**。
 
 ## 这是什么
 
@@ -255,7 +255,6 @@ clone 仓库的人只有引擎和工具，`debt` 会报"找不到"。同理 `xsy
 兰斯10/
 ├── README.md            现状 / 阶段 / 卡点（随项目推进更新）
 ├── TECH_DEBT.md         未结债（A 结构性 / B 会炸的 / C 长尾）
-├── GUIDE/               方法论（不随项目状态更新，对外开源）
 └── Rance10_Port/
     ├── game/            游戏数据（不入库）
     ├── logs/            跑测日志（不入库）
@@ -271,12 +270,14 @@ clone 仓库的人只有引擎和工具，`debt` 会报"找不到"。同理 `xsy
         │   ├── src/         离线工具源码（*.c）
         │   ├── offline/     离线辅助（afa_ls / pactex_dump / alice.sh）
         │   └── bin/         离线工具产物（已 gitignore）
+        ├── docs/GUIDE/     方法论（不随项目状态更新，对外开源）
+        ├── docs/PROJECT-MANAGEMENT.md  工程管理手册（面向管理者）
         ├── docs/SDK.md      本文档
         ├── docs/SWITCHES.md 开关总表（生成）
         └── src/             引擎源码
 ```
 
-**文档只维护三处**（README / TECH_DEBT / GUIDE），加这份 SDK 参考和生成的
+**文档只维护三处**（README / TECH_DEBT / 仓库内 `docs/GUIDE/`），加这份 SDK 参考和生成的
 开关表。其余一律 `archive/`，只读。
 
 ## 还没做到的
