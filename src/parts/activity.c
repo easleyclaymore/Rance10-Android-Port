@@ -604,6 +604,15 @@ static struct activity_part *parse_part(struct ex_tree *node)
 			dump_ex_tree(node, 0);
 		}
 	}
+	/* [D193] `XSYS4_EX_DUMP=<部件名>`：把该部件的 EX 子树整棵打出来。
+	 * 用来确认「尺寸」到底写在哪个键上 —— 選択肢按钮的点击区 `Base`
+	 * 在 PACT 里读到的尺寸是 0，而兄弟 `Button` 能读到 200x30。 */
+	if (getenv("XSYS4_EX_DUMP") && part->name &&
+	    !strcmp(display_sjis0(part->name), getenv("XSYS4_EX_DUMP"))) {
+		NOTICE("[ex] ==== part '%s' type=%d ====",
+		       display_sjis0(part->name), part->type);
+		dump_ex_tree(node, 0);
+	}
 
 	struct ex_tree *children = get_child(node, "子パーツ");
 	if (children && !children->is_leaf) {
@@ -651,6 +660,20 @@ static int build_part(struct activity_part *part, int parent_no)
 {
 	part->parts_no = PE_GetFreeNumber();
 
+	/* [D193] 「按钮没有几何」的最后一环：PACT 里的 4 个 part 到底解析出了
+	 * 什么（尺寸/表示領域/flat 名）。此前只能看到最终 parts 层的 0x0，
+	 * 分不清是 PACT 没写、我们没读到，还是 AIN 运行时才给。 */
+	if (getenv("XSYS4_ACT_PART_DBG"))
+		NOTICE("[actpart] no=%d name='%s' type=%d w=%d h=%d sa=(%d,%d,%d,%d) "
+		       "flat='%s' cg='%.24s'",
+		       part->parts_no,
+		       part->name ? display_sjis0(part->name) : "(null)",
+		       part->type, part->w, part->h,
+		       part->surface_area[0], part->surface_area[1],
+		       part->surface_area[2], part->surface_area[3],
+		       part->flat_name ? display_sjis0(part->flat_name) : "",
+		       part->cg_name ? display_sjis0(part->cg_name) : "");
+
 	PE_SetComponentType(part->parts_no, part->type, 1);
 	/* 用户组件：先给一个真实尺寸，命中矩形才有面积。
 	 * 宽度优先取 参数 里的「幅Ｗ」，其次 表示領域，最后用 196（Rance10 的
@@ -686,6 +709,14 @@ static int build_part(struct activity_part *part, int parent_no)
 		for (int i = 0; i + 1 < part->uc_data_n; i += 2)
 			PE_SetUserComponentData(part->parts_no,
 					part->uc_data[i], part->uc_data[i + 1]);
+	} else if (part->w > 0 && part->h > 0) {
+		/* [D192] 非用户组件也要用 PACT 里的「尺寸」。FLAT 部件可能是
+		 * **空 flat**（`hdr=0x0`、`nr_libraries=0`），`parts_flat_load`
+		 * 于是不会设 `common.w/h`，AIN 也不再给 `surface_area` ——
+		 * 这时 PACT 的「尺寸」就是唯一几何来源，漏掉它 hitbox 恒为空。
+		 * 任务地图点完对象后的「確認／放棄」選択肢按钮正是这种形态：
+		 * 流程能建出来、日志一切正常，但既画不出也点不到，回合推不动。 */
+		PE_SetPartsSize(part->parts_no, part->w, part->h, 1);
 	}
 	PE_SetPos(part->parts_no, (int)part->x, (int)part->y);
 	PE_SetZ(part->parts_no, part->z);

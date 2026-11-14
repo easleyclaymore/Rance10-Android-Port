@@ -708,6 +708,35 @@ static void render_flat_layer(struct parts *parts, struct parts_flat *f,
 
 static void parts_render_flat(struct parts *parts, struct parts_flat *f)
 {
+	/* [D192] flat 部件「有部件、有 z、a=255，但一个像素不画」只有两个原因：
+	 * flat 没加载成功（`f->flat == NULL`）或没有 root 状态。
+	 * 任务地图的「確認／放棄」按钮就卡在这里，尺寸还是 0x0。
+	 * 每个部件号只打一次：地图层每帧重复渲染同一批部件，全局计数会被
+	 * 最先出现的那几个吃满（[PROBE-GATED]）。 */
+	if (getenv("XSYS4_FLAT_DBG")) {
+		static int seen[32], nr_seen;
+		bool dup = false;
+		for (int i = 0; i < nr_seen; i++)
+			if (seen[i] == parts->no)
+				dup = true;
+		if (!dup && nr_seen < 32) {
+			seen[nr_seen++] = parts->no;
+			int cg = 0;
+			for (size_t i = 0; i < f->nr_libraries; i++)
+				if (f->textures[i].handle)
+					cg++;
+			NOTICE("[flat] render no=%d flat=%p root=%d a=%d pos=(%d,%d) "
+			       "hdr=%dx%d wh=%dx%d cg=%zu/%zu fps=%d tl=%zu adv=%d stop=%d",
+			       parts->no, (void*)f->flat, f->root_state,
+			       parts->global.alpha, parts->global.pos.x, parts->global.pos.y,
+			       f->flat ? f->flat->hdr.width : -1,
+			       f->flat ? f->flat->hdr.height : -1,
+			       f->common.w, f->common.h, (size_t)cg, f->nr_libraries,
+			       f->flat ? f->flat->hdr.fps : -1,
+			       f->flat ? f->flat->nr_timelines : (size_t)0,
+			       f->needs_advance, f->stopped);
+		}
+	}
 	if (!f->flat || !f->root_state)
 		return;
 
@@ -879,6 +908,27 @@ void parts_render(struct parts *parts)
 	case PARTS_VGAUGE:
 	case PARTS_CONSTRUCTION_PROCESS:
 	case PARTS_MOVIE:
+		/* [D187] 到没到渲染、画没画，是两件事。 */
+		if (state->type == PARTS_CONSTRUCTION_PROCESS && getenv("XSYS4_CONSTRUCT_DBG")) {
+			static int n;
+			/* 只打卡片号段：前面的地图部件每帧重复，会把名额吃光。 */
+			/* [D189] 亮度差异只能来自这些渲染输入之一，一次全打出来。 */
+			if (parts->no >= 900000700 && parts->no < 900000800 && n++ < 40)
+				NOTICE("[cproc] render parts=%d tex=%u a=%d show=%d pos=(%d,%d) %dx%d "
+				       "scale=(%.2f,%.2f) mul=(%d,%d,%d) add=(%d,%d,%d) df=%d clip=%d sa=(%d,%d,%d,%d)",
+				       parts->no, state->common.texture.handle,
+				       (int)parts->global.alpha, parts->global.show,
+				       parts->global.pos.x, parts->global.pos.y,
+				       state->common.w, state->common.h,
+				       parts->global.scale.x, parts->global.scale.y,
+				       parts->global.multiply_color.r, parts->global.multiply_color.g,
+				       parts->global.multiply_color.b,
+				       parts->global.add_color.r, parts->global.add_color.g,
+				       parts->global.add_color.b,
+				       parts->draw_filter, parts->global.alpha_clipper_parts_no,
+				       state->common.surface_area.x, state->common.surface_area.y,
+				       state->common.surface_area.w, state->common.surface_area.h);
+		}
 		if (state->common.texture.handle)
 			parts_render_cg(parts, &state->common);
 		break;

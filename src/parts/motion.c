@@ -89,9 +89,29 @@ void parts_clear_motion(struct parts *parts)
 	parts_motion_list_clear(&parts->motion);
 }
 
+static void parts_init_all_motion(void);
+
 void parts_add_motion(struct parts *parts, struct parts_motion *motion)
 {
 	parts_motion_list_add(&parts->motion, motion);
+	/* [D186] 清偿 `[D119-MOTION]`：Rance10 **从不**调用
+	 * `PartsEngine.BeginMotion`（实测 0 次），于是 motion_t 永远停在 0，
+	 * 所有淡入保持 begin 值——卡片/按钮的 local.alpha 一直是 0，部件全透明
+	 * （卡片立绘合成正确却看不见就是这个）。
+	 * 首次入队时自动开表。不能走 `PE_BeginMotion()`：它开头
+	 * `if (parts_began_click) return;`，而编队界面正处在点击窗口内。
+	 * `XSYS4_NO_AUTO_MOTION=1` 回退。 */
+	static int auto_motion = -1;
+	if (auto_motion < 0) {
+		const char *e = getenv("XSYS4_NO_AUTO_MOTION");
+		auto_motion = (e && *e == '1') ? 0 : 1;
+	}
+	if (auto_motion && !is_motion) {
+		motion_t = 0;
+		is_motion = true;
+		is_motion_paused = false;
+		parts_init_all_motion();
+	}
 }
 
 static inline float motion_progress(struct parts_motion *m, int t)
@@ -301,6 +321,9 @@ void PE_AddMotionPos_curve(int parts_no, int begin_x, int begin_y, int end_x, in
 
 void PE_AddMotionAlpha(int parts_no, int begin_a, int end_a, int begin_t, int end_t)
 {
+	if (getenv("XSYS4_ALPHA_DBG"))
+		NOTICE("[alpha] motion parts=%d %d->%d t=%d..%d",
+		       parts_no, begin_a, end_a, begin_t, end_t);
 	struct parts *parts = parts_get(parts_no);
 	struct parts_motion *motion = parts_motion_alloc(PARTS_MOTION_ALPHA, begin_t, end_t);
 	motion->begin.i = begin_a;

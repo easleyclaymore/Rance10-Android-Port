@@ -103,6 +103,10 @@ else
     SAVE_DIR="${RANCE10_SAVE_DIR:-$LOG_DIR/savedir/$TAG}"
 fi
 mkdir -p "$SAVE_DIR" 2>/dev/null
+# [D193] 引擎把缩略图写到 `$SAVE_DIR/SaveData/<name>.qnt`（见 PreBattleAutoSave），
+# 只建 SAVE_DIR 时 `gfx_save_texture` 会报
+# "Failed to open .../SaveData/Thumb9999.qnt: No such file or directory"。
+mkdir -p "$SAVE_DIR/SaveData" 2>/dev/null
 echo "saves: $SAVE_DIR"
 
 echo "DISPLAY=$DISPLAY TAG=$TAG SECS=$SECS"
@@ -185,10 +189,20 @@ click() { # click <view_x> <view_y> <button>
     #
     # 也就是窗口在中途换了位置/尺寸（Xvfb 无 WM，引擎重设窗口时没人补焦点与几何），
     # 而脚本用的是启动时算好的 SCALE/OFF，之后每次点击都点到别处去了。
+    # [D178] D149 只重算了**几何**，没重算 WID。实测引擎中途重设 SDL 窗口后
+    # 旧 WID 失效，启动时缓存的 `0x200034` 再 windowfocus 已经没人接收，
+    # 焦点落到 root(1135)，点击根本进不了输入层（`[inp] clicking=1` 一次都没有）。
+    # 外部轮询同一 display 全程能看到 xsystem4 窗口 —— 所以窗口没消失，是 id 换了。
+    # 现在每次点击重新解析当前窗口 id，并对它重新聚焦/抬升。
+    local curwid="$WID" freshwid
+    freshwid=$(find_wid)
+    if [ -n "$freshwid" ]; then
+        curwid="$freshwid"
+    fi
     local gx=0 gy=0 gw="$WIN_W" gh="$WIN_H"
-    if [ -n "$WID" ]; then
+    if [ -n "$curwid" ]; then
         local geom
-        geom=$(xdotool getwindowgeometry --shell "$WID" 2>/dev/null) || true
+        geom=$(xdotool getwindowgeometry --shell "$curwid" 2>/dev/null) || true
         if [ -n "$geom" ]; then
             gx=$(echo "$geom" | awk -F= '/^X=/{print $2}')
             gy=$(echo "$geom" | awk -F= '/^Y=/{print $2}')
@@ -202,16 +216,21 @@ click() { # click <view_x> <view_y> <button>
             ox = (ww-vw*s)/2; oy = (wh-vh*s)/2;
             printf "%d %d", gx+ox+x*s, gy+oy+y*s
         }')"
-    if [ -n "$WID" ]; then
-        xdotool windowfocus --sync "$WID" >/dev/null 2>&1 || true
+    if [ -n "$curwid" ]; then
+        xdotool windowfocus --sync "$curwid" >/dev/null 2>&1 || true
+        xdotool windowraise "$curwid" >/dev/null 2>&1 || true
     fi
     xdotool mousemove "$wx" "$wy" >/dev/null 2>&1 || true
     if [ -n "${XSYS4_CLICK_DBG:-}" ]; then
-        echo "CLICK view=$1,$2 win=$wx,$wy btn=$3 geom=${gx},${gy},${gw}x${gh} wid=$WID ptr=$(xdotool getmouselocation 2>/dev/null | tr '\n' ' ')" >&2
-        # 落点窗口 != 游戏窗口时，把整棵窗口树打出来：Xvfb 没有 WM，
-        # 多出来的那层是谁只能靠树看。
+        echo "CLICK view=$1,$2 win=$wx,$wy btn=$3 geom=${gx},${gy},${gw}x${gh} wid=$curwid boot_wid=$WID ptr=$(xdotool getmouselocation 2>/dev/null | tr '\n' ' ')" >&2
+        # [D178] 注意重定向顺序：`2>/dev/null >&2` 会让 stdout 也进 /dev/null
+        # （fd2 已指向 /dev/null，随后 stdout 再指向它）—— 之前正是这样误判成
+        # 「窗口树为空」。要先把 stdout 指到 stderr，再丢掉命令自己的 stderr。
         echo "--- xwininfo tree ---" >&2
-        xwininfo -root -children 2>/dev/null | sed -n '5,14p' >&2
+        xwininfo -root -children >&2 2>/dev/null
+        echo "--- focus=$(xdotool getwindowfocus 2>/dev/null) active=$(xdotool getactivewindow 2>/dev/null)" >&2
+        echo "--- DISPLAY=${DISPLAY:-unset} Xvfb_pids=$(pgrep Xvfb 2>/dev/null | tr '\n' ' ') game_pid=${GAMEPID:-unknown}" >&2
+        echo "--- live xsystem4 windows: $(xwininfo -root -children 2>/dev/null | awk '/"xsystem4"/{print $1}' | tr '\n' ' ')" >&2
     fi
     xdotool mousedown "$3" >/dev/null 2>&1 || true
     sleep 0.12
@@ -252,11 +271,16 @@ sleep 2
 shot "${SHOT%.png}_dialog.png"
 
 # 3) 右键推进到标题
-for i in $(seq 1 "$RC_LIMIT"); do
-    grep -aq "SceneTitle" "$LOG" && break
-    click 960 540 3
-    sleep 1.6
-done
+# [D182] XSYS4_AUTO_MAP 会自动调 Rance10@RunGameChapter1 直接进第一章地图，
+# SceneTitle 永远不会出现在日志里；原循环会跑满 RC_LIMIT 次、白等约 14 秒，
+# 把后面的动作序列推到 timeout 之后（[SEQ-CLICK-TIMEOUT] / D181）。
+if [ -z "${XSYS4_AUTO_MAP:-}" ]; then
+    for i in $(seq 1 "$RC_LIMIT"); do
+        grep -aq "SceneTitle" "$LOG" && break
+        click 960 540 3
+        sleep 1.6
+    done
+fi
 
 sleep 2
 shot "$SHOT"
@@ -333,9 +357,21 @@ if [ -n "${RANCE10_LIVE_SEQ:-}" ]; then
                 echo "unknown step: $step" >&2
                 ;;
         esac
-        shot "$(printf '%s_%02d_%s.png' "${SHOT%.png}" "$IDX" "$act")"
+        # [D182] 自动推进的回归跑测不需要逐步截图：ffmpeg x11grab 在 GL 繁忙时
+        # 每次要等满 6 秒超时，5 步就是 30 秒。要逐帧对照时设 RANCE10_STEP_SHOT=1。
+        if [ "${RANCE10_STEP_SHOT:-0}" = "1" ] || [ -z "${XSYS4_AUTO_MAP:-}" ]; then
+            shot "$(printf '%s_%02d_%s.png' "${SHOT%.png}" "$IDX" "$act")"
+        fi
     done
-    echo "SEQ_LAST=$(printf '%s_%02d_%s.png' "${SHOT%.png}" "$IDX" "${act:-none}")"
+    if [ "${RANCE10_STEP_SHOT:-0}" = "1" ] || [ -z "${XSYS4_AUTO_MAP:-}" ]; then
+        echo "SEQ_LAST=$(printf '%s_%02d_%s.png' "${SHOT%.png}" "$IDX" "${act:-none}")"
+    fi
+fi
+# [D182] AUTO_MAP 路径下前置流程变短，前面那张主截图会拍在场景切换的
+# clear color 阶段（纯黑，实测 390 字节）。序列跑完后补拍一次，保证 SHOT
+# 指向真实画面；默认路径（无 AUTO_MAP）逐字不变。
+if [ -n "${XSYS4_AUTO_MAP:-}" ] && [ "${RANCE10_STEP_SHOT:-0}" != "1" ]; then
+    shot "$SHOT"
 fi
 echo "SHOT=$SHOT"
 

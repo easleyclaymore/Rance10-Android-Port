@@ -337,6 +337,12 @@ static bool build_create(struct parts *parts, struct parts_construction_process 
 {
 	gfx_delete_texture(&cproc->common.texture);
 	gfx_init_texture_rgba(&cproc->common.texture, op->w, op->h, (SDL_Color){0,0,0,255});
+	/* [D184] 探针：Create 是合成队列的第一步，它一旦 return false，
+	 * `parts_build_construction_process` 会中止后续全部 op。 */
+	if (getenv("XSYS4_CONSTRUCT_DBG"))
+		NOTICE("[cproc] create %dx%d tex=%u (%dx%d)", op->w, op->h,
+		       cproc->common.texture.handle,
+		       cproc->common.texture.w, cproc->common.texture.h);
 	if (!cproc->common.texture.handle)
 		return false;
 	parts_set_dims(parts, &cproc->common, op->w, op->h);
@@ -413,8 +419,12 @@ static bool build_draw_rect(struct parts_construction_process *cproc, struct par
 
 static bool build_draw_cut_cg(struct parts_construction_process *cproc, struct parts_cp_cut_cg *op)
 {
-	if (!cproc->common.texture.handle)
+	if (!cproc->common.texture.handle) {
+		if (getenv("XSYS4_CONSTRUCT_DBG"))
+			NOTICE("[cproc] draw_cut_cg SKIP tex=0 cg='%s'",
+			       display_sjis0(op->cg_name->text));
 		return false;
+	}
 
 	struct cg *cg = asset_cg_load_by_name(op->cg_name->text, NULL);
 	assert(cg);
@@ -423,8 +433,14 @@ static bool build_draw_cut_cg(struct parts_construction_process *cproc, struct p
 	gfx_init_texture_with_cg(&src, cg);
 	cg_free(cg);
 
-	gfx_copy_stretch_blend_amap(&cproc->common.texture, op->dx, op->dy, op->dw, op->dh,
-			&src, op->sx, op->sy, op->sw, op->sh);
+	/* [D184] cmd=29（SetDrawCG）的 dw/dh 是 0 —— 尺寸在 CG 本身，不在参数里。
+	 * 原来直接把 0 传给 stretch，等于什么都没画；卡片 171 次绘制全落空。 */
+	int dw = op->dw > 0 ? op->dw : src.w;
+	int dh = op->dh > 0 ? op->dh : src.h;
+	int sw = op->sw > 0 ? op->sw : src.w;
+	int sh = op->sh > 0 ? op->sh : src.h;
+	gfx_copy_stretch_blend_amap(&cproc->common.texture, op->dx, op->dy, dw, dh,
+			&src, op->sx, op->sy, sw, sh);
 	gfx_delete_texture(&src);
 	return true;
 }
@@ -441,8 +457,12 @@ static bool build_copy_cut_cg(struct parts_construction_process *cproc, struct p
 	gfx_init_texture_with_cg(&src, cg);
 	cg_free(cg);
 
-	gfx_copy_stretch_with_alpha_map(&cproc->common.texture, op->dx, op->dy, op->dw, op->dh,
-			&src, op->sx, op->sy, op->sw, op->sh);
+	int dw = op->dw > 0 ? op->dw : src.w;
+	int dh = op->dh > 0 ? op->dh : src.h;
+	int sw = op->sw > 0 ? op->sw : src.w;
+	int sh = op->sh > 0 ? op->sh : src.h;
+	gfx_copy_stretch_with_alpha_map(&cproc->common.texture, op->dx, op->dy, dw, dh,
+			&src, op->sx, op->sy, sw, sh);
 	gfx_delete_texture(&src);
 	return true;
 }
@@ -542,6 +562,22 @@ bool parts_build_construction_process(struct parts *parts,
 			break;
 		}
 	}
+	/* [D185] `XSYS4_CONSTRUCT_DBG=2`：把合成结果导成 PNG。判断"CG 有没有
+	 * 画进 texture"不能只看部件可见性——部件可能显示的是另一张图，或者
+	 * 混合进了一个 alpha 很低的底。直接看像素最硬。 */
+	if (getenv("XSYS4_CONSTRUCT_DBG") &&
+	    getenv("XSYS4_CONSTRUCT_DBG")[0] == '2') {
+		static int dumped;
+		if (dumped < 6 && cproc->common.texture.handle &&
+		    cproc->common.texture.w >= 200 && cproc->common.texture.h >= 300) {
+			char path[64];
+			snprintf(path, sizeof(path), "/tmp/cproc_%d.png", dumped);
+			gfx_save_texture(&cproc->common.texture, path, ALCG_PNG);
+			NOTICE("[cproc] dump %s (%dx%d)", path,
+			       cproc->common.texture.w, cproc->common.texture.h);
+			dumped++;
+		}
+	}
 	parts_dirty(parts);
 	return true;
 }
@@ -553,6 +589,24 @@ bool PE_BuildPartsConstructionProcess(int parts_no, int state)
 
 	struct parts *parts = parts_get(parts_no);
 	struct parts_construction_process *cproc = parts_get_construction_process(parts, state);
+	/* [D183] Build 是 AIN 的 **HLL 导出**，`XSYS4_CALL_TRACE` 追不到它
+	 * （那个探针挂在 `_function_call` 上）。要回答"合成队列建了没人构建"，
+	 * 只能在这里打。 */
+	if (getenv("XSYS4_CONSTRUCT_DBG")) {
+		int n = 0;
+		if (cproc) {
+			struct parts_cp_op *op;
+			TAILQ_FOREACH(op, &cproc->ops, entry)
+				n++;
+		}
+		int mt = 0;
+		struct parts_motion *m;
+		TAILQ_FOREACH(m, &parts->motion, entry)
+			mt |= (1 << m->type);
+		NOTICE("[cproc] build parts=%d state=%d ps=%d type=%d a=%d la=%d motions=0x%x ops=%d",
+		       parts_no, state, parts->state, parts->states[state].type,
+		       (int)parts->global.alpha, (int)parts->local.alpha, mt, n);
+	}
 	return parts_build_construction_process(parts, cproc);
 }
 

@@ -397,7 +397,14 @@ bool parts_flat_load(struct parts *parts, struct parts_flat *f, struct string *f
 
 bool parts_flat_update(struct parts_flat *f, int passed_time)
 {
-	if (!f->flat || f->flat->hdr.fps <= 0)
+	/* [D194] `fps <= 0` 只表示「这张 flat 不按时间推进」，**不能**把
+	 * `needs_advance` 的首次初始化一起挡掉。原先这一句在函数最前面，
+	 * 静态 flat（`hdr.fps == 0`）永远轮不到 `flat_advance_layer()`，
+	 * `root_state` 停在未初始化状态 —— `parts_render_flat` 的准入通过了、
+	 * 部件几何也对，但 `render_flat_layer` 一个像素都画不出来。
+	 * 任务地图的選択肢按钮（`任务画面/シス／任务／选择肢／红按钮`）正是
+	 * 这种静态 flat：能点、能推进流程，画面上却完全看不见。 */
+	if (!f->flat)
 		return false;
 
 	// Consume pending forward seek (from GoFramePartsFlat).
@@ -420,7 +427,7 @@ bool parts_flat_update(struct parts_flat *f, int passed_time)
 		return changed;
 	}
 
-	if (f->stopped)
+	if (f->stopped || f->flat->hdr.fps <= 0)
 		return false;
 
 	f->elapsed += passed_time;
@@ -889,8 +896,20 @@ bool PE_SetPartsFlat(int parts_no, struct string *filename, int state)
 	if (parts_flat_load(parts, f, filename)) {
 		f->needs_advance = true;
 		parts_dirty(parts);
+		/* [D192] 空 flat（hdr=0x0 / nr_libraries=0）会退化成 0x0 部件，
+		 * 画不出也点不到。成功路径也要能看到名字才查得下去。 */
+		if (getenv("XSYS4_FLAT_DBG"))
+			NOTICE("[flat] SetPartsFlat ok no=%d state=%d name='%s' hdr=%dx%d libs=%zu",
+			       parts_no, state,
+			       filename ? display_sjis0(filename->text) : "(null)",
+			       f->flat->hdr.width, f->flat->hdr.height, f->nr_libraries);
 		return true;
 	}
+	/* [D192] flat 加载失败时部件退化成 0x0 / tex=0，既不画也点不到。
+	 * 任务地图点节点后该出来的「確認／放棄」按钮正是这种形态。 */
+	if (getenv("XSYS4_FLAT_DBG"))
+		NOTICE("[flat] SetPartsFlat FAILED no=%d state=%d name='%s'", parts_no,
+		       state, filename ? display_sjis0(filename->text) : "(null)");
 	return false;
 }
 
@@ -997,6 +1016,31 @@ bool PE_SetPartsFlatSurfaceArea(int parts_no, int x, int y, int w, int h, int st
 	struct parts *parts = parts_get(parts_no);
 	struct parts_flat *f = parts_get_flat(parts, state);
 	parts_set_surface_area(parts, &f->common, x, y, w, h);
+	return true;
+}
+
+/* [D192] 任意部件类型的「表示領域」。
+ *
+ * AIN 的 `Parts_SetPartsRectangleDetectionSurfaceArea(Number, X, Y, W, H, State)`
+ * 原本只有 HLL_TODO_EXPORT 桩：调用被丢弃 → `common.surface_area` 恒为空 →
+ * hitbox 退化成 `{0,0,common.w,common.h}`。任务地图点完对象后弹出的
+ * 「確認／放棄」選択肢按钮，其 flat 是空 flat（`hdr=0x0`、`nr_libraries=0`），
+ * `common.w/h` 也是 0，于是 hitbox 全零：按钮建得出来、日志一切正常，
+ * 但既画不出也点不到，回合永远推不动。
+ *
+ * 判据：`XSYS4_PARTS_DUMP=1` 下 `QuestMapSelectionButton` 的部件不再是 0x0。 */
+bool PE_SetPartsRectangleDetectionSurfaceArea(int parts_no, int x, int y, int w, int h, int state)
+{
+	/* [D193] 这个入口是 D192 从 TODO 桩补出来的，先证明 AIN 到底调不调。 */
+	if (getenv("XSYS4_FLAT_DBG"))
+		NOTICE("[rect] SetRectangleDetectionSurfaceArea no=%d (%d,%d) %dx%d state=%d",
+		       parts_no, x, y, w, h, state);
+	if (!parts_state_valid(--state))
+		return false;
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts)
+		return false;
+	parts_set_surface_area(parts, &parts->states[state].common, x, y, w, h);
 	return true;
 }
 
