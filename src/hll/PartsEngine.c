@@ -517,9 +517,20 @@ static void PE_AddPartsConstructionProcess(int parts_no, struct page **ints,
 
 /* AIN f[12]: void UpdateComponent(int, int, bool, float, float).
  * The old binding pointed at the 3-arg PartsEngine_Update (D62). */
-static void PartsEngine_UpdateComponent(int parts_no, int component_no, int flag, float f1, float f2)
+/* [D203] 库表 f[12] UpdateComponent 的签名是
+ * (PassedTime, ScaledPassedTime, MessageWindowShow, MulColorRate, AlphaRate)，
+ * 这是 AIN parts::detail::Update(8292) 每帧调用的**主更新入口**，不是
+ * 「更新某个部件」。原实现（连带注册在库表里不存在的 `Update` 名上的
+ * PartsEngine_Update）让它一直是空桩：PE_UpdateComponent / 动画时钟 /
+ * PE_UpdateInputState / parts_render_update 全部不跑 → 进入 ADV 后
+ * 背景 CG 停在 alpha=0 / show=0，整屏黑只剩 MENU。
+ * 接上后同一序列截图从 10.9KB（纯黑）变成 680KB（世界地图背景出图）。
+ * MulColorRate / AlphaRate 目前未使用（消息窗口整体调色/透明），见台账。 */
+static void PartsEngine_UpdateComponent(int passed_time, int scaled_time,
+		int message_window_show, float mul_color_rate, float alpha_rate)
 {
-	(void)parts_no; (void)component_no; (void)flag; (void)f1; (void)f2;
+	(void)scaled_time; (void)mul_color_rate; (void)alpha_rate;
+	PE_Update(passed_time, message_window_show != 0);
 }
 /* AIN PartsEngine.Parts_GetParentPartsNumber: stage 1, no parent parts
  * tracking in the port, report "none" (-1) (D80). */
