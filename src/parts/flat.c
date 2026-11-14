@@ -339,7 +339,22 @@ bool parts_flat_load(struct parts *parts, struct parts_flat *f, struct string *f
 	f->root_state = flat_layer_state_new(f->flat->nr_timelines);
 
 	// Load textures for CG libraries.
-	f->nr_libraries = f->flat->nr_libraries;
+	/* [D200] 有些 flat（任务画面／選択肢／红按钮）把图形放在 TALT 段的
+	 * QNT 图集里，LIBL 段声明 0 个库。timeline 的 library_name 找不到库，
+	 * render_flat_item 会直接 return —— 按钮一个像素都画不出来。
+	 * 追加一张 TALT 图集纹理，渲染侧按索引回退；render_flat_cg 已经会用
+	 * key->area_x/y/w/h 从图集裁剪。
+	 * 默认开启：这是 FLAT/TALT 格式支持，不是实验开关。 */
+	bool talt_extra = false;
+	if (f->flat->nr_libraries == 0 &&
+	    f->flat->nr_talt_entries > 0) {
+		struct talt_entry *e = &f->flat->talt_entries[0];
+		if (e->size > 4 && e->off + e->size <= dfile->size &&
+		    dfile->data[e->off] == 'Q' && dfile->data[e->off+1] == 'N' &&
+		    dfile->data[e->off+2] == 'T')
+			talt_extra = true;
+	}
+	f->nr_libraries = f->flat->nr_libraries + (talt_extra ? 1 : 0);
 	f->textures = xcalloc(f->nr_libraries, sizeof(Texture));
 	f->stop_motion_frames = xcalloc(f->nr_libraries,
 			sizeof(struct flat_stop_motion_frames));
@@ -354,6 +369,14 @@ bool parts_flat_load(struct parts *parts, struct parts_flat *f, struct string *f
 		}
 		gfx_init_texture_with_cg(&f->textures[i], cg);
 		cg_free(cg);
+	}
+	if (talt_extra) {
+		struct talt_entry *e = &f->flat->talt_entries[0];
+		struct cg *cg = cg_load_buffer(dfile->data + e->off, e->size);
+		if (cg) {
+			gfx_init_texture_with_cg(&f->textures[f->flat->nr_libraries], cg);
+			cg_free(cg);
+		}
 	}
 	for (size_t i = 0; i < f->flat->nr_libraries; i++) {
 		if (f->flat->libraries[i].type == FLAT_LIB_STOP_MOTION)
