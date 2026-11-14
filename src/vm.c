@@ -639,7 +639,7 @@ static void scenario_call(int slot)
  *   - callee pushes return value on the stack
  *   - RETURN jumps to return address (saved in stack frame)
  */
-static void call_trace_probe(int fno);
+static void call_trace_probe(int fno, int ret_addr);
 
 /* Number of operand-stack slots the parameters of `fn` occupy.
  *
@@ -699,7 +699,7 @@ static int _function_call(int fno, int return_address)
 	/* [D114] Probe here, not in function_call(): delegate_call() bypasses
 	 * function_call() and jumps straight to _function_call(), so the old
 	 * placement made every DG_CALL-dispatched function look "never called". */
-	call_trace_probe(fno);
+	call_trace_probe(fno, return_address);
 	struct ain_function *f = &ain->functions[fno];
 	if (f->address == 0) {
 		NOTICE("_function_call: fno=%d (%s) address=0, ret=0x%x, ptr=%d",
@@ -749,7 +749,7 @@ static int _function_call(int fno, int return_address)
 static struct { int fno; int hits; } call_trace[16];
 static int call_trace_n = -1;
 
-static void call_trace_probe(int fno)
+static void call_trace_probe(int fno, int ret_addr)
 {
 	if (call_trace_n < 0) {
 		const char *env = getenv("XSYS4_CALL_TRACE");
@@ -771,8 +771,25 @@ static void call_trace_probe(int fno)
 		int n = ++call_trace[i].hits;
 		if (n <= 3 || n % 200 == 0) {
 			struct ain_function *f = &ain->functions[fno];
-			NOTICE("[call] #%d %s (%d) from 0x%zX", n, display_sjis0(f->name), fno,
-			       instr_ptr);
+			/* [D159] `instr_ptr` 在这里指向**被调函数自己**的第一条指令
+			 * （0x...374 之类），拿它反汇编只会绕回原地 —— 上几轮据此
+			 * 找不到"谁调了 426"。`_function_call` 的第二个参数才是调用者
+			 * 的返回地址；调用栈里每一帧也有各自的 return_address。
+			 *
+			 * csp<=6 时把整条栈打出来：入口调用点必然是栈最浅的那次，
+			 * 递归自调一眼就能分辨。 */
+			NOTICE("[call] #%d %s (%d) ret=0x%zX csp=%d ip=0x%zX",
+			       n, display_sjis0(f->name), fno, ret_addr,
+			       call_stack_ptr, instr_ptr);
+			if (call_stack_ptr <= 6) {
+				for (int j = call_stack_ptr - 1, k = 0; j >= 0 && k < 6; j--, k++) {
+					int cf = call_stack[j].fno;
+					NOTICE("[call]    ^%d fno=%d %s ret=0x%zX", k, cf,
+					       (cf > 0 && cf < ain->nr_functions)
+					       ? display_sjis0(ain->functions[cf].name) : "?",
+					       call_stack[j].return_address);
+				}
+			}
 		}
 	}
 }
@@ -1421,10 +1438,24 @@ static void delegate_call(int dg_no, int return_address)
                  * by dg_no for long-running click diagnostics (see §6.13). */
                 const char *flt = getenv("XSYS4_DG_MISS_FILTER");
 		if ((flt && atoi(flt) == dg_no && miss_n++ < 500) ||
-		    (!flt && miss_n++ < 40))
+		    (!flt && miss_n++ < 40)) {
 			NOTICE("[dgm] MISS dg_no=%d page=%d idx=%d nr=%d obj0=%d seq0=%d now0=%d ip=0x%zX",
 			       dg_no, dg_page, dg_index, snap_nr, snap_obj,
 			       snap_seq, heap_get_seq(snap_obj), instr_ptr);
+			/* [D159] 把整页三元组连 seq 一起打出来。
+			 * 只有 obj0 时，`idx` 越界 和 `seq` 失效 这两种 MISS
+			 * 看起来一模一样 —— 而它们的修法完全不同：
+			 *   越界 ⇒ DG_CALLBEGIN/dg_index 算错（栈布局）；
+			 *   失效 ⇒ 委托目标被提前回收（引用计数）。 */
+			if (dp && dp->type == DELEGATE_PAGE) {
+				for (int k = 0; k + 2 < dp->nr_vars && k < 24; k += 3) {
+					int o = dp->values[k].i;
+					NOTICE("[dgm]   [%d] obj=%d fun=%d seq=%d now=%d",
+					       k / 3, o, dp->values[k+1].i, dp->values[k+2].i,
+					       heap_get_seq(o));
+				}
+			}
+		}
         }
 	if (dg_ok) {
 		/* [D114] XSYS4_DG_CALL_DBG=1: which AIN function does a per-frame
