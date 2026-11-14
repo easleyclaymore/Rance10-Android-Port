@@ -2222,7 +2222,11 @@ static enum opcode execute_instruction(enum opcode opcode)
 				struct page *tp = heap[cf->struct_page].page;
 				NOTICE("[dump] this=slot %d type=%d struct=%d nr=%d",
 				       cf->struct_page, tp->type, tp->index, tp->nr_vars);
-				for (int i = 0; i < tp->nr_vars && i < 12; i++) {
+				/* [D162] 原来只打前 12 个成员。`PartyCard` 有 27 个，
+				 * 而 `m_cursor`(m13) 恰好在截断之后 —— 查"点击绑到哪个
+				 * 部件"时看不到关键成员。DUMP_AT 本身就是默认关的诊断
+				 * 开关，放大到 32 不增加默认路径开销。 */
+				for (int i = 0; i < tp->nr_vars && i < 32; i++) {
 					int mv = tp->values[i].i;
 					NOTICE("[dump]   this.m%d = %d", i, mv);
 					/* 成员是数组时把前几个元素一起打出来：
@@ -2249,6 +2253,14 @@ static enum opcode execute_instruction(enum opcode opcode)
 							                " [obj=%d,fun=%d]",
 							                dp->values[k].i, dp->values[k + 1].i);
 						NOTICE("[dump]     -> delegate nr=%d%s", dp->nr_vars, buf);
+					} else if (mv > 0 && (size_t)mv < heap_size && heap[mv].page &&
+					           heap[mv].page->type == STRUCT_PAGE) {
+						/* [D162] 引用型成员（如 `PartyCard.m_cursor : Parts`）
+						 * 顺着打一层 m0 —— 对 Parts 来说 m0 就是 partsNumber，
+						 * 正是"这个对象挂在哪个部件上"的答案。 */
+						struct page *sp = heap[mv].page;
+						NOTICE("[dump]     -> struct no=%d nr=%d m0=%d", sp->index,
+						       sp->nr_vars, sp->nr_vars > 0 ? sp->values[0].i : -9999);
 					}
 				}
 			} else {
