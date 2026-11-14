@@ -91,5 +91,8 @@ run-rance10.sh ─→ safe_run.sh
    现在 11 个脚本里已经有 4 个是"同一件事的不同包装"。
 2. **脚本不许写死绝对路径**（含家目录、架构名）。按 `$(dirname "$0")` 定位。
    踩过的坑：`build-xsys.sh` 曾写死 `/home/alin/...` 和 `aarch64-linux-gnu`。
-3. **产物不入库**：`build/` 已在 `.gitignore` 里；`../tools/bin/` 在仓库外，
+3. **调 python 前清 `PYTHONPATH`**：我们的 python 脚本只用标准库，但外部环境
+   可能往 `PYTHONPATH` 塞坏掉的 shim（实测裸 `python3` 直接 abort）。
+   `xsys4` 里的 `PY()` 函数就是干这个的，新脚本照抄。
+4. **产物不入库**：`build/` 已在 `.gitignore` 里；`../tools/bin/` 在仓库外，
    天然不会被提交（但也意味着换机器要重跑 `xsys4 build tools`）。
