@@ -851,6 +851,25 @@ void hll_call(int libno, int fno, int result_tag)
         bool resolved = addr && hi > 0;
         union vm_value elem = resolved ? *(union vm_value *)addr
                                        : (union vm_value){ .i = -1 };
+        /* [D177] 引用型返回（`ref hll_param` / `ref array<?>` …）把 C 指针
+         * 反解成 AIN 的 `(page_slot, index)` 二元组。反解失败的后果是**静默**
+         * 的：结果退化成 (-1,-1)，上层把它当"空引用"，于是
+         * `CASTimerManager@CheckHandle` 报「句柄错误」、场景直接退出。
+         *
+         * 默认关；打开后每一条引用返回都打一行，用来回答
+         * "addr 落在谁的 values[] 里"。 */
+        if (getenv("XSYS4_HLL_REFDBG")) {
+            /* 只打"失败"和指定函数：全量打印会在 400 行处被自己的上限截断，
+             * 恰好把要看的那一条切掉（第一次就踩了）。 */
+            const char *want = getenv("XSYS4_HLL_REFDBG_FILTER");
+            bool show = !resolved ||
+                        (want && *want && f->name && strstr(f->name, want));
+            static int _rn;
+            if (show && _rn++ < 20000)
+                NOTICE("[ref] %s.%s tag=%d addr=%p resolved=%d hi=%d pi=%d nargs=%d",
+                       ain->libraries[libno].name, f->name, result_tag,
+                       addr, resolved ? 1 : 0, hi, pi, f->nr_arguments);
+        }
 
         if (is_iface) {
             /* [object, vtable offset]; -1 in the object slot is the null

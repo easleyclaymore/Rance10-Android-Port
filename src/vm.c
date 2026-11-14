@@ -2585,7 +2585,10 @@ static enum opcode execute_instruction(enum opcode opcode)
 			 * 所以探测时 peek(0)=新值、peek(1)=成员号、peek(2)=槽号。 */
 			int _dh = stack_peek(2).i, _dp = stack_peek(1).i;
 			bool _hit = false;
-			if (ws > 0 && _dh == ws && _dp == wm)
+			/* [D177] 槽 0 = 全局页（heap[0].page），原来 `ws > 0` 把它排除了，
+			 * 于是没法盯 `global[14]`（CASTimerManager 的全局单例）被谁改写。
+			 * 现在允许 `XSYS4_OBJ_WATCH=0:14` 这种写法。 */
+			if (ws >= 0 && _dh == ws && _dp == wm)
 				_hit = true;
 			else if (wstruct >= 0 && _dp == wm && _dh > 0 &&
 				 (size_t)_dh < heap_size && heap[_dh].page &&
@@ -2597,6 +2600,28 @@ static enum opcode execute_instruction(enum opcode opcode)
 				if (_wn++ < 40)
 					NOTICE("[objw] slot=%d m=%d val=%d ip=0x%zX fno=%d",
 					       _dh, _dp, stack_peek(0).i, instr_ptr, hll_current_fno());
+			}
+		}
+		/* [D177] XSYS4_G14_WATCH=1：只盯 global[14]（CASTimerManager 全局单例）
+		 * 被改写的那一刻。与 OBJ_WATCH 的区别：
+		 *   - 只在**值真的变化**时打印，不会被同一下标的普通计数淹没；
+		 *   - 带调用栈，能直接定位是哪条 AIN 路径写的。
+		 * 起因：CheckHandle 有时跑在空 manager 上（m1 nr=0），报「句柄错误」
+		 * 后场景退出；而 global[14] 实测在 95（真 manager，struct=5）与
+		 * 78（已被 double free 的 VM_PAGE 槽）之间跳。 */
+		if (getenv("XSYS4_G14_WATCH")) {
+			int _gh = stack_peek(2).i, _gp = stack_peek(1).i;
+			if (_gh == 0 && _gp == 14) {
+				int _nv = stack_peek(0).i;
+				int _ov = heap[0].page ? heap[0].page->values[14].i : -1;
+				static int _gn;
+				if (_nv != _ov && _gn++ < 40) {
+					NOTICE("[g14] ip=0x%zX old=%d new=%d local=%d st[3..0]=%d,%d,%d,%d",
+					       instr_ptr, _ov, _nv, local_page_slot(),
+					       stack_peek(3).i, stack_peek(2).i,
+					       stack_peek(1).i, stack_peek(0).i);
+					vm_stack_trace();
+				}
 			}
 		}
 		union vm_value val = stack_pop();

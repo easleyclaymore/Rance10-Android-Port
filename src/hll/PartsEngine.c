@@ -2555,6 +2555,11 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetThumbnailMode, PE_SetThumbnailMode),
 	    HLL_EXPORT(Save, PE_Save),
 	    HLL_EXPORT(SaveWithoutHideParts, PE_SaveWithoutHideParts),
+/* [D177] `PartsEngine.SaveThumbnail` 是库表里的**独立导出**（libs.txt:438），
+ * 不是 PartsFunc 的 func_id。原来只注册了 PartsFunc，于是
+ * `SceneQuestMap@AutoSave → gamesave::SaveThumbnail` 一进来就
+ * Unimplemented。PE_save_thumbnail() 本来就有实现，只差这一行。 */
+	    HLL_EXPORT(SaveThumbnail, PE_save_thumbnail),
 	    HLL_EXPORT(Load, PE_Load),
 	    // Rance 9
 	    HLL_EXPORT(PartsFunc, PartsEngine_PartsFunc),

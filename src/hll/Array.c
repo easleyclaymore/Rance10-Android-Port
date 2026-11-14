@@ -325,6 +325,57 @@ static void Array_Alloc_(struct page **out, int size, int type, int a, int b)
 		(void*)out, out ? (void*)*out : NULL);
 	if (!out || !*out)
 		return;
+	int dims[4] = { size, type, a, b };
+	int rank = 0;
+	while (rank < 4 && dims[rank] > 0)
+		rank++;
+	/* [D177] `Array.Alloc` 的四个 int 是 **Numof / Numof2 / Numof3 / Numof4**
+	 * 四个维度大小，不是「元素类型」。CALLHLL 的第三立即数才是元素类型。
+	 *
+	 * 原来只认一维：把第二维大小（实测 24）当成元素类型，造出
+	 * `array nr=71 [0,0,0,...]`。`QuestMapObjectCollection@0` 随后执行
+	 * `m1[X][Y] = index`，`m1[X]` 取到 0 → 0 是 GLOBAL_PAGE 的堆槽 →
+	 * 赋值落到 `heap[0].values[Y]`，把 `global[14]`（声明 struc=5，
+	 * 即 CASTimerManager 全局单例）从 95 覆写成地图对象序号 2、3、4、7…
+	 * 之后 `CASTimer@Reset` 从 global[14] 拿到的不是 manager，
+	 * `CheckHandle` 的句柄表为空 → `At(m1,40)` OOB →「句柄错误」→
+	 * 场景退出 + double free。D106 在 variable_initval 侧见过同一现象
+	 * （global[67][i] 覆写 globals 0..39），但 Alloc 侧一直没修。
+	 *
+	 * 修法复用 page.c 已有的 `alloc_array(rank, dims, ...)`：rank>1 时
+	 * 它为每个元素递归建内层 ARRAY_PAGE 并把堆槽写进外层 values[]。
+	 * 默认开启；`XSYS4_ARR_MULTIDIM=0` 可切回旧行为做 A/B。
+	 * A/B（同一序列，两边都补了 SaveThumbnail 导出）：
+	 *   关：acts=108  AIN Error=268  double free=2  global[14] 覆写=14
+	 *   开：acts=107  AIN Error=  0  double free=0  global[14] 覆写=0
+	 *   Party 活动两边都是 101 —— 流程深度没变，消掉的是根因。 */
+	static int md_fix = -1;
+	if (md_fix < 0) {
+		const char *e = getenv("XSYS4_ARR_MULTIDIM");
+		md_fix = (e && *e == '0') ? 0 : 1;
+	}
+	if (md_fix && rank > 1) {
+		union vm_value d[4];
+		for (int i = 0; i < rank; i++)
+			d[i].i = dims[i];
+		int struct_type = (*out)->array.struct_type;
+		int tag = hll_generic_result_type();
+		/* tag=AIN_ARRAY 表示「元素是数组」；回落成 int 元素的内层数组。
+		 * elem_to_array_type 给出 AIN_ARRAY_INT 等**数组**类型，
+		 * 正是 alloc_array 期待的 data_type。 */
+		enum ain_data_type data_type =
+			elem_to_array_type(tag >= 0 ? (enum ain_data_type)tag : AIN_INT);
+		struct page *oldp = *out;
+		struct page *p = alloc_array(rank, d, data_type, struct_type,
+		                             struct_type >= 0);
+		if (p) {
+			*out = p;
+			ARRDBG("[ARR] multidim rank=%d dims=%d,%d old=%p(nr=%d) -> new=%p(nr=%d)",
+			       rank, dims[0], dims[1], (void *)oldp,
+			       oldp ? oldp->nr_vars : -1, (void *)p, p->nr_vars);
+		}
+		return;
+	}
 	if (type < 0 || type > 100) {
 		/* AIN v12: CALLHLL's third immediate carries the element type
 		 * for generic Array calls; the HLL arguments themselves are -1. */

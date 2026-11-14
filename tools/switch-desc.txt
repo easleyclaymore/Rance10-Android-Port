@@ -87,3 +87,7 @@ XSYS4_KEYCODE_PROBE	打印收到的原始键码
 XSYS4_NO_PUMP	事件泵空转诊断
 
 XSYS4_DBG_EIP	打印 SetEnableInputProcess 的每次调用与参数（实测 242 次里 238 次 enable=0）
+XSYS4_HLL_REFDBG	[诊断] 引用型 HLL 返回：打印反解 (page_slot,index) 是否成功；默认只打失败项
+XSYS4_HLL_REFDBG_FILTER	[诊断] 配合 REFDBG，额外打印函数名含该子串的调用（如 At）
+XSYS4_G14_WATCH	[诊断] 只在 global[14] 的值变化时打印 ip/旧值/新值/栈/调用栈（抓单例被覆写）
+XSYS4_ARR_MULTIDIM	Array.Alloc 构造多维内层数组；默认开启，=0 回退旧行为做 A/B
