@@ -611,11 +611,9 @@ static void render_flat_item(struct parts *parts, struct parts_flat *f,
 		struct flat_key_stack *key_stack)
 {
 	int lib_idx = parts_flat_find_library(f->flat, tl->library_name->text);
-	if (lib_idx < 0 || (size_t)lib_idx >= f->flat->nr_libraries)
-		return;
-
-	struct flat_library *lib = &f->flat->libraries[lib_idx];
-	if (lib->type == FLAT_LIB_EMITTER) {
+	bool has_lib = lib_idx >= 0 && (size_t)lib_idx < f->flat->nr_libraries;
+	struct flat_library *lib = has_lib ? &f->flat->libraries[lib_idx] : NULL;
+	if (lib && lib->type == FLAT_LIB_EMITTER) {
 		render_flat_emitter(parts, f, lib_idx, local, tl->frame_count,
 				tl->graphic.keys,
 				root, parent->alpha, key_stack);
@@ -638,6 +636,32 @@ static void render_flat_item(struct parts *parts, struct parts_flat *f,
 	glm_vec3_mul(parent->mul_color, key_mul, ctx.mul_color);
 	ctx.draw_filter = key->draw_filter != PARTS_DRAW_FILTER_NORMAL
 			? key->draw_filter : parent->draw_filter;
+
+	/* [D200] LIBL 段为空、图形在 TALT 段的 QNT 图集里：回退到追加的那张
+	 * 纹理。render_flat_cg 会用 key->area_x/y/w/h 从图集裁剪。 */
+	if (!has_lib) {
+		if (f->nr_libraries > f->flat->nr_libraries &&
+		    f->flat->nr_talt_entries > 0) {
+			Texture *tex = &f->textures[f->flat->nr_libraries];
+			struct talt_entry *e = &f->flat->talt_entries[0];
+			/* 第 N 条 GRAPHIC timeline 对应第 N 个 metadata 区域。
+			 * 不裁剪就会把整张 QNT 图集画出来（编队界面曾因此盖上一大块深色）。 */
+			int gidx = 0;
+			for (size_t q = 0; q < tl_idx; q++)
+				if (f->flat->timelines[q].type == FLAT_TIMELINE_GRAPHIC)
+					gidx++;
+			if (tex->handle && gidx < (int)e->nr_meta) {
+				struct talt_metadata *m = &e->metadata[gidx];
+				struct flat_key_data_graphic k = *key;
+				k.area_x = m->unknown2;
+				k.area_y = m->unknown3;
+				k.area_width = m->unknown4;
+				k.area_height = m->unknown5;
+				render_flat_cg(parts, tex, &k, &ctx);
+			}
+		}
+		return;
+	}
 
 	switch (lib->type) {
 	case FLAT_LIB_CG:
