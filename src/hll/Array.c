@@ -1297,14 +1297,22 @@ static int Array_All_(struct page **a, uintptr_t predicate)
 static int Array_Any_(struct page **a, uintptr_t predicate)
 {
 	struct page *p = a ? *a : NULL;
+	int r;
 	if (!p || p->nr_vars == 0)
-		return 0;
-	if (!array_has_predicate())
-		return 1;
-	for (int i = 0; i < p->nr_vars; i++)
-		if (array_predicate_matches(predicate, p->values[i]))
-			return 1;
-	return 0;
+		r = 0;
+	else if (!array_has_predicate())
+		r = 1;
+	else {
+		r = 0;
+		for (int i = 0; i < p->nr_vars; i++)
+			if (array_predicate_matches(predicate, p->values[i])) {
+				r = 1;
+				break;
+			}
+	}
+	ARRDBG("[ARR] any nr=%d pred=%d fno=%d -> %d", p ? p->nr_vars : -1,
+	       array_has_predicate(), hll_current_fno(), r);
+	return r;
 }
 
 /* Append every element of `src` to `*dst`. The destination takes a reference
