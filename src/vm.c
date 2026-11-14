@@ -1139,9 +1139,11 @@ static void method_call(int nargs, int return_address)
 		if (getenv("XSYS4_BADSTRUCT_DBG")) {
 			static int n;
 			if (n++ < 80)
-				NOTICE("[rebuild] fno=%d %s obj=%d bad=%d sno=%d ip=0x%zX",
+				NOTICE("[rebuild] fno=%d %s obj=%d bad=%d sno=%d ip=0x%zX ret=0x%zX csp=%d",
 				       fno, display_sjis0(ain->functions[fno].name),
-				       obj, (int)_obj_bad, sno, instr_ptr);
+				       obj, (int)_obj_bad, sno, instr_ptr,
+				       call_stack_ptr > 0 ? call_stack[call_stack_ptr-1].return_address : 0,
+				       call_stack_ptr);
 		}
 		/* [D155] 补建对象按 struct 号**复用**，不要每次新建。
 		 *
@@ -2186,6 +2188,19 @@ static enum opcode execute_instruction(enum opcode opcode)
 							off += snprintf(buf + off, sizeof(buf) - off,
 							                " %d", ap->values[k].i);
 						NOTICE("[dump]     -> array nr=%d%s", ap->nr_vars, buf);
+					} else if (mv > 0 && (size_t)mv < heap_size && heap[mv].page &&
+						   heap[mv].page->type == DELEGATE_PAGE) {
+						/* [D157] 委托成员也展开元素数。`m9`(`<OnClickEvent>`)
+						 * 里有没有元素，直接决定"注册成功没有"——
+						 * 这是"点击没反应"最需要回答的一个数。 */
+						struct page *dp = heap[mv].page;
+						char buf[256] = "";
+						size_t off = 0;
+						for (int k = 0; k + 1 < dp->nr_vars && k < 24; k += 2)
+							off += snprintf(buf + off, sizeof(buf) - off,
+							                " [obj=%d,fun=%d]",
+							                dp->values[k].i, dp->values[k + 1].i);
+						NOTICE("[dump]     -> delegate nr=%d%s", dp->nr_vars, buf);
 					}
 				}
 			} else {
@@ -2672,6 +2687,31 @@ static enum opcode execute_instruction(enum opcode opcode)
 		int ref_slot = stack_peek(0).i;
 		int obj, offset;
 		bool ok = vm_iface_pair(iface_no, ref_slot, &obj, &offset);
+		/* [D158] XSYS4_ICAST_DBG=1：只打**失败**的转型，不设总量配额。
+		 *
+		 * `X_ICAST` 失败时 AIN 侧拿到 -1，而 AIN 的错误分支往往只做
+		 * "跳过"，不会报错 —— 图鉴列表为空就是这么来的。判据要能看到
+		 * 目标类型号 + 源对象的真实结构体号，否则无法区分
+		 * "对象类型确实不对" 和 "我们的转型判定太严"。 */
+		if (!ok && getenv("XSYS4_ICAST_DBG")) {
+			const char *what = "?";
+			int sidx = -1;
+			if (ref_slot > 0 && (size_t)ref_slot < heap_size &&
+			    heap[ref_slot].page) {
+				struct page *pp = heap[ref_slot].page;
+				sidx = pp->type == STRUCT_PAGE ? pp->index : -pp->type;
+				switch (pp->type) {
+				case STRUCT_PAGE: what = "struct"; break;
+				case IFACE_PAGE:  what = "iface";  break;
+				case ARRAY_PAGE:  what = "array";  break;
+				case DELEGATE_PAGE: what = "delegate"; break;
+				default: what = "other"; break;
+				}
+			}
+			NOTICE("[icast] fail to=%d src=%d kind=%s idx=%d ip=0x%zX fno=%d",
+			       iface_no, ref_slot, what, sidx, instr_ptr,
+			       call_stack_ptr > 0 ? call_stack[call_stack_ptr-1].fno : -1);
+		}
 		/* [object, vtable offset] - object in the lower slot. Bytecode
 		 * consumes the pair positionally: `X_ICAST` is immediately followed
 		 * by R_ASSIGN (dst_page, dst_var, src_page, src_var) and by REFREF

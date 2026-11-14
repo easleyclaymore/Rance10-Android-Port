@@ -786,8 +786,23 @@ static void Array_Unique_(struct page **a, uintptr_t predicate)
 	if (np) *a = np;
 }
 /* AIN f[51]: array Where(ref array, predicate) -> array.
- * Full predicate dispatch needs vm_call (D63); stage 1 returns a shallow
- * copy of the whole array so the caller has a valid array to iterate. */
+ *
+ * [D158] **原实现完全忽略谓词，返回整份浅拷贝。** 后果不是"过滤得不够干净"
+ * 而是"过滤器恒为真"，而调用方把它当成"筛出满足条件的元素"：
+ *
+ *   CompletedTrophy@GetNewCompleted()
+ *     = g_trophyCollection.GetAll().Where(<谓词>)
+ *
+ * 于是"本次新完成的成就"变成了**全部成就**。进部队编成时
+ * `SceneParty@Run` → `Scenes::RunTrophy` 为每个成就开一个 `RunTrophyDetail`，
+ * 40 多个全屏成就效果层层叠上去把编队界面整屏盖住 —— 这才是
+ * `[PARTY-TROPHY-MODAL]` 的来源，也是 `[PARTY-CLICK-NOT-REACHED]` 的真正上游
+ * （点击永远落在覆盖层的 (0,0,921,627) 根部件上）。
+ *
+ * 元素宽度用 `arr_is_iface_elems()`：接口元素占两槽，而谓词只收一个逻辑参数
+ * （对象槽），由 `vm_call_hll_closure` 按声明的接口类型重新配成 (obj, offset)。
+ * 谓词调用失败（元素类型对不上谓词形参）时按"不保留"处理，与 `Array.Find`
+ * 的 "无法比较 = 未找到" 契约一致。 */
 /* AIN f[29..34]: Sort/AscSort/DescSort/QuickSort(ref array[, cmp]) -> ref array.
  * Stage 1: sort a shallow copy by raw int values and return its slot.
  * Predicate overloads (t95) and descending order are not implemented yet;
@@ -861,12 +876,33 @@ static int Array_QuickSort_(struct page **a, uintptr_t predicate)
 }
 static int Array_Where_(struct page **a, uintptr_t predicate)
 {
-	(void)predicate;
-	if (!a || !*a || (*a)->type != ARRAY_PAGE) return -1;
+	if (!a || !*a || (*a)->type != ARRAY_PAGE)
+		return -1;
 	struct page *src = *a;
+	bool iface = arr_is_iface_elems(src);
+	int width = iface ? 2 : 1;
+	int nelem = src->nr_vars / width;
+
 	struct page *np = alloc_page(ARRAY_PAGE, src->a_type, src->nr_vars);
 	np->array = src->array;
-	array_copy_values(np, src);
+	np->nr_vars = 0;
+
+	for (int i = 0; i < nelem; i++) {
+		union vm_value arg = src->values[i * width];
+		union vm_value r = { .i = 0 };
+		if (!vm_call_hll_closure((int)predicate, &arg, 1, &r))
+			continue;
+		if (!r.i)
+			continue;
+		for (int k = 0; k < width; k++) {
+			int idx = i * width + k;
+			np->values[np->nr_vars] = src->values[idx];
+			if (array_ref_fix() && src->values[idx].i > 0 &&
+			    array_elem_owns_ref(src, idx))
+				heap_ref(src->values[idx].i);
+			np->nr_vars++;
+		}
+	}
 	return heap_alloc_page(np);
 }
 static int Array_Find_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3)

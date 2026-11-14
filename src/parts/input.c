@@ -499,10 +499,11 @@ void PE_BeginInput(void)
 
 void PE_EndInput(void)
 {
-	if (getenv("XSYS4_INPUT_DBG")) {
-		static int n = 0;
-		if (n++ < 30) NOTICE("[inp] EndInput (clicked=%d)", clicked_parts);
-	}
+	/* [D158] 同样不设配额：只有"这一帧真的捕获到点击"才打。
+	 * 这行和 GetClickNumber 的非零行成对出现才对；只有 EndInput 有、
+	 * GetClickNumber 没有 ⇒ AIN 在 DoInput 窗口里没轮询点击号。 */
+	if (getenv("XSYS4_INPUT_DBG") && clicked_parts)
+		NOTICE("[inp] EndInput (clicked=%d)", clicked_parts);
 	parts_began_click = false;
 	clicked_parts = 0;
 	drag_state_reset();
@@ -515,10 +516,19 @@ void PE_SetDrag(int parts_no, bool enable)
 
 int PE_GetClickPartsNumber(void)
 {
+	/* [D158] 只按内容过滤，**不设总量配额**。
+	 *
+	 * 旧写法是 `n < 200 && (n < 30 || clicked_parts)`：启动阶段 30 帧就把
+	 * "必打"名额烧光，之后只在 clicked_parts 非零时才打。上一轮据此得出
+	 * "GetClickNumber 恒为 0、AIN 没轮询点击"的结论 —— 其实是探针自己
+	 * 哑了（同一个坑第四次）。现在：非零必打，另加每 300 次一条心跳，
+	 * 用来确认 AIN 到底还在不在轮询。 */
 	if (getenv("XSYS4_INPUT_DBG")) {
 		static int n = 0;
-		if (n < 200 && (n < 30 || clicked_parts))
+		if (clicked_parts)
 			NOTICE("[inp] GetClickNumber #%d -> %d", n, clicked_parts);
+		else if (n % 300 == 0)
+			NOTICE("[inp] GetClickNumber #%d -> 0 (poll alive)", n);
 		n++;
 	}
 	return clicked_parts;
