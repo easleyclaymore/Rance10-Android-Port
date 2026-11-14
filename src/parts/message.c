@@ -130,6 +130,27 @@ void PE_PopMessage(void)
 	free(msg);
 }
 
+/* [D158] XSYS4_MSG_TRACE=<type>：当**队头**消息的类型等于该值时，
+ * 把消息访问器的调用序列打出来。用来回答"点击消息为什么被 PopMessage
+ * 掉而不是派发" —— 只看得到结果（[mpop]），看不到 AIN 在中间问了什么、
+ * 问到哪一步就放弃了。 */
+static int msg_trace_type = -2;
+
+static void msg_trace(const char *what, int a, int b)
+{
+	if (msg_trace_type == -2) {
+		const char *e = getenv("XSYS4_MSG_TRACE");
+		msg_trace_type = (e && *e) ? atoi(e) : -1;
+	}
+	if (msg_trace_type < 0)
+		return;
+	struct parts_message *head = STAILQ_FIRST(&msg_queue);
+	if (!head || head->type != msg_trace_type)
+		return;
+	NOTICE("[msgt] %s=%d,%d head{type=%d parts=%d di=%d nvar=%d}", what, a, b,
+	       head->type, head->parts_no, head->delegate_index, head->nr_variables);
+}
+
 int PE_GetMessageType(void)
 {
 	/* [D112] -1, not 0, is the "queue empty" sentinel:
@@ -155,30 +176,36 @@ int PE_GetMessageType(void)
 int PE_GetMessagePartsNumber(void)
 {
 	struct parts_message *msg = STAILQ_FIRST(&msg_queue);
+	msg_trace("parts", msg ? msg->parts_no : 0, 0);
 	return msg ? msg->parts_no : 0;
 }
 
 int PE_GetMessageDelegateIndex(void)
 {
 	struct parts_message *msg = STAILQ_FIRST(&msg_queue);
+	msg_trace("di", msg ? msg->delegate_index : -1, 0);
 	return msg ? msg->delegate_index : -1;
 }
 
 int PE_GetMessageVariableCount(void)
 {
 	struct parts_message *msg = STAILQ_FIRST(&msg_queue);
+	msg_trace("nvar", msg ? msg->nr_variables : 0, 0);
 	return msg ? msg->nr_variables : 0;
 }
 
 int PE_GetMessageVariableType(possibly_unused int index)
 {
 	// In the current implementation, all variables are integers.
+	msg_trace("vtype", index, 1);
 	return 1;
 }
 
 int PE_GetMessageVariableInt(int index)
 {
 	struct parts_message *msg = STAILQ_FIRST(&msg_queue);
+	msg_trace("vint", index, msg && index >= 0 && index < msg->nr_variables
+	          ? msg->variables[index] : 0);
 	if (!msg)
 		return 0;
 	if (index < 0 || index >= msg->nr_variables)

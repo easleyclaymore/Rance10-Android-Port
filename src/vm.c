@@ -2687,6 +2687,31 @@ static enum opcode execute_instruction(enum opcode opcode)
 		int ref_slot = stack_peek(0).i;
 		int obj, offset;
 		bool ok = vm_iface_pair(iface_no, ref_slot, &obj, &offset);
+		/* [D158] XSYS4_ICAST_DBG=1：只打**失败**的转型，不设总量配额。
+		 *
+		 * `X_ICAST` 失败时 AIN 侧拿到 -1，而 AIN 的错误分支往往只做
+		 * "跳过"，不会报错 —— 图鉴列表为空就是这么来的。判据要能看到
+		 * 目标类型号 + 源对象的真实结构体号，否则无法区分
+		 * "对象类型确实不对" 和 "我们的转型判定太严"。 */
+		if (!ok && getenv("XSYS4_ICAST_DBG")) {
+			const char *what = "?";
+			int sidx = -1;
+			if (ref_slot > 0 && (size_t)ref_slot < heap_size &&
+			    heap[ref_slot].page) {
+				struct page *pp = heap[ref_slot].page;
+				sidx = pp->type == STRUCT_PAGE ? pp->index : -pp->type;
+				switch (pp->type) {
+				case STRUCT_PAGE: what = "struct"; break;
+				case IFACE_PAGE:  what = "iface";  break;
+				case ARRAY_PAGE:  what = "array";  break;
+				case DELEGATE_PAGE: what = "delegate"; break;
+				default: what = "other"; break;
+				}
+			}
+			NOTICE("[icast] fail to=%d src=%d kind=%s idx=%d ip=0x%zX fno=%d",
+			       iface_no, ref_slot, what, sidx, instr_ptr,
+			       call_stack_ptr > 0 ? call_stack[call_stack_ptr-1].fno : -1);
+		}
 		/* [object, vtable offset] - object in the lower slot. Bytecode
 		 * consumes the pair positionally: `X_ICAST` is immediately followed
 		 * by R_ASSIGN (dst_page, dst_var, src_page, src_var) and by REFREF
