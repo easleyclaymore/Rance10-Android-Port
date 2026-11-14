@@ -80,6 +80,23 @@ tools/bin/gsave_dump logs/savedir/<tag>/GlobalSave.asd
 "谁读/写了这个全局、谁调了这个函数"。定位"这个值是谁改的"时先用它缩小范围，
 再上运行时探针。用法见 `tools/bin/ain_xref`（无参数时打印用法）。
 
+两个普查子命令比逐个反汇编有用得多：
+
+| 命令 | 用途 |
+|---|---|
+| `ain_xref "$AIN" hlltop` | **全量** HLL 调用统计（线性扫整个 code，无截断），输出 `次数 库名 函数名` |
+| `ain_xref "$AIN" calls 0x5a 0` | 全部 `CALLHLL` 调用点 + 所属函数名 / fno / `lib=` / `func=` |
+| `ain_xref "$AIN" libs` / `lib N` | lib 编号 → 库名、导出表编号 → 函数名（把上两行的编号映射回名字） |
+
+用它们和跑测日志里的 `Unimplemented library function:` 求交集，
+就能一次性列出「AIN 真的会调用、但引擎没实现」的清单，
+**不需要猜哪些函数属于战斗、也不需要 alice-tools 逐个反汇编**。
+完整数据与战斗路径结论见 `docs/HLL-GAP.md`。
+
+> `calls` 的 400 个 site 硬上限已去掉（D197），默认全量；
+> `AIN_XREF_MAX=400` 可恢复截断。旧版只扫到 `fno=833`，
+   战斗函数一个都进不来 —— 这个坑让一次普查得出过"战斗路径 0 个 HLL"的错误结论。
+
 ## ain_audit / ain_spec / ain_locals / ain_icast / ain_refparam / ain_hllarity
 
 一次性普查类工具，用来回答"整个 AIN 里有多少处满足某个形状"：
