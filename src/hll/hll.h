@@ -37,8 +37,10 @@ void static_library_replace(struct static_library *lib, const char *name, void *
 		return rval;						\
 	}
 
-#define HLL_EXPORT(fname, funptr) { .name = #fname, .fun = funptr }
-#define HLL_TODO_EXPORT(fname, funptr) { .name = #fname, .fun = NULL }
+#define HLL_EXPORT(fname, funptr) { .name = #fname, .fun = funptr, .nr_args = -1 }
+/* 同名重载用这个标注参数个数；链接时优先选 arity 相等的那一项。 */
+#define HLL_EXPORT_N(fname, funptr, n) { .name = #fname, .fun = funptr, .nr_args = (n) }
+#define HLL_TODO_EXPORT(fname, funptr) { .name = #fname, .fun = NULL, .nr_args = -1 }
 
 #define HLL_LIBRARY(lname, ...)				\
 	struct static_library lib_ ## lname = {		\

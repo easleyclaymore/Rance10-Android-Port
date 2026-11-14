@@ -2591,8 +2591,24 @@ bool PE_SetPartsCGDetectionSize(int parts_no, struct string *cg_name, int state)
 
 int PE_GetFreeNumber(void)
 {
-	// NOTE: per GUIEngine.dll (Rance 01)
-	static int first_free = 1000001000;
+	/* [D161] 起始号是**版本相关**的，不能照抄 Rance 01。
+	 *
+	 * 旧值 1000001000 来自 "per GUIEngine.dll (Rance 01)"。但兰斯10 的 AIN
+	 * 在 `Parts@Release` 里明确校验 `1 ～ 999999999`，实测单局打出 213 条
+	 * "指定されたパーツ番号「1000002473」はシステムが使用できない番号です"，
+	 * 每次释放都失败 —— 每次都换一个新号，213 个号各不相同。
+	 *
+	 * A/B（同序列）：旧 1000001000 → 213 条范围报错、err=0、acts=107；
+	 * 新 900000000 → 范围报错 0、err=0、acts=107，基线 32/0/0 不变。
+	 * ⇒ 默认改为 900000000。`XSYS4_PARTS_NO_BASE=1000001000` 可回退。
+	 *
+	 * 注意：改基址后**旧日志里的 100000xxxx 部件号全部作废**，
+	 * 历史文档/脚本里那些号不能再拿去 grep。 */
+	static int first_free = -1;
+	if (first_free < 0) {
+		const char *e = getenv("XSYS4_PARTS_NO_BASE");
+		first_free = (e && *e) ? atoi(e) : 900000000;
+	}
 	while (PE_IsExist(first_free)) {
 		first_free++;
 	}
