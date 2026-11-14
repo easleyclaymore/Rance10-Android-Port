@@ -91,6 +91,7 @@
 git submodule init && git submodule update     # 或 clone 时加 --recurse-submodules
 # 上游 libsys4 不认识 Rance10 的存档格式（gsave v8 / 泛型数组），补一刀：
 git -C subprojects/libsys4 apply ../../patches/0001-libsys4-gsave-v8.patch
+git -C subprojects/libsys4 apply ../../patches/0002-libsys4-ajp-metrics.patch
 mkdir build && meson build && ninja -C build
 ```
 
