@@ -30,12 +30,19 @@
 | 平台 / 登录 / 网络确认 | ✅ 自动化跑测可稳定通过 |
 | 标题界面 | ✅ 按官方说明书 `game/Manual/img/rm02.jpg` 绘制：红色圆形按钮 + 金色小按钮 + MENU（D141） |
 | 标题 → 章节 | ✅ 可进第一章（后门直接调用 `Rance10@RunGameChapter1`） |
-| 第一章任务地图 `SceneQuestMap` | ✅ 场景装载、对象装载、出画全通；主线推进到信息对话框（`*ERROR*=0`，32 个活动） |
+| 第一章任务地图 `SceneQuestMap` | ✅ 场景装载、对象装载、出画全通；主线推进到信息对话框 |
+| 部队编成界面 `SceneParty` | ✅ **真实点击进出闭环**：点地图右下 (1819,1002) 进编队、右键退出（`OnRClick` → `Close` → `SceneStack@Exit`），退出后地图正确重绘。卡片立绘正常显示 |
+| 编队加卡 | ✅ `OnClickCard` → `RemoveCardFromFormations` / `FindEmptyIndex` + `AddCardToFormations` 全链路，`err=0` |
+| 地图回合推进 | ⏳ 選択肢按钮能点、能推进 4 级选择、已触发 `PreBattleAutoSave`，但按钮整组坐标出屏（见根目录 `TECH_DEBT.md` 的 `[SELECTION-BUTTON-GEOM]`），尚未进战斗 |
 | 存档 `GroupSave / GroupLoad` | ✅ 写读闭环，含泛型 `array`；支持官方 **gsave v8**，可载入 PC 原版通关档；离线检查器可验 |
 | 内存 | ✅ 长跑稳定（地图装载约 370 MB，不再失控） |
 
-**当前工作重点**：部队编成界面（第一章任务面板提示"没有编队，请进行编组"）
-与 `PartsEngine` 剩余桩函数。主线已无致命错误。
+默认配置基线：`acts=107 / err=0 / core=0 / party=101`（`XSYS4_AUTO_MAP=1 XSYS4_AUTO_RUNPARTY=8000`，
+30 秒）。改默认行为前请先跑 `tools/run/baseline.sh` 对齐这组数。
+
+**当前工作重点**：任务地图回合推进。选择逻辑、存档、输入都已通，
+只差 `QuestMapSelectionButton` 的坐标合成（父 `global.pos` 与子 `local.pos`
+都是绝对屏幕坐标，被叠加成出屏值）。
 
 `[STORY-PHASE]` 已还（D142/D143）：第一章"从地图开始"是正常流程，
 "开场剧情没播"是误诊 —— 真症状是任务面板有框没字，一层原因是
@@ -82,8 +89,15 @@
 
 ```bash
 git submodule init && git submodule update     # 或 clone 时加 --recurse-submodules
+# 上游 libsys4 不认识 Rance10 的存档格式（gsave v8 / 泛型数组），补一刀：
+git -C subprojects/libsys4 apply ../../patches/0001-libsys4-gsave-v8.patch
 mkdir build && meson build && ninja -C build
 ```
+
+> `libsys4` 的 remote 指向上游 `nunuhara/libsys4`，我们没有推送权限，
+> 所以补丁以 `patches/*.patch` 形式入库，而不是靠 submodule 指针指向一个
+> 远端不存在的 commit（那样别人 `git submodule update` 会直接失败）。
+> 若补丁已应用过，`git apply` 会提示 "already applied"，忽略即可。
 
 > **构建踩坑**：桌面环境里 `PYTHONHOME` / `PYTHONPATH` 指向别的 Python 时，
 > meson 会直接死在 `ModuleNotFoundError: encodings`。构建命令请把变量摘掉：
