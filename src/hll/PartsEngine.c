@@ -1631,6 +1631,8 @@ static int PE_GetActiveParts(void)
 static void PE_ClearBackScene(void) { }
 static bool PE_IsWantSaveBackScene(int no) { (void)no; return false; }
 
+static struct string **msgwin_text_slot(int no);
+
 /* [D202] 消息窗口配置 getter（SaveAdvMessageWindowData 用于保存/恢复文本样式）。
  * 对应的 setter 目前都是 noop（引擎用 PE_SetText 同步排版），所以 getter
  * 把 ref 出参写成安全默认值即可：AIN 只把它们存进快照，不参与排版判定。
@@ -1639,8 +1641,8 @@ static bool PE_IsWantSaveBackScene(int no) { (void)no; return false; }
  * 签名与库表 f[522]/[526]/[530] 一致（ref int/float 在 C 侧是普通指针）。 */
 static struct string *PE_GetMessageWindowText(int no)
 {
-	(void)no;
-	return string_dup(&EMPTY_STRING);
+	struct string **slot = msgwin_text_slot(no);
+	return *slot ? string_ref(*slot) : string_dup(&EMPTY_STRING);
 }
 
 static void PE_GetMessageWindowTextFont(int no, int *type, int *size, int *r,
@@ -1769,6 +1771,32 @@ static void PE_Noop_SetMessageWindowInactiveMultipleColor(int a0, int a1, int a2
  *
  * AIN 签名：SetMessageWindowText(Number, Text, MsgNum, FuncName, Ver, Step)
  * MsgNum/FuncName/Ver/Step 是语音与已读管理的参数，引擎侧暂不需要。 */
+/* [D202] GetMessageWindowText 必须能读回 Set 过的文本：
+ * `CMessageTextView@CreateDrawChar`(6152) 用 Get 取当前串、S_PLUSA2 逐字追加、
+ * 再 Set 回去实现逐字显示。返回空串会让正文永远生不出来（窗口装载了、
+ * 剧情脚本 `０２／ＳＴＡＲＴ` 也执行了，画面却全黑）。
+ * 部件号是大数（900000xxx），用旁路表按号存，避免给 struct parts 加字段
+ * （save.c 顺序序列化，插字段会错位存档）。 */
+#define MSGWIN_TEXT_SLOTS 64
+static struct {
+	int no;
+	struct string *text;
+} msgwin_text[MSGWIN_TEXT_SLOTS];
+
+static struct string **msgwin_text_slot(int no)
+{
+	static int probe;
+	for (int i = 0; i < MSGWIN_TEXT_SLOTS; i++)
+		if (msgwin_text[i].no == no)
+			return &msgwin_text[i].text;
+	int i = (probe++) % MSGWIN_TEXT_SLOTS;
+	if (msgwin_text[i].text)
+		free_string(msgwin_text[i].text);
+	msgwin_text[i].text = NULL;
+	msgwin_text[i].no = no;
+	return &msgwin_text[i].text;
+}
+
 static void PE_SetMessageWindowText(int no, struct string *text, int msg_num,
 		struct string *func_name, int ver, int step)
 {
@@ -1778,6 +1806,10 @@ static void PE_SetMessageWindowText(int no, struct string *text, int msg_num,
 	(void)step;
 	if (!text)
 		return;
+	struct string **slot = msgwin_text_slot(no);
+	if (*slot)
+		free_string(*slot);
+	*slot = string_dup(text);
 	PE_SetText(no, text, 1);
 }
 
