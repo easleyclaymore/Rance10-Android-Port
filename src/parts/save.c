@@ -751,6 +751,19 @@ static bool parts_engine_save(struct page **buffer, bool save_hidden)
 
 }
 
+/* [D202] f[798]/f[800] SaveBackScene/LoadBackScene。
+ * AIN 在消息窗口弹出前保存背景、收起后恢复；与读档共用同一份
+ * 部件序列化（XPE 格式），保证 Save/Load 对称。 */
+bool PE_SaveBackScene(struct page **buffer)
+{
+	return parts_engine_save(buffer, true);
+}
+
+bool PE_LoadBackScene(struct page **buffer)
+{
+	return PE_Load(buffer);
+}
+
 bool PE_SaveWithoutHideParts(struct page **buffer)
 {
 	return parts_engine_save(buffer, false);

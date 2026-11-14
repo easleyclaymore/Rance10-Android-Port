@@ -1617,6 +1617,134 @@ static void PE_Noop_SetMessageWindowFlatName(int a0, struct string * a1)
 	(void)a1;
 }
 
+/* [D202] 消息等待点击时 AIN 会轮询「当前活动部件号」，再交给
+ * `_CMsgKeyWait@IsClickableParts` 判断能否点。引擎没有编辑器侧的
+ * active-parts 概念，且 IsClickableParts(0) 直接返回 false，所以返回 0
+ * 是安全默认：点击推进仍由已实现的 GetClickNumber / WaitForClick 负责。 */
+static int PE_GetActiveParts(void)
+{
+	return 0;
+}
+
+/* [D202] 背景快照辅助：引擎始终按 SaveBackScene 的完整快照工作，
+ * 不需要按部件标记是否要保存，Clear 也无需单独动作（Load 会重建整树）。 */
+static void PE_ClearBackScene(void) { }
+static bool PE_IsWantSaveBackScene(int no) { (void)no; return false; }
+
+/* [D202] 消息窗口配置 getter（SaveAdvMessageWindowData 用于保存/恢复文本样式）。
+ * 对应的 setter 目前都是 noop（引擎用 PE_SetText 同步排版），所以 getter
+ * 把 ref 出参写成安全默认值即可：AIN 只把它们存进快照，不参与排版判定。
+ * 以前这些名字根本没注册，AIN 一调就 VM_ERROR，第一章剧情刚显示第一行
+ * 文本就断在 CMessageTextView@GetTextFontColorList。
+ * 签名与库表 f[522]/[526]/[530] 一致（ref int/float 在 C 侧是普通指针）。 */
+static struct string *PE_GetMessageWindowText(int no)
+{
+	(void)no;
+	return string_dup(&EMPTY_STRING);
+}
+
+static void PE_GetMessageWindowTextFont(int no, int *type, int *size, int *r,
+		int *g, int *b, float *bold_weight, int *edge_r, int *edge_g,
+		int *edge_b, float *edge_weight)
+{
+	(void)no;
+	if (type) *type = 0;
+	if (size) *size = 0;
+	if (r) *r = 255;
+	if (g) *g = 255;
+	if (b) *b = 255;
+	if (bold_weight) *bold_weight = 0.0f;
+	if (edge_r) *edge_r = 0;
+	if (edge_g) *edge_g = 0;
+	if (edge_b) *edge_b = 0;
+	if (edge_weight) *edge_weight = 0.0f;
+}
+
+static void PE_GetMessageWindowTextArea(int no, int *x, int *y, int *w, int *h)
+{
+	(void)no;
+	if (x) *x = 0;
+	if (y) *y = 0;
+	if (w) *w = 0;
+	if (h) *h = 0;
+}
+
+static void PE_GetMessageWindowTextSpace(int no, int *letter, int *line)
+{
+	(void)no;
+	if (letter) *letter = 0;
+	if (line) *line = 0;
+}
+
+static void PE_GetKeyWaitCGName(int no, struct string **name, int *start_no,
+		int *numof_cg, int *time_per_cg)
+{
+	(void)no;
+	if (name) *name = string_dup(&EMPTY_STRING);
+	if (start_no) *start_no = 0;
+	if (numof_cg) *numof_cg = 0;
+	if (time_per_cg) *time_per_cg = 0;
+}
+
+static int PE_GetMessageWindowTextOriginPosMode(int no) { (void)no; return 0; }
+static int PE_GetMessageWindowTextSpeed(int no) { (void)no; return 0; }
+static int PE_GetMessageWindowInactiveMultipleColorR(int no) { (void)no; return 255; }
+static int PE_GetMessageWindowInactiveMultipleColorG(int no) { (void)no; return 255; }
+static int PE_GetMessageWindowInactiveMultipleColorB(int no) { (void)no; return 255; }
+static int PE_GetKeyWaitPosX(int no) { (void)no; return 0; }
+static int PE_GetKeyWaitPosY(int no) { (void)no; return 0; }
+static int PE_GetKeyWaitPosZ(int no) { (void)no; return 0; }
+static bool PE_IsKeyWaitShow(int no) { (void)no; return false; }
+static bool PE_IsComponentMessageWindowEffectLink(int no) { (void)no; return false; }
+
+/* [D202] 消息窗口 flat 相关 getter。
+ * SetMessageWindowFlatName/CGName 目前是 noop setter（引擎用 PE_SetText
+ * 同步排版普通文本窗口，没有 flat 动画），所以 getter 返回空串与之配对：
+ * `CMessageWindow@IsFlat` 用 String.Empty(FlatName) 取反判断，空串 => false
+ * => 走普通消息窗口路径，不再等 flat 动画。以前 getter 根本没注册，
+ * AIN 一调就 VM_ERROR，第一章剧情刚进 ADV 就断在这里。 */
+static struct string *PE_GetMessageWindowFlatName(int no)
+{
+	(void)no;
+	return string_dup(&EMPTY_STRING);
+}
+
+static struct string *PE_GetMessageWindowCGName(int no)
+{
+	(void)no;
+	return string_dup(&EMPTY_STRING);
+}
+
+static struct string *PE_GetKeyWaitFlatName(int no)
+{
+	(void)no;
+	return string_dup(&EMPTY_STRING);
+}
+
+static int PE_GetMessageWindowFlatShowWaitFrameNumber(int no)
+{
+	(void)no;
+	return 0;
+}
+
+static bool PE_IsOverMessageWindowFlatShowWaitFrame(int no)
+{
+	(void)no;
+	return true;   /* 没有 flat 动画，等待帧视为已过 */
+}
+
+static bool PE_BackMessageWindowFlatBeginFrame(int no)
+{
+	(void)no;
+	return false;
+}
+
+static bool PE_StepMessageWindowFlatFinalFrame(int no)
+{
+	(void)no;
+	return false;
+}
+
 /* AIN SetMessageWindowFlatShowWaitFrameNumber: void SetMessageWindowFlatShowWaitFrameNumber. [HACK-POC D85] setter stubbed. */
 static void PE_Noop_SetMessageWindowFlatShowWaitFrameNumber(int a0, int a1)
 {
@@ -2449,6 +2577,26 @@ HLL_LIBRARY(PartsEngine,
 	    // Oyako Rankan
 	    HLL_EXPORT(SetWantSaveBackScene, PE_SetWantSaveBackScene),
 	    HLL_EXPORT(GetActiveController, PE_get_active_controller),
+	    HLL_EXPORT(GetActiveParts, PE_GetActiveParts),
+	    HLL_EXPORT(SaveBackScene, PE_SaveBackScene),
+	    HLL_EXPORT(LoadBackScene, PE_LoadBackScene),
+	    HLL_EXPORT(ClearBackScene, PE_ClearBackScene),
+	    HLL_EXPORT(IsWantSaveBackScene, PE_IsWantSaveBackScene),
+	    HLL_EXPORT(GetMessageWindowText, PE_GetMessageWindowText),
+	    HLL_EXPORT(GetMessageWindowTextFont, PE_GetMessageWindowTextFont),
+	    HLL_EXPORT(GetMessageWindowTextArea, PE_GetMessageWindowTextArea),
+	    HLL_EXPORT(GetMessageWindowTextSpace, PE_GetMessageWindowTextSpace),
+	    HLL_EXPORT(GetMessageWindowTextOriginPosMode, PE_GetMessageWindowTextOriginPosMode),
+	    HLL_EXPORT(GetMessageWindowTextSpeed, PE_GetMessageWindowTextSpeed),
+	    HLL_EXPORT(GetKeyWaitCGName, PE_GetKeyWaitCGName),
+	    HLL_EXPORT(GetKeyWaitPosX, PE_GetKeyWaitPosX),
+	    HLL_EXPORT(GetKeyWaitPosY, PE_GetKeyWaitPosY),
+	    HLL_EXPORT(GetKeyWaitPosZ, PE_GetKeyWaitPosZ),
+	    HLL_EXPORT(IsKeyWaitShow, PE_IsKeyWaitShow),
+	    HLL_EXPORT(GetMessageWindowInactiveMultipleColorR, PE_GetMessageWindowInactiveMultipleColorR),
+	    HLL_EXPORT(GetMessageWindowInactiveMultipleColorG, PE_GetMessageWindowInactiveMultipleColorG),
+	    HLL_EXPORT(GetMessageWindowInactiveMultipleColorB, PE_GetMessageWindowInactiveMultipleColorB),
+	    HLL_EXPORT(IsComponentMessageWindowEffectLink, PE_IsComponentMessageWindowEffectLink),
 	    HLL_EXPORT(AddPartsConstructionProcess, PE_AddPartsConstructionProcess),
 	    HLL_EXPORT(Init, PE_Init),
 	    HLL_EXPORT(Update, PartsEngine_Update),
@@ -3102,6 +3250,13 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetMessageWindowActive, PE_Noop_SetMessageWindowActive),
 	    HLL_EXPORT(SetMessageWindowCGName, PE_Noop_SetMessageWindowCGName),
 	    HLL_EXPORT(SetMessageWindowFlatName, PE_Noop_SetMessageWindowFlatName),
+	    HLL_EXPORT(GetMessageWindowFlatName, PE_GetMessageWindowFlatName),
+	    HLL_EXPORT(GetMessageWindowCGName, PE_GetMessageWindowCGName),
+	    HLL_EXPORT(GetKeyWaitFlatName, PE_GetKeyWaitFlatName),
+	    HLL_EXPORT(GetMessageWindowFlatShowWaitFrameNumber, PE_GetMessageWindowFlatShowWaitFrameNumber),
+	    HLL_EXPORT(IsOverMessageWindowFlatShowWaitFrame, PE_IsOverMessageWindowFlatShowWaitFrame),
+	    HLL_EXPORT(BackMessageWindowFlatBeginFrame, PE_BackMessageWindowFlatBeginFrame),
+	    HLL_EXPORT(StepMessageWindowFlatFinalFrame, PE_StepMessageWindowFlatFinalFrame),
 	    HLL_EXPORT(SetMessageWindowFlatShowWaitFrameNumber, PE_Noop_SetMessageWindowFlatShowWaitFrameNumber),
 	    HLL_EXPORT(SetMessageWindowInactiveMultipleColor, PE_Noop_SetMessageWindowInactiveMultipleColor),
 	    HLL_EXPORT(SetMessageWindowText, PE_SetMessageWindowText),

@@ -15,6 +15,7 @@
  */
 
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 #include "system4.h"
 #include "system4/ain.h"
@@ -100,13 +101,9 @@ static bool parse_fmt_spec(const char **_fmt, struct fmt_spec *spec, enum string
 			r = is_integer_type(target);
 			goto end;
 		case '%':
-			/* [D201] AIN 的零填充全角整数格式写作 `%%0ND`
-			 * （%%01D … %%09D）。第二个 % 是格式前缀的一部分，
-			 * 不是 C 的转义百分号；原来落进 default 会让整条格式串
-			 * 解析失败、返回原串，于是 `GetKeyName` 拼出的 EX key
-			 * 中间那段编号为空（`任务数据.… ..传送`），全部查不到。 */
-			fmt++;
-			break;
+			/* [D202] `%%` 在 string_format 层已折叠为字面 '%'；
+			 * 走到这里说明是孤立百分号，按不可识别处理。 */
+			goto warn;
 		case '0':
 			spec->zero_pad = true;
 			fmt++;
@@ -191,19 +188,40 @@ static void append_fmt(struct string **s, struct fmt_spec *spec, union vm_value 
 
 struct string *string_format(struct string *fmt, union vm_value arg, enum string_format_type type)
 {
+	/* [D202] AIN 的 S_MOD 每次只替换一个格式符，`%%` 是**字面 % 转义**、
+	 * 不消耗参数。Rance10 用它做「格式串生成器」：
+	 *   `%%0%dD` --S_MOD(位数 3)--> `%03D` --S_MOD(节点 id)--> `００１`
+	 * 见 QuestMapObject@ResolveStringNodeId(28494)：var[4] 存生成的格式串，
+	 * var[5] 用它格式化 id，再在 EX 节点名列表里查找。
+	 *
+	 * D201 曾把 parse_fmt_spec 里的 '%%' 当成「格式前缀的一部分」直接跳过，
+	 * 于是 `%%0%dD` 被整体解析成零填充半角整数，产出 `3D` 而不是 `%03D`；
+	 * 编号解析失败 → KeyBase 变成 `任务数据.<地图>.` → GetQuestEventList
+	 * 查不到 `故事/战斗/动画`，事件列表为空，第一章卡在 RunAdvAndBattleEvent。
+	 *
+	 * 正确语义：逐段复制字面内容，遇 `%%` 折叠成一个 '%' 并继续扫描，
+	 * 遇到第一个真正的格式符才用 arg 替换，其后原样保留（供下一次 S_MOD）。 */
+	struct string *out = string_ref(&EMPTY_STRING);
+	const char *lit = fmt->text;
 	for (const char *s = fmt->text; *s; s++) {
 		if (*s != '%')
 			continue;
-
-		size_t size = s - fmt->text;
+		if (s[1] == '%') {
+			string_append_cstr(&out, lit, s - lit);
+			string_push_back(&out, '%');
+			s++;
+			lit = s + 1;
+			continue;
+		}
 		struct fmt_spec spec;
-		if (parse_fmt_spec(&s, &spec, type)) {
-			struct string *out = string_ref(&EMPTY_STRING);
-			string_append_cstr(&out, fmt->text, size);
+		const char *p = s;
+		if (parse_fmt_spec(&p, &spec, type)) {
+			string_append_cstr(&out, lit, s - lit);
 			append_fmt(&out, &spec, arg);
-			string_append_cstr(&out, s, strlen(s));
+			string_append_cstr(&out, p, strlen(p));
 			return out;
 		}
 	}
-	return string_ref(fmt);
+	string_append_cstr(&out, lit, strlen(lit));
+	return out;
 }
