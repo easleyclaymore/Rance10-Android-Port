@@ -4660,6 +4660,37 @@ void vm_frame_pump(void)
 		}
 	}
 
+	/* [AUTO] XSYS4_AUTO_RUNPARTY=<ms>：直接调 `Scenes::RunParty(1)`（fno 26394）。
+	 *
+	 * 与 XSYS4_AUTO_PARTY 的分工：那个走地图的 `SceneQuestMap@OpenParty`，
+	 * 依赖地图 UI 的状态（要 `PUSHSTRUCTPAGE` 拿地图实例、要 IsShow 那一套），
+	 * 一旦地图自己推到回合结算就调不动了（实测返回地址正常但一次都没进
+	 * `CALLFUNC 26394`）。这个后门绕过地图，只回答一个问题：
+	 * **`SceneParty` 这个场景本身能不能跑起来**。
+	 *
+	 * 默认关闭；值即延迟毫秒（`XSYS4_AUTO_RUNPARTY=8000`）。 */
+	{
+		static bool rp_done, rp_init;
+		static uint32_t rp_delay, rp_at;
+		if (!rp_init) {
+			rp_init = true;
+			const char *e = getenv("XSYS4_AUTO_RUNPARTY");
+			rp_delay = e ? (uint32_t)(*e ? atoi(e) : 8000) : 0;
+		}
+		if (!rp_done && rp_delay && auto_map_done) {
+			if (!rp_at)
+				rp_at = now ? now : 1;
+			if (now - rp_at >= rp_delay) {
+				rp_done = true;
+				union vm_value arg = { .i = 1 }, ret = { .i = 0 };
+				NOTICE("[auto] calling Scenes::RunParty(1) (fno 26394) after %ums",
+				       now - rp_at);
+				bool ok = vm_call_hll_closure(26394, &arg, 1, &ret);
+				NOTICE("[auto] RunParty returned ok=%d ret=%d", ok, ret.i);
+			}
+		}
+	}
+
 	parts_advance_animation(dt);
 
 	PE_AdvanceMotionClock(dt);

@@ -2830,6 +2830,20 @@ void PE_DebugControllerHistogram(const char *tag)
 			      shown[PARTS_CONTROLLER_STACK_MAX + 1],
 			      cnt[PARTS_CONTROLLER_STACK_MAX + 1]);
 	NOTICE("%s", buf);
+
+	/* [D175] 上一行的 `shown`/`cnt` 统计的是**部件自己的 global.show**，
+	 * 而 `parts_render()` 真正的闸门是
+	 *   `parts_is_visible() = global.show && ctrl_stack.show[c] && c >= parts_cover_layer`
+	 * 后两个条件（图层开关、遮挡下界）从来没被打印过 —— 于是
+	 * "controller 活跃"（`active=4`）被误当成"这一层要画"，但那是**数量**，
+	 * 不是开关位。把开关位和遮挡下界一次打全。 */
+	char lbuf[256];
+	int ln = snprintf(lbuf, sizeof(lbuf), "[ctrl] %s layer_show=", tag);
+	int lim = max_c < PARTS_CONTROLLER_STACK_MAX ? max_c : PARTS_CONTROLLER_STACK_MAX - 1;
+	for (int c = 0; c <= lim && ln < (int)sizeof(lbuf) - 16; c++)
+		ln += snprintf(lbuf + ln, sizeof(lbuf) - ln, "%c", ctrl_stack.show[c] ? '1' : '0');
+	snprintf(lbuf + ln, sizeof(lbuf) - ln, " cover=%d", parts_cover_layer);
+	NOTICE("%s", lbuf);
 }
 
 /* [D128] 一次性部件快照：把"此刻还在显示"的部件连同所属 controller、z、
@@ -2845,6 +2859,17 @@ void PE_DebugDumpParts(const char *tag)
 {
 	struct parts *p;
 	int n = 0;
+	/* [D175] 先打一行图层状态：`vis=` 的两个非部件条件都在这里。
+	 * 没有这一行，"部件全正常但一个都不画"就只能靠猜。 */
+	{
+		char lbuf[256];
+		int ln = snprintf(lbuf, sizeof(lbuf), "[parts] %s layer_show=", tag);
+		for (int c = 0; c < PARTS_CONTROLLER_STACK_MAX && ln < (int)sizeof(lbuf) - 16; c++)
+			ln += snprintf(lbuf + ln, sizeof(lbuf) - ln, "%c", ctrl_stack.show[c] ? '1' : '0');
+		snprintf(lbuf + ln, sizeof(lbuf) - ln, " cover=%d active=%d",
+			 parts_cover_layer, ctrl_stack.active);
+		NOTICE("%s", lbuf);
+	}
 	TAILQ_FOREACH(p, &parts_list, parts_list_entry) {
 		if (!p->global.show)
 			continue;
@@ -2853,12 +2878,18 @@ void PE_DebugDumpParts(const char *tag)
 		 * 在 HOVERED/CLICKED 状态里可能是空的 —— 那才是"show=1、
 		 * alpha=255、坐标正常却不显示"的第四种可能。 */
 		struct parts_state *st = &p->states[p->state];
-		NOTICE("[parts] %s no=%d ctrl=%d z=%d pos=(%d,%d) %dx%d a=%d ps=%d st=%d tex=%d uc=%s",
+		/* [D175] `vis=` 是 `parts_render()` 真正的准入判断
+		 * （`parts_is_visible()` = global.show && ctrl_stack.show[c] &&
+		 *   c >= parts_cover_layer）。前面几个字段都是"部件自己长什么样"，
+		 * 只有这一列说明"绘制时会怎么做" —— 前者全正常而 vis=0 时，
+		 * 问题就在图层，不在部件。 */
+		NOTICE("[parts] %s no=%d ctrl=%d z=%d pos=(%d,%d) %dx%d a=%d ps=%d st=%d tex=%d vis=%d uc=%s",
 		       tag, p->no, p->controller_no, p->global.z,
 		       p->global.pos.x, p->global.pos.y,
 		       st->common.w, st->common.h,
 		       p->global.alpha, (int)p->state, (int)st->type,
 		       st->common.texture.handle != 0,
+		       parts_is_visible(p) ? 1 : 0,
 		       p->uc_object ? p->uc_object : "-");
 		if (++n > 400) {
 			NOTICE("[parts] %s ... truncated", tag);

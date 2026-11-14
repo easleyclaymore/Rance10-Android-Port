@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **116** 个开关，其中 **24** 个没有就近注释。
+共 **117** 个开关，其中 **24** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -54,16 +54,17 @@
 | 呈现与输入 | `XSYS4_ACT_DBG` | `src/parts/activity.c:856` | 活动装载与点击派发诊断 |
 | 呈现与输入 | `XSYS4_ACT_DEBUG` | `src/parts/activity.c:1021` | 活动诊断的旧开关 |
 | 呈现与输入 | `XSYS4_CLICK_RETARGET` | `src/parts/message.c:73` | 点击被遮挡后重定向到下层部件 |
-| 呈现与输入 | `XSYS4_CTRL_DBG` | `src/parts/parts.c:1352` | controller 栈、视觉地板（cover_layer）、hide/remove 事件 |
+| 呈现与输入 | `XSYS4_CTRL_DBG` | `src/parts/parts.c:1441` | controller 栈、视觉地板（cover_layer）、hide/remove 事件 |
 | 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:296` | 输入命中的候选部件表与点击状态 |
 | 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:1045` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
-| 呈现与输入 | `XSYS4_PARTS_NO_BASE` | `src/parts/parts.c:2652` | — |
-| 呈现与输入 | `XSYS4_UPD_DBG` | `src/parts/parts.c:1369` | PE_Update 的每帧诊断 |
+| 呈现与输入 | `XSYS4_PARTS_NO_BASE` | `src/parts/parts.c:2741` | — |
+| 呈现与输入 | `XSYS4_UPD_DBG` | `src/parts/parts.c:1458` | PE_Update 的每帧诊断 |
 | 自动化后门 | `XSYS4_AUTO_MAP` | `src/vm.c:4629` | 无头跑测后门：自动推进到任务地图 |
 | 自动化后门 | `XSYS4_AUTO_MAP_DELAY` | `src/vm.c:4630` | 后门延迟（毫秒） |
 | 自动化后门 | `XSYS4_AUTO_PARTY` | `src/vm.c:1071` | 无头跑测后门：自动推进到部队编成 |
 | 自动化后门 | `XSYS4_AUTO_PARTY_DELAY` | `src/vm.c:1072` | 后门延迟（毫秒） |
-| 自动化后门 | `XSYS4_NO_LAYER_COVER` | `src/parts/parts.c:1320` | 关闭「视觉地板」优化（怀疑遮挡算错时用） |
+| 自动化后门 | `XSYS4_AUTO_RUNPARTY` | `src/vm.c:4677` | [后门] 地图起来后直接调 Scenes::RunParty(1)，绕开地图 UI 直进编队界面；值=延迟毫秒 |
+| 自动化后门 | `XSYS4_NO_LAYER_COVER` | `src/parts/parts.c:1409` | 关闭「视觉地板」优化（怀疑遮挡算错时用） |
 | 运行环境 | `XSYS4_DATA_DIR` | `src/pal.c:43` | 数据目录（缺省用编译期默认值） |
 | 运行环境 | `XSYS4_SOFT_STUB` | `src/ffi.c:60` | 未实现的导出用零桩顶替（诊断用：判断"缺实现"还是"走错路"） |
 | 一次性探针 | `XSYS4_DBG_EIP` | `src/hll/PartsEngine.c:489` | 打印 SetEnableInputProcess 的每次调用与参数（实测 242 次里 238 次 enable=0） |
@@ -84,7 +85,7 @@
 | 其它 | `XSYS4_IFACE_REALLOC_FIX` | `src/page.c:641` | — |
 | 其它 | `XSYS4_IP_WATCH` | `src/vm.c:2551` | 监视指令指针，抓"跑到不该跑的地方" |
 | 其它 | `XSYS4_KEYCODE_PROBE` | `src/parts/input.c:47` | 打印收到的原始键码 |
-| 其它 | `XSYS4_LAYER_TRACE` | `src/parts/parts.c:2022` | 图层顺序追踪 |
+| 其它 | `XSYS4_LAYER_TRACE` | `src/parts/parts.c:2111` | 图层顺序追踪 |
 | 其它 | `XSYS4_LVAR_DBG` | `src/vm.c:158` | — |
 | 其它 | `XSYS4_MC_SLOT_DBG` | `src/vm.c:1095` | — |
 | 其它 | `XSYS4_MC_WATCH` | `src/vm.c:954` | 〔摘〕时（callee 声明 N 槽、call site 只压了 1 槽）只能靠猜。 |
@@ -115,9 +116,9 @@
 | 其它 | `XSYS4_SLOT_ID` | `src/heap.c:254` | 打印稳定槽 ID，便于跨日志对照同一对象 |
 | 其它 | `XSYS4_SP_BALANCE` | `src/vm.c:1790` | 每次函数返回校验栈平衡（失败即报） |
 | 其它 | `XSYS4_SP_TRACE` | `src/vm.c:2340` | 环形缓冲记录栈指针变化，抓"玄学栈漂移" |
-| 其它 | `XSYS4_SP_WATCH` | `src/vm.c:4689` | 监视指定帧的栈指针 |
+| 其它 | `XSYS4_SP_WATCH` | `src/vm.c:4720` | 监视指定帧的栈指针 |
 | 其它 | `XSYS4_SRDBG` | `src/vm.c:3683` | 〔摘〕the bottom of the triple, never a live ARRAY_PAGE. |
-| 其它 | `XSYS4_STACK_SAMPLE` | `src/vm.c:4703` | 周期性采样调用栈（抓谁在长时间占栈） |
+| 其它 | `XSYS4_STACK_SAMPLE` | `src/vm.c:4734` | 周期性采样调用栈（抓谁在长时间占栈） |
 | 其它 | `XSYS4_STRICT_REF` | `src/vm.c:377` | 严格引用计数检查（会把"漏 ref/unref"变成显式报错） |
 | 其它 | `XSYS4_STR_INT_DBG` | `src/hll/String.c:58` | 〔摘〕"取对了但字符串已经死了"。 |
 | 其它 | `XSYS4_STUB_BT` | `src/ffi.c:164` | 软桩命中时附带回溯 |

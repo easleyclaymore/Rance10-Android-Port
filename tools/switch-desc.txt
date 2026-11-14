@@ -81,6 +81,7 @@ XSYS4_NO_LAYER_COVER	关闭「视觉地板」优化（怀疑遮挡算错时用�
 XSYS4_AUTO_MAP	无头跑测后门：自动推进到任务地图
 XSYS4_AUTO_MAP_DELAY	后门延迟（毫秒）
 XSYS4_AUTO_PARTY	无头跑测后门：自动推进到部队编成
+XSYS4_AUTO_RUNPARTY	[后门] 地图起来后直接调 Scenes::RunParty(1)，绕开地图 UI 直进编队界面；值=延迟毫秒
 XSYS4_AUTO_PARTY_DELAY	后门延迟（毫秒）
 XSYS4_KEYCODE_PROBE	打印收到的原始键码
 XSYS4_NO_PUMP	事件泵空转诊断
