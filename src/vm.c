@@ -2229,6 +2229,16 @@ static enum opcode execute_instruction(enum opcode opcode)
 				for (int i = 0; i < tp->nr_vars && i < 32; i++) {
 					int mv = tp->values[i].i;
 					NOTICE("[dump]   this.m%d = %d", i, mv);
+					/* [D166] 字符串成员连文本一起打。`LeaderCard.IsExist`
+					 * 就是 `m_cardId != ""`，"空槽的 m_cardId 是空串还是
+					 * null" 是那边唯一要回答的问题，而只看槽号看不出来。
+					 * 必须在 page 分支之前判：字符串槽的 union 里 page 指针
+					 * 是脏的（同 D152 对局部变量的处理）。 */
+					if (mv > 0 && (size_t)mv < heap_size && heap[mv].type == VM_STRING) {
+						const char *txt = heap[mv].s && heap[mv].s->text
+						                  ? heap[mv].s->text : "";
+						NOTICE("[dump]     -> str \"%.60s\"", display_sjis0(txt));
+					} else
 					/* 成员是数组时把前几个元素一起打出来：
 					 * "数组元素是空引用"和"下标算错"是两种完全不同的病。 */
 					if (mv > 0 && (size_t)mv < heap_size && heap[mv].page &&
