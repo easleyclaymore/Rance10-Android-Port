@@ -1,0 +1,88 @@
+# XSYS4_* 开关注释表 —— 人工维护
+#
+# 格式：开关名 <TAB> 一句话用途
+# 只写你**确实知道**的。不知道就留空，让生成器标成 `—`（那是诚实的债）。
+# `#` 开头是注释行。
+#
+# 写这一栏的标准：读完能判断"我该不该打开它"。写"用于诊断 X"不算说明。
+
+XSYS4_DATA_DIR	数据目录（缺省用编译期默认值）
+XSYS4_NO_AUDIO	关闭音频输出
+
+XSYS4_DUMP_AT	在 `<十六进制地址>[,最多几次]` 处停下，打印帧名、this 各成员、局部变量和操作数栈
+XSYS4_DUMP_FRAME	指定帧的完整快照（配合 DUMP_AT 的扩展模式）
+XSYS4_DUMP_EVERY	每隔 N 次执行 dump 一次，用于观察循环里的状态漂移
+XSYS4_CALL_TRACE	逗号分隔的 AIN 函数号；命中时打印调用点与返回地址（"有没有被调到"的第一手证据）
+XSYS4_HLL_TRACE	打印每次 HLL 调用（`lib= fno= nr_args= sp= ret=`），不设 FILTER 会很吵
+XSYS4_HLL_TRACE_FILTER	收窄 HLL_TRACE：`PartsEngine` 按库名、`27:73` 按库:序号、其它按函数名子串，逗号分隔
+XSYS4_HLL_ARGDBG	打印 HLL 调用的实际参数值（排查"参数顺序/位宽错"时用）
+XSYS4_FN_DUMP	函数调用次数统计与慢函数排行
+XSYS4_FN_DUMP_ALL	统计时不做前 N 次闸门，低频函数也全打
+XSYS4_FN_DUMP_SKIP	统计时跳过指定函数号
+XSYS4_CENSUS	按函数做调用普查（与 FN_DUMP 互补）
+XSYS4_IP_WATCH	监视指令指针，抓"跑到不该跑的地方"
+XSYS4_OBJ_WATCH	监视指定堆槽的读写
+XSYS4_STACK_SAMPLE	周期性采样调用栈（抓谁在长时间占栈）
+XSYS4_STUB_LOG	软桩命中清单写到该文件
+XSYS4_STUB_BT	软桩命中时附带回溯
+XSYS4_SOFT_STUB	未实现的导出用零桩顶替（诊断用：判断"缺实现"还是"走错路"）
+XSYS4_SUBST_BT	静态库替换（subst）时打印回溯
+
+XSYS4_ARR_DBG	Array 操作诊断：alloc/find/any/emp/free/subst 逐条打
+XSYS4_ARRAY_DBG	Array 诊断的旧开关（与 ARR_DBG 同类，逐步统一）
+XSYS4_ARR_ALLOC_DBG	只打数组分配
+XSYS4_ARR_TYPE_DBG	数组元素类型推导诊断（泛型数组"由首个元素定型"出问题时用）
+XSYS4_ARRAY_REF_FIX	数组元素引用处理的实验修复（默认关，会改行为）
+XSYS4_ARRAY_FREE_FIX	数组释放路径的实验修复（默认关，会改行为）
+XSYS4_ARR_UNSET_FIX	未初始化槽读取的实验修复（默认关，会改行为）
+XSYS4_ALLOC0_DBG	0 号堆槽分配的诊断
+XSYS4_CTOR_DBG	构造函数调用诊断
+XSYS4_BADTHIS	非法 this（类型不匹配/越界）时打回溯
+XSYS4_BADSTRUCT_DBG	结构体成员访问越界诊断
+XSYS4_STRICT_REF	严格引用计数检查（会把"漏 ref/unref"变成显式报错）
+XSYS4_RECYCLE_SLOTS	复用已释放的堆槽（默认关）
+XSYS4_PHANTOM_REUSE	幽灵槽复用诊断
+XSYS4_SLOT_ID	打印稳定槽 ID，便于跨日志对照同一对象
+XSYS4_MEM_STAT	堆内存与 RSS 实时统计
+XSYS4_HEAP_LIVE_LIMIT	堆存活槽上限，超了报警
+XSYS4_RSS_LIMIT	进程 RSS 上限，超了报警
+XSYS4_SP_TRACE	环形缓冲记录栈指针变化，抓"玄学栈漂移"
+XSYS4_SP_BALANCE	每次函数返回校验栈平衡（失败即报）
+XSYS4_SP_WATCH	监视指定帧的栈指针
+
+XSYS4_DG_DBG	委托（Delegate）诊断总开关
+XSYS4_DG_LAZY	成员里的委托槽为空时惰性建页（NetworkConfirmation 的 OK/Cancel 靠它）
+XSYS4_DG_MISS_DBG	委托 miss（找不到目标）时打印
+XSYS4_DG_MISS_FILTER	收窄 DG_MISS 输出
+XSYS4_DG_PAGE_DBG	委托页生命周期诊断
+XSYS4_DG_GET_DBG	委托取值诊断
+XSYS4_DG_CALL_DBG	委托调用诊断
+XSYS4_DG_ASSIGN_DBG	委托赋值诊断
+XSYS4_DG_KEEPALIVE	委托页保活（防止被提前回收）
+XSYS4_DG_DRIFT	委托页"漂移"检测（指向了不该指的对象）
+XSYS4_DF_DBG	委托释放路径诊断
+XSYS4_DF_FREE_DBG	委托释放的逐次释放诊断
+XSYS4_DF_MAX	委托释放的最大迭代次数（防死循环）
+
+XSYS4_PARTS_DUMP	活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc）
+XSYS4_CTRL_DBG	controller 栈、视觉地板（cover_layer）、hide/remove 事件
+XSYS4_ACT_DBG	活动装载与点击派发诊断
+XSYS4_ACT_DEBUG	活动诊断的旧开关
+XSYS4_ACT_CLICKABLE_ALL	把所有**活动文件里声明**的部件标为可点（运行时建的 900000xxx 不受影响）
+XSYS4_INPUT_DBG	输入命中的候选部件表与点击状态
+XSYS4_CLICK_RETARGET	点击被遮挡后重定向到下层部件
+XSYS4_UPD_DBG	PE_Update 的每帧诊断
+XSYS4_PE_DBG	PartsEngine 调用诊断
+XSYS4_UC_RENDER_DBG	用户组件（TextButton 等）渲染诊断
+XSYS4_TEXT_RENDER_DBG	文字渲染诊断（字体/码表/基线）
+XSYS4_LAYER_TRACE	图层顺序追踪
+XSYS4_NO_LAYER_COVER	关闭「视觉地板」优化（怀疑遮挡算错时用）
+
+XSYS4_AUTO_MAP	无头跑测后门：自动推进到任务地图
+XSYS4_AUTO_MAP_DELAY	后门延迟（毫秒）
+XSYS4_AUTO_PARTY	无头跑测后门：自动推进到部队编成
+XSYS4_AUTO_PARTY_DELAY	后门延迟（毫秒）
+XSYS4_KEYCODE_PROBE	打印收到的原始键码
+XSYS4_NO_PUMP	事件泵空转诊断
+
+XSYS4_DBG_EIP	打印 SetEnableInputProcess 的每次调用与参数（实测 242 次里 238 次 enable=0）
