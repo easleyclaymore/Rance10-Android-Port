@@ -1,8 +1,13 @@
 #!/bin/bash
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+# [D169] 同理，`aarch64-linux-gnu` 是本机的 multiarch 名，别硬编码。
+MULTIARCH="$(uname -m)-linux-gnu"
+export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/lib/${MULTIARCH}/pkgconfig:/usr/share/pkgconfig"
 
-cd /home/alin/Rance10_Port/xsystem4 || exit 1
+# [D169] 原来这里写死 `/home/alin/Rance10_Port/xsystem4` —— 那是另一台
+# 机器（aarch64）的绝对路径，换到任何别的机器上直接 cd 失败。
+# 按脚本自身位置定位：tools/ 的上一级就是 xsystem4/。
+cd "$(cd "$(dirname "$0")/.." && pwd)" || exit 1
 rm -rf build
 
 echo "=========== meson setup ==========="
