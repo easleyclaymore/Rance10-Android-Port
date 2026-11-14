@@ -45,6 +45,16 @@ bool mouse_consume_press_pulse(void)
 	mouse_press_pulse = false;
 	return p;
 }
+
+/* [D191] 右键释放脉冲，语义同上面的左键脉冲。 */
+static bool mouse_rclick_pulse = false;
+
+bool mouse_consume_rclick_pulse(void)
+{
+	bool p = mouse_rclick_pulse;
+	mouse_rclick_pulse = false;
+	return p;
+}
 static enum sact_keycode sdl_keytable[] = {
 	[SDL_SCANCODE_0] = VK_0,
 	[SDL_SCANCODE_1] = VK_1,
@@ -288,6 +298,10 @@ static void mouse_event(SDL_MouseButtonEvent *e)
 	enum sact_keycode code = sdl_to_sact_button(e->button);
 	if (code == VK_LBUTTON && e->state == SDL_PRESSED)
 		mouse_press_pulse = true;
+	/* [D191] 右键释放脉冲。xdotool 的 rclick 在同一帧内完成 press+release，
+	 * 只读 key_state 会漏掉，必须留一个脉冲给帧泵消费。 */
+	if (code == VK_RBUTTON && e->state == SDL_RELEASED)
+		mouse_rclick_pulse = true;
 	if (code)
 		key_state[code] = e->state == SDL_PRESSED;
 #ifdef DEBUGGER_ENABLED

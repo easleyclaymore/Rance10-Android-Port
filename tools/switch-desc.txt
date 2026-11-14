@@ -83,11 +83,26 @@ XSYS4_AUTO_MAP_DELAY	后门延迟（毫秒）
 XSYS4_AUTO_PARTY	无头跑测后门：自动推进到部队编成
 XSYS4_AUTO_RUNPARTY	[后门] 地图起来后直接调 Scenes::RunParty(1)，绕开地图 UI 直进编队界面；值=延迟毫秒
 XSYS4_AUTO_PARTY_DELAY	后门延迟（毫秒）
+XSYS4_AUTO_CARD_CLICK	[后门] 编队卡片视图初始化完成后直调 SceneParty@OnClickCard(idx)；值=卡片索引
+XSYS4_AUTO_CARD_CLICK_DELAY	[后门] 最后一次 InitCardView 之后再等多久点卡（毫秒，默认 1500）
+XSYS4_AUTO_CARD_ORG	[后门] 点卡前先调 PartyCardGroup@ChangeOrganizationId(id) 切组织；0=不切
+XSYS4_AUTO_CARD_REPEAT	[后门] 连点同一张卡几次（默认 1）；第一击移除、第二击验证 AddCardToFormations
+XSYS4_AUTO_PARTY_CLOSE	[后门] 卡片视图就绪后直调 SceneParty@Close(24301)，验证编队出口；=1 开启
 XSYS4_KEYCODE_PROBE	打印收到的原始键码
 XSYS4_NO_PUMP	事件泵空转诊断
 
+XSYS4_CONSTRUCT_DBG	打印部件合成操作：PartsFunc(case 162)、776 批量入口、Build 的 parts/cmd/CG 名与 op 数
+XSYS4_CONSTRUCT_776	=0 把 AddPartsConstructionProcess(776) 退回空桩，用于卡片合成 A/B
+XSYS4_NO_AUTO_MOTION	=1 关闭「首次加 motion 自动开表」（D186），用于 motion 自动启动的 A/B
+XSYS4_ALPHA_DBG	打印 SetComponentAlpha 与 AddMotionAlpha 的 parts/alpha 序列（查部件为何全透明）
+XSYS4_NO_CP_ALPHA_FIX	=1 关闭「合成类部件 alpha=0 提升为 255」（卡片立绘 A/B 回退开关）
+# 注意：XSYS4_CP_DBG 是 D116 的结构体深拷贝探针（vm.c），不复用于合成
 XSYS4_DBG_EIP	打印 SetEnableInputProcess 的每次调用与参数（实测 242 次里 238 次 enable=0）
 XSYS4_HLL_REFDBG	[诊断] 引用型 HLL 返回：打印反解 (page_slot,index) 是否成功；默认只打失败项
 XSYS4_HLL_REFDBG_FILTER	[诊断] 配合 REFDBG，额外打印函数名含该子串的调用（如 At）
 XSYS4_G14_WATCH	[诊断] 只在 global[14] 的值变化时打印 ip/旧值/新值/栈/调用栈（抓单例被覆写）
 XSYS4_ARR_MULTIDIM	Array.Alloc 构造多维内层数组；默认开启，=0 回退旧行为做 A/B
+XSYS4_FLAT_DBG	打印 flat 的加载名/hdr 尺寸/库数，以及渲染时的 flat 指针与部件几何（空 flat 会让部件退化成 0x0）
+XSYS4_AUTO_MAP_ROUTE	[后门] 地图稳定后直调 SceneQuestMap@StartMoveRoute(23606)，毫秒=延迟
+XSYS4_ACT_PART_DBG	打印活动部件的建造解析（名字/类型/尺寸/表示領域/flat 名）与 300 号段之后的 SetPos/SetZ
+XSYS4_EX_DUMP	按部件名 dump 整棵 EX 子树（查「尺寸」「表示領域」写在哪个键上）；值=部件名

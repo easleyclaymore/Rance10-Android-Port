@@ -942,8 +942,42 @@ static int struct_no_from_function(int fno);
  * 这与 `XSYS4_AUTO_MAP` 同性质：只为把跑测从"点得中"变成"确定性"，
  * 不改变任何游戏语义，默认关闭。 */
 static bool auto_party_want, auto_party_init;
+/* [D192] 只调 StartMoveRoute 时也想拿 SceneQuestMap 的 this。 */
+static bool auto_route_want;
 static int auto_party_page = -1;
 static uint32_t auto_party_delay;
+
+/* [D178] XSYS4_AUTO_CARD_CLICK=<idx>：编队界面稳定后直调
+ * `SceneParty@OnClickCard(idx)`（fno 24300，1 个 int 参数）。
+ *
+ * 为什么需要后门：D177 之后编队界面能进能画，但 Xvfb 上 SDL 窗口在运行中
+ * 从 X 树消失（root 0 children、focus 落回 root），xdotool 点击根本进不了
+ * 输入层（`[inp] clicking=1` 一次都没有）。这是**测试脚手架**问题，不是
+ * 加卡逻辑问题；按 AUTO_MAP/AUTO_RUNPARTY 的惯例把它解耦。
+ *
+ * 与 AUTO_PARTY 同理：方法必须带场景实例的 `this`，所以在 method_call 里
+ * 记录 SceneParty 区段（24281..24317）调用时的 this 页号。默认关闭。
+ *
+ * [D179] 触发条件改成**事件**而不是墙钟。原来固定 12000ms，实测它把
+ * `vm_call` 重入插进了 `Activity@Load` 的缝隙：那一刻
+ * `Game/Party/OrganizationCardView` 还没装载、`PartyCardGroup@Init` /
+ * `InitCardView`(24259) / `CreateLoadingQueue`(24247) 全都排在点击之后，
+ * `m_cards` 是 `array nr=0` → `GetCardId(0)` 返回空串 →
+ * `isOrganizableCard("")` 为假 → `OnClickCard` 在 0x397B6E 提前 RETURN。
+ * 现在等最后一次 `InitCardView` 跑完再延时 acc_delay（默认 1500ms，
+ * 可用 `XSYS4_AUTO_CARD_CLICK_DELAY` 调），每次调用都刷新时间戳。
+ *
+ * [D180] 支持连点：开局有卡的组织都已编入编队，单次点击只会走
+ * `RemoveCardFromFormations`(24315)。移除之后该组织的
+ * `Party@FindIndexFromOrganizationId` 应变为 -1，第二次点同位置的卡
+ * 才会走 `AddCardToFormations`(24317) —— 用游戏自己的逻辑造出
+ * 「未编入且可编组卡」，无需另找开局/存档。
+ * `XSYS4_AUTO_CARD_REPEAT=<n>`（默认 1）控制连点次数。 */
+static bool acc_want, acc_init, acc_done, acc_cards_ready, acc_switched, acc_in_call;
+static bool acc_close;
+static int acc_page = -1, acc_index, acc_org, acc_group_page = -1;
+static int acc_repeat = 1, acc_count;
+static uint32_t acc_delay, acc_ready_at;
 
 static void method_call(int nargs, int return_address)
 {
@@ -1071,8 +1105,12 @@ static void method_call(int nargs, int return_address)
 		auto_party_want = getenv("XSYS4_AUTO_PARTY") != NULL;
 		const char *d = getenv("XSYS4_AUTO_PARTY_DELAY");
 		auto_party_delay = d && *d ? (uint32_t)atoi(d) : 6000;
+		/* [D192] 只开 AUTO_MAP_ROUTE 时也要记 this，但不能因此触发
+		 * OpenParty —— 两者共用同一个实例页号，触发条件必须分开。 */
+		if (getenv("XSYS4_AUTO_MAP_ROUTE"))
+			auto_route_want = true;
 	}
-	if (auto_party_want && fno >= 23586 && fno <= 23620 &&
+	if ((auto_party_want || auto_route_want) && fno >= 23586 && fno <= 23620 &&
 	    nargs + 1 <= stack_ptr) {
 		int self = stack_peek(nargs + 1).i;
 		if (self > 0 && (size_t)self < heap_size && heap[self].page &&
@@ -1084,6 +1122,47 @@ static void method_call(int nargs, int return_address)
 				       self, heap[self].page->index, fno);
 			}
 		}
+	}
+	/* [D178] 记录 SceneParty 实例：24281..24317 整个区段都属于它，
+	 * 编队界面一装载就会有方法跑，任意一个都能拿到同一个页号。 */
+	if (!acc_init) {
+		acc_init = true;
+		const char *c = getenv("XSYS4_AUTO_PARTY_CLOSE");
+		acc_close = c && *c && *c != '0';
+		const char *e = getenv("XSYS4_AUTO_CARD_CLICK");
+		acc_want = e != NULL || acc_close;
+		acc_index = (e && *e) ? atoi(e) : 0;
+		const char *d = getenv("XSYS4_AUTO_CARD_CLICK_DELAY");
+		acc_delay = d && *d ? (uint32_t)atoi(d) : 1500;
+		const char *o = getenv("XSYS4_AUTO_CARD_ORG");
+		acc_org = o && *o ? atoi(o) : 0;
+		const char *r = getenv("XSYS4_AUTO_CARD_REPEAT");
+		acc_repeat = r && *r ? atoi(r) : 1;
+		if (acc_repeat < 1)
+			acc_repeat = 1;
+	}
+	/* [D179] 卡片视图初始化完成才是可点的时刻。InitCardView(24259) 会被
+	 * 多个 PartyCardGroup 各调一次，每次都刷新时间戳 ⇒ 条件自然变成
+	 * "最后一次 InitCardView 之后 acc_delay 毫秒"，不依赖固定墙钟。
+	 * 同时记下 InitCardView 的 this（PartyCardGroup），供切组织用。
+	 * [D180] 这里不因 acc_done 停：连点时移除卡片会再跑一次 InitCardView，
+	 * 必须让它刷新时间戳，否则第二次点击会踩在旧卡片列表上。 */
+	if (acc_want && fno == 24259) {
+		acc_cards_ready = true;
+		acc_ready_at = SDL_GetTicks() ? SDL_GetTicks() : 1;
+		if (nargs + 1 <= stack_ptr) {
+			int self = stack_peek(nargs + 1).i;
+			if (self > 0 && (size_t)self < heap_size && heap[self].page &&
+			    heap[self].page->type == STRUCT_PAGE)
+				acc_group_page = self;
+		}
+	}
+	if (acc_want && fno >= 24281 && fno <= 24317 &&
+	    nargs + 1 <= stack_ptr) {
+		int self = stack_peek(nargs + 1).i;
+		if (self > 0 && (size_t)self < heap_size && heap[self].page &&
+		    heap[self].page->type == STRUCT_PAGE)
+			acc_page = self;
 	}
 	/* [L2] XSYS4_MC_SLOT_DBG=1: why does `this` end up as heap slot 1?
 	 * CALLMETHOD's immediate (nargs) is a LOGICAL argument count, while
@@ -4685,6 +4764,35 @@ void vm_frame_pump(void)
 		}
 	}
 
+	/* [D192] XSYS4_AUTO_MAP_ROUTE=<ms>：地图稳定后直调
+	 * `SceneQuestMap@StartMoveRoute`(23606)。目的是回答一个二选一的问题：
+	 * 「回合推进逻辑本身通不通」。
+	 * 任务地图上点对象会走 `RunCurrentObjectEvent`(23609) →
+	 * `InnerRunEvent`(23610) → `CreateSelection`(23603)，选择界面也建起来了
+	 * （`this.m3` 是 `array nr=1`），但 `QuestMapSelectionButton` 的 FLAT
+	 * 部件是空 flat（`hdr=0x0 / cg=0/0`），既画不出也点不到。先用后门把
+	 * 流程往前推，才能分清「AIN 逻辑」和「flat 渲染」两头是谁坏了。 */
+	{
+		static bool route_done;
+		static uint32_t route_seen_at, route_delay = UINT32_MAX;
+		if (route_delay == UINT32_MAX) {
+			const char *e = getenv("XSYS4_AUTO_MAP_ROUTE");
+			route_delay = (e && *e) ? (uint32_t)atoi(e) : 0;
+		}
+		if (route_delay && !route_done && auto_party_page > 0) {
+			if (!route_seen_at)
+				route_seen_at = now ? now : 1;
+			if (now - route_seen_at >= route_delay) {
+				route_done = true;
+				NOTICE("[auto] calling SceneQuestMap@StartMoveRoute (fno 23606) "
+				       "on heap slot %d after %ums",
+				       auto_party_page, now - route_seen_at);
+				vm_call(23606, auto_party_page);
+				NOTICE("[auto] returned from StartMoveRoute");
+			}
+		}
+	}
+
 	/* [AUTO] XSYS4_AUTO_RUNPARTY=<ms>：直接调 `Scenes::RunParty(1)`（fno 26394）。
 	 *
 	 * 与 XSYS4_AUTO_PARTY 的分工：那个走地图的 `SceneQuestMap@OpenParty`，
@@ -4712,6 +4820,75 @@ void vm_frame_pump(void)
 				       now - rp_at);
 				bool ok = vm_call_hll_closure(26394, &arg, 1, &ret);
 				NOTICE("[auto] RunParty returned ok=%d ret=%d", ok, ret.i);
+			}
+		}
+	}
+
+	/* [D178] XSYS4_AUTO_CARD_CLICK=<idx>：编队界面稳定后直调
+	 * `SceneParty@OnClickCard(idx)`。与 RunParty 后门配套：那个负责进界面，
+	 * 这个负责验证「点一张卡 → AddCardToFormations」的逻辑链路。
+	 * 只回答一个窄问题：**加卡逻辑本身通不通**，不管 xdotool 点不点得中。 */
+	/* [D180] acc_in_call 是防重入闸门：vm_call(24300) 内部会再进帧泵
+	 * （WaitForClick 一族 HLL 会 pump），如果在 vm_call 期间没有屏障，
+	 * 内层帧泵看到条件仍满足就再点一次，349 层嵌套直接栈溢出 core。
+	 * 单次点击时原来的 `acc_done = true` 在 vm_call 之前，天然挡住了它；
+	 * 改成连点后必须显式加这道闸。 */
+	if (acc_want && !acc_done && !acc_in_call && acc_page > 0 &&
+	    acc_cards_ready && acc_ready_at &&
+	    now - acc_ready_at >= acc_delay) {
+		/* [D190] `XSYS4_AUTO_PARTY_CLOSE=1`：直接调 `SceneParty@Close`
+		 * (24301)。主线要验证的是**编队界面的出口**——Close 是「決定」
+		 * 最终走的方法（内部先 `ShowLeaderIsEmptyDialog`(24302)，为真
+		 * 则不关）。判据：Close 返回后 `SceneParty` 卸载、任务地图活动
+		 * 恢复装载。 */
+		if (acc_close) {
+			acc_done = true;
+			acc_in_call = true;
+			NOTICE("[auto] calling SceneParty@Close (fno 24301) on heap slot %d, "
+			       "%ums after last InitCardView", acc_page, now - acc_ready_at);
+			vm_call(24301, acc_page);
+			NOTICE("[auto] returned from Close");
+			acc_in_call = false;
+		} else
+		/* [D179] 可选第一步：切到未编入编队的组织。OnClickCard 的
+		 * fIndex = Party@FindIndexFromOrganizationId；当前组织已在编队
+		 * 第 0 格（fIndex=0）→ 走 Remove/Swap 分支，只有 fIndex == -1
+		 * 才会走 FindEmptyIndex + AddCardToFormations(24317)。
+		 * ChangeOrganizationId(24245) 会重建 m_cards 并再跑一次
+		 * InitCardView，后者刷新 acc_ready_at ⇒ 下一轮帧泵自然等到
+		 * 新卡片列表稳定后再点。默认 acc_org=0，行为与原来一致。 */
+		if (acc_org > 0 && !acc_switched && acc_group_page > 0) {
+			acc_switched = true;
+			NOTICE("[auto] switching PartyCardGroup to organization %d "
+			       "(fno 24245, heap slot %d)", acc_org, acc_group_page);
+			stack_push((union vm_value){ .i = acc_org });
+			vm_call(24245, acc_group_page);
+			acc_ready_at = SDL_GetTicks() ? SDL_GetTicks() : 1;
+		} else {
+			bool last = (acc_count + 1 >= acc_repeat);
+			acc_in_call = true;
+			acc_count++;
+			/* 最后一击在 vm_call 之前封门；中间击靠 acc_in_call 挡。
+			 * 两道都要有：只靠 acc_done 时，非最后一击仍是 false，
+			 * vm_call 内的帧泵会无限递归。 */
+			if (last)
+				acc_done = true;
+			NOTICE("[auto] click %d/%d: calling SceneParty@OnClickCard(%d) "
+			       "(fno 24300) on heap slot %d, %ums after last InitCardView",
+			       acc_count, acc_repeat, acc_index, acc_page,
+			       now - acc_ready_at);
+			stack_push((union vm_value){ .i = acc_index });
+			vm_call(24300, acc_page);
+			NOTICE("[auto] click %d/%d returned from OnClickCard",
+			       acc_count, acc_repeat);
+			acc_in_call = false;
+			/* 还有下一击：重置计时。vm_call 期间若又跑了 InitCardView，
+			 * 它会把 acc_ready_at 刷成更晚的值，这里只在没刷新时补一次，
+			 * 保证两击之间至少隔 acc_delay。 */
+			if (!last) {
+				uint32_t t = SDL_GetTicks() ? SDL_GetTicks() : 1;
+				if (t > acc_ready_at)
+					acc_ready_at = t;
 			}
 		}
 	}

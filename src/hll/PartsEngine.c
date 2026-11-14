@@ -22,6 +22,7 @@
 #include "system4/ain.h"
 #include "system4/string.h"
 
+#include "xsystem4.h"   /* [D183] display_sjis0：合成探针要打 CG 名 */
 #include "vm.h"
 #include "vm/heap.h"
 #include "vm/page.h"
@@ -153,6 +154,15 @@ static void PartsEngine_add_construction_process(union vm_value *ints,
 	struct string *text    = heap_get_string(strings[0].i);
 	struct string *cg_name = heap_get_string(strings[1].i);
 
+	/* [D183] `XSYS4_CONSTRUCT_DBG=1`：合成操作的唯一观测点。卡片正面到底是
+	 * 走这里（PartsFunc case 162）还是走空桩 776，光看导出表看不出来。 */
+	if (getenv("XSYS4_CONSTRUCT_DBG"))
+		NOTICE("[cproc] flat parts=%d state=%d cmd=%d d=%d,%d,%d,%d s0=%d s1=%d cg='%s' text='%.20s'",
+		       parts_no, state, command, dx, dy, dw, dh,
+		       strings[0].i, strings[1].i,
+		       cg_name ? display_sjis0(cg_name->text) : "(null)",
+		       text ? display_sjis0(text->text) : "");
+
 	switch (command) {
 	case 0:  // CASConstructionProcess::SetCreate
 		PE_AddCreateToPartsConstructionProcess(parts_no, dw, dh, state);
@@ -232,6 +242,14 @@ static void PartsEngine_add_construction_process(union vm_value *ints,
 		break;
 	case 18:  // CASConstructionProcess::SetDrawLine
 		WARNING("AddConstructProcess: DrawLine unimplemented");
+		break;
+	/* [D184] cmd=29 是 Rance10 的「按 CG 原尺寸绘制」：`d=dx,dy,0,0` 且带
+	 * CG 名（`カード／ランス／基本` 等），尺寸在 CG 本身。实测 171 次，全部
+	 * 落在卡片部件上——卡片立绘不出的直接原因就是它被当 unknown 丢掉。
+	 * 传 dw/dh=0，由 `build_draw_cut_cg` 回退到 texture 尺寸。 */
+	case 29:  // SetDrawCG (natural size at dx,dy)
+		PE_AddDrawCutCGToPartsConstructionProcess(parts_no, cg_name,
+				dx, dy, 0, 0, 0, 0, 0, 0, interp_type, state);
 		break;
 	default:
 		WARNING("AddConstructProcess: unknown command %d", command);
@@ -441,7 +459,60 @@ static void PE_SetWantSaveBackScene(int parts_no, int want)
 static void PE_AddPartsConstructionProcess(int parts_no, struct page **ints,
         struct page **floats, struct page **strings, int state)
 {
-	(void)parts_no; (void)ints; (void)floats; (void)strings; (void)state;
+	/* [D183] 探针：776 是库表里独立于 PartsFunc 的批量入口，当前实现是
+	 * 空桩。先量它是否真的被卡片合成调用（数组长度决定能否直接映射到
+	 * flat 版的 32 槽布局）。 */
+	if (getenv("XSYS4_CONSTRUCT_DBG")) {
+		int ni = (ints && *ints) ? (*ints)->nr_vars : -1;
+		int nf = (floats && *floats) ? (*floats)->nr_vars : -1;
+		int ns = (strings && *strings) ? (*strings)->nr_vars : -1;
+		/* 关键判据：flat 版读 ints[0]=parts_no / ints[1]=state /
+		 * ints[2]=command。若这里 ints[0..1] 与形参一致，776 的数组
+		 * 就是同一套 32 槽布局，可以直接转交 flat 版。 */
+#define IV(k) ((ni > (k)) ? (*ints)->values[k].i : -1)
+		const char *s0 = "", *s1 = "";
+		if (ns > 0) {
+			struct string *t = heap_get_string((*strings)->values[0].i);
+			s0 = (t && t->text) ? display_sjis0(t->text) : "";
+		}
+		if (ns > 1) {
+			struct string *t = heap_get_string((*strings)->values[1].i);
+			s1 = (t && t->text) ? display_sjis0(t->text) : "";
+		}
+		NOTICE("[cproc] f776 parts=%d state=%d nr=%d/%d/%d i0..3=%d,%d,%d,%d s0='%s' s1='%s'",
+		       parts_no, state, ni, nf, ns, IV(0), IV(1), IV(2), IV(3), s0, s1);
+#undef IV
+	}
+	/* [D183] 卡片正面合成就走这里：实测 468 次调用，而 `PartsFunc` 的
+	 * case 162（flat 版）**0 次**。数组是 32/2/2，但**不含** parts_no/state
+	 * —— `ArrayInt[0]` 是 command（实测 0/6/18），flat 版却读
+	 * `[0]=parts_no, [1]=state, [2]=command`。所以把形参前插两槽再转交，
+	 * 其余槽位整体偏移 2。
+	 * `XSYS4_CONSTRUCT_776=0` 回退空桩做 A/B。 */
+	static int cp776_enable = -1;
+	if (cp776_enable < 0) {
+		const char *e = getenv("XSYS4_CONSTRUCT_776");
+		cp776_enable = !(e && *e == '0');
+	}
+	if (!cp776_enable || !ints || !*ints || !floats || !*floats ||
+	    !strings || !*strings)
+		return;
+	struct page *ip = *ints, *fp = *floats, *sp = *strings;
+	if (ip->nr_vars < 1 || fp->nr_vars < 2 || sp->nr_vars < 2)
+		return;
+	if (ip->values[0].i < 0 || ip->values[0].i > 31) {
+		WARNING("[cproc] f776 unexpected command %d (parts %d)",
+		        ip->values[0].i, parts_no);
+		return;
+	}
+	union vm_value tmp[34];
+	memset(tmp, 0, sizeof(tmp));
+	tmp[0].i = parts_no;
+	tmp[1].i = state;
+	int n = ip->nr_vars < 32 ? ip->nr_vars : 32;
+	for (int k = 0; k < n && k + 2 < 34; k++)
+		tmp[k + 2] = ip->values[k];
+	PartsEngine_add_construction_process(tmp, fp->values, sp->values);
 }
 
 /* AIN f[12]: void UpdateComponent(int, int, bool, float, float).
@@ -2439,7 +2510,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Parts_SetNumeralLength, PE_SetNumeralLength),
 	    HLL_EXPORT(SetNumeralSurfaceArea, PE_SetNumeralSurfaceArea),
 	    HLL_EXPORT(SetPartsRectangleDetectionSize, PE_SetPartsRectangleDetectionSize),
-	    HLL_TODO_EXPORT(SetPartsRectangleDetectionSurfaceArea, PartsEngine_SetPartsRectangleDetectionSurfaceArea),
+	    HLL_EXPORT(SetPartsRectangleDetectionSurfaceArea, PE_SetPartsRectangleDetectionSurfaceArea),
 	    HLL_EXPORT(SetPartsCGDetectionSize, PE_SetPartsCGDetectionSize),
 	    HLL_TODO_EXPORT(SetPartsCGDetectionSurfaceArea, PartsEngine_SetPartsCGDetectionSurfaceArea),
 	    HLL_EXPORT(SetPartsFlash, PE_SetPartsFlash),
@@ -2875,7 +2946,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Parts_SetNumeralLength, PE_SetNumeralLength),
 	    HLL_EXPORT(Parts_SetNumeralSurfaceArea, PE_SetNumeralSurfaceArea),
 	    HLL_EXPORT(Parts_SetPartsRectangleDetectionSize, PE_SetPartsRectangleDetectionSize),
-	    HLL_TODO_EXPORT(Parts_SetPartsRectangleDetectionSurfaceArea, PartsEngine_Parts_SetPartsRectangleDetectionSurfaceArea),
+	    HLL_EXPORT(Parts_SetPartsRectangleDetectionSurfaceArea, PE_SetPartsRectangleDetectionSurfaceArea),
 	    HLL_EXPORT(Parts_SetPartsCGDetectionSize, PE_SetPartsCGDetectionSize),
 	    HLL_TODO_EXPORT(Parts_SetPartsCGDetectionSurfaceArea, PartsEngine_Parts_SetPartsCGDetectionSurfaceArea),
 	    HLL_EXPORT(Parts_SetPartsFlat, PE_SetPartsFlat),

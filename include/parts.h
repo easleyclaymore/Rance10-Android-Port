@@ -338,6 +338,10 @@ int PE_GetPartsFlatCurrentFrameNumber(int parts_no, int state);
 bool PE_BackPartsFlatBeginFrame(int parts_no, int state);
 bool PE_StepPartsFlatFinalFrame(int parts_no, int state);
 bool PE_SetPartsFlatSurfaceArea(int parts_no, int x, int y, int w, int h, int state);
+/* [D192] 通用「表示領域」设置（任意部件类型，不只 flat）。
+ * AIN 用它给選択肢按钮之类的部件划定绘制/点击矩形；先前是 HLL_TODO_EXPORT，
+ * 于是按钮的 hitbox 恒为空，回合流程推不动。 */
+bool PE_SetPartsRectangleDetectionSurfaceArea(int parts_no, int x, int y, int w, int h, int state);
 struct string *PE_GetPartsFlatName(int parts_no, int state);
 bool PE_SetPartsFlatAndStop(int parts_no, struct string *filename, int state);
 bool PE_StopPartsFlat(int parts_no, int state);

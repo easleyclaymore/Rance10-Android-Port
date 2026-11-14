@@ -516,6 +516,16 @@ static void parts_common_recalculate_hitbox(struct parts *parts, struct parts_co
 {
 
 	if (common->surface_area.w || common->surface_area.h) {
+		/* [D192] 尺寸未知时，AIN 的「表示領域」是这个部件唯一的尺寸来源。
+		 * 任务地图選択肢按钮的 flat 是空 flat（`hdr=0x0`、`nr_libraries=0`），
+		 * `parts_flat_load` 于是不设 `common.w/h`；这里再拿 `{0,0,0,0}` 与
+		 * `surface_area` 求交就得到空 hitbox —— 按钮既画不出来也点不到，
+		 * 回合流程永远推不动。用 surface_area 的下边界补齐尺寸，
+		 * 求交结果正好还是 surface_area 本身。 */
+		if (common->w <= 0 && common->h <= 0) {
+			common->w = common->surface_area.x + common->surface_area.w;
+			common->h = common->surface_area.y + common->surface_area.h;
+		}
 		common->origin_offset = calculate_offset(parts->origin_mode,
 				common->surface_area.w, common->surface_area.h);
 		Rectangle r = { 0, 0, common->w, common->h };
@@ -1414,6 +1424,12 @@ static void parts_update_cover_layer(void)
 
 	int vw = gfx_view_width(), vh = gfx_view_height();
 	int top = 0;
+	/* [D190] `opaque` 是**本帧的统计量**，不是持久状态。原来只在
+	 * `RemoveController` 里清，于是「编队层曾经有不透明全屏部件」这件事
+	 * 一旦发生就永远成立：Close 退回任务地图后 cover_layer 仍卡在 2，
+	 * ctrl 0/1 被 `parts_is_visible()` 全部滤掉 → 整屏黑。
+	 * 判据：`XSYS4_CTRL_DBG=1` 下 cover_layer 应随编队层隐藏回落到 0/1。 */
+	memset(ctrl_stack.opaque, 0, sizeof(ctrl_stack.opaque));
 	struct parts *p;
 	TAILQ_FOREACH(p, &parts_list, parts_list_entry) {
 		if (!p->global.show)
@@ -2085,11 +2101,21 @@ void PE_ReleaseAllWithoutSystem(struct page **erase_number_list)
 
 void PE_SetPos(int parts_no, int x, int y)
 {
+	/* [D193] 選択肢按钮的 `SetPos(1438,362)` 调用了但部件仍在 (0,0)，
+	 * 需要看清它设的是哪个号 —— 号对不上就说明 `Activity@GetParts`
+	 * 返回的不是视觉主体那个部件。 */
+	if (getenv("XSYS4_ACT_PART_DBG") && parts_no >= 900000300)
+		NOTICE("[pos] SetPos no=%d (%d,%d)", parts_no, x, y);
 	parts_set_pos(parts_get(parts_no), (Point){ x, y });
 }
 
 void PE_SetZ(int parts_no, int z)
 {
+	/* [D193] 選択肢按钮画在 (1438,362)、能点、流程能推进，但 global z 只有
+	 * 103，被 `QuestMapFrame`(237) 盖住 ⇒ 看不见。要分清是 AIN 就给这么低，
+	 * 还是我们的 z 合成算错。 */
+	if (getenv("XSYS4_ACT_PART_DBG") && parts_no >= 900000300)
+		NOTICE("[z] SetZ no=%d z=%d", parts_no, z);
 	parts_set_z(parts_get(parts_no), z);
 }
 
@@ -2125,7 +2151,36 @@ void PE_SetShow(int parts_no, bool show)
 
 void PE_SetAlpha(int parts_no, int alpha)
 {
-	parts_set_alpha(parts_get(parts_no), alpha);
+	/* [D187] 探针：卡片合成完是 a=255，dump 时却 a=0 —— 要回答
+	 * 「谁把它设成 0、之后靠什么恢复」。 */
+	if (getenv("XSYS4_ALPHA_DBG"))
+		NOTICE("[alpha] set parts=%d alpha=%d", parts_no, alpha);
+
+	struct parts *p = parts_get(parts_no);
+	/* [D188] 合成类部件（construction process）拿到 alpha=0 时**不能照单全收**。
+	 *
+	 * 实测（`logs/live_cp23.log`）：卡片部件只在初始化时被设 0 三次，
+	 * 之后既不设 255、也不加任何 motion——而库表里 PartsEngine 根本没有
+	 * `AddMotion*`（只有 SetMotionData / GetMotionBeginFrame / GetMotionEndFrame），
+	 * 所以 AIN 无法靠淡入把它恢复。结果就是：合成结果完全正确
+	 * （`/tmp/cproc_0.png` 是一张完整卡片），部件 `a=0` 永远不可见。
+	 *
+	 * 「移除卡片」走的是别的路径（`RemoveCardFromFormations`，不再设 0），
+	 * 因此把 0 提升为 255 不影响隐藏逻辑。`XSYS4_NO_CP_ALPHA_FIX=1` 回退。 */
+	static int cp_alpha_fix = -1;
+	if (cp_alpha_fix < 0) {
+		const char *e = getenv("XSYS4_NO_CP_ALPHA_FIX");
+		cp_alpha_fix = (e && *e == '1') ? 0 : 1;
+	}
+	if (cp_alpha_fix && alpha <= 0 &&
+	    p->states[p->state].type == PARTS_CONSTRUCTION_PROCESS &&
+	    p->states[p->state].common.texture.handle) {
+		if (getenv("XSYS4_ALPHA_DBG"))
+			NOTICE("[alpha] keep 255 on construction-process parts=%d",
+			       parts_no);
+		alpha = 255;
+	}
+	parts_set_alpha(p, alpha);
 }
 
 void PE_SetPartsDrawFilter(int parts_no, int draw_filter)
@@ -2270,9 +2325,26 @@ int PE_GetPartsOriginPosMode(int parts_no)
 
 void PE_SetParentPartsNumber(int parts_no, int parent_parts_no)
 {
+	/* [D194] 選択肢按钮的根 `par=-1`、z=100，而兄弟面板 z=22000。
+	 * 若按钮本该挂在面板下，global z 应是 22100 —— 先证明 AIN 有没有调挂父。 */
+	if (getenv("XSYS4_ACT_PART_DBG") &&
+	    (parts_no >= 900000300 || parent_parts_no >= 900000300))
+		NOTICE("[parent] SetParent no=%d parent=%d", parts_no, parent_parts_no);
 	struct parts *parts = parts_get(parts_no);
 	parts->pending_parent = parent_parts_no;
 	parts_component_dirty(parts);
+	/* [D194] 运行时挂父要立刻重算整树。
+	 *
+	 * `activity_load` 末尾只调一次 `PE_RefreshGlobalTree()`；而選択肢按钮是
+	 * AIN 在运行时 `Activity@Create` 出来的，它的根 `SetParent(325 → 323)`
+	 * 发生在那次刷新之后。`PE_UpdateComponent` 虽然会把父挂上，但只重算
+	 * **该部件自己**，不动子树 —— 于是按钮的 `global.z` 永远停在建树瞬间的
+	 * 100，被面板的 22000 盖住，画面上一片空白（点得到、流程也能推进）。
+	 *
+	 * 只在「从无父变有父」时触发，避免建造活动时几十次 SetParent 各刷一遍。
+	 * `PE_RefreshGlobalTree()` 只挂父链 + 重算参数，不触发 layout，幂等。 */
+	if (!parts->parent && parent_parts_no >= 0 && parts_try_get(parent_parts_no))
+		PE_RefreshGlobalTree();
 }
 
 int PE_GetParentPartsNumber(int parts_no)
@@ -2704,6 +2776,9 @@ const char *PE_GetUserComponentData(int parts_no, const char *key)
 
 bool PE_SetPartsRectangleDetectionSize(int parts_no, int w, int h, int state)
 {
+	/* [D192] 「按钮没有几何」要分清是 AIN 没传、还是传了没生效。 */
+	if (getenv("XSYS4_FLAT_DBG"))
+		NOTICE("[rect] SetRectangleDetectionSize no=%d %dx%d state=%d", parts_no, w, h, state);
 	if (!parts_state_valid(--state))
 		return false;
 	struct parts *parts = parts_try_get(parts_no);
@@ -2883,15 +2958,29 @@ void PE_DebugDumpParts(const char *tag)
 		 *   c >= parts_cover_layer）。前面几个字段都是"部件自己长什么样"，
 		 * 只有这一列说明"绘制时会怎么做" —— 前者全正常而 vis=0 时，
 		 * 问题就在图层，不在部件。 */
-		NOTICE("[parts] %s no=%d ctrl=%d z=%d pos=(%d,%d) %dx%d a=%d ps=%d st=%d tex=%d vis=%d uc=%s",
+		/* [D178] 补 `ck=`(clickable) / `pc=`(pass_cursor)：判断「这个部件能不能点」
+		 * 靠的就是这两个标志，之前只有几何和渲染字段，找卡片坐标得靠猜。
+		 * 另外每段 400 行的硬截断实测把编队界面 73 段全切了（卡片在后面），
+		 * 上限改成可调，默认仍是 400 以免默认日志膨胀。 */
+		NOTICE("[parts] %s no=%d ctrl=%d z=%d pos=(%d,%d) %dx%d a=%d la=%d par=%d ps=%d st=%d tex=%d vis=%d ck=%d pc=%d uc=%s",
 		       tag, p->no, p->controller_no, p->global.z,
 		       p->global.pos.x, p->global.pos.y,
 		       st->common.w, st->common.h,
-		       p->global.alpha, (int)p->state, (int)st->type,
+		       (int)p->global.alpha, (int)p->local.alpha,
+		       p->parent ? p->parent->no : -1,
+		       (int)p->state, (int)st->type,
 		       st->common.texture.handle != 0,
 		       parts_is_visible(p) ? 1 : 0,
+		       p->clickable ? 1 : 0, p->pass_cursor ? 1 : 0,
 		       p->uc_object ? p->uc_object : "-");
-		if (++n > 400) {
+		static int dump_max = -1;
+		if (dump_max < 0) {
+			const char *e = getenv("XSYS4_PARTS_DUMP_MAX");
+			dump_max = (e && *e) ? atoi(e) : 400;
+			if (dump_max <= 0)
+				dump_max = 400;
+		}
+		if (++n > dump_max) {
 			NOTICE("[parts] %s ... truncated", tag);
 			break;
 		}

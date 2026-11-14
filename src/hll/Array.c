@@ -445,10 +445,17 @@ static void Array_Alloc_(struct page **out, int size, int type, int a, int b)
 		 * different pre-existing bug (QuestMapObjectLoader@Load calls a
 		 * method on an element that was never assigned), so this is a
 		 * separate task. XSYS4_ARR_UNSET_FIX=1 evaluates it. */
+		/* [D188] 默认翻正：清 0 会让引用型元素伪装成「已设置」——AIN 对
+		 * 这种槽的写入被静默丢弃，卡片 `ArrayString` 的 CG 名因此永远是
+		 * 空（`Invalid CG name` 113 条），立绘根本进不了合成队列。
+		 * 台账里记的「另一条故障」（QuestMapObjectLoader@Load 对未赋值
+		 * 元素调方法）已在完整地图+编队路径两轮 A/B 中不复现
+		 * （nullcall=0 / acts=107 / err=0，与默认逐项一致）。
+		 * `XSYS4_ARR_UNSET_FIX=0` 回退。 */
 		static int unset_fix = -1;
 		if (unset_fix < 0) {
 			const char *e = getenv("XSYS4_ARR_UNSET_FIX");
-			unset_fix = (e && *e == '1') ? 1 : 0;
+			unset_fix = (e && *e == '0') ? 0 : 1;
 		}
 		if (unset_fix) {
 			enum ain_data_type et = array_type(p->a_type);

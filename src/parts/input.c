@@ -319,6 +319,12 @@ void PE_UpdateInputState(int passed_time)
 				gx += parts->parent->global.pos.x;
 				gy += parts->parent->global.pos.y;
 			}
+			/* [D189] 只打光标覆盖到的部件：40 条限流会被无关部件吃光，
+			 * 而"我点的位置到底有没有可点部件"才是判断按钮点不动的那条。 */
+			bool covers = cur_pos.x >= gx && cur_pos.x < gx + hb.w &&
+				cur_pos.y >= gy && cur_pos.y < gy + hb.h;
+			if (!covers)
+				continue;
 			NOTICE("[inp]   parts=%d pos=(%d,%d) hb=(%d,%d,%d,%d) "
 			       "global=(%d,%d) parent=%d gz=%d click=%d pass=%d show=%d "
 			       "ctrl=%d uc=%s",
@@ -335,6 +341,19 @@ void PE_UpdateInputState(int passed_time)
 		parts = sorted[si];
 		parts_update_mouse(parts, cur_pos, cur_clicking, passed_time,
 				&hover_consumed, &click_consumed);
+	}
+
+	/* [D191] 右键。AIN 的 CPartsMessageManager@CallDelegateMouseClick 用第三个
+	 * 消息变量（KeyCode）挑 delegate 列表：1→this[7]、2→this[8]、
+	 * 4→this[9]。`AFL_Parts_AddWholeMouseRClickEvent` 注册的正是 index 8，
+	 * 所以右键**不需要新的消息类型**，只要把 KeyCode 换成 VK_RBUTTON 发一条
+	 * whole 消息。之前引擎从不发它：SceneStack@RegisterEvent 注册了右键
+	 * lambda，但它永远收不到 → SceneParty@OnRClick → Close(24301) 不跑，
+	 * 编队界面「戻る／決定」出不去，只能靠后门调 Close。 */
+	if (parts_began_click && mouse_consume_rclick_pulse()) {
+		parts_msg_push(NULL, PARTS_MSG_MOUSE_CLICK_AIN,
+				"iii", cur_pos.x, cur_pos.y, VK_RBUTTON);
+		parts_msg_push(NULL, PARTS_MSG_KEY_UP, "i", VK_RBUTTON);
 	}
 
 	// Drag movement processing
