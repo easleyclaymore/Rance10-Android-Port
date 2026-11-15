@@ -94,6 +94,7 @@ Core Layer = `vm.c` / `page.c` / `heap.c` / `ffi.c` / `pal.c` 及对应头文件
 | ③ 知识 | 引擎移植方法论（对外成书） | `docs/GUIDE/` |
 | ③ 知识 | `tools/` 目录分层 | `tools/MAP.md` |
 | ③ 知识 | 工程管理复盘（**面向管理者，AI 会话不读**） | `docs/PROJECT-MANAGEMENT.md` |
+| ③ 知识 | 官方手册索引 / 图片陷阱 / 验收判据 | `docs/MANUAL-INDEX.md` |
 | ③ 附件 | 上游自带英文兼容性表（与本项目无关，不纳管） | `game_compatibility.md`（本仓库根） |
 | ④ 生成 | 诊断开关总表 / 项目数字（禁止手写） | `docs/SWITCHES.md` / `docs/STATS.md` |
 | 历史 | 全文 / 取证链 / 阶段性清单（含 `HLL-GAP.md`） | `../archive/`（只读） |

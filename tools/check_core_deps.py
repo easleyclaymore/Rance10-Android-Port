@@ -42,6 +42,7 @@ SCRIPTS = [
     'tools/env/dep.sh', 'tools/env/inst-deps.sh',
     'tools/lib/common.sh', 'tools/xsys4',
     'tools/wip-snapshot.sh', 'tools/gen-doc-numbers.py', 'tools/gen-switches.py',
+    'tools/gen-manual.py',
 ]
 # /tmp is fine for screenshot/log scratch files in test tooling, but a
 # hardcoded Android absolute path is not: platform detection must go through
