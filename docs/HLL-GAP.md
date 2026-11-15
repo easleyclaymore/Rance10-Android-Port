@@ -1,9 +1,12 @@
 # HLL 缺口清单与战斗路径风险评估
 
-**结论先说**：不需要「提前实现一批战斗专用库」——**不存在战斗专用 HLL 库**。
-战斗逻辑跑在 AIN 内部（941 个 `Battle*` 函数），只调用 4 个通用库
-（`Array` / `String` / `Math` / `Int` / `Delegate`），这些库都已实现。
-全量普查后，战斗路径上真正会撞上的缺口只有 `String.ReplaceRegex`，**已补齐**。
+**结论先说**：不存在战斗专用 HLL 库，但 **2026-11-15 实战修正**：静态普查
+只扫 `Battle*` 函数，漏判了「战斗前自动存档」与「战斗 UI flat 名解析」
+两条跨库调用链。实际共撞上 3 组缺口：`String.ReplaceRegex`(D197)、
+`MainEXFile.Save/Load`(gamesave::detail::存档実行 5590/5591)、
+`AFAFactory` 搜索族 6 个导出(Parts@ResolveFlatName) —— **全部补齐（D209）**，
+实测进战斗零未实现 HLL。教训：静态清单只能证明「Battle* 函数里没有专用库」，
+不能覆盖跨库链；风险评估必须配一次真实跑测。
 
 ## 复现命令
 

@@ -19,7 +19,7 @@
 | ID | 假设 | 可证伪判据 | 验证方式 | 状态 |
 |---|---|---|---|---|
 | `H014` | 消息窗口正文不出是部件 `show/alpha` 或文本纹理路径（`[UC-TEXSHADER]`）问题，与消息链无关 | `SetMessageWindowText` 收到非空文本但 `900000347` 的 `show/alpha` 正常且字形纹理有像素 | `XSYS4_ACT_PART_DBG` + 渲染准入探针 + 截图 | 待验 |
-| `H022` | KeyBase 是 `QuestMapParamAccessor` 的内部状态，由 AIN 的回合/移动逻辑写入；要定位那个写入点（或找游戏里「结束回合 / 前进」按钮）才能把它从 `００１` 变成 `００２` | 反汇编 `QuestMapParamAccessor@0` 及成员 0 的写入点；或找到正常推进回合的 UI 按钮并点它，之后 `EX_String` 出现 `...００２.战斗` | `ain_xref call` 找写成员 0 的函数；真实流程点回合结束按钮 | 待验 |
+| `H023` | 正常游戏路径靠「选中相邻地图节点 / 结束回合」让 AIN 自己把 `QuestMapParamAccessor.this.m0` 从 `００１` 写成 `００２` | 不带 `XSYS4_NODE_DIGIT` 也出现 `...００２.战斗` 查询并命中 `23489` | 反汇编 `SceneQuestMap` 的节点选择 / 移动回调，或用 `XSYS4_INPUT_ALL` 找相邻节点命中区后点它 | 待验 |
 | `H020` | `GetQuestEventList` 的 `S_NOTE` 判空或 `Array.PushBack` 在引擎侧有偏差，导致明明查到了值也没进事件列表 | `EX_String` 对 `.战斗` 返回非空串，但 `28578` 的 `result` 仍 `nr=0` | 给 `EX_String`(5467) 加返回探针，或 `XSYS4_LVAR_DBG=28578:3` 看 `b` 的槽号是否 >0 | 待验 |
 
 ## 已证伪（保留，别回头查）
@@ -50,6 +50,9 @@
 | `H017` | 标题 `Chapter1` 按钮的**真实命中区在左上角**，`(646,740)` 是错的；点 `(100,60)` 能走真实流程进地图 | `SceneQuestMap` 从长期 0 变成 **1 次命中**，且 `23486 → 23487` 开场剧情照常触发 | D207 / `logs/live_topleft.log`、`live_realflow.log` |
 | `H019` | `００１` 节点的 `.战斗` 返回空是**正常数据**，战斗事件挂在别的编号节点 | 离线 dump `game/Rance10EX.ex`：`任务数据 → 荷鲁斯的宇宙飞船 → ００１` 只有 `故事 = "０２／ＳＴＡＲＴ"`（**无 `战斗` 字段**）；`００２` 有 `战斗 = "m11杂鱼／１"`，`００３` = `m11杂鱼／２`，`０１２` = `m11杂鱼／３` | D207 / `exdump_tool game/Rance10EX.ex`；`/tmp/ex_tree.txt:96433` |
 
+| `H022` | KeyBase 是 `QuestMapParamAccessor.this.m0` 的**字符串本身**（`任务数据.荷鲁斯的宇宙飞船.００１`），不是循环算出来的编号；`GetQuestEventList`(28578) 的 `index` 只是同节点内 `.战斗２/.故事２` 的序号后缀 | `XSYS4_DUMP_AT=45c8aa` 同帧读出 `this.m0` 字符串、`index=1` 且 `s/b/m` 全空（循环正确退出）；诊断后门把末位改成 `２` 后 EX 立刻查 `００２.战斗` 并命中 `23489` | D209 / `logs/live_keydump.log:730-760`、`live_node002d.log` |
+| `H024` | 战斗链剩下的缺口是两组**跨库** HLL：`MainEXFile.Save/Load`（战斗前快照存档）与 `AFAFactory` 搜索族 6 个导出（战斗 UI 的 `Parts@ResolveFlatName`）；静态清单只扫 `Battle*` 所以漏判 | 补齐后 `23489 → 26388 → Game/Battle*` 32 个活动装载、VS 画面出图、零 `Unimplemented HLL` / 零崩溃 | D209 / `logs/live_battle3.log`；`docs/HLL-GAP.md` 结论已修正 |
+
 ## 改判链
 
 ```
@@ -63,7 +66,9 @@ H005 证伪 ──> H006/H007/H008 证伪 ──> H016 成立（空事件分支�
                                         ├──> H018 证伪（坐标双基准是快照错觉）
                                         ├──> H019 成立（EX 铁证：战斗在 ００２ 节点）
                                         │      ├──> H021 证伪（点节点不改 KeyBase）
-                                        │      └──> H022 待验（定位 KeyBase 写入点）
+                                        │      ├──> H022 成立（this.m0 就是 KeyBase）
+                                        │      │      └──> H024 成立（补齐跨库 HLL，战斗打通）
+                                        │      └──> H023 待验（正常路径推进节点）
                                         └──> H020 / H014 待验
 H001 证伪 ──> H017 成立 的另一条证据：标题按钮命中区在 (0,40)-(196,80)
 ```
