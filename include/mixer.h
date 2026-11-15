@@ -48,14 +48,14 @@ void mixer_stream_stop(int voice);
 
 struct archive_data;
 struct channel;
-// Takes ownership of dfile.
+// 接管 dfile 的所有权。
 struct channel *channel_open_archive_data(struct archive_data *dfile);
 struct channel *channel_open_file(const char *path);
 void channel_close(struct channel *ch);
 int channel_play(struct channel *ch);
 int channel_stop(struct channel *ch);
 int channel_is_playing(struct channel *ch);
-// The channel must not be playing.
+// 该通道必须没在播放。
 int channel_set_mixer(struct channel *ch, int mixer_no);
 int channel_get_mixer(struct channel *ch);
 int channel_set_volume(struct channel *ch, int volume);

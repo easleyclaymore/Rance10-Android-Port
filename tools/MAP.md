@@ -45,6 +45,7 @@ tools/
 │
 ├── check_core_deps.py   ← 门禁（xsys4 check 调）
 ├── gen-switches.py      ← 生成 docs/SWITCHES.md
+├── comment-cn.py        ← 注释中文化：list 出待翻行 / apply 按行号替换 / stats 统计进度
 └── switch-desc.txt      ← 开关语义（人工维护，生成器读它）
 ```
 
@@ -80,6 +81,7 @@ run-rance10.sh ─→ safe_run.sh
 | 换机器了，先查依赖 | `env/dep.sh` → `env/inst-deps.sh` |
 | 从零重建（连 meson 一起） | `build/build-xsys.sh`（**会 `rm -rf build`**） |
 | 查某个开关干什么 | `xsys4 switches <关键词>` |
+| 翻译注释 / 看还剩多少英文注释 | `comment-cn.py stats`、`comment-cn.py list <文件>` |
 
 ## 为什么这样分
 

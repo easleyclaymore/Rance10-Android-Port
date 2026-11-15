@@ -25,24 +25,24 @@ struct texture;
 
 struct sprite {
 	TAILQ_ENTRY(sprite) entry;
-	// The Z-layer of the sprite within the scene
+	// 精灵在场景里的 Z 层
 	int z;
-	// The secondary Z-layer (for GoatGUIEngine)
+	// 次级 Z 层（给 GoatGUIEngine 用）
 	int z2;
-	// If a sprite does not have pixel data, it will not be added to the scene.
+	// 没有像素数据的精灵不会进场景。
 	bool has_pixel;
 	bool has_alpha;
-	// When a sprite is hidden, it is removed from the scene.
+	// 精灵被隐藏时会从场景里移除。
 	bool hidden;
-	// This flag indicates whether or not the sprite is included in the
-	// the current scene. A sprite should be in the scene if there is pixel
-	// or text data attached to it and it is not hidden.
+	// 这个标志表示精灵是否被收入当前场景：
+	// 有像素或文本数据、且没被隐藏的精灵才应该在场景里。
+	// （隐藏时会从场景里摘掉。）
 	bool in_scene;
-	// Unique ID
+	// 唯一 ID
 	int id;
-	// The rendering function.
+	// 渲染函数。
 	void (*render)(struct sprite*);
-	// Debug printing function
+	// 调试打印函数
 	cJSON *(*to_json)(struct sprite*, bool);
 };
 

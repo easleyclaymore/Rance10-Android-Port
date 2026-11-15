@@ -23,7 +23,7 @@
 struct fnl;
 struct hash_table;
 
-// standard font weight values
+// 标准字重取值
 enum {
 	FW_NORMAL = 400,
 	FW_BOLD   = 700,
@@ -86,7 +86,7 @@ struct text_style {
 	float space_scale_x;
 	float font_spacing;
 
-	// cached, for SengokuRanceFont
+	// 缓存，供 SengokuRanceFont 使用
 	struct font_size *font_size;
 };
 

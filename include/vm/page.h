@@ -38,45 +38,41 @@ enum page_type {
 #define NR_PAGE_TYPES (IFACE_PAGE+1)
 
 /*
- * A page is an ordered collection of variables. Pages are used to implement
- * global and local variables, structures, arrays and delegates as follows:
+ * page（页）是一组**有序**的变量。全局/局部变量、结构体、数组、委托都靠它实现：
  *
- * Global variables: all global variables are stored in a single global page.
+ * 全局变量：所有全局变量放在同一张 global page 里。
  *
- * Local variables: each function invocation is backed by a page storing its
- * local variables.
+ * 局部变量：每次函数调用都有一张 page 承载它的局部变量。
  *
- * Structures: each struct object is backed by a page storing its members.
+ * 结构体：每个结构体对象是一张 page，槽位就是成员。
  *
- * Arrays: each array object is backed by a page storing its members.
- * Multi-dimensional arrays are implemented as a tree of pages (meaning the
- * whole array is NOT contiguous in memory).
+ * 数组：每个数组对象是一张 page，槽位就是元素。
+ * 多维数组是「page 树」——也就是说整个数组在内存里**不是**连续的一段。
  *
- * Delegates: each delegate object is backed by a page storing (object,
- * function, seq) triples.
+ * 委托：每个委托对象是一张 page，每 3 个槽存一条 (object, function, seq)。
  *
- * Interfaces: an AIN_IFACE value is 2 values [struct page, vtable offset];
- * backed by a dedicated 2-slot IFACE_PAGE so REF/REFREF can dereference it.
+ * 接口：一个 AIN_IFACE 值是 2 个值 [结构体页, vtable 偏移]，用专门的两槽
+ * IFACE_PAGE 承载，这样 REF/REFREF 才能对它解引用。
  */
 struct page {
 	enum page_type type;
-	// Value of `index`:
+	// `index` 这个字段随页类型而变：
 	// ----------------
-	// GLOBAL_PAGE:   unused
-	// LOCAL_PAGE:    function index
-	// STRUCT_PAGE:   struct index
-	// ARRAY_PAGE:    array data type (e.g. for AIN_ARRAY_STRING, AIN_STRING)
-	// DELEGATE_PAGE: unused
+	// GLOBAL_PAGE:   未使用
+	// LOCAL_PAGE:    函数号
+	// STRUCT_PAGE:   结构体号
+	// ARRAY_PAGE:    元素数据类型（例如 AIN_ARRAY_STRING 的元素是 AIN_STRING）
+	// DELEGATE_PAGE: 未使用
 	union {
 		int index;
 		enum ain_data_type a_type;
 	};
 	union {
-		// local-specific metadata
+		// 局部页专有的元数据
 		struct {
 			int struct_ptr;
 		} local;
-		// array-specific metadata
+		// 数组页专有的元数据
 		struct {
 			int struct_type;
 			int rank;
@@ -123,20 +119,19 @@ static inline void _page_set_var(struct page *page, int i, union vm_value v)
 
 #define page_set_var(page, i, v) _page_set_var(page, i, vm_value_cast(v))
 
-// variables
+// 变量
 union vm_value variable_initval(enum ain_data_type type);
-/* Initialise a variable with its full AIN type (carries array element struct type). */
+/* 用完整的 AIN 类型初始化一个变量（数组元素的结构体类型也带在里面）。 */
 union vm_value variable_initval_typed(const struct ain_type *type);
-/* [L1] Single source of truth for "does a value of this type own a heap
- * reference that page teardown (variable_fini / exit_unref) will release?".
- * Any write-side code that copies such a value into a page must pair with it
- * (see array_copy_values() in hll/Array.c, D134).
+/* [L1] 「哪些类型的值**拥有**堆引用（拆页时 variable_fini / exit_unref 会释放它）」
+ * 这个问题只有这一个答案。
+ * 任何把这类值复制进页的写入端都必须与它配对处理
+ * （见 hll/Array.c 的 array_copy_values()，D134）。
  *
- * NOTE: function_call() deliberately does NOT use this predicate. AIN's
- * calling convention transfers ownership for non-ref arguments; widening
- * the argument ref to every owned type was tried and DISPROVED by an A/B
- * run (double-free count 13720 -> 13720, unchanged). Do not "fix" that
- * asymmetry without fresh evidence. */
+ * 注意：function_call() **故意**不用这个谓词。AIN 的调用约定是
+ * 非 ref 参数按「所有权转移」处理。曾试过把 ref 扩到所有拥有引用的类型，
+ * A/B 实测**证伪**（double-free 次数 13720 → 13720，毫无变化）。
+ * 没有新证据不要「顺手统一」这个不对称。 */
 static inline bool variable_owns_ref(enum ain_data_type type)
 {
 	switch (type) {
@@ -155,25 +150,25 @@ void variable_fini(union vm_value v, enum ain_data_type type, bool call_dtor);
 enum ain_data_type variable_type(struct page *page, int varno, int *struct_type, int *array_rank);
 void variable_set(struct page *page, int varno, enum ain_data_type type, union vm_value val);
 
-// pages
+// 页
 struct page *alloc_page(enum page_type type, int type_index, int nr_vars);
 void free_page(struct page *page);
 struct page *copy_page(struct page *page);
 void delete_page_vars(struct page *page);
 void delete_page(int slot);
 
-// structs
+// 结构体
 int alloc_struct(int no);
 void init_struct(int no, int slot);
 void delete_struct(int no, int slot);
 void create_struct(int no, union vm_value *var);
 void create_struct_with_ctor(int no, int ctor_fno, union vm_value *var);
 
-// arrays
+// 数组
 enum ain_data_type array_type(enum ain_data_type type);
-/* Fix the element kind of a generic (`array` / `ref array`) array page. */
+/* 给泛型数组页（`array` / `ref array`）定下元素种类。 */
 void array_settle_type(struct page *p, enum ain_data_type elem);
-/* The element kind a stored value implies, for stores that carry no type. */
+/* 由存储值本身推出的元素种类，给不带类型的写入路径用。 */
 enum ain_data_type array_value_type(union vm_value v);
 struct page *alloc_array(int rank, union vm_value *dimensions, enum ain_data_type data_type, int struct_type, bool init_structs);
 struct page *realloc_array(struct page *src, int rank, union vm_value *dimensions, enum ain_data_type data_type, int struct_type, bool init_structs);
@@ -189,7 +184,7 @@ void array_sort_mem(struct page *page, int member_no);
 int array_find(struct page *page, int start, int end, union vm_value v, int compare_fno);
 void array_reverse(struct page *page);
 
-// delegates
+// 委托
 struct page *delegate_new_from_method(int obj, int fun);
 int delegate_numof(struct page *page);
 bool delegate_contains(struct page *dst, int obj, int fun);

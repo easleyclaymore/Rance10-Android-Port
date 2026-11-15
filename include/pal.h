@@ -39,7 +39,7 @@ typedef struct IPlatformThread {
 } IPlatformThread;
 
 typedef struct IPlatformNet {
-	/* Resolve a host name to a numeric address. Returns 0 on success. */
+	/* 把主机名解析成数字地址。成功返回 0。 */
 	int (*resolve)(const char *host, char *out, size_t out_size);
 } IPlatformNet;
 
@@ -50,8 +50,8 @@ typedef struct IPlatformInfo {
 } IPlatformInfo;
 
 typedef struct IPlatformMem {
-	/* Resident / peak resident size of this process, in bytes.
-	 * 0 means "not available on this platform". Diagnostic only. */
+	/* 本进程的常驻内存 / 峰值常驻内存（字节）。
+	 * 0 表示「本平台不支持」。仅供诊断。 */
 	void (*usage)(uint64_t *rss_bytes, uint64_t *peak_bytes);
 } IPlatformMem;
 
@@ -64,7 +64,7 @@ typedef struct Platform {
 	const IPlatformMem *mem;
 } Platform;
 
-/* Inject the active platform (called once at startup). NULL restores Linux. */
+/* 注入当前平台实现（启动时调用一次）。传 NULL 则恢复 Linux 默认实现。 */
 void pal_set(const Platform *platform);
 const Platform *pal_get(void);
 const Platform *pal_linux(void);

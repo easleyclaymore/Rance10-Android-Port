@@ -23,14 +23,14 @@
 struct cg;
 
 enum dtx_texture_type {
-	// cell textures
+	// 单元格纹理
 	DTX_WALL,
 	DTX_FLOOR,
 	DTX_CEILING,
 	DTX_STAIRS,
 	DTX_DOOR,
 	DTX_LIGHTMAP,
-	// skybox textures
+	// 天空盒纹理
 	DTX_SKYBOX,
 };
 

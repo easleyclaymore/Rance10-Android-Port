@@ -43,7 +43,7 @@ struct gfx_render_job;
 
 typedef struct shader {
 	GLuint program;
-	// variables
+	// 变量
 	GLuint world_transform;
 	GLuint view_transform;
 	GLuint texture;
@@ -87,7 +87,7 @@ float gfx_get_frame_rate(void);
 void gfx_load_shader(struct shader *dst, const char *vertex_shader_path, const char *fragment_shader_path);
 GLuint gfx_load_shader_file(const char *path, GLenum type, const char *defines);
 
-// rendering
+// 渲染
 /* [D128] 逻辑视图尺寸（引擎自己的坐标系，不是窗口尺寸）。parts 层用它判断
  * 一个部件是不是"铺满整个画面"，见 parts_update_cover_layer()。 */
 int gfx_view_width(void);
@@ -105,7 +105,7 @@ void _gfx_render_texture(struct shader *s, struct texture *t, Rectangle *r, void
 void gfx_render_texture(struct texture *t, Rectangle *r);
 void gfx_render_quadrilateral(struct texture *t, struct gfx_vertex vertices[4]);
 
-// texture management
+// 纹理管理
 void gfx_init_texture_blank(struct texture *t, int w, int h);
 void gfx_init_texture_with_cg(struct texture *t, struct cg *cg);
 void gfx_init_texture_rgba(struct texture *t, int w, int h, SDL_Color color);
@@ -122,7 +122,7 @@ SDL_Color gfx_get_pixel(Texture *t, int x, int y);
 void *gfx_get_pixels(Texture *t);
 int gfx_save_texture(Texture *t, const char *path, enum cg_type);
 
-// drawing
+// 绘制
 void gfx_draw_init(void);
 void gfx_copy(struct texture *dst, int dx, int dy, struct texture *src, int sx, int sy, int w, int h);
 void gfx_copy_bright(struct texture *dst, int dx, int dy, struct texture *src, int sx, int sy, int w, int h, int rate);

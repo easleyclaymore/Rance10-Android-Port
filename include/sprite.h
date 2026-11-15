@@ -31,22 +31,22 @@ struct text_style;
 struct sact_sprite {
 	struct sprite sp;
 	LIST_ENTRY(sact_sprite) entry;
-	// The sprite's texture (CG or solid color). Initialized lazily.
+	// 精灵的纹理（CG 或纯色）。延迟初始化。
 	struct texture texture;
-	// If no CG is attached to the sprite, the solid color to fill with.
+	// 没挂 CG 时，用它填充纯色。
 	SDL_Color color;
-	// Shader params
+	// 着色器参数
 	int blend_rate;
 	SDL_Color multiply_color;
 	SDL_Color add_color;
-	// Draw method (blend mode)
+	// 绘制方式（混合模式）
 	enum draw_method draw_method;
-	// The position and dimensions of the sprite.
+	// 精灵的位置与尺寸。
 	Rectangle rect;
-	// The visible area of the sprite
+	// 精灵的可见区域
 	Rectangle surface_area;
-	// Arbitrary text can be attached to the sprite. This is rendered on a
-	// separate texture and overlayed.
+	// 可以挂任意文本：它画在另一张纹理上，
+	// 再叠加到精灵上。
 	struct {
 		struct string *str;
 		struct texture texture;
@@ -56,23 +56,23 @@ struct sact_sprite {
 		int line_space;
 		int current_line_height;
 	} text;
-	// The sprite handle
+	// 精灵句柄
 	int no;
-	// The CG number attached to the sprite.
+	// 挂在精灵上的 CG 号。
 	int cg_no;
-	// The sprite is suspended. The exact meaning of this is unknown.
+	// 精灵被挂起。确切含义不明。
 	bool suspended;
-	// (optional) Draw plugin bound to this sprite.
+	// （可选）绑定到该精灵的绘制插件。
 	struct draw_plugin *plugin;
 };
 
 /*
- * XXX: There are two different sprite renderers:
- *        * SACT2 - blend rate and brightness (stored in multiply_color field)
- *        * ChipmunkSpriteEngine - blend rate, add color, multiply color, surface area
- *          (uses parts shader)
+ * XXX：这里有两套精灵渲染器：
+ *        * SACT2 —— 混合率 + 亮度（亮度塞在 multiply_color 字段里）
+ *        * ChipmunkSpriteEngine —— 混合率、add color、multiply color、surface area
+ *          （走 parts 的着色器）
  *
- *      The initialization function determines which renderer is used.
+ *      用哪一套由初始化函数决定。
  */
 void sprite_init_sact(void);
 void sprite_init_chipmunk(void);

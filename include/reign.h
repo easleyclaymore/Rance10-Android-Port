@@ -61,7 +61,7 @@ enum RE_fog_type {
 	RE_FOG_LIGHT_SCATTERING = 2,
 };
 
-// Indices into light_params. Vector entries name their first component.
+// light_params 的下标。向量成员按第一个分量命名。
 enum seal_light_param {
 	SEAL_LP_TONEMAP_EXPOSURE_BIAS = 0,
 	SEAL_LP_TONEMAP_WHITE_POINT   = 1,
@@ -106,9 +106,9 @@ struct RE_camera {
 	vec3 pos;
 	float pitch, roll, yaw;  // in degrees
 	float quake_pitch, quake_yaw;
-	// Per-frame full override from an 3de "camera" object. Cleared at the
-	// start of every RE_build_model tick and re-asserted by s3de_effect_update
-	// if any active camera object selects this frame.
+	// 每帧从 3de 的 camera 对象整体覆盖。每次 RE_build_model
+	// tick 开始时清空；若有相机对象选中本帧，由 s3de_effect_update
+	// 重新写入。
 	bool override_active;
 	vec3 override_pos;
 	float override_pitch, override_yaw, override_roll;
@@ -141,7 +141,7 @@ struct RE_plugin {
 
 	struct RE_back_cg back_cg[RE_NR_BACK_CGS];
 
-	// Settings.
+	// 设置项。
 	int render_mode;
 	int shadow_mode;
 	vec3 shadow_map_light_dir;
@@ -222,19 +222,19 @@ struct RE_instance {
 	float column_radius;
 	float column_angle;  // around the Y axis, in degrees
 
-	// Billboards
+	// 公告板
 	enum RE_draw_type draw_type;
 	vec3 vertex_pos[4];
 	vec2 vertex_uv[4];
 	struct billboard_texture **billboard_frames;
 	int nr_billboard_frames;
 
-	// Lights
+	// 灯光
 	vec3 vec;
 	vec3 globe_diffuse;
 	float *light_params;
 
-	// Private
+	// 私有
 	bool local_transform_needs_update;
 	mat4 local_transform;
 	mat3 normal_transform;
@@ -370,12 +370,12 @@ cJSON *RE_to_json(struct sact_sprite *sp, bool verbose);
 void RE_plugin_serialize(struct RE_plugin *plugin, struct iarray_writer *w);
 void RE_plugin_deserialize(struct RE_plugin *plugin, struct iarray_reader *r, int version);
 
-// Exposed for PartsEngine 3DLayer
+// 供 PartsEngine 的 3DLayer 使用
 int ReignEngine_create_plugin(enum RE_plugin_version version);
 bool ReignEngine_ReleasePlugin(int handle);
 bool ReignEngine_BindPlugin(int handle, int sprite);
 
-// Exposed for MarmotModelEngine
+// 供 MarmotModelEngine 使用
 void ReignEngine_update_models(void);
 
 // debug.c

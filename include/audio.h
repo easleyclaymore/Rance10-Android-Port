@@ -28,7 +28,7 @@ void audio_init(void);
 void audio_reset(void);
 void audio_update(void);
 bool audio_play_sound(int sound_no);
-// Takes ownership of dfile.
+// 接管 dfile 的所有权。
 bool audio_play_archive_data(struct archive_data *dfile);
 
 bool audio_id_exists(int id);
@@ -120,7 +120,7 @@ int bgm_prepare_from_file(int id, char *filename);
 
 int wav_get_group_num_from_data_num(int no);
 
-// Takes ownership of dfile.
+// 接管 dfile 的所有权。
 int wav_prepare_from_archive_data(int id, int metadata_no, struct archive_data *dfile);
 int bgm_prepare_from_archive_data(int id, int metadata_no, struct archive_data *dfile);
 

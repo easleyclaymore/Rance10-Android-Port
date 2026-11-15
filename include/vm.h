@@ -26,16 +26,16 @@ enum ain_data_type;
 struct page;
 struct string;
 
-// xsystem4-specific system calls (used for hacks)
+// xsystem4 专有的系统调用号（供 hacks 使用）
 enum vm_extra_syscall {
 	VM_XSYS_KEY_IS_DOWN = 0x80000000,
 };
 
-// Non-heap values. Stored in pages and on the stack.
+// 非堆值：存在页里，也存在操作数栈上。
 union vm_value {
 	int32_t i;
 	float f;
-	void *ref; // for casting HLL return value
+	void *ref; // 用于把 HLL 返回值强转成指针
 };
 
 struct static_hll_function {
@@ -93,7 +93,7 @@ static inline void stack_push_value(union vm_value v)
 	stack[stack_ptr++] = v;
 }
 
-// Set the Nth value from the top of the stack to V.
+// 把「栈顶往下第 N 个」槽设为 V。
 #define stack_set(n, v) (stack_set_value((n), vm_value_cast(v)))
 #define stack_push(v) (stack_push_value(vm_value_cast(v)))
 union vm_value stack_pop(void);
@@ -122,7 +122,7 @@ int vm_time(void);
 void vm_sleep(int ms);
 
 void hll_call(int libno, int fno, int result_tag);
-/* ain_data_type of the generic result of the CALLHLL currently executing, or -1 */
+/* 当前正在执行的 CALLHLL 的泛型结果类型（ain_data_type）；-1 表示未标注 */
 int hll_generic_result_type(void);
 int hll_current_fno(void);
 bool library_exists(int libno);
@@ -130,8 +130,7 @@ bool library_function_exists(int libno, int fno);
 void init_libraries(void);
 void exit_libraries(void);
 
-// NOTE: This can probably be merged with ain_data_type, since the values are
-// disjoint.
+// 注意：这里的值与 ain_data_type 不重叠，理论上可以并进那个枚举。
 enum string_format_type {
 	STRFMT_INT = 2,
 	STRFMT_FLOAT = 3,
@@ -149,7 +148,7 @@ _Noreturn void vm_reset(void);
 extern bool vm_reset_once;
 
 #if defined(__ANDROID__) || defined(RELEASE)
-// Report the error with a message box and exit.
+// 用系统弹窗报告错误并退出（Android / RELEASE 构建）。
 #define VM_ERROR ERROR
 #else
 #define VM_ERROR(fmt, ...) \
@@ -170,8 +169,8 @@ struct function_call {
 	uint32_t return_address;
 	int32_t page_slot;
 	int32_t struct_page;
-	int32_t struct_page_refed;  /* true only if set_struct_page actually took a ref */
-	int32_t entry_sp;           /* operand stack depth after the arguments were popped */
+	int32_t struct_page_refed;  /* 仅当 set_struct_page 真的加过引用时为真 */
+	int32_t entry_sp;           /* 弹完实参之后的操作数栈深度 */
 };
 
 extern struct function_call call_stack[4096];
@@ -179,13 +178,13 @@ extern int32_t call_stack_ptr;
 
 extern size_t instr_ptr;
 
-// Read argument N for the current instruction.
+// 读取当前指令的第 N 个立即数。
 static inline int32_t get_argument(int n)
 {
 	return LittleEndian_getDW(ain->code, instr_ptr + 2 + n*4);
 }
 
-// XXX: not strictly portable
+// XXX：严格来说不可移植（依赖 float 的位模式）
 static inline float get_argument_float(int n)
 {
 	union vm_value v;
