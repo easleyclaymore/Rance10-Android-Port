@@ -356,6 +356,14 @@ if [ -n "${RANCE10_LIVE_SEQ:-}" ]; then
                 xdotool key --clearmodifiers "$arg" >/dev/null 2>&1 || true
                 sleep 1.2
                 ;;
+            # keydown:/keyup: 保持按键状态。官方指南 r01：按住 Ctrl
+            # 「不论是否已读，强制快进」，AIN 用 key_is_down(VK_CONTROL)
+            # 检测，短促的 key: 无效，必须成对使用。
+            keydown|keyup)
+                [ -n "$WID" ] && xdotool windowfocus --sync "$WID" >/dev/null 2>&1 || true
+                xdotool "$act" "$arg" >/dev/null 2>&1 || true
+                sleep "$CLICK_SLEEP"
+                ;;
             *)
                 echo "unknown step: $step" >&2
                 ;;
