@@ -240,7 +240,17 @@ click() { # click <view_x> <view_y> <button>
     xdotool mouseup "$3" >/dev/null 2>&1 || true
 }
 
+# [D222] import -window 在 GL 直绘下会拿到过期的空 backing pixmap，产出
+# 390 字节的 1-bit 全黑图：它看起来像「画面全黑」，实际是截图失败。
+# H035 就是被这张空图骗出来的假象（H031 之后第二次）。小于 2KB 一律判失败。
+shot_valid() {
+    [ -s "$1" ] || return 1
+    [ "$(stat -c%s "$1" 2>/dev/null || echo 0)" -ge 2048 ] || return 1
+    return 0
+}
+
 shot() { # shot path
+    local out="$1"
     # 窗口截图（import -window）在 GL 直绘时可能只拿到过期的 backing pixmap，
     # 所以在 X11 上优先用 ffmpeg 抓整个屏幕，拿到的才是合成后的真实画面。
     # [L0] ffmpeg x11grab 在 GL 画面繁忙时会挂住不返回（实测把整轮跑测
@@ -248,10 +258,15 @@ shot() { # shot path
     if command -v ffmpeg >/dev/null 2>&1; then
         timeout -k 1 6 ffmpeg -loglevel quiet -f x11grab \
                -video_size "${RANCE10_GRAB_SIZE:-1920x1080}" \
-               -i "${DISPLAY}.0" -frames:v 1 -y "png:$1" >/dev/null 2>&1 && return 0
+               -i "${DISPLAY}.0" -frames:v 1 -y "png:$out" >/dev/null 2>&1 || true
+        shot_valid "$out" && return 0
     fi
     [ -n "$WID" ] || return 0
-    timeout -k 1 6 import -window "$WID" "png:$1" >/dev/null 2>&1 || true
+    timeout -k 1 6 import -window "$WID" "png:$out" >/dev/null 2>&1 || true
+    shot_valid "$out" && return 0
+    # 重试 root window：它是合成后的整屏，通常比 GL 窗口的 backing pixmap 新
+    timeout -k 1 6 import -window root "png:$out" >/dev/null 2>&1 || true
+    shot_valid "$out" || echo "[shot-empty] $out: grab failed after retries" >&2
 }
 
 # 2) 等网络确认框（第 2 次 loaded）
@@ -355,6 +370,17 @@ if [ -n "${RANCE10_LIVE_SEQ:-}" ]; then
                 [ -n "$WID" ] && xdotool windowfocus --sync "$WID" >/dev/null 2>&1 || true
                 xdotool key --clearmodifiers "$arg" >/dev/null 2>&1 || true
                 sleep 1.2
+                ;;
+            # engineshot: 让引擎自己 dump GL main surface（需 XSYS4_SHOT_DIR）。
+            # 不能用 --clearmodifiers，否则组合键里的 Alt 会被清掉。
+            # 这是绕开 X11 抓屏假象的权威画面证据，见 GUIDE 1.13。
+            engineshot)
+                [ -n "$WID" ] && timeout -k 1 3 xdotool windowactivate --sync "$WID" >/dev/null 2>&1 || true
+                [ -n "$WID" ] && xdotool windowfocus --sync "$WID" >/dev/null 2>&1 || true
+                # 点击后焦点可能已变，先走焦点路径再退回直接投递到窗口
+                xdotool key alt+s >/dev/null 2>&1 || \
+                    xdotool key --window "$WID" alt+s >/dev/null 2>&1 || true
+                sleep 2.5
                 ;;
             # keydown:/keyup: 保持按键状态。官方指南 r01：按住 Ctrl
             # 「不论是否已读，强制快进」，AIN 用 key_is_down(VK_CONTROL)

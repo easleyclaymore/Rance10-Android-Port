@@ -167,6 +167,23 @@ static char *zenity_get_filename(const char *dflt)
 
 void screenshot_save(void)
 {
+	/* [D222] 无头跑测快路径：XSYS4_SHOT_DIR 指定目录时直接 dump GL main
+	 * surface，绕过 zenity 文件框（无人确认会挂住引擎）和 X11 合成 ——
+	 * GL 直绘下 x11grab / import -window 只能拿到全黑 framebuffer，
+	 * 见 GUIDE 1.13。默认关闭；每按一次 Alt+S 产一个递增编号文件。 */
+	const char *shot_dir = getenv("XSYS4_SHOT_DIR");
+	if (shot_dir && *shot_dir) {
+		static int seq;
+		char path[PATH_MAX];
+		if (!mkdir_p(shot_dir)) {
+			snprintf(path, sizeof(path), "%s/shot_%03d.png", shot_dir, ++seq);
+			gfx_save_texture(gfx_main_surface(), path, ALCG_PNG);
+			NOTICE("[shot-engine] %s", path);
+		} else {
+			WARNING("mkdir_p: %s", strerror(errno));
+		}
+		return;
+	}
 	// get filename
 	char *name = default_filename();
 	if (have_zenity()) {
