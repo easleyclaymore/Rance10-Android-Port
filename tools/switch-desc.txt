@@ -115,3 +115,4 @@ XSYS4_MSGWIN_DBG	[诊断] 打印消息窗口配置族 setter 的触达与实参�
 XSYS4_PARTS_DUMP_MIN	[诊断] 只 dump 部件号 >= 此值的部件；部件表按插入序遍历，地图号段会吃光 PARTS_DUMP_MAX 名额，设 900000300 才能看到动态号段
 XSYS4_MSGWIN_FULL	[D217 已转正] EX 消息窗口组件补齐 39px 字体/字色/字距/行距，并用独立 CG 部件装载 种类別情报 的 底板ＣＧ名；默认生效，=0 回退做 A/B
 XSYS4_MSGWIN_FRAME_DBG	[诊断] 打印消息窗口底板 CG（1920x300~500）是否进入 parts_render 及其 origin_offset / 准入字段；用来区分「没到渲染」与「画了看不见」
+XSYS4_RELEASE_RECURSIVE	[D219 已转正] PE_ReleaseParts 递归释放整棵部件子树（原 parts_release 只把子部件摘链不释放，对话框关掉后文字层残留，H025/[LAYER-LEAK]）；默认生效，=0 回退做 A/B

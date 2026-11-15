@@ -23,7 +23,8 @@
 | `H029` | 底板画不出来是**合成层**问题：半透明黑底板叠在同样全黑的 ADV 背景上，或 CG 纹理采样 / alpha 合成有缺陷 | 换到默认零开关真实流程后，底板若仍不可见则假设成立 | `[frame]` 探针 12 条 + 红色 add_color PoC 像素统计；真实流程 `d217full_16_wait.png` 底板清晰可见 | 证伪 → 改判 H031 |
 | `H031` | `XSYS4_AUTO_MAP` 后门直调 `RunGameChapter1` 跳过背景层初始化，制造「ADV 全黑、底板一像素没画」的假象；**渲染验收必须用默认零开关真实流程** | 同一份代码在真实流程下画面仍全黑 → 假设错 | `logs/live_d217full.log` + `/tmp/d217full_16_wait.png`（背景 CG / 底板 / 名牌 / 正文全出图）vs `/tmp/msgwinC_05_wait.png`（全黑） | 成立 |
 | `H025` | 战斗画面里残留的 ADV / 回想文字是 SceneStack 残留层未清理（渲染/控制器层），不影响战斗链路 | 关掉该层后文字消失且 `Game/Battle/*` 活动数不变 | `h025clean` 干净真实流程 `/tmp/h025clean_16_wait.png`：VS 对阵画面叠着「- 兰斯 -」「密探兰斯 已获得／是否立刻前往一阅？」+ 名牌 + 空按钮；`h025probe` 的 `XSYS4_CTRL_DBG` 直方图 | 成立（复现，根因见 H032） |
-| `H032` | 残留根因是 `PE_RemoveController` **擦空层**：AIN 传的稳定 ID 指向刚 `AddLayer`、还没挂部件的空层，旧层部件从未被释放；叠加 `parts_release()` 只摘链不递归释放子部件 | 让 ID 落到实际挂部件的层（或递归释放子树）后残留文字仍在 → 假设错 | `logs/live_h025probe.log`：9 次 RemoveController 中 7 次 `released=0`、812 个部件全在 ctrl 0..7、回想对话框 20+ 部件 0 次 Release 且最后仍在表里 | 待验 |
+| `H032` | 残留根因是 `PE_RemoveController` **擦空层**：AIN 传的稳定 ID 指向刚 `AddLayer`、还没挂部件的空层，旧层部件从未被释放；叠加 `parts_release()` 只摘链不递归释放子部件 | 让 ID 落到实际挂部件的层（或递归释放子树）后残留文字仍在 → 假设错 | `logs/live_h025probe.log`：9 次 RemoveController 中 7 次 `released=0`、812 个部件全在 ctrl 0..7、回想对话框 20+ 部件 0 次 Release 且最后仍在表里 | 部分成立（D219 子树释放有效 → 见 H033） |
+| `H033` | 剩下的「当前 ADV 场景文字 / 名牌」残留，根因是 `PE_RemoveController` 从未擦到实际挂部件的层（`released=0`），需要修正 `SceneStack@EraseLayer` 传入 ID 与目标层的对应 | 修正 ID→层映射后这些文字仍残留 → 假设错 | `h025fix2` 已排除子树释放这一因素（多层重叠旧文字消失，当前场景文字仍在）；`/tmp/h025fix2_16_wait.png` | 待验 |
 | `H020` | `GetQuestEventList` 的 `S_NOTE` 判空或 `Array.PushBack` 在引擎侧有偏差，导致明明查到了值也没进事件列表 | `EX_String` 对 `.战斗` 返回非空串，但 `28578` 的 `result` 仍 `nr=0` | 给 `EX_String`(5467) 加返回探针，或 `XSYS4_LVAR_DBG=28578:3` 看 `b` 的槽号是否 >0 | 待验 |
 
 ## 已证伪（保留，别回头查）

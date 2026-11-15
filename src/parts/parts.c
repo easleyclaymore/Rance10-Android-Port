@@ -2059,12 +2059,51 @@ bool PE_SetNumeralSurfaceArea(int parts_no, int x, int y, int w, int h, int stat
 	return true;
 }
 
+/* [D219] 收集部件树的全部子孙号。parts_release() 原来只把子部件摘链
+ * （child->parent = NULL）而不释放，它们仍留在 parts_list 里继续被渲染 ——
+ * 对话框关掉后文字层残留（H025 / [LAYER-LEAK]）。先把号收齐再逐个释放，
+ * 避免边遍历边摘链造成悬空指针。上限只是保护，正常部件树远小于此。 */
+#define RELEASE_SUBTREE_MAX 512
+static void parts_collect_descendants(struct parts *p, int *nos, int *n, int cap)
+{
+	struct parts *child;
+	PARTS_FOREACH_CHILD(child, p) {
+		if (*n >= cap)
+			return;
+		nos[(*n)++] = child->no;
+		parts_collect_descendants(child, nos, n, cap);
+	}
+}
+
 void PE_ReleaseParts(int parts_no)
 {
 	if (getenv("XSYS4_CTRL_DBG")) {
 		static int n;
 		if (n++ < 300)
 			NOTICE("[ctrl] Release parts=%d", parts_no);
+	}
+	/* 默认生效、=0 回退做 A/B。只作用于 AIN 显式 ReleaseParts 的路径：
+	 * PE_RemoveController 自己会遍历整表按 controller 释放，不走这里，
+	 * 因此不会破坏它「先存 next 再释放」的遍历。 */
+	static int recursive = -1;
+	if (recursive < 0) {
+		const char *e = getenv("XSYS4_RELEASE_RECURSIVE");
+		recursive = e && !strcmp(e, "0") ? 0 : 1;
+	}
+	if (recursive) {
+		struct parts *root = parts_try_get(parts_no);
+		if (root) {
+			int nos[RELEASE_SUBTREE_MAX];
+			int n = 0;
+			parts_collect_descendants(root, nos, &n, RELEASE_SUBTREE_MAX);
+			parts_release(parts_no);
+			for (int i = 0; i < n; i++)
+				parts_release(nos[i]);
+			if (getenv("XSYS4_CTRL_DBG"))
+				NOTICE("[ctrl] Release subtree root=%d descendants=%d",
+				       parts_no, n);
+			return;
+		}
 	}
 	parts_release(parts_no);
 }

@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **145** 个开关，其中 **25** 个没有就近注释。
+共 **146** 个开关，其中 **25** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -54,15 +54,15 @@
 | 呈现与输入 | `XSYS4_ACT_CLICKABLE_ALL` | `src/parts/activity.c:796` | 把所有**活动文件里声明**的部件标为可点（运行时建的 900000xxx 不受影响） |
 | 呈现与输入 | `XSYS4_ACT_DBG` | `src/parts/activity.c:989` | 活动装载与点击派发诊断 |
 | 呈现与输入 | `XSYS4_ACT_DEBUG` | `src/parts/activity.c:1154` | 活动诊断的旧开关 |
-| 呈现与输入 | `XSYS4_ACT_PART_DBG` | `src/parts/parts.c:2107` | 打印活动部件的建造解析（名字/类型/尺寸/表示領域/flat 名）与 300 号段之后的 SetPos/SetZ |
+| 呈现与输入 | `XSYS4_ACT_PART_DBG` | `src/parts/parts.c:2146` | 打印活动部件的建造解析（名字/类型/尺寸/表示領域/flat 名）与 300 号段之后的 SetPos/SetZ |
 | 呈现与输入 | `XSYS4_CLICK_RETARGET` | `src/parts/message.c:73` | 点击被遮挡后重定向到下层部件 |
 | 呈现与输入 | `XSYS4_CTRL_DBG` | `src/parts/parts.c:1457` | controller 栈、视觉地板（cover_layer）、hide/remove 事件 |
 | 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:341` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
 | 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:312` | 输入命中的候选部件表与点击状态 |
 | 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:1178` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
-| 呈现与输入 | `XSYS4_PARTS_DUMP_MAX` | `src/parts/parts.c:2986` | — |
-| 呈现与输入 | `XSYS4_PARTS_DUMP_MIN` | `src/parts/parts.c:2953` | [诊断] 只 dump 部件号 >= 此值的部件；部件表按插入序遍历，地图号段会吃光 PARTS_DUMP_MAX 名额，设 900000300 才能看到动态号段 |
-| 呈现与输入 | `XSYS4_PARTS_NO_BASE` | `src/parts/parts.c:2816` | — |
+| 呈现与输入 | `XSYS4_PARTS_DUMP_MAX` | `src/parts/parts.c:3025` | — |
+| 呈现与输入 | `XSYS4_PARTS_DUMP_MIN` | `src/parts/parts.c:2992` | [诊断] 只 dump 部件号 >= 此值的部件；部件表按插入序遍历，地图号段会吃光 PARTS_DUMP_MAX 名额，设 900000300 才能看到动态号段 |
+| 呈现与输入 | `XSYS4_PARTS_NO_BASE` | `src/parts/parts.c:2855` | — |
 | 呈现与输入 | `XSYS4_UPD_DBG` | `src/parts/parts.c:1474` | PE_Update 的每帧诊断 |
 | 自动化后门 | `XSYS4_AUTO_CARD_CLICK` | `src/vm.c:1132` | [后门] 编队卡片视图初始化完成后直调 SceneParty@OnClickCard(idx)；值=卡片索引 |
 | 自动化后门 | `XSYS4_AUTO_CARD_CLICK_DELAY` | `src/vm.c:1135` | [后门] 最后一次 InitCardView 之后再等多久点卡（毫秒，默认 1500） |
@@ -79,7 +79,7 @@
 | 运行环境 | `XSYS4_DATA_DIR` | `src/pal.c:43` | 数据目录（缺省用编译期默认值） |
 | 运行环境 | `XSYS4_SOFT_STUB` | `src/ffi.c:60` | 未实现的导出用零桩顶替（诊断用：判断"缺实现"还是"走错路"） |
 | 一次性探针 | `XSYS4_DBG_EIP` | `src/hll/PartsEngine.c:583` | 打印 SetEnableInputProcess 的每次调用与参数（实测 242 次里 238 次 enable=0） |
-| 其它 | `XSYS4_ALPHA_DBG` | `src/parts/parts.c:2156` | 打印 SetComponentAlpha 与 AddMotionAlpha 的 parts/alpha 序列（查部件为何全透明） |
+| 其它 | `XSYS4_ALPHA_DBG` | `src/parts/parts.c:2195` | 打印 SetComponentAlpha 与 AddMotionAlpha 的 parts/alpha 序列（查部件为何全透明） |
 | 其它 | `XSYS4_CONSTRUCT_776` | `src/hll/PartsEngine.c:506` | =0 把 AddPartsConstructionProcess(776) 退回空桩，用于卡片合成 A/B |
 | 其它 | `XSYS4_CONSTRUCT_DBG` | `src/parts/construction.c:342` | 打印部件合成操作：PartsFunc(case 162)、776 批量入口、Build 的 parts/cmd/CG 名与 op 数 |
 | 其它 | `XSYS4_CP_DBG` | `src/vm.c:482` | 〔摘〕Parts(1114) 的 m_partsNumber 若在拷贝时还是 0，副本就永远是 0。 |
@@ -106,7 +106,7 @@
 | 其它 | `XSYS4_IFACE_REALLOC_FIX` | `src/page.c:641` | — |
 | 其它 | `XSYS4_IP_WATCH` | `src/vm.c:2674` | 监视指令指针，抓"跑到不该跑的地方" |
 | 其它 | `XSYS4_KEYCODE_PROBE` | `src/parts/input.c:47` | 打印收到的原始键码 |
-| 其它 | `XSYS4_LAYER_TRACE` | `src/parts/parts.c:2137` | 图层顺序追踪 |
+| 其它 | `XSYS4_LAYER_TRACE` | `src/parts/parts.c:2176` | 图层顺序追踪 |
 | 其它 | `XSYS4_LVAR_DBG` | `src/vm.c:158` | — |
 | 其它 | `XSYS4_MC_SLOT_DBG` | `src/vm.c:1174` | — |
 | 其它 | `XSYS4_MC_WATCH` | `src/vm.c:988` | 〔摘〕时（callee 声明 N 槽、call site 只压了 1 槽）只能靠猜。 |
@@ -123,7 +123,7 @@
 | 其它 | `XSYS4_NODE_DIGIT` | `src/vm.c:2237` | [D209 诊断后门] 把 QuestMapParamAccessor 的 KeyBase 末尾全角编号末位改成 0-9（００１→００２），仅在 23486 事件链生效；默认关，用于验证战斗链，不是正常游戏路径 |
 | 其它 | `XSYS4_NO_AUDIO` | `src/audio_mixer.c:705` | 关闭音频输出 |
 | 其它 | `XSYS4_NO_AUTO_MOTION` | `src/parts/motion.c:106` | =1 关闭「首次加 motion 自动开表」（D186），用于 motion 自动启动的 A/B |
-| 其它 | `XSYS4_NO_CP_ALPHA_FIX` | `src/parts/parts.c:2172` | =1 关闭「合成类部件 alpha=0 提升为 255」（卡片立绘 A/B 回退开关） |
+| 其它 | `XSYS4_NO_CP_ALPHA_FIX` | `src/parts/parts.c:2211` | =1 关闭「合成类部件 alpha=0 提升为 255」（卡片立绘 A/B 回退开关） |
 | 其它 | `XSYS4_NO_PUMP` | `src/vm.c:4692` | 事件泵空转诊断 |
 | 其它 | `XSYS4_NULLMETHOD_FIX` | `src/vm.c:1196` | — |
 | 其它 | `XSYS4_NULLREF_DBG` | `src/vm.c:292` | 〔摘〕Pop a reference off the stack, returning the address of the referen… |
@@ -139,6 +139,7 @@
 | 其它 | `XSYS4_REFDBG` | `src/vm.c:353` | 〔摘〕它之后的代码全部当作不可达删掉。 |
 | 其它 | `XSYS4_REFREF_DBG` | `src/vm.c:2581` | — |
 | 其它 | `XSYS4_REF_AT` | `src/vm.c:2497` | — |
+| 其它 | `XSYS4_RELEASE_RECURSIVE` | `src/parts/parts.c:2090` | [D219 已转正] PE_ReleaseParts 递归释放整棵部件子树（原 parts_release 只把子部件摘链不释放，对话框关掉后文字层残留，H025/[LAYER-LEAK]）；默认生效，=0 回退做 A/B |
 | 其它 | `XSYS4_RSS_LIMIT` | `src/vm.c:2298` | 进程 RSS 上限，超了报警 |
 | 其它 | `XSYS4_SAVE_GROUP_ANY` | `src/savedata.c:740` | — |
 | 其它 | `XSYS4_SLOT_ID` | `src/heap.c:254` | 打印稳定槽 ID，便于跨日志对照同一对象 |
