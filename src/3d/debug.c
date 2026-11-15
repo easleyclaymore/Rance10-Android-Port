@@ -210,7 +210,7 @@ cJSON *RE_to_json(struct sact_sprite *sp, bool verbose)
 
 static int dbg_current_plugin = -1;
 
-// Returns the plugin number to use. Falls back to the only existing plugin
+// 返回要用的插件号。只剩一个插件时退回它
 // if no current is set. Prints an error and returns -1 if neither holds.
 static int dbg_resolve_plugin(void)
 {

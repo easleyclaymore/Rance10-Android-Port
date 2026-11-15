@@ -1,5 +1,5 @@
-/* FileDialog - stub implementation for Rance X bring-up.
- * Returns an empty string (dialog cancelled) until a real UI is wired up.
+/* FileDialog —— 兰斯10 启动用的空桩实现。
+ * 在接上真正的 UI 之前返回空串（表示对话框被取消）。
  */
 #include <string.h>
 

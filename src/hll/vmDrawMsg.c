@@ -171,8 +171,8 @@ static int vmDrawMsg_Draw(int handle)
 			if (lb)
 				*lb = '<';
 		} else if (sscanf(s, "<@C%d,%d,%d,%d,%d,%d>%n", &a1, &a2, &a3, &a4, &a5, &a6, &skiplen) == 6) {
-			// FIXME: This tag specifies a vertical gradient from (a1, a2, a3)
-			//        to (a4, a5, a6), but we just use the average color.
+			// FIXME：这个标签指定的是从 (a1, a2, a3) 到 (a4, a5, a6) 的
+			//        垂直渐变，但我们只用了平均色。
 			dm->initial_style.ts.color = dm->style.ts.color =
 				COLOR((a1 + a4) / 2, (a2 + a5) / 2, (a3 + a6) / 2, 255);
 		} else if (sscanf(s, "<C%d,%d,%d>%n", &a1, &a2, &a3, &skiplen) == 3) {

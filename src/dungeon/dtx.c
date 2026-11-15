@@ -137,7 +137,7 @@ struct dtx *dtx_load_from_dtl(const char *path, uint32_t seed)
 	if (fread(index_buf, index_size * 4, 1, fp) != 1)
 		goto err;
 
-	// Randomly select an index based on the seed.
+	// 按种子随机选一个下标。
 	struct mtrand43 mt;
 	mtrand43_init(&mt, seed);
 	for (;;) {
@@ -165,7 +165,7 @@ struct dtx *dtx_load_from_dtl(const char *path, uint32_t seed)
 				goto err;
 			uint32_t texture_size = LittleEndian_getDW(buf, 0);
 			if (col >= dtx->nr_columns) {
-				// skip the rest of the row
+				// 跳过这一行剩下的部分
 				if (fseek(fp, texture_size, SEEK_CUR))
 					goto err;
 				continue;

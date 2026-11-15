@@ -25,7 +25,7 @@ static struct {
 
 bool DrawEffect_Begin(int writeSurface, int wx, int wy, int destSurface, int dx, int dy, int srcSurface, int sx, int sy, int width, int height, int effect)
 {
-	// Only support fullscreen effects
+	// 只支持全屏效果
 	if (wx || wy || dx || dy || sx || sy || width != config.view_width || height != config.view_height)
 		return false;
 	draw_effect.on = true;

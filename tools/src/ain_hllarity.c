@@ -1,4 +1,4 @@
-/* Dump every HLL function's declared argument count, for arity auditing. */
+/* 转储每个 HLL 函数声明的形参个数，用于 arity 审计。 */
 #include <stdio.h>
 #include <stdlib.h>
 #include <system4/ain.h>

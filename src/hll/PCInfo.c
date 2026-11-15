@@ -1,4 +1,4 @@
-/* PCInfo - minimal implementation for Rance X bring-up
+/* PCInfo —— 兰斯10 启动用的最小实现
  * GetOSInfo(ref string)
  */
 #include <stdio.h>

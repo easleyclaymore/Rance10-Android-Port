@@ -419,7 +419,7 @@ HLL_WARN_UNIMPLEMENTED(, void, PartsEngine, StopSoundWithoutSystemSound);
 
 static void PartsEngine_PreLink(void);
 
-/* Parts_SetComment(int, string) / Parts_GetComment(int) -> string.
+/* Parts_SetComment(int, string) / Parts_GetComment(int) -> string：批注读写。
  * 挂在部件对象上的调试批注（.pactex 里的「批注」字段）。
  * 部件后端没有批注槽，所以这里单独维护一张小表：
  * 编辑器和调试视图确实会读回来（f[178]）。 */

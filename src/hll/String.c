@@ -528,7 +528,7 @@ static struct string *String_TrimEndChars(struct string **s, struct string *char
 	return make_string(b, (size_t)(e - b));
 }
 
-/* String.Split(ref string s, string sep, bool keep_empty) -> ref string[]
+/* String.Split(ref string s, string sep, bool keep_empty) -> ref string[]：切分字符串
  * AIN 库30 的 f[35]，Parts@ResolveFlatName 用它切分 flat 资源路径。
  * 这里按字节切是安全的：兰斯10 用的是 ASCII 分隔符（"/"、"\\"），
  * 而负载和 VM 里其他字符串一样保持 GBK 字节。 */

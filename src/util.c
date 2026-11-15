@@ -25,8 +25,8 @@
 #include "xsystem4.h"
 #include "debugger.h"
 
-// In a Windows environment, console output should be SJIS-encoded
-// (assuming the user is using Japanese non-unicode locale).
+// Windows 环境下控制台输出应当用 SJIS 编码
+// （假定用户用的是日文非 unicode 区域设置）。
 #if (defined(_WIN32) || defined(__WIN32))
 #define NATIVE_SJIS
 #endif

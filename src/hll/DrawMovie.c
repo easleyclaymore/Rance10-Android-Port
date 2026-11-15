@@ -80,7 +80,7 @@ static void DrawMovie2_SetInnerVolume(int inner_volume)
 
 static void DrawMovie2_UpdateVolume(void)
 {
-	// Do nothing, as SetInnerVolume immediately takes effect.
+	// 什么都不做，因为 SetInnerVolume 立即生效。
 }
 
 HLL_QUIET_UNIMPLEMENTED(, void, DrawMovie3, UpdateVolume, bool IsMuteByInactiveWindow);

@@ -365,7 +365,7 @@ static int vmFile_Delete(struct string *string)
 
 //int vmFile_GetTime(struct string *pIString, struct page **pIVMStruct);
 
-// XXX: Supports patterns with only a single '*'
+// XXX：只支持含单个 '*' 的模式
 static bool wildcard_match(const char *pat, const char *s)
 {
 	const char *star = strchr(pat, '*');

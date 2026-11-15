@@ -30,7 +30,7 @@ static void msg_log_alloc(void)
 	if (!msg_log_size)
 		msg_log_size = 1;
 
-	// rotate log
+	// 轮转日志
 	if (msg_log_i >= LOG_MAX) {
 		for (size_t i = 0; i < msg_log_i - LOG_MAX/2; i++) {
 			if (msg_log[i].data_type == MSG_LOG_STRING)

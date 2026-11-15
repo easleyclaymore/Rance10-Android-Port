@@ -164,7 +164,7 @@ static void dalkdemo_intro(void)
 		goto skipped;
 	if (dalkdemo_effect_copy(&dd->tex[1], 0, 0, 640, 480, EFFECT_CROSSFADE, 1500))
 		goto skipped;
-	// FIXME: DALKDemo.dll uses a steeper gradient
+	// FIXME：DALKDemo.dll 用的渐变更陡
 	if (dalkdemo_effect_copy(&dd->tex[2], 585, 0, 40, 480, EFFECT_UP_DOWN_CROSSFADE, 3000))
 		goto skipped;
 	if (dalkdemo_effect_copy(&dd->tex[2], 545, 0, 40, 480, EFFECT_UP_DOWN_CROSSFADE, 3000))
@@ -271,7 +271,7 @@ static int dalkdemo_main_menu()
 	bool prev_lbutton = false;
 	bool prev_rbutton = false;
 	for (;;) {
-		// Input handling
+		// 输入处理
 		handle_events();
 		int mx, my;
 		mouse_get_pos(&mx, &my);

@@ -197,7 +197,7 @@ static struct ain_hll_function *get_fun(int libno, const char *name)
 	return fno >= 0 ? &ain->libraries[libno].functions[fno] : NULL;
 }
 
-// Daiteikoku and Shaman's Sanctuary have different interface than later versions
+// 《大帝国》和《Shaman's Sanctuary》的接口和后继版本不一样
 static void GoatGUIEngine_PreLink(void)
 {
 	struct ain_hll_function *fun;

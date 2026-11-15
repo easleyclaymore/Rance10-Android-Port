@@ -1,5 +1,5 @@
-/* Rance10 AIN static audit: IFACE types, interface tables, opcode census, disasm.
- * Links against libsys4.a only. Diagnostic tool, not part of the runtime. */
+/* 兰斯10 AIN 静态审计：IFACE 类型、接口表、操作码普查、反汇编。
+ * 只链接 libsys4.a。纯诊断工具，不属于运行时。 */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

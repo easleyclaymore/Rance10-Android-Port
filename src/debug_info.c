@@ -174,7 +174,7 @@ int dbg_info_find_file(const struct dbg_info *info, const char *filename)
 
 bool dbg_info_addr2line(const struct dbg_info *info, int addr, int *file, int *line)
 {
-	// Find the last mapping whose address is less than or equal to `addr`.
+	// 找地址 <= `addr` 的最后一条映射。
 	int left = 0, right = info->nr_mappings;
 	while (left < right) {
 		int mid = (left + right) / 2;
@@ -203,7 +203,7 @@ int dbg_info_line2addr(const struct dbg_info *info, int file, int line)
 	if (file < 0 || file >= info->nr_sources || line <= 0)
 		return -1;
 
-	// Find the first mapping whose file is `file` and line is greater than or equal to `line`.
+	// 找文件为 `file`、且行号 >= `line` 的第一条映射。
 	int left = 0, right = info->nr_mappings;
 	while (left < right) {
 		int mid = (left + right) / 2;

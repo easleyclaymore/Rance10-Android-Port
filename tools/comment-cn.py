@@ -112,7 +112,7 @@ def needs_translation(line):
 # 第三方文件：版权与许可声明属原作者，不翻译。
 #   dungeon/mtrand43.c —— Matsumoto/Nishimura 的 MT19937 原始实现
 #   src/base64.c       —— Jouni Malinen 的 RFC1341 实现（BSD 许可）
-SKIP_PATHS = ('dungeon/mtrand43.c', 'src/base64.c')
+SKIP_PATHS = ('dungeon/mtrand43.c', 'dungeon/mtrand43.h', 'src/base64.c')
 
 
 def english_comment_lines(path, skip_head=0):

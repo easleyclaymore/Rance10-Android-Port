@@ -1,5 +1,5 @@
-/* Clipboard - minimal implementation for Rance X bring-up
- * SetText / GetText, backed by an in-memory buffer.
+/* Clipboard —— 兰斯10 启动用的最小实现。
+ * SetText / GetText，背后是一个内存缓冲。
  */
 #include <string.h>
 

@@ -141,7 +141,7 @@ static void CalcTable_Run(int loop)
 	if (loop != 1) {
 		VM_ERROR("Unsupported loop count: %d", loop);
 	}
-	// This function is a no-op in this implementation.
+	// 在这个实现里这个函数是空操作。
 }
 
 HLL_LIBRARY(CalcTable,
