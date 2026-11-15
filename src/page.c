@@ -1,17 +1,13 @@
-/* Copyright (C) 2019 Nunuhara Cabbage <nunuhara@haniwa.technology>
+/* 版权所有 (C) 2019 Nunuhara Cabbage <nunuhara@haniwa.technology>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * 本程序是自由软件：你可以依据自由软件基金会发布的 GNU 通用公共许可证
+ * （第 2 版，或你选择的任何更高版本）的条款，重新分发和/或修改本程序。
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * 分发本程序是希望它有用，但不作任何担保，甚至不担保适销性或
+ * 适用于特定用途。详见 GNU 通用公共许可证。
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, see <http://gnu.org/licenses/>.
+ * 你应当已经随本程序收到一份 GNU 通用公共许可证的副本；
+ * 如果没有，见 <http://gnu.org/licenses/>。
  */
 
 #include <string.h>
@@ -82,30 +78,30 @@ struct page *alloc_page(enum page_type type, int type_index, int nr_vars)
 	return page;
 }
 
-/* AIN v12 declares struct arrays as AIN_ARRAY with type.struc set to the
- * element struct number. A plain -1 initialiser loses that information, so
- * Array.EmplaceBack cannot construct the element object. Keep an empty
- * ARRAY_PAGE that carries the declared struct type. */
+/* AIN v12 把结构体数组声明成 AIN_ARRAY，type.struc 里放元素的结构体号。
+ * 只用 -1 初始化会丢掉这条信息，Array.EmplaceBack 就构造不出元素对象。
+ * 这里保留一张空的 ARRAY_PAGE，把声明的结构体类型带在身上。
+ * （页是空的，但 a_type / struct_type 已经是对的。） */
 union vm_value variable_initval_typed(const struct ain_type *type)
 {
-	/* [D106] Every array-typed variable starts life as a real (empty) array
-	 * object, not as 0. A null array variable cannot be filled by an HLL
-	 * `ref array` parameter: the AIN stack only carries the slot number, so
-	 * Array.Alloc's write-back had nowhere to go and the "array" stayed 0.
-	 * menu::detail::Init then evaluated global[67][i] as heap[0].values[i]
-	 * (the global variable page), and the following SR_ASSIGN overwrote
-	 * globals 0..39 -- including slot 26, the live CASTimerManager.
+	/* [D106] 每个数组类型的变量一开始就是一张真实的（空）数组页，而不是 0。
+	 * 值为 0 的数组变量没法被 HLL 的 `ref array` 形参填内容：
+	 * AIN 栈上只传槽号，Array.Alloc 的回写没有地方落，
+	 * 这个「数组」于是就还是 0。
+	 * 随后 menu::detail::Init 把 global[67][i] 算成 heap[0].values[i]
+	 * （也就是全局变量页），紧跟着的 SR_ASSIGN 就覆写了
+	 * 全局槽 0..39 —— 其中槽 26 是当时活着的 CASTimerManager。
 	 *
-	 * Typed arrays (AIN_ARRAY_INT/BOOL/STRUCT/...) were the ones still
-	 * falling through to variable_initval(); generic AIN_ARRAY was already
-	 * handled, which is why only some globals were corrupted. */
-	/* [D112] A delegate-typed variable must start life as an empty
-	 * DELEGATE_PAGE. The compiler assigns delegates into struct members with
-	 * DG_ASSIGN after taking REF of the member: when the member is -1 there is
-	 * no slot to write, the copy is dropped and later Delegate.Empty() reports
-	 * "empty". That broke parts::detail::AddPartsUpdateEvent -> the per-frame
-	 * update events never fired and SceneStack@WaitFrame spun forever.
-	 * #88 did the same for function locals only. */
+	 * 当时仍会掉进 variable_initval() 的是**带类型**的数组
+	 * （AIN_ARRAY_INT/BOOL/STRUCT/…）；泛型 AIN_ARRAY 早已单独处理，
+	 * 所以只有一部分全局变量被写坏。 */
+	/* [D112] 委托类型的变量一开始必须是一张空的 DELEGATE_PAGE。
+	 * 编译器往结构体成员里赋委托时走 DG_ASSIGN，赋值前先对成员取 REF：
+	 * 成员是 -1 时没有槽可写，这次拷贝被丢掉，
+	 * 之后的 Delegate.Empty() 就报「空」。
+	 * 这直接弄坏了 parts::detail::AddPartsUpdateEvent —— 每帧的更新事件
+	 * 一个都不触发，SceneStack@WaitFrame 于是永远自旋。
+	 * #88 只修了函数局部变量这一半。 */
 	if (type->data == AIN_DELEGATE) {
 		int slot = heap_alloc_page(alloc_page(DELEGATE_PAGE, 0, 0));
 		if (getenv("XSYS4_ARR_DBG"))
@@ -117,15 +113,15 @@ union vm_value variable_initval_typed(const struct ain_type *type)
 	switch (type->data) {
 	case AIN_ARRAY:
 	case AIN_REF_ARRAY:
-		/* AIN declares struct arrays as AIN_ARRAY with type.struc set.
-		 * Preserve the element kind in a_type so Array.PushBack can
-		 * reference-count inserted objects (D21).
+		/* AIN 把结构体数组声明为 AIN_ARRAY，并设置 type.struc。
+		 * 把元素种类保留在 a_type 里，这样 Array.PushBack 才能对插入的对象
+		 * 正确加引用计数（D21）。
 		 *
-		 * Without a struct id the declaration says nothing about the element
-		 * kind - it is AIN's generic `array`, whose type the first store
-		 * decides (array_settle_type). Do NOT default it to AIN_ARRAY_INT:
-		 * that stored strings as unreferenced slot numbers and left dangling
-		 * handles behind (D44). */
+		 * 没有结构体号时，声明本身说不清元素种类 —— 那就是 AIN 的泛型 `array`，
+		 * 它的类型由第一次写入决定（见 array_settle_type）。
+		 * 不要默认成 AIN_ARRAY_INT：那会把字符串当成未加引用的槽号存下去，
+		 * 留下一堆悬空句柄。
+		 * 这就是 D44。 */
 		at = type->struc >= 0 ? AIN_ARRAY_STRUCT : AIN_ARRAY;
 		break;
 	case AIN_ARRAY_INT:
@@ -170,13 +166,13 @@ union vm_value variable_initval(enum ain_data_type type)
 	case AIN_DELEGATE:
 		return (union vm_value) { .i = -1 };
 	case AIN_IFACE:
-		/* AIN v12 stores an interface in two consecutive variable slots:
-		 * [0] = struct page (-1 when null), [1] = vtable offset. The
-		 * following AIN_VOID placeholder slot IS the second value
-		 * (logs/ain_spec_slots.txt: 5336/5336 IFACE followed by VOID).
-		 * The old IFACE_PAGE wrapper put a positive heap slot in [0], so
-		 * the generated "REF; PUSH -1; EQUALE" null check never fired and
-		 * interface dispatch dereferenced -1 (D35). */
+		/* AIN v12 把一个接口值存进两个相邻的变量槽：
+		 * [0] = 结构体页（空时为 -1），[1] = 虚表偏移。
+		 * 紧随其后的 AIN_VOID 占位槽**就是**第二个值
+		 * （logs/ain_spec_slots.txt：5336/5336 个 IFACE 后面都跟着 VOID）。
+		 * 旧的 IFACE_PAGE 包装在 [0] 里放的是一个正的堆槽号，
+		 * 于是编译器生成的「REF; PUSH -1; EQUALE」判空永远不成立，
+		 * 接口派发就去解引用 -1（D35）。 */
 		return (union vm_value) { .i = -1 };
 	default:
 		return (union vm_value) { .i = 0 };
@@ -185,7 +181,7 @@ union vm_value variable_initval(enum ain_data_type type)
 
 void variable_fini(union vm_value v, enum ain_data_type type, bool call_dtor)
 {
-	/* [L1] Ownership predicate shared with exit_unref/vm_copy/array copies. */
+	/* [L1] 与 exit_unref / vm_copy / 数组拷贝共用的「所有权」谓词。 */
 	if (!variable_owns_ref(type) || v.i == -1)
 		return;
 	if (call_dtor)
@@ -223,10 +219,10 @@ enum ain_data_type array_type(enum ain_data_type type)
 		return AIN_DELEGATE;
 	case AIN_ARRAY:
 	case AIN_REF_ARRAY:
-		/* A generic array has no element kind until the first store fixes
-		 * it (see array_settle_type). Reporting "void" keeps every caller's
-		 * switch on the element type on its default branch instead of
-		 * falling into the warning below. */
+		/* 泛型数组在第一次写入定型之前没有元素种类
+		 * （见 array_settle_type）。这里报「void」，可以让每个调用方
+		 * 对元素类型的 switch 落到 default 分支，
+		 * 而不是掉进下面的告警里。 */
 		return AIN_VOID;
 	default:
 		WARNING("Unknown/invalid array type: %d from %p", type, __builtin_return_address(0));
@@ -234,7 +230,7 @@ enum ain_data_type array_type(enum ain_data_type type)
 	}
 }
 
-/* The array kind that stores `elem`, for settling a generic array. */
+/* 能装下 `elem` 的数组种类；用来给泛型数组定型。 */
 static enum ain_data_type elem_to_array_type(enum ain_data_type elem)
 {
 	switch (elem) {
@@ -249,16 +245,16 @@ static enum ain_data_type elem_to_array_type(enum ain_data_type elem)
 	}
 }
 
-/* A variable declared as a generic `array` / `ref array` starts life with no
- * element kind: AIN lets the first stored value decide it (`array a;
- * a.PushBack("x")` makes a string array). Defaulting such an array to
- * AIN_ARRAY_INT instead - the previous behaviour - stored strings as bare slot
- * numbers without taking a reference; the caller then DELETEd its own copy, the
- * slot was freed, and the array kept a dead handle. Reading it back produced
- * "Invalid string index" (SceneQuestSelect@m_questIds, D44).
+/* 声明成泛型 `array` / `ref array` 的变量，一开始没有元素种类：
+ * AIN 让第一次写入的值来定（`array a; a.PushBack("x")` 就成了字符串数组）。
+ * 以前的实现把它默认成 AIN_ARRAY_INT，于是字符串被当成裸槽号存进去、
+ * 又没加引用；调用方随后 DELETE 自己那份拷贝，槽被释放，
+ * 数组里却留着死句柄。读回来就报 "Invalid string index"
+ * （SceneQuestSelect@m_questIds，D44）。
  *
- * `elem` may be AIN_VOID when the caller can only infer from the value; the
- * array then stays generic until a later store knows better. */
+ *
+ * 调用方只能从值本身推断时，`elem` 可能是 AIN_VOID；
+ * 那这个数组就继续当泛型，等后面某次写入再说。 */
 void array_settle_type(struct page *p, enum ain_data_type elem)
 {
 	if (!p || p->type != ARRAY_PAGE)
@@ -267,15 +263,15 @@ void array_settle_type(struct page *p, enum ain_data_type elem)
 		return;
 	if (elem == AIN_VOID)
 		return;
-	/* A struct array is useless without the struct id, which only the
-	 * declaration carries; leave it generic in that case. */
+	/* 没有结构体号的结构体数组没法用，而这个号只有声明里才有；
+	 * 那就让它继续当泛型。 */
 	if (elem == AIN_STRUCT && p->array.struct_type < 0)
 		return;
 	p->a_type = elem_to_array_type(elem);
 }
 
-/* The element kind a stored value implies, used when no declaration is
- * available (A_PUSHBACK on a generic array). */
+/* 由存储值本身推出的元素种类；没有声明可查时用它
+ * （例如泛型数组上的 A_PUSHBACK）。 */
 enum ain_data_type array_value_type(union vm_value v)
 {
 	if (v.i <= 0 || (size_t)v.i >= heap_size)
@@ -327,8 +323,8 @@ enum ain_data_type variable_type(struct page *page, int varno, int *struct_type,
 			*array_rank = page->array.rank - 1;
 		return page->array.rank > 1 ? page->a_type : array_type(page->a_type);
 	case DELEGATE_PAGE:
-		// XXX: we return void here because objects in a delegate page aren't
-		//      reference counted
+		// XXX：这里返回 void，因为委托页里的对象
+		//      不参与引用计数
 		return AIN_VOID;
 	}
 	return AIN_VOID;
@@ -342,10 +338,10 @@ void variable_set(struct page *page, int varno, enum ain_data_type type, union v
 
 void delete_page_vars(struct page *page)
 {
-	/* [D134] XSYS4_DF_FREE_DBG=1 + XSYS4_SLOT_ID=<n>: name the page that
-	 * is about to perform the FATAL release (ref 1 -> 0) of the watched
-	 * slot. heap_unref()'s own probe only sees the current AIN instruction
-	 * (usually RETURN); this one sees which page actually held the value. */
+	/* [D134] XSYS4_DF_FREE_DBG=1 + XSYS4_SLOT_ID=<n>：点名那张
+	 * 即将对监视槽执行**致命释放**（ref 1 → 0）的页。
+	 * heap_unref() 自己的探针只看得到当前 AIN 指令
+	 * （通常是 RETURN）；这里的探针能看到究竟是哪张页持有这个值。 */
 	static int dbg = -1;
 	static int watch = -1;
 	if (dbg < 0) {
@@ -379,21 +375,21 @@ void delete_page(int slot)
 }
 
 /*
- * Recursively copy a page.
+ * 递归复制一张页。
  */
-/* [D140] A_REF -> vm_copy_page() -> copy_page() is how an interface array is
- * handed from QuestMapObjectViewColletion@InitView to QuestMapObjectLoader@Set
- * (and then read back by @Load). Interface elements are TWO slots
- * [object heap slot, vtable offset], but variable_type() reports AIN_STRUCT
- * for every slot, so the loop below used to deep-copy the odd slot too.
- * A vtable offset of 0 was fed to heap_get_page(0) and vm_copy_page()
- * manufactured a brand new page slot in its place -- observed as
- * [obj, obj+16] in the copy. @Load then computed fno = vtable[offset+3]
- * with a heap slot number as the index and died with
- * "CALLMETHOD: invalid function index -1" at 0x37CBCA.
+/* [D140] 接口数组从 QuestMapObjectViewColletion@InitView 交给
+ * QuestMapObjectLoader@Set（再由 @Load 读回）走的就是
+ * A_REF → vm_copy_page() → copy_page()。接口元素是**两**个槽
+ * [对象堆槽, 虚表偏移]，但 variable_type() 对每个槽都报 AIN_STRUCT，
+ * 于是下面这个循环把奇槽也深拷贝了。
+ * 虚表偏移 0 被喂给 heap_get_page(0)，vm_copy_page() 就地
+ * 造出一个全新的页槽 —— 拷贝里观测到的是 [obj, obj+16]。
+ * @Load 随后用堆槽号当索引去算 fno = vtable[offset+3]，
+ * 在 0x37CBCA 报「CALLMETHOD: invalid function index -1」直接挂掉。
  *
- * The odd half is a small integer, never a reference: copy it verbatim.
- * XSYS4_IFACE_COPY_FIX=0 restores the old behaviour for A/B. */
+ *
+ * 奇槽里是小整数，永远不是引用：原样拷贝即可。
+ * XSYS4_IFACE_COPY_FIX=0 可回退到旧行为，用于 A/B。 */
 static bool page_is_iface_elem_array(struct page *p)
 {
 	static int fix = -1;
@@ -490,8 +486,8 @@ static void init_struct_with_ctor(int no, int slot, int ctor_fno)
 			init_struct(s->members[i].type.struc, heap[slot].page->values[i].i);
 		}
 	}
-	/* ctor_fno >= 0: AIN v12 NEW passes the constructor as an immediate.
-	 * Otherwise use the struct's own constructor (no global state mutation). */
+	/* ctor_fno >= 0：AIN v12 的 NEW 把构造函数当立即数传进来。
+	 * 否则用结构体自带的构造函数（不改任何全局状态）。 */
 	int fno = ctor_fno >= 0 ? ctor_fno : s->constructor;
 	if (fno > 0)
 		vm_call(fno, slot);
@@ -540,28 +536,28 @@ static enum ain_data_type unref_array_type(enum ain_data_type type)
 	}
 }
 
-/* [D136] An element struct registered as an INTERFACE
- * (ain->structures[n].is_interface) is a 2-slot value [object, vtable
- * offset] everywhere in the VM, and the bytecode indexes a container of them
- * with i*2. Allocating it as a one-slot array<struct> makes values[i*2+1]
- * the NEXT element's object slot; that number then reaches `vtable[off + k]`
- * as if it were a vtable offset (observed: QuestMapObjectLoader@Load
- * A_ALLOC of array<ILoadableQuestMapObject>(618) -> 123 slots, then
- * `Out of bounds page index: ... (type=3 index=14 nr_vars=10)` at 0x37CBC8).
- * Store them like the existing iface arrays: AIN_ARRAY_INT, 2 slots per
- * element, no struct construction (the object half is filled by assignment).
- * XSYS4_IFACE_ARR_FIX=0 restores the old behaviour for A/B. */
+/* [D136] 注册成**接口**的元素结构体（ain->structures[n].is_interface）
+ * 在整个 VM 里都是 2 个槽的值 [对象, 虚表偏移]，
+ * 字节码用 i*2 去索引这种容器。
+ * 若按一槽一个元素去分配 array<struct>，values[i*2+1] 就落到
+ * 下一个元素的对象槽上；那个数字又被当成虚表偏移送进
+ * `vtable[off + k]`（实测：QuestMapObjectLoader@Load 里
+ * A_ALLOC array<ILoadableQuestMapObject>(618) → 123 槽，
+ * 随后在 0x37CBC8 报「Out of bounds page index: …」）。
+ * 与既有的接口数组一样存：AIN_ARRAY_INT、每元素 2 槽、
+ * 不构造结构体（对象那一半由赋值填）。
+ * XSYS4_IFACE_ARR_FIX=0 可回退到旧行为，用于 A/B。 */
 static bool iface_element_array(int struct_type)
 {
-	/* [D136] DEFAULT OFF (2026-11-13). The 2-slot layout is what the bytecode
-	 * expects, but turning it on drops the map scene into an allocation
-	 * storm: 42 s after entering SceneQuestMap the VM had allocated 1.83M
-	 * objects with 731k still live and climbing 60k/s (capA), versus normal
-	 * churn with it off (capB). That storm is what exhausts memory. Until
-	 * the consumer of these arrays is understood (something loops over
-	 * Count()/indices assuming one slot per element), this stays opt-in and
-	 * the known 0x37CBC8 out-of-bounds degradation is the lesser evil.
-	 * Enable with XSYS4_IFACE_ARR_FIX=1 to continue the investigation. */
+	/* [D136] 默认**关**（2026-11-13）。2 槽布局才是字节码期望的，
+	 * 但打开它会把地图场景拖进分配风暴：
+	 * 进 SceneQuestMap 42 秒，VM 已分配 183 万个对象、
+	 * 其中 73.1 万还活着并仍在以 6 万/秒上涨（capA），
+	 * 关掉时则是正常抖动（capB）。这场风暴会把内存吃干。
+	 * 在这些数组的消费方弄清楚之前（有东西按「一槽一元素」
+	 * 循环 Count()/下标），它保持 opt-in，
+	 * 已知的 0x37CBC8 越界降级反而是较小的恶。
+	 * 想继续查就把 XSYS4_IFACE_ARR_FIX=1 打开。 */
 	static int fix = -1;
 	if (fix < 0) {
 		const char *e = getenv("XSYS4_IFACE_ARR_FIX");
@@ -625,17 +621,15 @@ struct page *realloc_array(struct page *src, int rank, union vm_value *dimension
 		return NULL;
 	}
 
-	/* [D136] Keep the 2-slots-per-element layout that alloc_array() sets up
-	 * for arrays of interface elements. Without this the array is created
-	 * empty (0 slots) and then grown one slot per element by A_REALLOC, so
-	 * the bytecode's `i*2` indexing walks into the next element's object
-	 * slot and feeds it to a vtable lookup. dimensions->i counts ELEMENTS. */
-	/* [D136] Growth is deliberately NOT doubled by default: allocating 2 slots
-	 * per element at creation (alloc_array) keeps the map scene working, but
-	 * doubling on every A_REALLOC turned the map loader into an allocation
-	 * storm (731k live objects in 13 s). The growth path still appends one
-	 * slot per requested element, which is what the pre-fix code did.
-	 * XSYS4_IFACE_REALLOC_FIX=1 enables the symmetric layout for experiments. */
+	/* [D136] 保留 alloc_array() 给接口元素数组建好的「每元素 2 槽」布局。
+	 * 不这么做的话，数组会以 0 槽创建、再由 A_REALLOC 每次只长 1 槽，
+	 * 于是字节码的 `i*2` 索引会走进下一个元素的对象槽，
+	 * 把那个数字喂给虚表查找。dimensions->i 数的是**元素**。 */
+	/* [D136] 增长路径默认**不**乘 2：建数组时就按每元素 2 槽分配
+	 * （alloc_array）能让地图场景正常工作，但每次 A_REALLOC 都翻倍
+	 * 会把地图装载变成分配风暴（13 秒 73.1 万活对象）。
+	 * 增长路径仍然按请求的元素数追加 1 槽，与修复前一致。
+	 * XSYS4_IFACE_REALLOC_FIX=1 可打开对称布局做实验。 */
 	static int realloc_fix = -1;
 	if (realloc_fix < 0) {
 		const char *e = getenv("XSYS4_IFACE_REALLOC_FIX");
@@ -648,7 +642,7 @@ struct page *realloc_array(struct page *src, int rank, union vm_value *dimension
 		init_structs = false;
 	}
 
-	// if shrinking array, unref orphaned children
+	// 数组缩小时：unref 被摘掉的子项
 	if (want_slots < src->nr_vars) {
 		for (int i = want_slots; i < src->nr_vars; i++) {
 			variable_fini(src->values[i], variable_type(src, i, NULL, NULL), true);
@@ -657,7 +651,7 @@ struct page *realloc_array(struct page *src, int rank, union vm_value *dimension
 
 	src = xrealloc(src, sizeof(struct page) + sizeof(union vm_value) * want_slots);
 
-	// if growing array, init new children
+	// 数组增长时：初始化新增的子项
 	enum ain_data_type type = array_type(data_type);
 	if (want_slots > src->nr_vars) {
 		for (int i = src->nr_vars; i < want_slots; i++) {
@@ -686,17 +680,15 @@ int array_numof(struct page *page, int rank)
 	if (rank < 1 || rank > page->array.rank)
 		return 0;
 	if (rank == 1) {
-		/* [D136] Arrays of interface elements store TWO slots per element
-		 * ([object, vtable offset]) and the bytecode indexes them with i*2.
-		 * nr_vars therefore counts SLOTS, not elements: report half, or the
-		 * AIN-visible Count() doubles and every loop over such a container
-		 * walks twice as far (that alone dropped the title->map transition
-		 * from 31 loaded activities to 13). */
-		/* [D136] Interface-element arrays store 2 slots per element, and the
-		 * bytecode indexes them with i*2. nr_vars counts SLOTS, so the
-		 * AIN-visible Count() must report elements. Getting this wrong once
-		 * (reporting slots) dropped the title->map transition from 31 loaded
-		 * activities to 13; reporting elements keeps the map reachable. */
+		/* [D136] 接口元素数组每元素 2 槽（[对象, 虚表偏移]），
+		 * 字节码用 i*2 索引。所以 nr_vars 数的是**槽**不是元素：
+		 * 这里必须报一半，否则 AIN 看到的 Count() 翻倍，
+		 * 每个遍历这种容器的循环都会走两倍远
+		 * （光这一条就把标题→地图的装载活动数从 31 掉到 13）。 */
+		/* [D136] 接口元素数组每元素存 2 个槽，字节码用 i*2 索引。
+		 * nr_vars 数的是槽，所以 AIN 看到的 Count() 必须报元素数。
+		 * 这一点曾经搞错过一次（报了槽数），
+		 * 标题→地图的装载活动数就从 31 掉到 13；报元素数才能进地图。 */
 		if (iface_element_array(page->array.struct_type))
 			return page->nr_vars / 2;
 		return page->nr_vars;
@@ -739,7 +731,7 @@ int array_fill(struct page *dst, int dst_i, int n, union vm_value v)
 	if (dst->type != ARRAY_PAGE)
 		VM_ERROR("Not an array");
 
-	// clamp (dst_i, dst_i+n) to range of array
+	// 把 (dst_i, dst_i+n) 夹到数组范围内
 	if (dst_i < 0) {
 		n += dst_i;
 		dst_i = 0;
@@ -765,10 +757,9 @@ struct page *array_pushback(struct page *dst, union vm_value v, enum ain_data_ty
 		if (dst->array.rank != 1)
 			VM_ERROR("Tried pushing to a multi-dimensional array");
 
-		/* A generic array adopts the element kind of what is stored in it
-		 * (see array_settle_type). A_PUSHBACK on such a variable has only
-		 * the declared type - which is the generic one - so the value has
-		 * to speak for itself. */
+		/* 泛型数组会采用「存进去的值」的元素种类（见 array_settle_type）。
+		 * 对这种变量做 A_PUSHBACK 时只有声明类型可用 —— 而它是泛型，
+		 * 所以只能让值自己说话。 */
 		if (dst->a_type == AIN_ARRAY || dst->a_type == AIN_REF_ARRAY) {
 			enum ain_data_type elem = array_type(data_type);
 			if (elem == AIN_VOID)
@@ -820,7 +811,7 @@ struct page *array_erase(struct page *page, int i, bool *success)
 	if (!array_index_ok(page, i))
 		return page;
 
-	// if array will be empty...
+	// 若数组将被清空……
 	if (page->nr_vars == 1) {
 		delete_page_vars(page);
 		free_page(page);
@@ -828,7 +819,7 @@ struct page *array_erase(struct page *page, int i, bool *success)
 		return NULL;
 	}
 
-	// delete variable, shift subsequent variables, then realloc page
+	// 删掉该变量、把后面的变量前移，然后重分配这张页
 	variable_fini(page->values[i], array_type(page->a_type), true);
 	for (int j = i + 1; j < page->nr_vars; j++) {
 		page->values[j-1] = page->values[j];
@@ -850,7 +841,7 @@ struct page *array_insert(struct page *page, int i, union vm_value v, enum ain_d
 	if (page->array.rank != 1)
 		VM_ERROR("Tried inserting into a multi-dimensional array");
 
-	// NOTE: you cannot insert at the end of an array due to how i is clamped
+	// 注意：由于 i 的夹取方式，不能在数组末尾插入
 	if (i >= page->nr_vars)
 		i = page->nr_vars - 1;
 	if (i < 0)
@@ -886,7 +877,7 @@ static int array_compare_string(const void *_a, const void *_b)
 	return strcmp(heap_get_string(a.i)->text, heap_get_string(b.i)->text);
 }
 
-// Used for stable sorting arrays with qsort()
+// 用 qsort() 做稳定排序时用
 struct sortable {
 	union vm_value v;
 	int index;
@@ -1009,7 +1000,7 @@ int array_find(struct page *page, int start, int end, union vm_value v, int comp
 	start = max(start, 0);
 	end = min(end, page->nr_vars);
 
-	// if no compare function given, compare integer/string values
+	// 没给比较函数时，按整数/字符串值比较
 	if (!compare_fno) {
 		if (array_type(page->a_type) == AIN_STRING) {
 			struct string *v_str = heap_get_string(v.i);
@@ -1053,12 +1044,11 @@ struct page *delegate_new_from_method(int obj, int fun)
 {
 	if (fun < 1)
 		return alloc_page(DELEGATE_PAGE, 0, 0);
-	/* [D118] Keep the registration target alive. NEW's constructor
-	 * registers the delegate against the temporary `this` slot,
-	 * which the following ASSIGN copies and releases. Once its ref
-	 * hits 0, delegate_get() drops the entry by seq and
-	 * EndEventCallback@Update never runs -- the start screen never
-	 * advances. XSYS4_DG_KEEPALIVE=0 disables it for A/B. */
+	/* [D118] 让注册目标活着。NEW 的构造函数把委托注册到
+	 * 临时的 `this` 槽上，随后的 ASSIGN 会把它拷走并释放。
+	 * 它的引用一旦归零，delegate_get() 就按 seq 丢掉这条记录，
+	 * EndEventCallback@Update 再也不跑 —— 开始界面就永远不前进。
+	 * XSYS4_DG_KEEPALIVE=0 可关掉它做 A/B。 */
 	static int keepalive_off = -1;
 	if (keepalive_off < 0) {
 	        const char *e = getenv("XSYS4_DG_KEEPALIVE");
@@ -1113,7 +1103,7 @@ int delegate_numof(struct page *page)
 	if (page->type != DELEGATE_PAGE)
 		VM_ERROR("Not a delegate");
 
-	// garbage collection
+	// 垃圾回收
 	for (int i = 0; i < page->nr_vars; i += 3) {
 		if (heap_get_seq(page->values[i].i) != page->values[i+2].i) {
 			for (int j = i+3; j < page->nr_vars; j += 3) {

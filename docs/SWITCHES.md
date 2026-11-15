@@ -15,151 +15,151 @@
 
 | 分组 | 开关 | 位置 | 用途 |
 |---|---|---|---|
-| 断点与快照 | `XSYS4_CALL_TRACE` | `src/vm.c:755` | 逗号分隔的 AIN 函数号；命中时打印调用点与返回地址（"有没有被调到"的第一手证据） |
-| 断点与快照 | `XSYS4_CENSUS` | `src/vm.c:1321` | 按函数做调用普查（与 FN_DUMP 互补） |
-| 断点与快照 | `XSYS4_DUMP_AT` | `src/vm.c:2354` | 在 `<十六进制地址>[,最多几次]` 处停下，打印帧名、this 各成员、局部变量和操作数栈 |
-| 断点与快照 | `XSYS4_FN_DUMP` | `src/vm.c:853` | 函数调用次数统计与慢函数排行 |
-| 断点与快照 | `XSYS4_FN_DUMP_ALL` | `src/vm.c:869` | 统计时不做前 N 次闸门，低频函数也全打 |
-| 断点与快照 | `XSYS4_FN_DUMP_SKIP` | `src/vm.c:861` | 统计时跳过指定函数号 |
-| 断点与快照 | `XSYS4_HLL_TRACE` | `src/ffi.c:524` | 打印每次 HLL 调用（`lib= fno= nr_args= sp= ret=`），不设 FILTER 会很吵 |
-| 断点与快照 | `XSYS4_HLL_TRACE_FILTER` | `src/ffi.c:531` | 收窄 HLL_TRACE：`PartsEngine` 按库名、`27:73` 按库:序号、其它按函数名子串，逗号分隔 |
-| 容器与内存 | `XSYS4_ALLOC0_DBG` | `src/page.c:449` | 0 号堆槽分配的诊断 |
-| 容器与内存 | `XSYS4_ARRAY_DBG` | `src/hll/Array.c:1217` | Array 诊断的旧开关（与 ARR_DBG 同类，逐步统一） |
-| 容器与内存 | `XSYS4_ARRAY_FREE_FIX` | `src/hll/Array.c:531` | 数组释放路径的实验修复（默认关，会改行为） |
-| 容器与内存 | `XSYS4_ARRAY_REF_FIX` | `src/hll/Array.c:896` | 数组元素引用处理的实验修复（默认关，会改行为） |
-| 容器与内存 | `XSYS4_ARR_ALLOC_DBG` | `src/ffi.c:726` | 只打数组分配 |
-| 容器与内存 | `XSYS4_ARR_DBG` | `src/ffi.c:638` | Array 操作诊断：alloc/find/any/emp/free/subst 逐条打 |
-| 容器与内存 | `XSYS4_ARR_MULTIDIM` | `src/hll/Array.c:355` | Array.Alloc 构造多维内层数组；默认开启，=0 回退旧行为做 A/B |
-| 容器与内存 | `XSYS4_ARR_TYPE_DBG` | `src/hll/Array.c:1091` | 数组元素类型推导诊断（泛型数组"由首个元素定型"出问题时用） |
-| 容器与内存 | `XSYS4_ARR_UNSET_FIX` | `src/hll/Array.c:458` | 未初始化槽读取的实验修复（默认关，会改行为） |
-| 容器与内存 | `XSYS4_BADSTRUCT_DBG` | `src/vm.c:1252` | 结构体成员访问越界诊断 |
-| 容器与内存 | `XSYS4_BADTHIS` | `src/vm.c:1221` | 非法 this（类型不匹配/越界）时打回溯 |
-| 容器与内存 | `XSYS4_CTOR_DBG` | `src/page.c:465` | 构造函数调用诊断 |
-| 容器与内存 | `XSYS4_DF_DBG` | `src/heap.c:220` | 委托释放路径诊断 |
-| 容器与内存 | `XSYS4_DF_FREE_DBG` | `src/heap.c:315` | 委托释放的逐次释放诊断 |
-| 容器与内存 | `XSYS4_DF_MAX` | `src/heap.c:223` | 委托释放的最大迭代次数（防死循环） |
-| 容器与内存 | `XSYS4_DGPLUSA_DBG` | `src/vm.c:4513` | — |
-| 容器与内存 | `XSYS4_DGPLUSA_MAX` | `src/vm.c:4517` | 〔摘〕前 400 条会被 startup 的 CParts@Attach 占满。 |
-| 容器与内存 | `XSYS4_DG_ASSIGN_DBG` | `src/vm.c:4489` | 委托赋值诊断 |
-| 容器与内存 | `XSYS4_DG_CALL_DBG` | `src/vm.c:1561` | 委托调用诊断 |
+| 断点与快照 | `XSYS4_CALL_TRACE` | `src/vm.c:751` | 逗号分隔的 AIN 函数号；命中时打印调用点与返回地址（"有没有被调到"的第一手证据） |
+| 断点与快照 | `XSYS4_CENSUS` | `src/vm.c:1317` | 按函数做调用普查（与 FN_DUMP 互补） |
+| 断点与快照 | `XSYS4_DUMP_AT` | `src/vm.c:2350` | 在 `<十六进制地址>[,最多几次]` 处停下，打印帧名、this 各成员、局部变量和操作数栈 |
+| 断点与快照 | `XSYS4_FN_DUMP` | `src/vm.c:849` | 函数调用次数统计与慢函数排行 |
+| 断点与快照 | `XSYS4_FN_DUMP_ALL` | `src/vm.c:865` | 统计时不做前 N 次闸门，低频函数也全打 |
+| 断点与快照 | `XSYS4_FN_DUMP_SKIP` | `src/vm.c:857` | 统计时跳过指定函数号 |
+| 断点与快照 | `XSYS4_HLL_TRACE` | `src/ffi.c:520` | 打印每次 HLL 调用（`lib= fno= nr_args= sp= ret=`），不设 FILTER 会很吵 |
+| 断点与快照 | `XSYS4_HLL_TRACE_FILTER` | `src/ffi.c:527` | 收窄 HLL_TRACE：`PartsEngine` 按库名、`27:73` 按库:序号、其它按函数名子串，逗号分隔 |
+| 容器与内存 | `XSYS4_ALLOC0_DBG` | `src/page.c:445` | 0 号堆槽分配的诊断 |
+| 容器与内存 | `XSYS4_ARRAY_DBG` | `src/hll/Array.c:1213` | Array 诊断的旧开关（与 ARR_DBG 同类，逐步统一） |
+| 容器与内存 | `XSYS4_ARRAY_FREE_FIX` | `src/hll/Array.c:527` | 数组释放路径的实验修复（默认关，会改行为） |
+| 容器与内存 | `XSYS4_ARRAY_REF_FIX` | `src/hll/Array.c:892` | 数组元素引用处理的实验修复（默认关，会改行为） |
+| 容器与内存 | `XSYS4_ARR_ALLOC_DBG` | `src/ffi.c:722` | 只打数组分配 |
+| 容器与内存 | `XSYS4_ARR_DBG` | `src/ffi.c:634` | Array 操作诊断：alloc/find/any/emp/free/subst 逐条打 |
+| 容器与内存 | `XSYS4_ARR_MULTIDIM` | `src/hll/Array.c:351` | Array.Alloc 构造多维内层数组；默认开启，=0 回退旧行为做 A/B |
+| 容器与内存 | `XSYS4_ARR_TYPE_DBG` | `src/hll/Array.c:1087` | 数组元素类型推导诊断（泛型数组"由首个元素定型"出问题时用） |
+| 容器与内存 | `XSYS4_ARR_UNSET_FIX` | `src/hll/Array.c:454` | 未初始化槽读取的实验修复（默认关，会改行为） |
+| 容器与内存 | `XSYS4_BADSTRUCT_DBG` | `src/vm.c:1248` | 结构体成员访问越界诊断 |
+| 容器与内存 | `XSYS4_BADTHIS` | `src/vm.c:1217` | 非法 this（类型不匹配/越界）时打回溯 |
+| 容器与内存 | `XSYS4_CTOR_DBG` | `src/page.c:461` | 构造函数调用诊断 |
+| 容器与内存 | `XSYS4_DF_DBG` | `src/heap.c:216` | 委托释放路径诊断 |
+| 容器与内存 | `XSYS4_DF_FREE_DBG` | `src/heap.c:311` | 委托释放的逐次释放诊断 |
+| 容器与内存 | `XSYS4_DF_MAX` | `src/heap.c:219` | 委托释放的最大迭代次数（防死循环） |
+| 容器与内存 | `XSYS4_DGPLUSA_DBG` | `src/vm.c:4509` | — |
+| 容器与内存 | `XSYS4_DGPLUSA_MAX` | `src/vm.c:4513` | 〔摘〕前 400 条会被 startup 的 CParts@Attach 占满。 |
+| 容器与内存 | `XSYS4_DG_ASSIGN_DBG` | `src/vm.c:4485` | 委托赋值诊断 |
+| 容器与内存 | `XSYS4_DG_CALL_DBG` | `src/vm.c:1557` | 委托调用诊断 |
 | 容器与内存 | `XSYS4_DG_DBG` | `src/hll/Delegate.c:65` | 委托（Delegate）诊断总开关 |
-| 容器与内存 | `XSYS4_DG_DRIFT` | `src/vm.c:1428` | 委托页"漂移"检测（指向了不该指的对象） |
-| 容器与内存 | `XSYS4_DG_GET_DBG` | `src/page.c:1215` | 委托取值诊断 |
-| 容器与内存 | `XSYS4_DG_KEEPALIVE` | `src/page.c:1064` | 委托页保活（防止被提前回收） |
-| 容器与内存 | `XSYS4_DG_LAZY` | `src/vm.c:4552` | 成员里的委托槽为空时惰性建页（NetworkConfirmation 的 OK/Cancel 靠它） |
-| 容器与内存 | `XSYS4_DG_MISS_DBG` | `src/vm.c:1531` | 委托 miss（找不到目标）时打印 |
-| 容器与内存 | `XSYS4_DG_MISS_FILTER` | `src/vm.c:1535` | 收窄 DG_MISS 输出 |
-| 容器与内存 | `XSYS4_DG_PAGE_DBG` | `src/vm.c:1472` | 委托页生命周期诊断 |
-| 容器与内存 | `XSYS4_MEM_STAT` | `src/vm.c:4755` | 堆内存与 RSS 实时统计 |
+| 容器与内存 | `XSYS4_DG_DRIFT` | `src/vm.c:1424` | 委托页"漂移"检测（指向了不该指的对象） |
+| 容器与内存 | `XSYS4_DG_GET_DBG` | `src/page.c:1205` | 委托取值诊断 |
+| 容器与内存 | `XSYS4_DG_KEEPALIVE` | `src/page.c:1054` | 委托页保活（防止被提前回收） |
+| 容器与内存 | `XSYS4_DG_LAZY` | `src/vm.c:4548` | 成员里的委托槽为空时惰性建页（NetworkConfirmation 的 OK/Cancel 靠它） |
+| 容器与内存 | `XSYS4_DG_MISS_DBG` | `src/vm.c:1527` | 委托 miss（找不到目标）时打印 |
+| 容器与内存 | `XSYS4_DG_MISS_FILTER` | `src/vm.c:1531` | 收窄 DG_MISS 输出 |
+| 容器与内存 | `XSYS4_DG_PAGE_DBG` | `src/vm.c:1468` | 委托页生命周期诊断 |
+| 容器与内存 | `XSYS4_MEM_STAT` | `src/vm.c:4751` | 堆内存与 RSS 实时统计 |
 | 呈现与输入 | `XSYS4_ACT_CLICKABLE_ALL` | `src/parts/activity.c:796` | 把所有**活动文件里声明**的部件标为可点（运行时建的 900000xxx 不受影响） |
 | 呈现与输入 | `XSYS4_ACT_DBG` | `src/parts/activity.c:989` | 活动装载与点击派发诊断 |
 | 呈现与输入 | `XSYS4_ACT_DEBUG` | `src/parts/activity.c:1154` | 活动诊断的旧开关 |
-| 呈现与输入 | `XSYS4_ACT_PART_DBG` | `src/parts/parts.c:2185` | 打印活动部件的建造解析（名字/类型/尺寸/表示領域/flat 名）与 300 号段之后的 SetPos/SetZ |
-| 呈现与输入 | `XSYS4_CLICK_RETARGET` | `src/parts/message.c:73` | 点击被遮挡后重定向到下层部件 |
-| 呈现与输入 | `XSYS4_CTRL_DBG` | `src/parts/parts.c:1468` | controller 栈、视觉地板（cover_layer）、hide/remove 事件 |
-| 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:341` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
-| 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:312` | 输入命中的候选部件表与点击状态 |
+| 呈现与输入 | `XSYS4_ACT_PART_DBG` | `src/parts/parts.c:2181` | 打印活动部件的建造解析（名字/类型/尺寸/表示領域/flat 名）与 300 号段之后的 SetPos/SetZ |
+| 呈现与输入 | `XSYS4_CLICK_RETARGET` | `src/parts/message.c:69` | 点击被遮挡后重定向到下层部件 |
+| 呈现与输入 | `XSYS4_CTRL_DBG` | `src/parts/parts.c:1464` | controller 栈、视觉地板（cover_layer）、hide/remove 事件 |
+| 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:337` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
+| 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:308` | 输入命中的候选部件表与点击状态 |
 | 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:1178` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
-| 呈现与输入 | `XSYS4_PARTS_DUMP_MAX` | `src/parts/parts.c:3092` | — |
-| 呈现与输入 | `XSYS4_PARTS_DUMP_MIN` | `src/parts/parts.c:3041` | [诊断] 只 dump 部件号 >= 此值的部件；部件表按插入序遍历，地图号段会吃光 PARTS_DUMP_MAX 名额，设 900000300 才能看到动态号段 |
-| 呈现与输入 | `XSYS4_PARTS_NO_BASE` | `src/parts/parts.c:2904` | — |
-| 呈现与输入 | `XSYS4_UPD_DBG` | `src/parts/parts.c:1513` | PE_Update 的每帧诊断 |
-| 自动化后门 | `XSYS4_AUTO_CARD_CLICK` | `src/vm.c:1132` | [后门] 编队卡片视图初始化完成后直调 SceneParty@OnClickCard(idx)；值=卡片索引 |
-| 自动化后门 | `XSYS4_AUTO_CARD_CLICK_DELAY` | `src/vm.c:1135` | [后门] 最后一次 InitCardView 之后再等多久点卡（毫秒，默认 1500） |
-| 自动化后门 | `XSYS4_AUTO_CARD_ORG` | `src/vm.c:1137` | [后门] 点卡前先调 PartyCardGroup@ChangeOrganizationId(id) 切组织；0=不切 |
-| 自动化后门 | `XSYS4_AUTO_CARD_REPEAT` | `src/vm.c:1139` | [后门] 连点同一张卡几次（默认 1）；第一击移除、第二击验证 AddCardToFormations |
-| 自动化后门 | `XSYS4_AUTO_MAP` | `src/vm.c:4809` | 无头跑测后门：自动推进到任务地图 |
-| 自动化后门 | `XSYS4_AUTO_MAP_DELAY` | `src/vm.c:4810` | 后门延迟（毫秒） |
-| 自动化后门 | `XSYS4_AUTO_MAP_ROUTE` | `src/vm.c:1110` | [后门] 地图稳定后直调 SceneQuestMap@StartMoveRoute(23606)，毫秒=延迟 |
-| 自动化后门 | `XSYS4_AUTO_PARTY` | `src/vm.c:1105` | 无头跑测后门：自动推进到部队编成 |
-| 自动化后门 | `XSYS4_AUTO_PARTY_CLOSE` | `src/vm.c:1130` | [后门] 卡片视图就绪后直调 SceneParty@Close(24301)，验证编队出口；=1 开启 |
-| 自动化后门 | `XSYS4_AUTO_PARTY_DELAY` | `src/vm.c:1106` | 后门延迟（毫秒） |
-| 自动化后门 | `XSYS4_AUTO_RUNPARTY` | `src/vm.c:4886` | [后门] 地图起来后直接调 Scenes::RunParty(1)，绕开地图 UI 直进编队界面；值=延迟毫秒 |
-| 自动化后门 | `XSYS4_NO_LAYER_COVER` | `src/parts/parts.c:1420` | 关闭「视觉地板」优化（怀疑遮挡算错时用） |
+| 呈现与输入 | `XSYS4_PARTS_DUMP_MAX` | `src/parts/parts.c:3088` | — |
+| 呈现与输入 | `XSYS4_PARTS_DUMP_MIN` | `src/parts/parts.c:3037` | [诊断] 只 dump 部件号 >= 此值的部件；部件表按插入序遍历，地图号段会吃光 PARTS_DUMP_MAX 名额，设 900000300 才能看到动态号段 |
+| 呈现与输入 | `XSYS4_PARTS_NO_BASE` | `src/parts/parts.c:2900` | — |
+| 呈现与输入 | `XSYS4_UPD_DBG` | `src/parts/parts.c:1509` | PE_Update 的每帧诊断 |
+| 自动化后门 | `XSYS4_AUTO_CARD_CLICK` | `src/vm.c:1128` | [后门] 编队卡片视图初始化完成后直调 SceneParty@OnClickCard(idx)；值=卡片索引 |
+| 自动化后门 | `XSYS4_AUTO_CARD_CLICK_DELAY` | `src/vm.c:1131` | [后门] 最后一次 InitCardView 之后再等多久点卡（毫秒，默认 1500） |
+| 自动化后门 | `XSYS4_AUTO_CARD_ORG` | `src/vm.c:1133` | [后门] 点卡前先调 PartyCardGroup@ChangeOrganizationId(id) 切组织；0=不切 |
+| 自动化后门 | `XSYS4_AUTO_CARD_REPEAT` | `src/vm.c:1135` | [后门] 连点同一张卡几次（默认 1）；第一击移除、第二击验证 AddCardToFormations |
+| 自动化后门 | `XSYS4_AUTO_MAP` | `src/vm.c:4805` | 无头跑测后门：自动推进到任务地图 |
+| 自动化后门 | `XSYS4_AUTO_MAP_DELAY` | `src/vm.c:4806` | 后门延迟（毫秒） |
+| 自动化后门 | `XSYS4_AUTO_MAP_ROUTE` | `src/vm.c:1106` | [后门] 地图稳定后直调 SceneQuestMap@StartMoveRoute(23606)，毫秒=延迟 |
+| 自动化后门 | `XSYS4_AUTO_PARTY` | `src/vm.c:1101` | 无头跑测后门：自动推进到部队编成 |
+| 自动化后门 | `XSYS4_AUTO_PARTY_CLOSE` | `src/vm.c:1126` | [后门] 卡片视图就绪后直调 SceneParty@Close(24301)，验证编队出口；=1 开启 |
+| 自动化后门 | `XSYS4_AUTO_PARTY_DELAY` | `src/vm.c:1102` | 后门延迟（毫秒） |
+| 自动化后门 | `XSYS4_AUTO_RUNPARTY` | `src/vm.c:4882` | [后门] 地图起来后直接调 Scenes::RunParty(1)，绕开地图 UI 直进编队界面；值=延迟毫秒 |
+| 自动化后门 | `XSYS4_NO_LAYER_COVER` | `src/parts/parts.c:1416` | 关闭「视觉地板」优化（怀疑遮挡算错时用） |
 | 运行环境 | `XSYS4_DATA_DIR` | `src/pal.c:43` | 数据目录（缺省用编译期默认值） |
-| 运行环境 | `XSYS4_SOFT_STUB` | `src/ffi.c:60` | 未实现的导出用零桩顶替（诊断用：判断"缺实现"还是"走错路"） |
-| 一次性探针 | `XSYS4_DBG_EIP` | `src/hll/PartsEngine.c:594` | 打印 SetEnableInputProcess 的每次调用与参数（实测 242 次里 238 次 enable=0） |
-| 其它 | `XSYS4_ALPHA_DBG` | `src/parts/parts.c:2234` | 打印 SetComponentAlpha 与 AddMotionAlpha 的 parts/alpha 序列（查部件为何全透明） |
-| 其它 | `XSYS4_CONSTRUCT_776` | `src/hll/PartsEngine.c:506` | =0 把 AddPartsConstructionProcess(776) 退回空桩，用于卡片合成 A/B |
-| 其它 | `XSYS4_CONSTRUCT_DBG` | `src/parts/construction.c:342` | 打印部件合成操作：PartsFunc(case 162)、776 批量入口、Build 的 parts/cmd/CG 名与 op 数 |
-| 其它 | `XSYS4_CP_DBG` | `src/vm.c:482` | 〔摘〕Parts(1114) 的 m_partsNumber 若在拷贝时还是 0，副本就永远是 0。 |
-| 其它 | `XSYS4_DI_FALLBACK` | `src/parts/message.c:87` | 〔摘〕Controlled experiment: fall back to index 0 when explicitly enabled. |
-| 其它 | `XSYS4_DUMP_EVERY` | `src/video.c:452` | 每隔 N 次执行 dump 一次，用于观察循环里的状态漂移 |
-| 其它 | `XSYS4_DUMP_FRAME` | `src/video.c:448` | 指定帧的完整快照（配合 DUMP_AT 的扩展模式） |
-| 其它 | `XSYS4_ENV_DBG` | `src/vm.c:2853` | — |
-| 其它 | `XSYS4_EX_DBG` | `src/hll/MainEXFile.c:531` | 〔摘〕所有任务都会被判成地图任务、剧情整段跳过——所以必须能看见。 |
+| 运行环境 | `XSYS4_SOFT_STUB` | `src/ffi.c:56` | 未实现的导出用零桩顶替（诊断用：判断"缺实现"还是"走错路"） |
+| 一次性探针 | `XSYS4_DBG_EIP` | `src/hll/PartsEngine.c:590` | 打印 SetEnableInputProcess 的每次调用与参数（实测 242 次里 238 次 enable=0） |
+| 其它 | `XSYS4_ALPHA_DBG` | `src/parts/parts.c:2230` | 打印 SetComponentAlpha 与 AddMotionAlpha 的 parts/alpha 序列（查部件为何全透明） |
+| 其它 | `XSYS4_CONSTRUCT_776` | `src/hll/PartsEngine.c:502` | =0 把 AddPartsConstructionProcess(776) 退回空桩，用于卡片合成 A/B |
+| 其它 | `XSYS4_CONSTRUCT_DBG` | `src/parts/construction.c:338` | 打印部件合成操作：PartsFunc(case 162)、776 批量入口、Build 的 parts/cmd/CG 名与 op 数 |
+| 其它 | `XSYS4_CP_DBG` | `src/vm.c:478` | 〔摘〕Parts(1114) 的 m_partsNumber 若在拷贝时还是 0，副本就永远是 0。 |
+| 其它 | `XSYS4_DI_FALLBACK` | `src/parts/message.c:83` | 〔摘〕Controlled experiment: fall back to index 0 when explicitly enabled. |
+| 其它 | `XSYS4_DUMP_EVERY` | `src/video.c:447` | 每隔 N 次执行 dump 一次，用于观察循环里的状态漂移 |
+| 其它 | `XSYS4_DUMP_FRAME` | `src/video.c:443` | 指定帧的完整快照（配合 DUMP_AT 的扩展模式） |
+| 其它 | `XSYS4_ENV_DBG` | `src/vm.c:2849` | — |
+| 其它 | `XSYS4_EX_DBG` | `src/hll/MainEXFile.c:527` | 〔摘〕所有任务都会被判成地图任务、剧情整段跳过——所以必须能看见。 |
 | 其它 | `XSYS4_EX_DUMP` | `src/parts/activity.c:636` | 按部件名 dump 整棵 EX 子树（查「尺寸」「表示領域」写在哪个键上）；值=部件名 |
 | 其它 | `XSYS4_EX_LAYOUT_FREE` | `src/parts/activity.c:718` | [D214 已转正] EX 装载的布局盒/用户组件初值改为 FREE（保留 EX 绝对坐标），避免 VERTICAL 自动重排把子部件推到屏幕外；默认生效，=0 回退做 A/B |
 | 其它 | `XSYS4_EX_RATIO_POS` | `src/parts/activity.c:775` | [D216 已转正] EX「座標を率として認識する=1」的 座標 按视图宽高换算成像素；消息窗口 (0,1) 由此变成 (0,1080)，正文才从屏幕外进画面；默认生效，=0 回退做 A/B |
-| 其它 | `XSYS4_FLAT_DBG` | `src/parts/flat.c:1022` | 打印 flat 的加载名/hdr 尺寸/库数，以及渲染时的 flat 指针与部件几何（空 flat 会让部件退化成 0x0） |
-| 其它 | `XSYS4_G14_WATCH` | `src/vm.c:2767` | [诊断] 只在 global[14] 的值变化时打印 ip/旧值/新值/栈/调用栈（抓单例被覆写） |
-| 其它 | `XSYS4_GSAVE_DBG` | `src/savedata.c:766` | 〔摘〕the printable type name instead. |
-| 其它 | `XSYS4_HEAP_LIVE_LIMIT` | `src/heap.c:111` | 堆存活槽上限，超了报警 |
-| 其它 | `XSYS4_HLL_ARGDBG` | `src/ffi.c:914` | 打印 HLL 调用的实际参数值（排查"参数顺序/位宽错"时用） |
-| 其它 | `XSYS4_HLL_REFDBG` | `src/ffi.c:861` | [诊断] 引用型 HLL 返回：打印反解 (page_slot,index) 是否成功；默认只打失败项 |
-| 其它 | `XSYS4_HLL_REFDBG_FILTER` | `src/ffi.c:864` | [诊断] 配合 REFDBG，额外打印函数名含该子串的调用（如 At） |
-| 其它 | `XSYS4_ICAST_DBG` | `src/vm.c:2946` | 〔摘〕"对象类型确实不对" 和 "我们的转型判定太严"。 |
-| 其它 | `XSYS4_IFACE_ARR_FIX` | `src/page.c:567` | — |
-| 其它 | `XSYS4_IFACE_COPY_DBG` | `src/page.c:425` | — |
-| 其它 | `XSYS4_IFACE_COPY_FIX` | `src/page.c:401` | — |
-| 其它 | `XSYS4_IFACE_PUSH_DBG` | `src/hll/Array.c:1135` | 〔摘〕若这里从不出现，说明该数组不是 Array.PushBack 建的。 |
-| 其它 | `XSYS4_IFACE_REALLOC_FIX` | `src/page.c:641` | — |
-| 其它 | `XSYS4_IP_WATCH` | `src/vm.c:2706` | 监视指令指针，抓"跑到不该跑的地方" |
-| 其它 | `XSYS4_KEYCODE_PROBE` | `src/parts/input.c:47` | 打印收到的原始键码 |
-| 其它 | `XSYS4_LAYER_TRACE` | `src/parts/parts.c:2215` | 图层顺序追踪 |
-| 其它 | `XSYS4_LVAR_DBG` | `src/vm.c:158` | — |
-| 其它 | `XSYS4_MC_SLOT_DBG` | `src/vm.c:1174` | — |
-| 其它 | `XSYS4_MC_WATCH` | `src/vm.c:988` | 〔摘〕时（callee 声明 N 槽、call site 只压了 1 槽）只能靠猜。 |
-| 其它 | `XSYS4_MGRBT` | `src/vm.c:2550` | — |
-| 其它 | `XSYS4_MSGF_FIX` | `src/hacks.c:332` | [D204] AIN v12 无 MSGF 段时按函数名把 msgf 解析到 "message"/3（Rance10: fno 6100）；默认开启，=0 关闭做 A/B |
-| 其它 | `XSYS4_MSGQ_DBG` | `src/parts/message.c:167` | 〔摘〕对其它值走 member1[delegate_index]。分派打空炮时必须先知道走的哪条。 |
-| 其它 | `XSYS4_MSGWIN_DBG` | `src/hll/PartsEngine.c:50` | [诊断] 打印消息窗口配置族 setter 的触达与实参（Active/Text/CGName/FlatName/TextArea/OriginPosMode/Space/Speed），每个函数限 20 条；用来判定「空桩是不是真被调用」 |
-| 其它 | `XSYS4_MSGWIN_FRAME_DBG` | `src/parts/render.c:1002` | [诊断] 打印消息窗口底板 CG（1920x300~500）是否进入 parts_render 及其 origin_offset / 准入字段；用来区分「没到渲染」与「画了看不见」 |
+| 其它 | `XSYS4_FLAT_DBG` | `src/parts/flat.c:1018` | 打印 flat 的加载名/hdr 尺寸/库数，以及渲染时的 flat 指针与部件几何（空 flat 会让部件退化成 0x0） |
+| 其它 | `XSYS4_G14_WATCH` | `src/vm.c:2763` | [诊断] 只在 global[14] 的值变化时打印 ip/旧值/新值/栈/调用栈（抓单例被覆写） |
+| 其它 | `XSYS4_GSAVE_DBG` | `src/savedata.c:762` | 〔摘〕the printable type name instead. |
+| 其它 | `XSYS4_HEAP_LIVE_LIMIT` | `src/heap.c:107` | 堆存活槽上限，超了报警 |
+| 其它 | `XSYS4_HLL_ARGDBG` | `src/ffi.c:910` | 打印 HLL 调用的实际参数值（排查"参数顺序/位宽错"时用） |
+| 其它 | `XSYS4_HLL_REFDBG` | `src/ffi.c:857` | [诊断] 引用型 HLL 返回：打印反解 (page_slot,index) 是否成功；默认只打失败项 |
+| 其它 | `XSYS4_HLL_REFDBG_FILTER` | `src/ffi.c:860` | [诊断] 配合 REFDBG，额外打印函数名含该子串的调用（如 At） |
+| 其它 | `XSYS4_ICAST_DBG` | `src/vm.c:2942` | 〔摘〕"对象类型确实不对" 和 "我们的转型判定太严"。 |
+| 其它 | `XSYS4_IFACE_ARR_FIX` | `src/page.c:563` | — |
+| 其它 | `XSYS4_IFACE_COPY_DBG` | `src/page.c:421` | — |
+| 其它 | `XSYS4_IFACE_COPY_FIX` | `src/page.c:397` | — |
+| 其它 | `XSYS4_IFACE_PUSH_DBG` | `src/hll/Array.c:1131` | 〔摘〕若这里从不出现，说明该数组不是 Array.PushBack 建的。 |
+| 其它 | `XSYS4_IFACE_REALLOC_FIX` | `src/page.c:635` | — |
+| 其它 | `XSYS4_IP_WATCH` | `src/vm.c:2702` | 监视指令指针，抓"跑到不该跑的地方" |
+| 其它 | `XSYS4_KEYCODE_PROBE` | `src/parts/input.c:43` | 打印收到的原始键码 |
+| 其它 | `XSYS4_LAYER_TRACE` | `src/parts/parts.c:2211` | 图层顺序追踪 |
+| 其它 | `XSYS4_LVAR_DBG` | `src/vm.c:154` | — |
+| 其它 | `XSYS4_MC_SLOT_DBG` | `src/vm.c:1170` | — |
+| 其它 | `XSYS4_MC_WATCH` | `src/vm.c:984` | 〔摘〕时（callee 声明 N 槽、call site 只压了 1 槽）只能靠猜。 |
+| 其它 | `XSYS4_MGRBT` | `src/vm.c:2546` | — |
+| 其它 | `XSYS4_MSGF_FIX` | `src/hacks.c:328` | [D204] AIN v12 无 MSGF 段时按函数名把 msgf 解析到 "message"/3（Rance10: fno 6100）；默认开启，=0 关闭做 A/B |
+| 其它 | `XSYS4_MSGQ_DBG` | `src/parts/message.c:163` | 〔摘〕对其它值走 member1[delegate_index]。分派打空炮时必须先知道走的哪条。 |
+| 其它 | `XSYS4_MSGWIN_DBG` | `src/hll/PartsEngine.c:46` | [诊断] 打印消息窗口配置族 setter 的触达与实参（Active/Text/CGName/FlatName/TextArea/OriginPosMode/Space/Speed），每个函数限 20 条；用来判定「空桩是不是真被调用」 |
+| 其它 | `XSYS4_MSGWIN_FRAME_DBG` | `src/parts/render.c:998` | [诊断] 打印消息窗口底板 CG（1920x300~500）是否进入 parts_render 及其 origin_offset / 准入字段；用来区分「没到渲染」与「画了看不见」 |
 | 其它 | `XSYS4_MSGWIN_FULL` | `src/parts/activity.c:829` | [D217 已转正] EX 消息窗口组件补齐 39px 字体/字色/字距/行距，并用独立 CG 部件装载 种类別情报 的 底板ＣＧ名；默认生效，=0 回退做 A/B |
-| 其它 | `XSYS4_MSG_DBG` | `src/parts/message.c:49` | 〔摘〕只打非悬停消息，否则前 60 条全被 MOUSE_ON 占满，看不到点击。 |
-| 其它 | `XSYS4_MSG_NO_SENTINEL` | `src/parts/message.c:163` | 〔摘〕busy loop that froze SceneStack@WaitFrame. |
-| 其它 | `XSYS4_MSG_POPDBG` | `src/parts/message.c:127` | 〔摘〕这里能看到 type=5 被 pop 而没有对应 dispatch。 |
-| 其它 | `XSYS4_MSG_TRACE` | `src/parts/message.c:142` | — |
-| 其它 | `XSYS4_NODE_DIGIT` | `src/vm.c:2269` | [D209 诊断后门] 把 QuestMapParamAccessor 的 KeyBase 末尾全角编号末位改成 0-9（００１→００２），仅在 23486 事件链生效；默认关，用于验证战斗链，不是正常游戏路径 |
-| 其它 | `XSYS4_NO_AUDIO` | `src/audio_mixer.c:705` | 关闭音频输出 |
-| 其它 | `XSYS4_NO_AUTO_MOTION` | `src/parts/motion.c:106` | =1 关闭「首次加 motion 自动开表」（D186），用于 motion 自动启动的 A/B |
-| 其它 | `XSYS4_NO_CP_ALPHA_FIX` | `src/parts/parts.c:2258` | =1 关闭「合成类部件 alpha=0 提升为 255」（卡片立绘 A/B 回退开关）。[D224 收窄] 提升现在只作用于 >=8x8 的真实合成纹理，2x2 全屏淡出遮罩不再被误抬 |
-| 其它 | `XSYS4_NO_PUMP` | `src/vm.c:4724` | 事件泵空转诊断 |
-| 其它 | `XSYS4_NULLMETHOD_FIX` | `src/vm.c:1196` | — |
-| 其它 | `XSYS4_NULLREF_DBG` | `src/vm.c:292` | 〔摘〕Pop a reference off the stack, returning the address of the referen… |
-| 其它 | `XSYS4_NULL_METHOD` | `src/vm.c:1042` | — |
-| 其它 | `XSYS4_NULL_RET` | `src/vm.c:1082` | 〔摘〕XSYS4_NULL_RET=0 可回退，用于定位"到底跳过了哪些调用"。 |
-| 其它 | `XSYS4_OBJ_WATCH` | `src/vm.c:2726` | 监视指定堆槽的读写 |
-| 其它 | `XSYS4_PE_DBG` | `src/hll/PartsEngine.c:40` | PartsEngine 调用诊断 |
-| 其它 | `XSYS4_PHANTOM_REUSE` | `src/vm.c:1275` | 幽灵槽复用诊断 |
-| 其它 | `XSYS4_PRED_BOUND` | `src/hll/Array.c:698` | — |
-| 其它 | `XSYS4_PRED_DBG` | `src/hll/Array.c:669` | — |
-| 其它 | `XSYS4_RA_DBG` | `src/vm.c:3022` | — |
-| 其它 | `XSYS4_RECYCLE_SLOTS` | `src/heap.c:203` | 复用已释放的堆槽（默认关） |
-| 其它 | `XSYS4_REFDBG` | `src/vm.c:353` | 〔摘〕它之后的代码全部当作不可达删掉。 |
-| 其它 | `XSYS4_REFREF_DBG` | `src/vm.c:2613` | — |
-| 其它 | `XSYS4_REF_AT` | `src/vm.c:2529` | — |
-| 其它 | `XSYS4_RELEASE_RECURSIVE` | `src/parts/parts.c:2129` | [D219 已转正] PE_ReleaseParts 递归释放整棵部件子树（原 parts_release 只把子部件摘链不释放，对话框关掉后文字层残留，H025/[LAYER-LEAK]）；默认生效，=0 回退做 A/B |
-| 其它 | `XSYS4_RSS_LIMIT` | `src/vm.c:2330` | 进程 RSS 上限，超了报警 |
-| 其它 | `XSYS4_SAVE_GROUP_ANY` | `src/savedata.c:740` | — |
-| 其它 | `XSYS4_SHOT_DIR` | `src/screenshot.c:182` | [诊断] 指定目录后按 Alt+S 让引擎用 glReadPixels 直接 dump GL main surface 为 shot_NNN.png，绕过 zenity 文件框与 X11 合成；GL 直绘下 x11grab/import 只能拿到全黑 framebuffer，画面判据以此为准（GUIDE 1.13） |
-| 其它 | `XSYS4_SHOT_PARTS_DUMP` | `src/screenshot.c:188` | [诊断] 配合 XSYS4_SHOT_DIR：每次引擎自截图时打一次部件快照（layer_show / cover / 每部件 vis）+ 同帧 CG 绘制日志（最近 12 次调用的 alpha / multiply_color / scale / 纹理尺寸、以及两次截图之间的绘制次数）；按截图时刻触发而非全程探针，避免拖慢帧率改变剧情时序；需配 XSYS4_PARTS_DUMP_MIN=900000300 / MAX=1000 |
-| 其它 | `XSYS4_SLOT_ID` | `src/heap.c:254` | 打印稳定槽 ID，便于跨日志对照同一对象 |
-| 其它 | `XSYS4_SP_BALANCE` | `src/vm.c:1901` | 每次函数返回校验栈平衡（失败即报） |
-| 其它 | `XSYS4_SP_TRACE` | `src/vm.c:2495` | 环形缓冲记录栈指针变化，抓"玄学栈漂移" |
-| 其它 | `XSYS4_SP_WATCH` | `src/vm.c:4998` | 监视指定帧的栈指针 |
-| 其它 | `XSYS4_SRDBG` | `src/vm.c:3863` | 〔摘〕the bottom of the triple, never a live ARRAY_PAGE. |
-| 其它 | `XSYS4_STACK_SAMPLE` | `src/vm.c:5012` | 周期性采样调用栈（抓谁在长时间占栈） |
-| 其它 | `XSYS4_STRICT_REF` | `src/vm.c:377` | 严格引用计数检查（会把"漏 ref/unref"变成显式报错） |
+| 其它 | `XSYS4_MSG_DBG` | `src/parts/message.c:45` | 〔摘〕只打非悬停消息，否则前 60 条全被 MOUSE_ON 占满，看不到点击。 |
+| 其它 | `XSYS4_MSG_NO_SENTINEL` | `src/parts/message.c:159` | 〔摘〕busy loop that froze SceneStack@WaitFrame. |
+| 其它 | `XSYS4_MSG_POPDBG` | `src/parts/message.c:123` | 〔摘〕这里能看到 type=5 被 pop 而没有对应 dispatch。 |
+| 其它 | `XSYS4_MSG_TRACE` | `src/parts/message.c:138` | — |
+| 其它 | `XSYS4_NODE_DIGIT` | `src/vm.c:2265` | [D209 诊断后门] 把 QuestMapParamAccessor 的 KeyBase 末尾全角编号末位改成 0-9（００１→００２），仅在 23486 事件链生效；默认关，用于验证战斗链，不是正常游戏路径 |
+| 其它 | `XSYS4_NO_AUDIO` | `src/audio_mixer.c:701` | 关闭音频输出 |
+| 其它 | `XSYS4_NO_AUTO_MOTION` | `src/parts/motion.c:102` | =1 关闭「首次加 motion 自动开表」（D186），用于 motion 自动启动的 A/B |
+| 其它 | `XSYS4_NO_CP_ALPHA_FIX` | `src/parts/parts.c:2254` | =1 关闭「合成类部件 alpha=0 提升为 255」（卡片立绘 A/B 回退开关）。[D224 收窄] 提升现在只作用于 >=8x8 的真实合成纹理，2x2 全屏淡出遮罩不再被误抬 |
+| 其它 | `XSYS4_NO_PUMP` | `src/vm.c:4720` | 事件泵空转诊断 |
+| 其它 | `XSYS4_NULLMETHOD_FIX` | `src/vm.c:1192` | — |
+| 其它 | `XSYS4_NULLREF_DBG` | `src/vm.c:288` | 〔摘〕Pop a reference off the stack, returning the address of the referen… |
+| 其它 | `XSYS4_NULL_METHOD` | `src/vm.c:1038` | — |
+| 其它 | `XSYS4_NULL_RET` | `src/vm.c:1078` | 〔摘〕XSYS4_NULL_RET=0 可回退，用于定位"到底跳过了哪些调用"。 |
+| 其它 | `XSYS4_OBJ_WATCH` | `src/vm.c:2722` | 监视指定堆槽的读写 |
+| 其它 | `XSYS4_PE_DBG` | `src/hll/PartsEngine.c:36` | PartsEngine 调用诊断 |
+| 其它 | `XSYS4_PHANTOM_REUSE` | `src/vm.c:1271` | 幽灵槽复用诊断 |
+| 其它 | `XSYS4_PRED_BOUND` | `src/hll/Array.c:694` | — |
+| 其它 | `XSYS4_PRED_DBG` | `src/hll/Array.c:665` | — |
+| 其它 | `XSYS4_RA_DBG` | `src/vm.c:3018` | — |
+| 其它 | `XSYS4_RECYCLE_SLOTS` | `src/heap.c:199` | 复用已释放的堆槽（默认关） |
+| 其它 | `XSYS4_REFDBG` | `src/vm.c:349` | 〔摘〕它之后的代码全部当作不可达删掉。 |
+| 其它 | `XSYS4_REFREF_DBG` | `src/vm.c:2609` | — |
+| 其它 | `XSYS4_REF_AT` | `src/vm.c:2525` | — |
+| 其它 | `XSYS4_RELEASE_RECURSIVE` | `src/parts/parts.c:2125` | [D219 已转正] PE_ReleaseParts 递归释放整棵部件子树（原 parts_release 只把子部件摘链不释放，对话框关掉后文字层残留，H025/[LAYER-LEAK]）；默认生效，=0 回退做 A/B |
+| 其它 | `XSYS4_RSS_LIMIT` | `src/vm.c:2326` | 进程 RSS 上限，超了报警 |
+| 其它 | `XSYS4_SAVE_GROUP_ANY` | `src/savedata.c:736` | — |
+| 其它 | `XSYS4_SHOT_DIR` | `src/screenshot.c:178` | [诊断] 指定目录后按 Alt+S 让引擎用 glReadPixels 直接 dump GL main surface 为 shot_NNN.png，绕过 zenity 文件框与 X11 合成；GL 直绘下 x11grab/import 只能拿到全黑 framebuffer，画面判据以此为准（GUIDE 1.13） |
+| 其它 | `XSYS4_SHOT_PARTS_DUMP` | `src/screenshot.c:184` | [诊断] 配合 XSYS4_SHOT_DIR：每次引擎自截图时打一次部件快照（layer_show / cover / 每部件 vis）+ 同帧 CG 绘制日志（最近 12 次调用的 alpha / multiply_color / scale / 纹理尺寸、以及两次截图之间的绘制次数）；按截图时刻触发而非全程探针，避免拖慢帧率改变剧情时序；需配 XSYS4_PARTS_DUMP_MIN=900000300 / MAX=1000 |
+| 其它 | `XSYS4_SLOT_ID` | `src/heap.c:250` | 打印稳定槽 ID，便于跨日志对照同一对象 |
+| 其它 | `XSYS4_SP_BALANCE` | `src/vm.c:1897` | 每次函数返回校验栈平衡（失败即报） |
+| 其它 | `XSYS4_SP_TRACE` | `src/vm.c:2491` | 环形缓冲记录栈指针变化，抓"玄学栈漂移" |
+| 其它 | `XSYS4_SP_WATCH` | `src/vm.c:4994` | 监视指定帧的栈指针 |
+| 其它 | `XSYS4_SRDBG` | `src/vm.c:3859` | 〔摘〕the bottom of the triple, never a live ARRAY_PAGE. |
+| 其它 | `XSYS4_STACK_SAMPLE` | `src/vm.c:5008` | 周期性采样调用栈（抓谁在长时间占栈） |
+| 其它 | `XSYS4_STRICT_REF` | `src/vm.c:373` | 严格引用计数检查（会把"漏 ref/unref"变成显式报错） |
 | 其它 | `XSYS4_STR_INT_DBG` | `src/hll/String.c:59` | 〔摘〕"取对了但字符串已经死了"。 |
-| 其它 | `XSYS4_STUB_BT` | `src/ffi.c:164` | 软桩命中时附带回溯 |
-| 其它 | `XSYS4_STUB_LOG` | `src/ffi.c:106` | 软桩命中清单写到该文件 |
-| 其它 | `XSYS4_SUBST_BT` | `src/ffi.c:642` | 静态库替换（subst）时打印回溯 |
-| 其它 | `XSYS4_SWAP_LOG` | `src/video.c:438` | 〔摘〕launcher can freeze the process right after the first presented frame. |
-| 其它 | `XSYS4_TEXT_RENDER_DBG` | `src/parts/render.c:158` | =1 列全部非 UC 文字层；=<部件号下限> 只盯该号段（如 900000300），每号最多 3 条并附 show/alpha/vis/mw/mwshow 准入字段；修掉了「全局 80 条被地图吃光」的假阴性 |
-| 其它 | `XSYS4_TITLE_UI_FIX` | `src/parts/render.c:127` | — |
-| 其它 | `XSYS4_TRACE` | `src/vm.c:2309` | — |
-| 其它 | `XSYS4_UC_RENDER_DBG` | `src/text.c:278` | 用户组件（TextButton 等）渲染诊断 |
+| 其它 | `XSYS4_STUB_BT` | `src/ffi.c:160` | 软桩命中时附带回溯 |
+| 其它 | `XSYS4_STUB_LOG` | `src/ffi.c:102` | 软桩命中清单写到该文件 |
+| 其它 | `XSYS4_SUBST_BT` | `src/ffi.c:638` | 静态库替换（subst）时打印回溯 |
+| 其它 | `XSYS4_SWAP_LOG` | `src/video.c:433` | 〔摘〕launcher can freeze the process right after the first presented frame. |
+| 其它 | `XSYS4_TEXT_RENDER_DBG` | `src/parts/render.c:154` | =1 列全部非 UC 文字层；=<部件号下限> 只盯该号段（如 900000300），每号最多 3 条并附 show/alpha/vis/mw/mwshow 准入字段；修掉了「全局 80 条被地图吃光」的假阴性 |
+| 其它 | `XSYS4_TITLE_UI_FIX` | `src/parts/render.c:123` | — |
+| 其它 | `XSYS4_TRACE` | `src/vm.c:2305` | — |
+| 其它 | `XSYS4_UC_RENDER_DBG` | `src/text.c:274` | 用户组件（TextButton 等）渲染诊断 |
 | 其它 | `XSYS4_USERCOMP_DBG` | `src/parts/activity.c:625` | — |
-| 其它 | `XSYS4_WATCH_IFACE` | `src/vm.c:312` | — |
-| 其它 | `XSYS4_XSET_DBG` | `src/vm.c:2917` | — |
+| 其它 | `XSYS4_WATCH_IFACE` | `src/vm.c:308` | — |
+| 其它 | `XSYS4_XSET_DBG` | `src/vm.c:2913` | — |

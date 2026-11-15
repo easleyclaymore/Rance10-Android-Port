@@ -1,17 +1,13 @@
-/* Copyright (C) 2019 Nunuhara Cabbage <nunuhara@haniwa.technology>
+/* 版权所有 (C) 2019 Nunuhara Cabbage <nunuhara@haniwa.technology>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * 本程序是自由软件：你可以依据自由软件基金会发布的 GNU 通用公共许可证
+ * （第 2 版，或你选择的任何更高版本）的条款，重新分发和/或修改本程序。
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * 分发本程序是希望它有用，但不作任何担保，甚至不担保适销性或
+ * 适用于特定用途。详见 GNU 通用公共许可证。
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, see <http://gnu.org/licenses/>.
+ * 你应当已经随本程序收到一份 GNU 通用公共许可证的副本；
+ * 如果没有，见 <http://gnu.org/licenses/>。
  */
 
 #define VM_PRIVATE
@@ -33,7 +29,7 @@ size_t heap_size = 0;
 uint32_t heap_next_seq;
 
 // 堆空闲槽链表
-// 记录 `heap` 数组里当前没被占用的下标。
+// 记录堆数组（`heap`）里当前没被占用的下标。
 int32_t *heap_free_stack = NULL;
 size_t heap_free_ptr = 0;
 
@@ -280,8 +276,8 @@ void heap_unref(int slot)
 		       slot, heap[slot].type, heap[slot].ref, instr_ptr, hll_current_fno(),
 		       heap[slot].type == VM_PAGE ? (void*)heap[slot].page : NULL,
 		       (heap[slot].type == VM_PAGE && heap[slot].page) ? heap[slot].page->nr_vars : -1);
-	/* slot 0 是保留的无效槽；若某个 page 成员的值是 0（未初始化的引用），
-	 * 这里会 unref 到 slot 0 并触发 delete_page(0) -> 遍历成员 -> 又是 0，
+	/* 槽 0 是保留的无效槽；若某个页成员的值是 0（未初始化的引用），
+	 * 这里会 unref 到槽 0 并触发 delete_page(0) -> 遍历成员 -> 又是 0，
 	 * 形成无限递归（gdb backtrace 已确认）。必须挡掉。 */
 	if (slot <= 0)
 		return;
@@ -443,16 +439,16 @@ struct string *heap_get_string(int index)
 {
 	/* [D123] index <= 0 是 AIN 侧的"空字符串 / 未初始化引用"哨兵。
 	 * -1 常见于比较（LeaderCard@IsExist 的 S_NOTE）；0 是保留的
-	 * GLOBAL_PAGE 槽，heap_string_assign() 早已按 slot<=0 直接跳过（D43），
+	 * GLOBAL_PAGE 槽，heap_string_assign() 早已按槽号 <=0 直接跳过（D43），
 	 * 但 S_ASSIGN 会先调本函数取右值，于是 `QuestMapMiniCardView@UpdateCard`
 	 * 里 A = <未初始化> 直接 VM_ERROR。统一返回空串，让赋值/比较自然进行。
 	 * 之前 stack_peek_string() 绕过本函数、把 -1 当数组下标用，行为也不一致。 */
 	if (unlikely(index <= 0))
 		return &EMPTY_STRING;
-	/* [D124] 与 D96 对 dead page 的处理一致：越界/类型不符的槽降级成空串。
+	/* [D124] 与 D96 对死页的处理一致：越界/类型不符的槽降级成空串。
 	 *
 	 * 走到这里通常意味着某处持有已释放对象的索引——进入第一章任务地图后
-	 * heap 里出现成片 double free，`Party@GetCardId` 从 LeaderCardCollection
+	 * 堆里出现成片 double free，`Party@GetCardId` 从 LeaderCardCollection
 	 * 取到的元素指向一个 type=-1 的槽（实测索引 1933133，越过 heap_size），
 	 * 原来这里 VM_ERROR 直接杀进程。调用方（`QuestMapMiniCardView@UpdateCard`
 	 * 的 S_ASSIGN）只想拿到"这张卡不存在"，空串正好表达这个语义。
@@ -470,7 +466,7 @@ struct string *heap_get_string(int index)
 	 * 一批 VM_PAGE 被重复 unref（日志里成片 double free），随后 `main`(18397)
 	 * 的 S_NOTE 正好读到这样的死槽。
 	 *
-	 * 与 D96 对 dead page 的处理一致：返回空串让流程走下去，而不是崩。
+	 * 与 D96 对死页的处理一致：返回空串让流程走下去，而不是崩。
 	 * 真正的修复是找出那批重复 unref 的来源，见 TECH_DEBT [INIT-DOUBLEFREE]。 */
 	if (unlikely(!heap[index].s)) {
 		static int warned;

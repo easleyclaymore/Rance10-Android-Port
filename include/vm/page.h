@@ -1,17 +1,13 @@
-/* Copyright (C) 2019 Nunuhara Cabbage <nunuhara@haniwa.technology>
+/* 版权所有 (C) 2019 Nunuhara Cabbage <nunuhara@haniwa.technology>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * 本程序是自由软件：你可以依据自由软件基金会发布的 GNU 通用公共许可证
+ * （第 2 版，或你选择的任何更高版本）的条款，重新分发和/或修改本程序。
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * 分发本程序是希望它有用，但不作任何担保，甚至不担保适销性或
+ * 适用于特定用途。详见 GNU 通用公共许可证。
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, see <http://gnu.org/licenses/>.
+ * 你应当已经随本程序收到一份 GNU 通用公共许可证的副本；
+ * 如果没有，见 <http://gnu.org/licenses/>。
  */
 
 #ifndef SYSTEM4_PAGE_H
@@ -38,20 +34,20 @@ enum page_type {
 #define NR_PAGE_TYPES (IFACE_PAGE+1)
 
 /*
- * page（页）是一组**有序**的变量。全局/局部变量、结构体、数组、委托都靠它实现：
+ * 页（page）是一组**有序**的变量。全局/局部变量、结构体、数组、委托都靠它实现：
  *
- * 全局变量：所有全局变量放在同一张 global page 里。
+ * 全局变量：所有全局变量放在同一张全局页里。
  *
- * 局部变量：每次函数调用都有一张 page 承载它的局部变量。
+ * 局部变量：每次函数调用都有一张页承载它的局部变量。
  *
- * 结构体：每个结构体对象是一张 page，槽位就是成员。
+ * 结构体：每个结构体对象是一张页，槽位就是成员。
  *
- * 数组：每个数组对象是一张 page，槽位就是元素。
- * 多维数组是「page 树」——也就是说整个数组在内存里**不是**连续的一段。
+ * 数组：每个数组对象是一张页，槽位就是元素。
+ * 多维数组是「页树」——也就是说整个数组在内存里**不是**连续的一段。
  *
- * 委托：每个委托对象是一张 page，每 3 个槽存一条 (object, function, seq)。
+ * 委托：每个委托对象是一张页，每 3 个槽存一条 (object, function, seq)。
  *
- * 接口：一个 AIN_IFACE 值是 2 个值 [结构体页, vtable 偏移]，用专门的两槽
+ * 接口：一个 AIN_IFACE 值是 2 个值 [结构体页, 虚表偏移]，用专门的两槽
  * IFACE_PAGE 承载，这样 REF/REFREF 才能对它解引用。
  */
 struct page {
@@ -98,7 +94,7 @@ static inline void _page_set_var(struct page *page, int i, union vm_value v)
 		VM_ERROR("Invalid page index: %d", i);
 #endif
 	/* [DBG] XSYS4_WATCH_IFACE=1：盯接口元素数组（struct_type 618）的
-	 * **奇数槽**写入 —— 那是 iface 的第二槽 [vtable 偏移]。
+	 * **奇数槽**写入 —— 那是接口值的第二槽 [虚表偏移]。
 	 * 用来回答"写的时候明明是 0，为什么读出来是堆槽号"。 */
 	{
 		static int on = -1;
