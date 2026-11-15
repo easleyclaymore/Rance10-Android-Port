@@ -22,18 +22,18 @@
 #include "vm.h"
 #include "xsystem4.h"
 #include "system4/ain.h"
-/* vm.h hides instr_ptr behind VM_PRIVATE; the HLL layer only needs to read
- * it for diagnostics. Declared here instead of widening the public header. */
+/* vm.h 把 instr_ptr 藏在 VM_PRIVATE 后面；HLL 层只需要读它
+ * 做诊断。所以在这里单独声明，而不是去放宽公共头文件。 */
 extern size_t instr_ptr;
 
-/* Defined next to the Array predicate helpers below; Array_Last_ needs them
- * before that point in the file. */
+/* 定义在下面那批 Array 谓词辅助函数旁边；Array_Last_ 在那之前
+ * 就要用到它们。 */
 static bool array_has_predicate(void);
 static bool array_predicate_matches(uintptr_t predicate, union vm_value elem);
 
-/* [DBG] XSYS4_ARR_DBG=1 gates a compact page-lifecycle trace for array
- * bugs (D102): every op prints the page pointer and element count so a
- * container that silently gets replaced can be followed across the run. */
+/* [DBG] XSYS4_ARR_DBG=1 打开一条紧凑的页生命周期跟踪，用于查
+ * 数组相关 bug（D102）：每个操作都打印页指针和元素个数，
+ * 这样「被悄悄换掉的容器」可以在整个运行期被跟住。 */
 static int arr_dbg_on(void)
 {
 	static int v = -1;
@@ -269,7 +269,7 @@ static int Array_NV_sceq(struct page *array, int index, int num, int *out_index)
 			}
 		}
 	} else {
-		// Negative index means backwards search
+		// 负下标表示从后往前找
 		index &= 0x7fffffff;
 		if (index >= array->nr_vars)
 			return 0;
@@ -309,9 +309,9 @@ static int Array_NV_sceq(struct page *array, int index, int num, int *out_index)
 //int Array_VS_or(struct page *sArray, int nMember);
 
 
-/* ---- System 4.3 generic array API (Rance X) ----
- * Alloc(ref array, type, struct_type, rank, size): allocate the array object.
- * The exact meaning of the 4 ints is inferred; adjust after observing calls.
+/* ---- System 4.3 泛型数组 API（兰斯10）----
+ * Alloc(ref array, type, struct_type, rank, size)：分配数组对象。
+ * 4 个 int 的确切含义是推断出来的；观测到更多调用后再修正。
  */
 static enum ain_data_type elem_to_array_type(enum ain_data_type t);
 
@@ -374,29 +374,29 @@ static void Array_Alloc_(struct page **out, int size, int type, int a, int b)
 		return;
 	}
 	if (type < 0 || type > 100) {
-		/* AIN v12: CALLHLL's third immediate carries the element type
-		 * for generic Array calls; the HLL arguments themselves are -1. */
+		/* AIN v12：CALLHLL 的第三个立即数携带泛型 Array 调用的元素类型；
+		 * HLL 的实参本身是 -1。 */
 		int tag = hll_generic_result_type();
 		type = tag >= 0 ? tag : AIN_INT;
 	}
 	int n = (size > 0 && size < (1 << 20)) ? size : 0;
-	/* Keep the struct type declared by the AIN variable: struct arrays
-	 * need it to construct elements in Array.EmplaceBack. */
+	/* 保留 AIN 变量声明的结构体类型：结构体数组
+	 * 在 Array.EmplaceBack 构造元素时要用它。 */
 	int struct_type = (*out)->array.struct_type;
 	ARRDBG("[ARR] alloc old=%p nr=%d st=%d -> size=%d", (void*)*out, (*out)->nr_vars, struct_type, size);
-	/* A container declared with a struct_type holds struct objects, even
-	 * when the generic Alloc argument carries no element type (-1).
-	 * Without this, struct arrays degenerate to AIN_ARRAY_INT and their
-	 * elements never get reference-counted (D21). */
-	/* [D136] An element struct that is registered as an INTERFACE
-	 * (ain->structures[n].is_interface) is a 2-slot value
-	 * [object, vtable offset] everywhere else in the VM, and the bytecode
-	 * indexes such a container with i*2 (e.g. QuestMapObjectLoader@Load
-	 * @0x37cb90 does REFREF on this.member3 + i*2). Building it as a
-	 * one-slot array<struct> made values[i*2+1] the NEXT element's object
-	 * slot, which then went into `vtable[offset + 3]` as if it were a
-	 * vtable offset -> "Out of bounds page index ... (type=3 nr_vars=10)".
-	 * XSYS4_IFACE_ARR_FIX=0 restores the old behaviour for A/B. */
+	/* 用 struct_type 声明的容器装的是结构体对象，即使
+	 * 泛型 Alloc 的实参没带元素类型（-1）也一样。
+	 * 否则结构体数组会退化成 AIN_ARRAY_INT，
+	 * 元素永远得不到引用计数（D21）。 */
+	/* [D136] 注册成接口的元素结构体
+	 * （ain->structures[n].is_interface）在 VM 里其它地方都是 2 槽值
+	 * [对象, 虚表偏移]，字节码用 i*2 索引这种容器
+	 * （例如 QuestMapObjectLoader@Load 的 @0x37cb90 对 this.member3 + i*2
+	 * 做 REFREF）。若按一槽一个元素去建 array<struct>，
+	 * values[i*2+1] 就落到下一个元素的对象槽上，
+	 * 那个数字又被当成虚表偏移送进 `vtable[offset + 3]`
+	 * -> 「Out of bounds page index ... (type=3 nr_vars=10)」。
+	 * XSYS4_IFACE_ARR_FIX=0 可回退旧行为，用于 A/B。 */
 	static int iface_arr_fix = -1;
 	if (iface_arr_fix < 0) {
 		const char *e = getenv("XSYS4_IFACE_ARR_FIX");
@@ -409,11 +409,11 @@ static void Array_Alloc_(struct page **out, int size, int type, int a, int b)
 		type = AIN_STRUCT;
 	/* ARRAY_PAGE 的 a_type 必须存【数组类型】（AIN_ARRAY_STRUCT 等），
 	 * 不是元素类型；否则 variable_type()/variable_fini() 会拿错类型 */
-	/* AIN v12: an AIN_IFACE element is two consecutive value slots
-	 * ([struct page, vtable offset]) and bytecode indexes them with i*2
-	 * (CDebugFPSGraph@Create @0xb238e). size counts ELEMENTS. Use plain
-	 * AIN_ARRAY_INT storage so variable_fini() does not unref the second
-	 * slot of each element as if it were an object handle. */
+	/* AIN v12：一个 AIN_IFACE 元素是两个相邻的值槽
+	 * （[结构体页, 虚表偏移]），字节码用 i*2 索引它们
+	 * （CDebugFPSGraph@Create @0xb238e）。size 数的是元素。
+	 * 存储用朴素的 AIN_ARRAY_INT，这样 variable_fini() 不会把每个元素的
+	 * 第二槽当成对象句柄去 unref。 */
 	int iface_array = (hll_generic_result_type() == AIN_IFACE) || iface_elem;
 	if (iface_array)
 		n *= 2;
@@ -432,16 +432,16 @@ static void Array_Alloc_(struct page **out, int size, int type, int a, int b)
 			ARRDBG("[ARR]   elem[%d] = %d", i, p->values[i].i);
 		}
 	} else {
-		/* [L2] alloc_page() zeroes the value slots, but 0 is HEAP SLOT 0,
-		 * not "unset": for struct/array/delegate elements the unset value
-		 * is -1 (see variable_initval). Leaving zeros here made an
-		 * unallocated struct element look like a live int, and the save
-		 * writer then tried to serialise slot 0 as a STRUCT_PAGE
-		 * (observed on ReplayCgInfoCollection.m_list, 567 elements).
-		 * NOT flipped by default: with -1 elements the engine reaches a
-		 * different pre-existing bug (QuestMapObjectLoader@Load calls a
-		 * method on an element that was never assigned), so this is a
-		 * separate task. XSYS4_ARR_UNSET_FIX=1 evaluates it. */
+		/* [L2] alloc_page() 会把值槽清零，但 0 是堆槽 0，
+		 * 不是「未设置」：对结构体/数组/委托元素来说，未设置的值
+		 * 是 -1（见 variable_initval）。这里留 0 会让一个
+		 * 未分配的结构体元素看起来像一个活着的 int，
+		 * 存档写入器随后会试图把槽 0 当成 STRUCT_PAGE 序列化
+		 * （在 ReplayCgInfoCollection.m_list 的 567 个元素上观测到）。
+		 * 默认不翻：用 -1 元素时引擎会撞上另一个既有 bug
+		 * （QuestMapObjectLoader@Load 对一个从未赋过值的元素调方法），
+		 * 所以这是另一件独立的事。
+		 * XSYS4_ARR_UNSET_FIX=1 可以评估它。 */
 		/* [D188] 默认翻正：清 0 会让引用型元素伪装成「已设置」——AIN 对
 		 * 这种槽的写入被静默丢弃，卡片 `ArrayString` 的 CG 名因此永远是
 		 * 空（`Invalid CG name` 113 条），立绘根本进不了合成队列。
@@ -506,7 +506,7 @@ static int arr_want_elems(struct page *p, int want_slots)
  * 原来这里是空实现（注释写"让 GC 自己处理"），于是所有把 Free 当 Clear
  * 用的地方都变成了"只增不减"。最典型的一处：
  *
- *   QuestMap@CreateRoute():
+ *   例如 QuestMap@CreateRoute()：
  *     foreach (obj in MapObjects.Objects) {      // 123 个对象
  *         Array.Free(branchType);                // ← 期望清空
  *         branchType.PushBack(0); PushBack(1); PushBack(2);   // 每轮 3 个
@@ -542,9 +542,9 @@ static int Array_Numof_(struct page **a, int rank)
 	if (!a || !*a)
 		return 0;
 	int n = (*a)->nr_vars;
-	/* Numof returns the ELEMENT count. #43 allocates 2 slots per
-	 * AIN_IFACE element (bytecode indexes with i*2), so divide the slot
-	 * count back for that tag (D46). */
+	/* Numof 返回的是元素个数。#43 给每个 AIN_IFACE 元素分 2 个槽
+	 * （字节码用 i*2 索引），所以对这种标签要把槽数除回去
+	 * （D46）。 */
 	(void)rank;
 	if (hll_generic_result_type() == AIN_IFACE)
 		n /= 2;
@@ -557,7 +557,7 @@ static bool Array_Empty_(struct page **a)
 }
 
 
-/* AIN Array f[62..65]: ref Last(ref array [, predicate]). */
+/* AIN Array f[62..65]：ref Last(ref array [, 谓词])。 */
 static void *Array_Last_(struct page **a, uintptr_t predicate)
 {
 	struct page *p = a ? *a : NULL;
@@ -635,10 +635,10 @@ static bool elem_eq(struct page *p, int i, void *v)
 	}
 }
 
-/* AIN f[47]/f[48] BinarySearch(ref array, key) -> int.
- * f[48] passes an AIN comparison-function number (t95) rather than a raw
- * key; a proper predicate dispatch needs vm_call (D39). Fall back to a
- * linear find with the same "not found = -1" contract as Array_Find_. */
+/* AIN f[47]/f[48] BinarySearch(ref array, key) -> int。
+ * f[48] 传的是一个 AIN 比较函数号（t95）而不是裸 key；
+ * 正经的谓词派发需要 vm_call（D39）。这里退化成线性查找，
+ * 契约与 Array_Find_ 一致：「找不到 = -1」。 */
 /* [D137] 谓词重载：f[48]/[44]/[46] 的第二个参数是 AIN 比较函数号（t95），
  * 不是值。以前这里直接 return -1/0（TODO D39 的桩），于是游戏里"有序数组
  * 插入"的循环永远收敛不了 —— 实测 `QuestMapRouteFinder@Find` 在 40 秒内
@@ -730,11 +730,11 @@ static int Array_BinarySearch_(struct page **a, uint64_t key)
 	return -1;
 }
 
-/* AIN f[43..46] LowerBound/UpperBound(ref array, key|predicate) -> int.
- * Predicate overloads (t95) pass an AIN comparison-function number, which
- * is not a comparable value; full predicate dispatch is D39. Return a
- * valid insertion position (0) so the caller's Insert path stays in
- * bounds. The t74 overloads should do a real ordered lookup (D39). */
+/* AIN f[43..46] LowerBound/UpperBound(ref array, key|谓词) -> int。
+ * 谓词重载（t95）传的是 AIN 比较函数号，那不是可比较的值；
+ * 完整的谓词派发是 D39。这里返回一个合法插入位置（0），
+ * 好让调用方的 Insert 路径不越界。
+ * t74 重载应该做真正的有序查找（D39）。 */
 /* LowerBound：第一个 cmp >= 0 的位置；UpperBound：第一个 cmp > 0 的位置。
  * 两者都必须落在 [0, nr_vars] 内，调用方直接拿它当插入点。 */
 static int pred_bound(struct page *p, int func, bool upper)
@@ -769,7 +769,7 @@ static int Array_UpperBound_(struct page **a, uint64_t key)
 	return 0;
 }
 
-/* AIN f[11]: void Insert(ref array, int index, generic value). */
+/* AIN f[11]：void Insert(ref array, int index, generic value)。 */
 static void Array_Insert_(struct page **a, int index, uint64_t value)
 {
 	if (!a || !*a)
@@ -794,10 +794,10 @@ static void Array_Insert_(struct page **a, int index, uint64_t value)
 	*a = np;
 }
 
-/* AIN v12 exposes several same-named overloads with different arities.
- * link_static_library binds them all to one C symbol, so dispatch on the
- * current fno (ffi.c) and read the arguments positionally. All scalars are
- * passed in 64-bit registers on AArch64, hence uintptr_t. (D62) */
+/* AIN v12 暴露了好几个同名不同参数个数的重载。
+ * link_static_library 把它们全绑到同一个 C 符号上，所以按
+ * 当前函数号（ffi.c）分派，并按下标位置读实参。AArch64 上
+ * 所有标量都走 64 位寄存器，所以用 uintptr_t。（D62） */
 static int Array_Copy_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3, uintptr_t p4)
 {
 	struct page **dst = NULL, **src = NULL;
@@ -835,8 +835,8 @@ static int Array_Fill_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 	for (int i = 0; i < count; i++) pg->values[from + i] = *(union vm_value *)&value;
 	return count < 0 ? 0 : count;
 }
-/* AIN f[54]/f[55]: void Unique(ref array[, predicate]) - dedupe in place.
- * Predicate overload falls back to raw-value comparison (D63). */
+/* AIN f[54]/f[55]：void Unique(ref array[, 谓词]) —— 原地去重。
+ * 谓词重载退化成裸值比较（D63）。 */
 static void Array_Unique_(struct page **a, uintptr_t predicate)
 {
 	(void)predicate;
@@ -856,7 +856,7 @@ static void Array_Unique_(struct page **a, uintptr_t predicate)
 	struct page *np = realloc_array(p, 1, &dim, at, st, false);
 	if (np) *a = np;
 }
-/* AIN f[51]: array Where(ref array, predicate) -> array.
+/* AIN f[51]：array Where(ref array, 谓词) -> array。
  *
  * [D158] **原实现完全忽略谓词，返回整份浅拷贝。** 后果不是"过滤得不够干净"
  * 而是"过滤器恒为真"，而调用方把它当成"筛出满足条件的元素"：
@@ -874,17 +874,17 @@ static void Array_Unique_(struct page **a, uintptr_t predicate)
  * （对象槽），由 `vm_call_hll_closure` 按声明的接口类型重新配成 (obj, offset)。
  * 谓词调用失败（元素类型对不上谓词形参）时按"不保留"处理，与 `Array.Find`
  * 的 "无法比较 = 未找到" 契约一致。 */
-/* AIN f[29..34]: Sort/AscSort/DescSort/QuickSort(ref array[, cmp]) -> ref array.
- * Stage 1: sort a shallow copy by raw int values and return its slot.
- * Predicate overloads (t95) and descending order are not implemented yet;
- * a proper cmp dispatch needs vm_call (D78). */
-/* [D134] Several stage-1 array HLL stubs return a NEW array page whose
- * values are copied verbatim from the source. That page is later torn down
- * by delete_page_vars(), which unrefs every reference-typed element. If the
- * copy did not take a reference of its own, the copy and the source both
- * release the same object: this is the 7-card cascade behind
- * [INIT-DOUBLEFREE] ([df-free] holder ptype=3 idx=17 nr=7, i=6, slot=41079).
- * Set XSYS4_ARRAY_REF_FIX=0 for an A/B comparison with the old behaviour. */
+/* AIN f[29..34]：Sort/AscSort/DescSort/QuickSort(ref array[, cmp]) -> ref array。
+ * 第一阶段：按裸 int 值对浅拷贝排序并返回它的槽。
+ * 谓词重载（t95）和降序还没实现；
+ * 正经的 cmp 派发需要 vm_call（D78）。 */
+/* [D134] 第一阶段有好几个数组 HLL 空桩会返回一张新的数组页，
+ * 它的值是从源数组原样拷来的。那张页之后会被 delete_page_vars()
+ * 拆掉，而它会对每个引用类型元素 unref。如果拷贝自己没加引用，
+ * 拷贝和源就会各自释放同一个对象：这正是
+ * [INIT-DOUBLEFREE] 背后那串 7 张卡片的连锁
+ * （[df-free] holder ptype=3 idx=17 nr=7, i=6, slot=41079）。
+ * 想和旧行为做 A/B 就设 XSYS4_ARRAY_REF_FIX=0。 */
 static int array_ref_fix(void)
 {
 	static int v = -1;
@@ -897,8 +897,8 @@ static int array_ref_fix(void)
 
 static bool array_elem_owns_ref(struct page *src, int i)
 {
-	/* [L1] Shared with variable_fini()/exit_unref() — one answer for
-	 * "which element types need their own heap reference". */
+	/* [L1] 与 variable_fini()/exit_unref() 共用 ——
+	 * 「哪些元素类型需要自己的堆引用」只有一个答案。 */
 	return variable_owns_ref(variable_type(src, i, NULL, NULL));
 }
 
@@ -912,8 +912,8 @@ static void array_copy_values(struct page *dst, struct page *src)
 	}
 }
 
-/* AIN f[4]/f[5]: ShallowCopy(ref array) -> array. Stage 1: copy the page
- * and return a fresh heap slot (D80). */
+/* AIN f[4]/f[5]：ShallowCopy(ref array) -> array。第一阶段：拷贝那张页
+ * 并返回一个新的堆槽（D80）。 */
 static int Array_ShallowCopy_(struct page **a)
 {
 	struct page *src = a ? *a : NULL;
@@ -1063,27 +1063,27 @@ static bool Array_IsExist_(struct page **a, uint64_t value)
 
 static void Array_PushBack_(struct page **a, uint64_t value)
 {
-	/* A zero value is a legitimate element (0, false, the null string, an
-	 * interface whose vtable offset is 0). The old `!value` guard silently
-	 * dropped it, so `Array.PushBack(a, 0)` lost the element:
-	 * CommonFrame@GetFramePointTypeList builds {0,1,2} and got {1,2}, which
-	 * then indexed past the end of the array. */
+	/* 0 是合法元素（0、false、空字符串、虚表偏移为 0 的接口）。
+	 * 原来那句 `!value` 守卫把它静默丢掉了，于是
+	 * `Array.PushBack(a, 0)` 丢元素：
+	 * CommonFrame@GetFramePointTypeList 建 {0,1,2} 只得到 {1,2}，
+	 * 随后索引就越过了数组末尾。 */
 	if (!a || !*a)
 		return;
 	struct page *p = *a;
-	/* D41: Rance10's card-construct cache can pass a ref-array slot whose
-	 * payload is not a page at all (observed: &ffi_type_void from libffi).
-	 * Do not touch the slot - the HLL cleanup writes heap_ptrs back into it -
-	 * just skip the append. */
+	/* D41：兰斯10 的卡牌构造缓存可能传进来一个「负载根本不是页」的
+	 * ref-array 槽（实测：libffi 的 &ffi_type_void）。
+	 * 不要碰这个槽 —— HLL 清理时会把 heap_ptrs 写回去 ——
+	 * 直接跳过追加。 */
 	if (p->type != ARRAY_PAGE) {
 		WARNING("[Array] PushBack: invalid ref-array page type=%d, skipped", p->type);
 		return;
 	}
 	/* realloc_array 用 xrealloc 原地重分配，p 调用后立刻失效，
 	 * 所以长度和类型必须先在参数求值阶段取出 */
-	/* XSYS4_ARR_TYPE_DBG=1: report elements whose heap type does not match the
-	 * array's element type. A string array receiving a page slot (or vice
-	 * versa) is how a "string" member ends up holding an object. */
+	/* XSYS4_ARR_TYPE_DBG=1：报告堆类型与数组元素类型对不上的元素。
+	 * 字符串数组收到一个页槽（或反过来），
+	 * 就是「字符串成员里装着对象」的来历。 */
 	if (getenv("XSYS4_ARR_TYPE_DBG") && p->a_type == AIN_ARRAY_STRING &&
 	    value > 0 && value < heap_size && heap[value].type != VM_STRING) {
 		static int n;
@@ -1092,14 +1092,14 @@ static void Array_PushBack_(struct page **a, uint64_t value)
 			       (int)value, p->nr_vars, heap[value].type, hll_current_fno());
 	}
 	int old_n = p->nr_vars;
-	/* p->a_type is already an ARRAY type (AIN_ARRAY_STRUCT, ...).
-	 * realloc_array() expects that array type, not the element type:
-	 * elem_to_array_type() on an array type falls through to AIN_ARRAY_INT
-	 * and silently turns struct arrays into int arrays.
+	/* p->a_type 本来就是数组类型（AIN_ARRAY_STRUCT 等）。
+	 * realloc_array() 要的是这个数组类型，不是元素类型：
+	 * 对数组类型调 elem_to_array_type() 会落到 AIN_ARRAY_INT，
+	 * 把结构体数组悄悄变成 int 数组。
 	 *
-	 * A generic `array` still has no element kind; CALLHLL's third immediate
-	 * carries the concrete type of this call, which is exactly what AIN uses
-	 * to type such an array on its first store. */
+	 * 泛型 `array` 仍然没有元素种类；CALLHLL 的第三个立即数
+	 * 带着这次调用的具体类型，而这正是 AIN 用来
+	 * 在第一次存储时给这种数组定型的东西。 */
 	enum ain_data_type at = p->a_type;
 	if (at == AIN_ARRAY || at == AIN_REF_ARRAY) {
 		int tag = hll_generic_result_type();
@@ -1108,8 +1108,8 @@ static void Array_PushBack_(struct page **a, uint64_t value)
 		at = p->a_type;
 	}
 	int st = p->array.struct_type;
-	/* p is invalidated by realloc_array(); snapshot everything the probe
-	 * needs before the call. */
+	/* p 会被 realloc_array() 弄失效；探针需要的东西
+	 * 要在调用之前全部快照下来。 */
 	int prank = p->array.rank;
 	struct page *pptr = p;
 	bool iface = arr_is_iface_elems(p);
@@ -1153,10 +1153,10 @@ static void Array_PushBack_(struct page **a, uint64_t value)
 			       old_n + 1 < np->nr_vars ? np->values[old_n + 1].i : -9999,
 			       np->nr_vars);
 	}
-	/* The container becomes an independent owner of a heap object.
-	 * Take a reference for it: the caller still owns its own reference
-	 * and will release it with DELETE. Without this, DELETE drops the
-	 * last ref and the container is left holding a dead slot (D21). */
+	/* 容器成为一个堆对象的独立所有者。为它加一次引用：
+	 * 调用方仍然拥有自己那份引用，并会用 DELETE 释放。
+	 * 少了这一步，DELETE 会丢掉最后一个引用，
+	 * 容器就握着一个死槽（D21）。 */
 	enum ain_data_type elem = array_type(at);
 	if ((elem == AIN_STRUCT || elem == AIN_STRING || elem == AIN_DELEGATE ||
 	     elem == AIN_ARRAY) && value > 0 && value < heap_size &&
@@ -1177,10 +1177,10 @@ static void Array_PopBack_(struct page **a)
 
 static int Array_Numof_(struct page **a, int rank);
 
-/* AIN declares EmplaceBack(ref array) with ONE argument. The old
- * two-argument C stub read an extra uninitialised register and wrote it
- * into the new element, producing a garbage "this" for CALLMETHOD.
- * The element is value-initialised according to the CALLHLL type tag. */
+/* AIN 声明的 EmplaceBack(ref array) 只有一个实参。原来那个
+ * 两实参的 C 桩多读了一个没初始化的寄存器，把它写进新元素，
+ * 于是 CALLMETHOD 拿到一个垃圾 `this`。
+ * 元素按 CALLHLL 的类型标签做值初始化。 */
 static void *Array_EmplaceBack_(struct page **a)
 {
 	if (!a || !*a)
@@ -1189,7 +1189,7 @@ static void *Array_EmplaceBack_(struct page **a)
 	int old_n = p->nr_vars;
 	int st = p->array.struct_type;
 	int tag = hll_generic_result_type();
-	/* A generic array takes the element kind of the value being added. */
+	/* 泛型数组采用「加进来的那个值」的元素种类。 */
 	if (p->a_type == AIN_ARRAY || p->a_type == AIN_REF_ARRAY)
 		array_settle_type(p, tag >= 0 ? (enum ain_data_type)tag : AIN_INT);
 	ARRDBG("[ARR] emp p=%p nr=%d at=%d st=%d", (void*)p, old_n, p->a_type, st);
@@ -1228,14 +1228,14 @@ static void Array_Realloc_(struct page **a, int size, uintptr_t extra)
 	if (p->type != ARRAY_PAGE)
 		return;
 	/* [D114] p->a_type is already an ARRAY type (AIN_ARRAY_STRUCT, ...);
-	 * elem_to_array_type() on it falls through to AIN_ARRAY_INT and silently
-	 * turns struct arrays into int arrays -- the exact bug already fixed in
-	 * Array_PushBack_. realloc_array() wants the array type itself. */
+	 * 对数组类型调 elem_to_array_type() 会落到 AIN_ARRAY_INT，
+	 * 把结构体数组悄悄变成 int 数组 —— 正是已经在
+	 * Array_PushBack_ 里修掉的那个 bug。realloc_array() 要的是数组类型本身。 */
 	if (size == 0) {
-		/* realloc_array(..., 0) calls delete_page_vars + free_page and
-		 * returns NULL, leaving *a dangling. Keep a valid empty page:
-		 * parts::detail::CallPartsUpdateEvent calls Realloc(0) every
-		 * frame for the empty EndUpdateEvent list. */
+		/* realloc_array(..., 0) 会调 delete_page_vars + free_page 并
+		 * 返回 NULL，把 *a 留成悬空。所以要保留一张合法的空页：
+		 * parts::detail::CallPartsUpdateEvent 每帧都会对空的
+		 * EndUpdateEvent 列表调一次 Realloc(0)。 */
 		p->nr_vars = 0;
 		return;
 	}
@@ -1250,8 +1250,8 @@ static void Array_ReallocInit_(struct page **a, int size, uint64_t value)
 	Array_Realloc_(a, size, 0);
 	if (!a || !*a)
 		return;
-	/* Fill with `value` even when it is zero: the freshly realloc'ed page is
-	 * not guaranteed to be zeroed, and 0 is a legitimate fill. */
+	/* 即使 `value` 是 0 也要填：刚 realloc 出来的页
+	 * 不保证被清零，而 0 是合法的填充值。 */
 	struct page *p = *a;
 	for (int i = 0; i < p->nr_vars; i++)
 		p->values[i] = *(union vm_value *)&value;
@@ -1282,9 +1282,9 @@ static void Array_Reverse_(struct page **a)
 	}
 }
 
-/* AIN Array f[15]: bool EraseAll(ref array, predicate).
- * Removes every element the predicate accepts; returns whether the array had
- * anything to examine (the caller distinguishes "emptied" from "was empty"). */
+/* AIN Array f[15]：bool EraseAll(ref array, 谓词)。
+ * 删掉谓词接受的所有元素；返回「数组里到底有没有东西可查」
+ * （调用方靠它区分「被清空了」和「本来就是空的」）。 */
 static int Array_EraseAll_(struct page **a, uintptr_t predicate)
 {
 	struct page *p = a ? *a : NULL;
@@ -1300,10 +1300,10 @@ static int Array_EraseAll_(struct page **a, uintptr_t predicate)
 	return before > 0;
 }
 
-/* Array registers several same-named AIN functions (First / Last / Any / ...),
- * all bound to one C symbol. Whether the trailing predicate argument is
- * present, and therefore whether the extra uintptr_t parameter means anything,
- * is decided by the declaration of the function being executed. */
+/* Array 注册了好几个同名的 AIN 函数（First / Last / Any / …），
+ * 全绑到同一个 C 符号上。末尾那个谓词实参到底在不在、
+ * 因此多出来的 uintptr_t 形参有没有意义，
+ * 由正在执行的那个函数的声明决定。 */
 static bool array_has_predicate(void)
 {
 	int lib = ain_get_library(ain, "Array");
@@ -1327,9 +1327,9 @@ static int array_decl_arity(void)
 	return (int)ain->libraries[lib].functions[fno].nr_arguments;
 }
 
-/* Evaluate the predicate on one element. `predicate` is the AIN function index
- * that ffi.c extracted from the [this, fno] pair the caller pushed; see
- * vm_call_hll_func() for how the closure environment is bound. */
+/* 对单个元素求谓词的值。`predicate` 是 ffi.c 从调用方压的
+ * [this, fno] 对里取出来的 AIN 函数号；闭包环境怎么绑的，
+ * 见 vm_call_hll_func()。 */
 static bool array_predicate_matches(uintptr_t predicate, union vm_value elem)
 {
 	union vm_value r;
@@ -1338,7 +1338,7 @@ static bool array_predicate_matches(uintptr_t predicate, union vm_value elem)
 	return r.i != 0;
 }
 
-/* AIN Array f[58..61]: ref First(ref array [, predicate]). */
+/* AIN Array f[58..61]：ref First(ref array [, 谓词])。 */
 static void *Array_First_(struct page **a, uintptr_t predicate)
 {
 	struct page *p = a ? *a : NULL;
@@ -1352,7 +1352,7 @@ static void *Array_First_(struct page **a, uintptr_t predicate)
 	return NULL;
 }
 
-/* AIN Array f[20]: bool All(ref array, predicate). */
+/* AIN Array f[20]：bool All(ref array, 谓词)。 */
 static int Array_All_(struct page **a, uintptr_t predicate)
 {
 	struct page *p = a ? *a : NULL;
@@ -1364,7 +1364,7 @@ static int Array_All_(struct page **a, uintptr_t predicate)
 	return 1;
 }
 
-/* AIN Array f[21..22]: bool Any(ref array [, predicate]). */
+/* AIN Array f[21..22]：bool Any(ref array [, 谓词])。 */
 static int Array_Any_(struct page **a, uintptr_t predicate)
 {
 	struct page *p = a ? *a : NULL;
@@ -1386,9 +1386,9 @@ static int Array_Any_(struct page **a, uintptr_t predicate)
 	return r;
 }
 
-/* Append every element of `src` to `*dst`. The destination takes a reference
- * for each heap object it now owns; the source keeps its own (see
- * Array_PushBack_). */
+/* 把 `src` 的每个元素追加到 `*dst`。目标为自己新拥有的
+ * 每个堆对象加一次引用；源保留自己那一份（见
+ * Array_PushBack_）。 */
 static void array_append(struct page **dst, struct page *src)
 {
 	if (!dst || !*dst || !src || src->nr_vars == 0)
@@ -1417,7 +1417,7 @@ static void array_append(struct page **dst, struct page *src)
 	*dst = np;
 }
 
-/* AIN Array f[10]: void Concat(ref array, ref array) - append src to dst. */
+/* AIN Array f[10]：void Concat(ref array, ref array) —— 把 src 追加到 dst。 */
 static void Array_Concat_(struct page **dst, struct page **src)
 {
 	if (!src || !*src)
@@ -1425,8 +1425,8 @@ static void Array_Concat_(struct page **dst, struct page **src)
 	array_append(dst, *src);
 }
 
-/* AIN Array f[3]: void Duplicate(ref array, ref array) - replace dst with a
- * copy of src. */
+/* AIN Array f[3]：void Duplicate(ref array, ref array) —— 用 src 的
+ * 拷贝替换 dst。 */
 static void Array_Duplicate_(struct page **dst, struct page **src)
 {
 	if (!dst || !*dst || !src || !*src)
@@ -1452,8 +1452,8 @@ static void Array_Duplicate_(struct page **dst, struct page **src)
 	*dst = np;
 }
 
-/* AIN Array f[53]: void Shuffle(ref array, int seed).
- * Deterministic for a given seed, so a save/load pair replays identically. */
+/* AIN Array f[53]：void Shuffle(ref array, int seed)。
+ * 给定种子时结果是确定的，所以存档/读档能重放出同样的顺序。 */
 static void Array_Shuffle_(struct page **a, int seed)
 {
 	struct page *p = a ? *a : NULL;
@@ -1469,10 +1469,10 @@ static void Array_Shuffle_(struct page **a, int seed)
 	}
 }
 
-/* AIN Array f[16]: ref array Remain(ref array, predicate).
- * Drops every element the predicate rejects, in place. Rance10 never reads the
- * result (no CALLHLL site for lib 5 func 16), so only the mutation is
- * implemented. */
+/* AIN Array f[16]：ref array Remain(ref array, 谓词)。
+ * 原地丢掉谓词拒绝的每个元素。兰斯10 从不读这个返回值
+ * （库里第 5 组第 16 号函数没有任何 CALLHLL 调用点），
+ * 所以只实现了「改」这一半。 */
 static int Array_Remain_(struct page **a, uintptr_t predicate)
 {
 	struct page *p = a ? *a : NULL;
@@ -1487,9 +1487,9 @@ static int Array_Remain_(struct page **a, uintptr_t predicate)
 	return 0;
 }
 
-/* AIN Array f[66..73]: ref Min/Max(ref array [, predicate]).
- * Without a predicate the elements are ordered by value; with one the
- * predicate acts as a "less than" comparator, as in Sort. */
+/* AIN Array f[66..73]：ref Min/Max(ref array [, 谓词])。
+ * 没有谓词时按值排序；给了谓词时，
+ * 谓词充当「小于」比较器，与 Sort 一致。 */
 static void *array_extreme_(struct page **a, uintptr_t predicate, bool want_max)
 {
 	struct page *p = a ? *a : NULL;

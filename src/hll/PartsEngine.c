@@ -69,7 +69,7 @@ static void PartsEngine_Update_Pascha3PC(struct string *xxx1, struct string *xxx
 	PE_Update(passed_time, message_window_show);
 }
 
-// Oyako Rankan
+// 《Oyako Rankan》版本
 static bool PartsEngine_AddDrawCutCGToPartsConstructionProcess_old(int parts_no,
 		struct string *cg_name, int dx, int dy, int sx, int sy, int w, int h,
 		int state)
@@ -78,7 +78,7 @@ static bool PartsEngine_AddDrawCutCGToPartsConstructionProcess_old(int parts_no,
 			sx, sy, w, h, 0, state);
 }
 
-// Oyako Rankan
+// 《Oyako Rankan》版本
 static bool PartsEngine_AddCopyCutCGToPartsConstructionProcess_old(int parts_no,
 		struct string *cg_name, int dx, int dy, int sx, int sy, int w, int h,
 		int state)
@@ -87,13 +87,13 @@ static bool PartsEngine_AddCopyCutCGToPartsConstructionProcess_old(int parts_no,
 			sx, sy, w, h, 0, state);
 }
 
-// Rance 9: argument types changed from int to float
+// 兰斯9 起：实参类型由 int 改为 float
 static void PartsEngine_SetComponentPos(int parts_no, float x, float y)
 {
 	PE_SetPos(parts_no, x, y);
 }
 
-// Rance 9: return type changed from int to float
+// 兰斯9 起：返回类型由 int 改为 float
 static float PartsEngine_Parts_GetPartsUpperLeftPosX(int parts_no, int state)
 {
 	return PE_GetPartsUpperLeftPosX(parts_no, state);
@@ -104,7 +104,7 @@ static float PartsEngine_Parts_GetPartsUpperLeftPosY(int parts_no, int state)
 	return PE_GetPartsUpperLeftPosY(parts_no, state);
 }
 
-// Rance 9: return type changed from int to float
+// 兰斯9 起：返回类型由 int 改为 float
 static float PartsEngine_Parts_GetComponentPosX(int parts_no)
 {
 	return PE_GetPartsX(parts_no);
@@ -115,7 +115,7 @@ static float PartsEngine_GetComponentPosY(int parts_no)
 	return PE_GetPartsY(parts_no);
 }
 
-// Rance 9: X/Y coordinate types changed from int to float
+// 兰斯9 起：X/Y 坐标类型由 int 改为 float
 static void PartsEngine_AddComponentMotionPos(int parts_no, float begin_x, float begin_y,
 		float end_x, float end_y, int begin_t, int end_t,
 		struct string *curve_name)
@@ -265,18 +265,18 @@ static void PartsEngine_add_construction_process(union vm_value *ints,
 	}
 }
 
-// Rance9 predates the layer functions at func_id 3-5.  Use the numbering from
-// later PartsEngine versions as canonical and adjust Rance9's ids to match.
+// 兰斯9 比 func_id 3-5 里的图层函数更早。以后来 PartsEngine 版本的
+// 编号为准，把兰斯9 的 id 调整过来。
 static bool parts_func_uses_rance9_ids;
 
-// Generic dispatch function for PartsEngine operations.
-// func_id selects the operation; arguments and return values are passed
-// through three typed arrays (int/bool, float, string).
+// PartsEngine 操作的通用分发函数。
+// func_id 选择操作；实参与返回值都通过三个带类型的数组传递
+// （int/bool、float、string）。
 //
-// Calling convention (from game script):
-//   1. Push input values into the appropriate arrays.
-//   2. Push a placeholder (0 or "") for each output slot.
-//   3. Call PartsFunc; outputs are written back into the placeholder slots.
+// 调用约定（来自游戏脚本）：
+//   1. 把输入值压进对应的数组。
+//   2. 为每个输出槽压一个占位值（0 或 空串）。
+//   3. 调用 PartsFunc；输出会写回那些占位槽。
 static int PartsEngine_PartsFunc(int func_id, struct page **array_int,
 		struct page **array_float, struct page **array_string)
 {
@@ -420,9 +420,9 @@ HLL_WARN_UNIMPLEMENTED(, void, PartsEngine, StopSoundWithoutSystemSound);
 static void PartsEngine_PreLink(void);
 
 /* Parts_SetComment(int, string) / Parts_GetComment(int) -> string.
- * Debug annotation attached to a parts object (the .pactex "批注" field).
- * The PE backend has no comment slot, so keep a tiny side table: the editor
- * and the debug views do read it back (f[178]). */
+ * 挂在部件对象上的调试批注（.pactex 里的「批注」字段）。
+ * 部件后端没有批注槽，所以这里单独维护一张小表：
+ * 编辑器和调试视图确实会读回来（f[178]）。 */
 #define PE_COMMENT_MAX 64
 static struct { int parts_no; char *text; } pe_comments[PE_COMMENT_MAX];
 
@@ -453,17 +453,17 @@ static struct string *PartsEngine_GetComment(int parts_no)
 	return cstr_to_string("");
 }
 
-/* AIN f[70]: void SetWantSaveBackScene(int parts_no, bool want).
- * AIN_BOOL is marshalled as ffi_type_sint32, so the C side takes int. */
+/* AIN f[70]：void SetWantSaveBackScene(int parts_no, bool want)。
+ * AIN_BOOL 按 ffi_type_sint32 传递，所以 C 侧接的是 int。 */
 static void PE_SetWantSaveBackScene(int parts_no, int want)
 {
 	PE_parts_set_want_save_back_scene(parts_no, !!want);
 }
 
-/* AIN f[776]: void AddPartsConstructionProcess(int, ref array, ref array,
- * ref array, int). Rance10's debug FPS graph builds its bars with this.
- * The case-162 dispatcher takes flat union vm_value arrays instead, so the
- * array->op mapping still has to be ported (D37). */
+/* AIN f[776]：void AddPartsConstructionProcess(int, ref array, ref array,
+ * ref array, int)。兰斯10 的调试 FPS 曲线用它来搭柱子。
+ * case 162 的分发器收到的是扁平的 vm_value 联合体数组，
+ * 所以「数组 -> 操作」那套映射还得移植过来（D37）。 */
 static void PE_AddPartsConstructionProcess(int parts_no, struct page **ints,
         struct page **floats, struct page **strings, int state)
 {
@@ -523,8 +523,8 @@ static void PE_AddPartsConstructionProcess(int parts_no, struct page **ints,
 	PartsEngine_add_construction_process(tmp, fp->values, sp->values);
 }
 
-/* AIN f[12]: void UpdateComponent(int, int, bool, float, float).
- * The old binding pointed at the 3-arg PartsEngine_Update (D62). */
+/* AIN f[12]：void UpdateComponent(int, int, bool, float, float)。
+ * 原来的绑定指到了 3 实参的 PartsEngine_Update（D62）。 */
 /* [D203] 库表 f[12] UpdateComponent 的签名是
  * (PassedTime, ScaledPassedTime, MessageWindowShow, MulColorRate, AlphaRate)，
  * 这是 AIN parts::detail::Update(8292) 每帧调用的**主更新入口**，不是
@@ -551,26 +551,26 @@ static void PartsEngine_UpdateComponent(int passed_time, int scaled_time,
 	(void)scaled_time; (void)mul_color_rate; (void)alpha_rate;
 	PE_Update(passed_time, message_window_show != 0);
 }
-/* AIN PartsEngine.Parts_GetParentPartsNumber: stage 1, no parent parts
- * tracking in the port, report "none" (-1) (D80). */
+/* AIN PartsEngine.Parts_GetParentPartsNumber：第一阶段移植里不做父部件
+ * 追踪，一律报「没有」(-1)（D80）。 */
 static int PartsEngine_Parts_GetParentPartsNumber(uintptr_t parts_no)
 {
 	(void)parts_no;
-	/* [HACK-POC D81] probe only: report 'no parent' as 0, which is what
-	 * AIN AFL_Parts_GetLayerIDByParts (fno 7260) terminates on. */
+	/* [HACK-POC D81] 仅探针：把「没有父部件」报成 0，
+	 * 因为 AIN AFL_Parts_GetLayerIDByParts（函数号 7260）就是靠 0 结束的。 */
 	return 0;
 }
 
-/* AIN PartsEngine.CreateUserPartsNumber: allocate a fresh user parts number.
- * Called from Parts@AllocatePartsNumber (fno 29534) and the result is stored
- * directly as the parts number, so it must be unique and free.
- * [HACK-POC D82] reuses the system free-number allocator (1000001000+); the
- * user-parts segment semantics are not verified yet. */
+/* AIN PartsEngine.CreateUserPartsNumber：分配一个新的用户部件号。
+ * 由 Parts@AllocatePartsNumber（函数号 29534）调用，返回值直接当作
+ * 部件号存起来，所以它必须唯一且可用。
+ * [HACK-POC D82] 复用系统的空闲号分配器（1000001000+）；
+ * 用户部件那一段的语义还没验证过。 */
 static int PartsEngine_CreateUserPartsNumber(void)
 {
 	return PE_GetFreeNumber();
 }
-/* AIN f[66]: void SetEnableInputProcess(int parts_no, bool enable).
+/* AIN f[66]：void SetEnableInputProcess(int parts_no, bool enable)。
  *
  * [D165] 仍然是空桩 —— 这是**试过实现之后退回**的结论，不是偷懒。
  *
@@ -594,7 +594,7 @@ static void PartsEngine_SetEnableInputProcess(int parts_no, int enable)
 	(void)enable;
 }
 
-/* AIN f: void Parts_SetPartsTextCountReturn. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void Parts_SetPartsTextCountReturn。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_Parts_SetPartsTextCountReturn(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -602,7 +602,7 @@ static void PE_Noop_Parts_SetPartsTextCountReturn(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN f: void Parts_SetPartsTextHighlight. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void Parts_SetPartsTextHighlight。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_Parts_SetPartsTextHighlight(int a0, int a1, int a2, int a3, int a4, int a5, int a6)
 {
 	(void)a0;
@@ -614,7 +614,7 @@ static void PE_Noop_Parts_SetPartsTextHighlight(int a0, int a1, int a2, int a3, 
 	(void)a6;
 }
 
-/* AIN f: void SetButtonColor. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetButtonColor。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetButtonColor(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -623,14 +623,14 @@ static void PE_Noop_SetButtonColor(int a0, int a1, int a2, int a3)
 	(void)a3;
 }
 
-/* AIN f: void SetButtonEnable. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetButtonEnable。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetButtonEnable(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetButtonSize. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetButtonSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetButtonSize(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -638,7 +638,7 @@ static void PE_Noop_SetButtonSize(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN f: void SuspendTexture(int PartsNumber) / void ResumeTexture(int).
+/* AIN f：void SuspendTexture(int PartsNumber) / void ResumeTexture(int)。
  *
  * [D144] 这两个原来是"表里根本没有"，到 `SceneQuestMap@OpenParty`（打开部队
  * 编成界面的那一步）就 `Unimplemented HLL function` 直接中止 —— 编成界面
@@ -656,7 +656,7 @@ static void PE_Noop_ResumeTexture(int a0)
 	(void)a0;
 }
 
-/* AIN f: void SetCheckBoxColor. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetCheckBoxColor。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetCheckBoxColor(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -665,7 +665,7 @@ static void PE_Noop_SetCheckBoxColor(int a0, int a1, int a2, int a3)
 	(void)a3;
 }
 
-/* AIN f: void SetCheckBoxSize. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetCheckBoxSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetCheckBoxSize(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -673,7 +673,7 @@ static void PE_Noop_SetCheckBoxSize(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN f: void SetComboBoxSize. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetComboBoxSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetComboBoxSize(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -681,7 +681,7 @@ static void PE_Noop_SetComboBoxSize(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN f: void SetComboBoxTextMargin. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetComboBoxTextMargin。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetComboBoxTextMargin(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -689,55 +689,55 @@ static void PE_Noop_SetComboBoxTextMargin(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN f: void SetComponentMipmap. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetComponentMipmap。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetComponentMipmap(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetComponentTextureFilterType. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetComponentTextureFilterType。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetComponentTextureFilterType(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetFocus. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetFocus。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetFocus(int a0)
 {
 	(void)a0;
 }
 
-/* AIN f: void SetHScrollbarLeftWidth. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetHScrollbarLeftWidth。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetHScrollbarLeftWidth(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetHScrollbarMoveSizeByButton. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetHScrollbarMoveSizeByButton。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetHScrollbarMoveSizeByButton(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetHScrollbarRightWidth. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetHScrollbarRightWidth。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetHScrollbarRightWidth(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetHScrollbarScrollPos. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetHScrollbarScrollPos。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetHScrollbarScrollPos(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetHScrollbarSize. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetHScrollbarSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetHScrollbarSize(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -745,28 +745,28 @@ static void PE_Noop_SetHScrollbarSize(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN f: void SetHScrollbarTotalSize. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetHScrollbarTotalSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetHScrollbarTotalSize(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetHScrollbarViewSize. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetHScrollbarViewSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetHScrollbarViewSize(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetListBoxLineHeight. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetListBoxLineHeight。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetListBoxLineHeight(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetListBoxMargin. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetListBoxMargin。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetListBoxMargin(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -774,21 +774,21 @@ static void PE_Noop_SetListBoxMargin(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN f: void SetListBoxScrollPos. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetListBoxScrollPos。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetListBoxScrollPos(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetListBoxSelectIndex. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetListBoxSelectIndex。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetListBoxSelectIndex(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetListBoxSize. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetListBoxSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetListBoxSize(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -796,14 +796,14 @@ static void PE_Noop_SetListBoxSize(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN f: void SetMultiTextBoxMaxTextLength. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetMultiTextBoxMaxTextLength。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetMultiTextBoxMaxTextLength(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetMultiTextBoxSelectColor. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetMultiTextBoxSelectColor。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetMultiTextBoxSelectColor(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -812,7 +812,7 @@ static void PE_Noop_SetMultiTextBoxSelectColor(int a0, int a1, int a2, int a3)
 	(void)a3;
 }
 
-/* AIN f: void SetMultiTextBoxSize. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetMultiTextBoxSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetMultiTextBoxSize(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -820,14 +820,14 @@ static void PE_Noop_SetMultiTextBoxSize(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN f: void SetTextBoxMaxTextLength. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetTextBoxMaxTextLength。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetTextBoxMaxTextLength(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetTextBoxSelectColor. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetTextBoxSelectColor。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetTextBoxSelectColor(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -836,7 +836,7 @@ static void PE_Noop_SetTextBoxSelectColor(int a0, int a1, int a2, int a3)
 	(void)a3;
 }
 
-/* AIN f: void SetTextBoxSize. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetTextBoxSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetTextBoxSize(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -844,28 +844,28 @@ static void PE_Noop_SetTextBoxSize(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN f: void SetVScrollbarDownHeight. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetVScrollbarDownHeight。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetVScrollbarDownHeight(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetVScrollbarMoveSizeByButton. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetVScrollbarMoveSizeByButton。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetVScrollbarMoveSizeByButton(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetVScrollbarScrollPos. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetVScrollbarScrollPos。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetVScrollbarScrollPos(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetVScrollbarSize. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetVScrollbarSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetVScrollbarSize(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -873,84 +873,84 @@ static void PE_Noop_SetVScrollbarSize(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN f: void SetVScrollbarTotalSize. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetVScrollbarTotalSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetVScrollbarTotalSize(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetVScrollbarUpHeight. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetVScrollbarUpHeight。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetVScrollbarUpHeight(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetVScrollbarViewSize. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetVScrollbarViewSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetVScrollbarViewSize(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetButtonCGName. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetButtonCGName。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetButtonCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetButtonText. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetButtonText。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetButtonText(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetCheckBoxCGName. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetCheckBoxCGName。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetCheckBoxCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetCheckBoxText. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetCheckBoxText。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetCheckBoxText(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetComboBoxCGName. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetComboBoxCGName。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetComboBoxCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetComboBoxText. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetComboBoxText。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetComboBoxText(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetHScrollbarCGName. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetHScrollbarCGName。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetHScrollbarCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetListBoxCGName. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetListBoxCGName。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetListBoxCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetListBoxItem. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetListBoxItem。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetListBoxItem(int a0, int a1, struct string * a2)
 {
 	(void)a0;
@@ -958,42 +958,42 @@ static void PE_Noop_SetListBoxItem(int a0, int a1, struct string * a2)
 	(void)a2;
 }
 
-/* AIN f: void SetMultiTextBoxCGName. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetMultiTextBoxCGName。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetMultiTextBoxCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetMultiTextBoxText. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetMultiTextBoxText。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetMultiTextBoxText(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetTextBoxCGName. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetTextBoxCGName。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetTextBoxCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetTextBoxText. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetTextBoxText。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetTextBoxText(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN f: void SetVScrollbarCGName. [HACK-POC D85] setter stubbed; no state kept. */
+/* AIN f：void SetVScrollbarCGName。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetVScrollbarCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN Parts_SetAnchor: void Parts_SetAnchor. [HACK-POC D85] setter stubbed. */
+/* AIN Parts_SetAnchor：void Parts_SetAnchor。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_Parts_SetAnchor(int a0, int a1, int a2, int a3, int a4)
 {
 	(void)a0;
@@ -1003,7 +1003,7 @@ static void PE_Noop_Parts_SetAnchor(int a0, int a1, int a2, int a3, int a4)
 	(void)a4;
 }
 
-/* AIN Parts_SetFlatBeginSeekFrame: void Parts_SetFlatBeginSeekFrame. [HACK-POC D85] setter stubbed. */
+/* AIN Parts_SetFlatBeginSeekFrame：void Parts_SetFlatBeginSeekFrame。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_Parts_SetFlatBeginSeekFrame(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -1011,7 +1011,7 @@ static void PE_Noop_Parts_SetFlatBeginSeekFrame(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN Parts_SetFlatEnableLayer: void Parts_SetFlatEnableLayer. [HACK-POC D85] setter stubbed. */
+/* AIN Parts_SetFlatEnableLayer：void Parts_SetFlatEnableLayer。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_Parts_SetFlatEnableLayer(int a0, struct string * a1, int a2, int a3)
 {
 	(void)a0;
@@ -1020,7 +1020,7 @@ static void PE_Noop_Parts_SetFlatEnableLayer(int a0, struct string * a1, int a2,
 	(void)a3;
 }
 
-/* AIN Parts_SetHGaugeReverse: void Parts_SetHGaugeReverse. [HACK-POC D85] setter stubbed. */
+/* AIN Parts_SetHGaugeReverse：void Parts_SetHGaugeReverse。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_Parts_SetHGaugeReverse(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -1028,21 +1028,21 @@ static void PE_Noop_Parts_SetHGaugeReverse(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN Parts_SetLockUpdate: void Parts_SetLockUpdate. [HACK-POC D85] setter stubbed. */
+/* AIN Parts_SetLockUpdate：void Parts_SetLockUpdate。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_Parts_SetLockUpdate(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN Parts_SetPosForRate: void Parts_SetPosForRate. [HACK-POC D85] setter stubbed. */
+/* AIN Parts_SetPosForRate：void Parts_SetPosForRate。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_Parts_SetPosForRate(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN Parts_SetRubyCharSpace: void Parts_SetRubyCharSpace. [HACK-POC D85] setter stubbed. */
+/* AIN Parts_SetRubyCharSpace：void Parts_SetRubyCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_Parts_SetRubyCharSpace(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -1050,7 +1050,7 @@ static void PE_Noop_Parts_SetRubyCharSpace(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN Parts_SetSoundName: void Parts_SetSoundName. [HACK-POC D85] setter stubbed. */
+/* AIN Parts_SetSoundName：void Parts_SetSoundName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_Parts_SetSoundName(int a0, struct string * a1, int a2)
 {
 	(void)a0;
@@ -1058,14 +1058,14 @@ static void PE_Noop_Parts_SetSoundName(int a0, struct string * a1, int a2)
 	(void)a2;
 }
 
-/* AIN Parts_SetSwipeType: void Parts_SetSwipeType. [HACK-POC D85] setter stubbed. */
+/* AIN Parts_SetSwipeType：void Parts_SetSwipeType。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_Parts_SetSwipeType(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN Parts_SetTextEnableTag: void Parts_SetTextEnableTag. [HACK-POC D85] setter stubbed. */
+/* AIN Parts_SetTextEnableTag：void Parts_SetTextEnableTag。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_Parts_SetTextEnableTag(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -1073,7 +1073,7 @@ static void PE_Noop_Parts_SetTextEnableTag(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN Parts_SetTextPos: void Parts_SetTextPos. [HACK-POC D85] setter stubbed. */
+/* AIN Parts_SetTextPos：void Parts_SetTextPos。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_Parts_SetTextPos(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -1081,7 +1081,7 @@ static void PE_Noop_Parts_SetTextPos(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN Parts_SetTextShowTime: void Parts_SetTextShowTime. [HACK-POC D85] setter stubbed. */
+/* AIN Parts_SetTextShowTime：void Parts_SetTextShowTime。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_Parts_SetTextShowTime(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -1089,14 +1089,14 @@ static void PE_Noop_Parts_SetTextShowTime(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN Parts_SetUpdateLookAtPos: void Parts_SetUpdateLookAtPos. [HACK-POC D85] setter stubbed. */
+/* AIN Parts_SetUpdateLookAtPos：void Parts_SetUpdateLookAtPos。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_Parts_SetUpdateLookAtPos(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN Parts_SetVGaugeReverse: void Parts_SetVGaugeReverse. [HACK-POC D85] setter stubbed. */
+/* AIN Parts_SetVGaugeReverse：void Parts_SetVGaugeReverse。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_Parts_SetVGaugeReverse(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -1104,145 +1104,145 @@ static void PE_Noop_Parts_SetVGaugeReverse(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN Parts_SetWheelable: void Parts_SetWheelable. [HACK-POC D85] setter stubbed. */
+/* AIN Parts_SetWheelable：void Parts_SetWheelable。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_Parts_SetWheelable(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetActiveController: void SetActiveController. [HACK-POC D85] setter stubbed. */
+/* AIN SetActiveController：void SetActiveController。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetActiveController(int a0)
 {
 	(void)a0;
 }
 
-/* AIN SetButtonCharSpace: void SetButtonCharSpace. [HACK-POC D85] setter stubbed. */
+/* AIN SetButtonCharSpace：void SetButtonCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetButtonCharSpace(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetButtonFlatName: void SetButtonFlatName. [HACK-POC D85] setter stubbed. */
+/* AIN SetButtonFlatName：void SetButtonFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetButtonFlatName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetButtonLineSpace: void SetButtonLineSpace. [HACK-POC D85] setter stubbed. */
+/* AIN SetButtonLineSpace：void SetButtonLineSpace。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetButtonLineSpace(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetButtonTextOriginPosMode: void SetButtonTextOriginPosMode. [HACK-POC D85] setter stubbed. */
+/* AIN SetButtonTextOriginPosMode：void SetButtonTextOriginPosMode。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetButtonTextOriginPosMode(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetCheckBoxButtonMode: void SetCheckBoxButtonMode. [HACK-POC D85] setter stubbed. */
+/* AIN SetCheckBoxButtonMode：void SetCheckBoxButtonMode。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetCheckBoxButtonMode(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetCheckBoxCharSpace: void SetCheckBoxCharSpace. [HACK-POC D85] setter stubbed. */
+/* AIN SetCheckBoxCharSpace：void SetCheckBoxCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetCheckBoxCharSpace(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetCheckBoxEnable: void SetCheckBoxEnable. [HACK-POC D85] setter stubbed. */
+/* AIN SetCheckBoxEnable：void SetCheckBoxEnable。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetCheckBoxEnable(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetCheckBoxFlatName: void SetCheckBoxFlatName. [HACK-POC D85] setter stubbed. */
+/* AIN SetCheckBoxFlatName：void SetCheckBoxFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetCheckBoxFlatName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetCheckBoxLineSpace: void SetCheckBoxLineSpace. [HACK-POC D85] setter stubbed. */
+/* AIN SetCheckBoxLineSpace：void SetCheckBoxLineSpace。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetCheckBoxLineSpace(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetCheckBoxOverrideCGName: void SetCheckBoxOverrideCGName. [HACK-POC D85] setter stubbed. */
+/* AIN SetCheckBoxOverrideCGName：void SetCheckBoxOverrideCGName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetCheckBoxOverrideCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetCheckBoxOverrideCheckedCGName: void SetCheckBoxOverrideCheckedCGName. [HACK-POC D85] setter stubbed. */
+/* AIN SetCheckBoxOverrideCheckedCGName：void SetCheckBoxOverrideCheckedCGName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetCheckBoxOverrideCheckedCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetCheckBoxOverrideCheckedFlatName: void SetCheckBoxOverrideCheckedFlatName. [HACK-POC D85] setter stubbed. */
+/* AIN SetCheckBoxOverrideCheckedFlatName：void SetCheckBoxOverrideCheckedFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetCheckBoxOverrideCheckedFlatName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetCheckBoxOverrideFlatName: void SetCheckBoxOverrideFlatName. [HACK-POC D85] setter stubbed. */
+/* AIN SetCheckBoxOverrideFlatName：void SetCheckBoxOverrideFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetCheckBoxOverrideFlatName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetCheckBoxTextOriginPosMode: void SetCheckBoxTextOriginPosMode. [HACK-POC D85] setter stubbed. */
+/* AIN SetCheckBoxTextOriginPosMode：void SetCheckBoxTextOriginPosMode。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetCheckBoxTextOriginPosMode(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetClickMissSoundName: void SetClickMissSoundName. [HACK-POC D85] setter stubbed. */
+/* AIN SetClickMissSoundName：void SetClickMissSoundName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetClickMissSoundName(struct string * a0)
 {
 	(void)a0;
 }
 
-/* AIN SetComboBoxCharSpace: void SetComboBoxCharSpace. [HACK-POC D85] setter stubbed. */
+/* AIN SetComboBoxCharSpace：void SetComboBoxCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComboBoxCharSpace(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetComboBoxListBoxCharSpace: void SetComboBoxListBoxCharSpace. [HACK-POC D85] setter stubbed. */
+/* AIN SetComboBoxListBoxCharSpace：void SetComboBoxListBoxCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComboBoxListBoxCharSpace(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetComboBoxListBoxHeight: void SetComboBoxListBoxHeight. [HACK-POC D85] setter stubbed. */
+/* AIN SetComboBoxListBoxHeight：void SetComboBoxListBoxHeight。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComboBoxListBoxHeight(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetComboBoxListBoxItem: void SetComboBoxListBoxItem. [HACK-POC D85] setter stubbed. */
+/* AIN SetComboBoxListBoxItem：void SetComboBoxListBoxItem。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComboBoxListBoxItem(int a0, int a1, struct string * a2)
 {
 	(void)a0;
@@ -1250,14 +1250,14 @@ static void PE_Noop_SetComboBoxListBoxItem(int a0, int a1, struct string * a2)
 	(void)a2;
 }
 
-/* AIN SetComboBoxListBoxLineHeight: void SetComboBoxListBoxLineHeight. [HACK-POC D85] setter stubbed. */
+/* AIN SetComboBoxListBoxLineHeight：void SetComboBoxListBoxLineHeight。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComboBoxListBoxLineHeight(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetComboBoxListBoxMargin: void SetComboBoxListBoxMargin. [HACK-POC D85] setter stubbed. */
+/* AIN SetComboBoxListBoxMargin：void SetComboBoxListBoxMargin。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComboBoxListBoxMargin(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -1265,28 +1265,28 @@ static void PE_Noop_SetComboBoxListBoxMargin(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN SetComboBoxListBoxScrollPos: void SetComboBoxListBoxScrollPos. [HACK-POC D85] setter stubbed. */
+/* AIN SetComboBoxListBoxScrollPos：void SetComboBoxListBoxScrollPos。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComboBoxListBoxScrollPos(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetComboBoxListBoxSelectIndex: void SetComboBoxListBoxSelectIndex. [HACK-POC D85] setter stubbed. */
+/* AIN SetComboBoxListBoxSelectIndex：void SetComboBoxListBoxSelectIndex。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComboBoxListBoxSelectIndex(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetComponentCheckBoxShowLinkNumber: void SetComponentCheckBoxShowLinkNumber. [HACK-POC D85] setter stubbed. */
+/* AIN SetComponentCheckBoxShowLinkNumber：void SetComponentCheckBoxShowLinkNumber。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComponentCheckBoxShowLinkNumber(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetComponentClipArea: void SetComponentClipArea. [HACK-POC D85] setter stubbed. */
+/* AIN SetComponentClipArea：void SetComponentClipArea。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComponentClipArea(int a0, int a1, int a2, int a3, int a4)
 {
 	(void)a0;
@@ -1296,77 +1296,77 @@ static void PE_Noop_SetComponentClipArea(int a0, int a1, int a2, int a3, int a4)
 	(void)a4;
 }
 
-/* AIN SetComponentEnableClipArea: void SetComponentEnableClipArea. [HACK-POC D85] setter stubbed. */
+/* AIN SetComponentEnableClipArea：void SetComponentEnableClipArea。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComponentEnableClipArea(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetComponentMessageWindowEffectLink: void SetComponentMessageWindowEffectLink. [HACK-POC D85] setter stubbed. */
+/* AIN SetComponentMessageWindowEffectLink：void SetComponentMessageWindowEffectLink。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComponentMessageWindowEffectLink(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetComponentReverseLR: void SetComponentReverseLR. [HACK-POC D85] setter stubbed. */
+/* AIN SetComponentReverseLR：void SetComponentReverseLR。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComponentReverseLR(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetComponentReverseTB: void SetComponentReverseTB. [HACK-POC D85] setter stubbed. */
+/* AIN SetComponentReverseTB：void SetComponentReverseTB。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComponentReverseTB(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetComponentScrollAlphaLinkNumber: void SetComponentScrollAlphaLinkNumber. [HACK-POC D85] setter stubbed. */
+/* AIN SetComponentScrollAlphaLinkNumber：void SetComponentScrollAlphaLinkNumber。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComponentScrollAlphaLinkNumber(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetComponentScrollPosXLinkNumber: void SetComponentScrollPosXLinkNumber. [HACK-POC D85] setter stubbed. */
+/* AIN SetComponentScrollPosXLinkNumber：void SetComponentScrollPosXLinkNumber。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComponentScrollPosXLinkNumber(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetComponentScrollPosYLinkNumber: void SetComponentScrollPosYLinkNumber. [HACK-POC D85] setter stubbed. */
+/* AIN SetComponentScrollPosYLinkNumber：void SetComponentScrollPosYLinkNumber。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComponentScrollPosYLinkNumber(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetComponentShowEditor: void SetComponentShowEditor. [HACK-POC D85] setter stubbed. */
+/* AIN SetComponentShowEditor：void SetComponentShowEditor。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComponentShowEditor(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetComponentTextureAddressType: void SetComponentTextureAddressType. [HACK-POC D85] setter stubbed. */
+/* AIN SetComponentTextureAddressType：void SetComponentTextureAddressType。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetComponentTextureAddressType(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetEnableSpeedUp: void SetEnableSpeedUp. [HACK-POC D85] setter stubbed. */
+/* AIN SetEnableSpeedUp：void SetEnableSpeedUp。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetEnableSpeedUp(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetFontColorForBackScene: void SetFontColorForBackScene. [HACK-POC D85] setter stubbed. */
+/* AIN SetFontColorForBackScene：void SetFontColorForBackScene。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetFontColorForBackScene(int a0, int a1, int a2, int a3, int a4)
 {
 	(void)a0;
@@ -1376,7 +1376,7 @@ static void PE_Noop_SetFontColorForBackScene(int a0, int a1, int a2, int a3, int
 	(void)a4;
 }
 
-/* AIN SetFormCaptionColor: void SetFormCaptionColor. [HACK-POC D85] setter stubbed. */
+/* AIN SetFormCaptionColor：void SetFormCaptionColor。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetFormCaptionColor(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -1385,14 +1385,14 @@ static void PE_Noop_SetFormCaptionColor(int a0, int a1, int a2, int a3)
 	(void)a3;
 }
 
-/* AIN SetFormCaptionPlusHeight: void SetFormCaptionPlusHeight. [HACK-POC D85] setter stubbed. */
+/* AIN SetFormCaptionPlusHeight：void SetFormCaptionPlusHeight。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetFormCaptionPlusHeight(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetFormClientColor: void SetFormClientColor. [HACK-POC D85] setter stubbed. */
+/* AIN SetFormClientColor：void SetFormClientColor。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetFormClientColor(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -1401,21 +1401,21 @@ static void PE_Noop_SetFormClientColor(int a0, int a1, int a2, int a3)
 	(void)a3;
 }
 
-/* AIN SetFormEnableCloseButton: void SetFormEnableCloseButton. [HACK-POC D85] setter stubbed. */
+/* AIN SetFormEnableCloseButton：void SetFormEnableCloseButton。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetFormEnableCloseButton(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetFormFold: void SetFormFold. [HACK-POC D85] setter stubbed. */
+/* AIN SetFormFold：void SetFormFold。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetFormFold(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetFormGroupViewSpan: void SetFormGroupViewSpan. [HACK-POC D85] setter stubbed. */
+/* AIN SetFormGroupViewSpan：void SetFormGroupViewSpan。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetFormGroupViewSpan(int a0, int a1, int a2, int a3, int a4, int a5)
 {
 	(void)a0;
@@ -1426,21 +1426,21 @@ static void PE_Noop_SetFormGroupViewSpan(int a0, int a1, int a2, int a3, int a4,
 	(void)a5;
 }
 
-/* AIN SetFormHScrollPos: void SetFormHScrollPos. [HACK-POC D85] setter stubbed. */
+/* AIN SetFormHScrollPos：void SetFormHScrollPos。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetFormHScrollPos(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetFormIcon: void SetFormIcon. [HACK-POC D85] setter stubbed. */
+/* AIN SetFormIcon：void SetFormIcon。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetFormIcon(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetFormMaxSize: void SetFormMaxSize. [HACK-POC D85] setter stubbed. */
+/* AIN SetFormMaxSize：void SetFormMaxSize。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetFormMaxSize(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -1448,7 +1448,7 @@ static void PE_Noop_SetFormMaxSize(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN SetFormMinSize: void SetFormMinSize. [HACK-POC D85] setter stubbed. */
+/* AIN SetFormMinSize：void SetFormMinSize。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetFormMinSize(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -1456,14 +1456,14 @@ static void PE_Noop_SetFormMinSize(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN SetFormResizable: void SetFormResizable. [HACK-POC D85] setter stubbed. */
+/* AIN SetFormResizable：void SetFormResizable。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetFormResizable(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetFormSize: void SetFormSize. [HACK-POC D85] setter stubbed. */
+/* AIN SetFormSize：void SetFormSize。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetFormSize(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -1471,98 +1471,98 @@ static void PE_Noop_SetFormSize(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN SetFormTitle: void SetFormTitle. [HACK-POC D85] setter stubbed. */
+/* AIN SetFormTitle：void SetFormTitle。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetFormTitle(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetFormVScrollPos: void SetFormVScrollPos. [HACK-POC D85] setter stubbed. */
+/* AIN SetFormVScrollPos：void SetFormVScrollPos。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetFormVScrollPos(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetHScrollTotalSizeLinkNumber: void SetHScrollTotalSizeLinkNumber. [HACK-POC D85] setter stubbed. */
+/* AIN SetHScrollTotalSizeLinkNumber：void SetHScrollTotalSizeLinkNumber。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetHScrollTotalSizeLinkNumber(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetHScrollViewSizeLinkNumber: void SetHScrollViewSizeLinkNumber. [HACK-POC D85] setter stubbed. */
+/* AIN SetHScrollViewSizeLinkNumber：void SetHScrollViewSizeLinkNumber。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetHScrollViewSizeLinkNumber(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetHScrollbarFlatName: void SetHScrollbarFlatName. [HACK-POC D85] setter stubbed. */
+/* AIN SetHScrollbarFlatName：void SetHScrollbarFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetHScrollbarFlatName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetHScrollbarOverrideBGCGName: void SetHScrollbarOverrideBGCGName. [HACK-POC D85] setter stubbed. */
+/* AIN SetHScrollbarOverrideBGCGName：void SetHScrollbarOverrideBGCGName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetHScrollbarOverrideBGCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetHScrollbarOverrideBGFlatName: void SetHScrollbarOverrideBGFlatName. [HACK-POC D85] setter stubbed. */
+/* AIN SetHScrollbarOverrideBGFlatName：void SetHScrollbarOverrideBGFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetHScrollbarOverrideBGFlatName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetHScrollbarOverrideBarCGName: void SetHScrollbarOverrideBarCGName. [HACK-POC D85] setter stubbed. */
+/* AIN SetHScrollbarOverrideBarCGName：void SetHScrollbarOverrideBarCGName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetHScrollbarOverrideBarCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetHScrollbarOverrideBarFlatName: void SetHScrollbarOverrideBarFlatName. [HACK-POC D85] setter stubbed. */
+/* AIN SetHScrollbarOverrideBarFlatName：void SetHScrollbarOverrideBarFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetHScrollbarOverrideBarFlatName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetHScrollbarOverrideLeftCGName: void SetHScrollbarOverrideLeftCGName. [HACK-POC D85] setter stubbed. */
+/* AIN SetHScrollbarOverrideLeftCGName：void SetHScrollbarOverrideLeftCGName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetHScrollbarOverrideLeftCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetHScrollbarOverrideLeftFlatName: void SetHScrollbarOverrideLeftFlatName. [HACK-POC D85] setter stubbed. */
+/* AIN SetHScrollbarOverrideLeftFlatName：void SetHScrollbarOverrideLeftFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetHScrollbarOverrideLeftFlatName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetHScrollbarOverrideRightCGName: void SetHScrollbarOverrideRightCGName. [HACK-POC D85] setter stubbed. */
+/* AIN SetHScrollbarOverrideRightCGName：void SetHScrollbarOverrideRightCGName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetHScrollbarOverrideRightCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetHScrollbarOverrideRightFlatName: void SetHScrollbarOverrideRightFlatName. [HACK-POC D85] setter stubbed. */
+/* AIN SetHScrollbarOverrideRightFlatName：void SetHScrollbarOverrideRightFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetHScrollbarOverrideRightFlatName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetKeyWaitCGName: void SetKeyWaitCGName. [HACK-POC D85] setter stubbed. */
+/* AIN SetKeyWaitCGName：void SetKeyWaitCGName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetKeyWaitCGName(int a0, struct string * a1, int a2, int a3, int a4)
 {
 	(void)a0;
@@ -1572,14 +1572,14 @@ static void PE_Noop_SetKeyWaitCGName(int a0, struct string * a1, int a2, int a3,
 	(void)a4;
 }
 
-/* AIN SetKeyWaitFlatName: void SetKeyWaitFlatName. [HACK-POC D85] setter stubbed. */
+/* AIN SetKeyWaitFlatName：void SetKeyWaitFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetKeyWaitFlatName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetKeyWaitPos: void SetKeyWaitPos. [HACK-POC D85] setter stubbed. */
+/* AIN SetKeyWaitPos：void SetKeyWaitPos。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetKeyWaitPos(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -1588,14 +1588,14 @@ static void PE_Noop_SetKeyWaitPos(int a0, int a1, int a2, int a3)
 	(void)a3;
 }
 
-/* AIN SetKeyWaitShow: void SetKeyWaitShow. [HACK-POC D85] setter stubbed. */
+/* AIN SetKeyWaitShow：void SetKeyWaitShow。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetKeyWaitShow(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetLayoutBoxPadding: void SetLayoutBoxPadding. [HACK-POC D85] setter stubbed. */
+/* AIN SetLayoutBoxPadding：void SetLayoutBoxPadding。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetLayoutBoxPadding(int a0, int a1, int a2, int a3, int a4)
 {
 	(void)a0;
@@ -1605,28 +1605,28 @@ static void PE_Noop_SetLayoutBoxPadding(int a0, int a1, int a2, int a3, int a4)
 	(void)a4;
 }
 
-/* AIN SetLayoutBoxReturnSizeForRate: void SetLayoutBoxReturnSizeForRate. [HACK-POC D85] setter stubbed. */
+/* AIN SetLayoutBoxReturnSizeForRate：void SetLayoutBoxReturnSizeForRate。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetLayoutBoxReturnSizeForRate(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetListBoxCharSpace: void SetListBoxCharSpace. [HACK-POC D85] setter stubbed. */
+/* AIN SetListBoxCharSpace：void SetListBoxCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetListBoxCharSpace(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetLockInputState: void SetLockInputState. [HACK-POC D85] setter stubbed. */
+/* AIN SetLockInputState：void SetLockInputState。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetLockInputState(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetMessageWindowActive: void SetMessageWindowActive. [HACK-POC D85] setter stubbed. */
+/* AIN SetMessageWindowActive：void SetMessageWindowActive。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMessageWindowActive(int a0, int a1)
 {
 	MSGWIN_HIT("SetMessageWindowActive no=%d active=%d", a0, a1);
@@ -1634,7 +1634,7 @@ static void PE_Noop_SetMessageWindowActive(int a0, int a1)
 	(void)a1;
 }
 
-/* AIN SetMessageWindowCGName: void SetMessageWindowCGName. [HACK-POC D85] setter stubbed. */
+/* AIN SetMessageWindowCGName：void SetMessageWindowCGName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMessageWindowCGName(int a0, struct string * a1)
 {
 	MSGWIN_HIT("SetMessageWindowCGName no=%d len=%d", a0, a1 ? (int)strlen(a1->text) : -1);
@@ -1642,7 +1642,7 @@ static void PE_Noop_SetMessageWindowCGName(int a0, struct string * a1)
 	(void)a1;
 }
 
-/* AIN SetMessageWindowFlatName: void SetMessageWindowFlatName. [HACK-POC D85] setter stubbed. */
+/* AIN SetMessageWindowFlatName：void SetMessageWindowFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMessageWindowFlatName(int a0, struct string * a1)
 {
 	MSGWIN_HIT("SetMessageWindowFlatName no=%d len=%d", a0, a1 ? (int)strlen(a1->text) : -1);
@@ -1780,14 +1780,14 @@ static bool PE_StepMessageWindowFlatFinalFrame(int no)
 	return false;
 }
 
-/* AIN SetMessageWindowFlatShowWaitFrameNumber: void SetMessageWindowFlatShowWaitFrameNumber. [HACK-POC D85] setter stubbed. */
+/* AIN SetMessageWindowFlatShowWaitFrameNumber：void SetMessageWindowFlatShowWaitFrameNumber。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMessageWindowFlatShowWaitFrameNumber(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetMessageWindowInactiveMultipleColor: void SetMessageWindowInactiveMultipleColor. [HACK-POC D85] setter stubbed. */
+/* AIN SetMessageWindowInactiveMultipleColor：void SetMessageWindowInactiveMultipleColor。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMessageWindowInactiveMultipleColor(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -1860,7 +1860,7 @@ static bool PE_IsFixedMessageWindowText(int no)
 	return true;
 }
 
-/* AIN SetMessageWindowTextArea: void SetMessageWindowTextArea. [HACK-POC D85] setter stubbed. */
+/* AIN SetMessageWindowTextArea：void SetMessageWindowTextArea。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMessageWindowTextArea(int a0, int a1, int a2, int a3, int a4)
 {
 	MSGWIN_HIT("SetMessageWindowTextArea no=%d x=%d y=%d w=%d h=%d", a0, a1, a2, a3, a4);
@@ -1871,7 +1871,7 @@ static void PE_Noop_SetMessageWindowTextArea(int a0, int a1, int a2, int a3, int
 	(void)a4;
 }
 
-/* AIN SetMessageWindowTextOriginPosMode: void SetMessageWindowTextOriginPosMode. [HACK-POC D85] setter stubbed. */
+/* AIN SetMessageWindowTextOriginPosMode：void SetMessageWindowTextOriginPosMode。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMessageWindowTextOriginPosMode(int a0, int a1)
 {
 	MSGWIN_HIT("SetMessageWindowTextOriginPosMode no=%d mode=%d", a0, a1);
@@ -1879,7 +1879,7 @@ static void PE_Noop_SetMessageWindowTextOriginPosMode(int a0, int a1)
 	(void)a1;
 }
 
-/* AIN SetMessageWindowTextSpace: void SetMessageWindowTextSpace. [HACK-POC D85] setter stubbed. */
+/* AIN SetMessageWindowTextSpace：void SetMessageWindowTextSpace。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMessageWindowTextSpace(int a0, int a1, int a2)
 {
 	MSGWIN_HIT("SetMessageWindowTextSpace no=%d letter=%d line=%d", a0, a1, a2);
@@ -1888,7 +1888,7 @@ static void PE_Noop_SetMessageWindowTextSpace(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN SetMessageWindowTextSpeed: void SetMessageWindowTextSpeed. [HACK-POC D85] setter stubbed. */
+/* AIN SetMessageWindowTextSpeed：void SetMessageWindowTextSpeed。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMessageWindowTextSpeed(int a0, int a1)
 {
 	MSGWIN_HIT("SetMessageWindowTextSpeed no=%d speed=%d", a0, a1);
@@ -1896,7 +1896,7 @@ static void PE_Noop_SetMessageWindowTextSpeed(int a0, int a1)
 	(void)a1;
 }
 
-/* AIN SetMotionData: void SetMotionData. [HACK-POC D85] setter stubbed. */
+/* AIN SetMotionData：void SetMotionData。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMotionData(int a0, struct string * a1, int a2, int a3)
 {
 	(void)a0;
@@ -1905,7 +1905,7 @@ static void PE_Noop_SetMotionData(int a0, struct string * a1, int a2, int a3)
 	(void)a3;
 }
 
-/* AIN SetMovieTime: void SetMovieTime. [HACK-POC D85] setter stubbed. */
+/* AIN SetMovieTime：void SetMovieTime。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMovieTime(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -1913,7 +1913,7 @@ static void PE_Noop_SetMovieTime(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN SetMultiTextBoxBGColor: void SetMultiTextBoxBGColor. [HACK-POC D85] setter stubbed. */
+/* AIN SetMultiTextBoxBGColor：void SetMultiTextBoxBGColor。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMultiTextBoxBGColor(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -1922,14 +1922,14 @@ static void PE_Noop_SetMultiTextBoxBGColor(int a0, int a1, int a2, int a3)
 	(void)a3;
 }
 
-/* AIN SetMultiTextBoxCharSpace: void SetMultiTextBoxCharSpace. [HACK-POC D85] setter stubbed. */
+/* AIN SetMultiTextBoxCharSpace：void SetMultiTextBoxCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMultiTextBoxCharSpace(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetMultiTextBoxFrameColor: void SetMultiTextBoxFrameColor. [HACK-POC D85] setter stubbed. */
+/* AIN SetMultiTextBoxFrameColor：void SetMultiTextBoxFrameColor。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMultiTextBoxFrameColor(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -1938,21 +1938,21 @@ static void PE_Noop_SetMultiTextBoxFrameColor(int a0, int a1, int a2, int a3)
 	(void)a3;
 }
 
-/* AIN SetMultiTextBoxHScrollShow: void SetMultiTextBoxHScrollShow. [HACK-POC D85] setter stubbed. */
+/* AIN SetMultiTextBoxHScrollShow：void SetMultiTextBoxHScrollShow。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMultiTextBoxHScrollShow(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetMultiTextBoxLineSpace: void SetMultiTextBoxLineSpace. [HACK-POC D85] setter stubbed. */
+/* AIN SetMultiTextBoxLineSpace：void SetMultiTextBoxLineSpace。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMultiTextBoxLineSpace(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetMultiTextBoxPadding: void SetMultiTextBoxPadding. [HACK-POC D85] setter stubbed. */
+/* AIN SetMultiTextBoxPadding：void SetMultiTextBoxPadding。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMultiTextBoxPadding(int a0, int a1, int a2, int a3, int a4)
 {
 	(void)a0;
@@ -1962,14 +1962,14 @@ static void PE_Noop_SetMultiTextBoxPadding(int a0, int a1, int a2, int a3, int a
 	(void)a4;
 }
 
-/* AIN SetMultiTextBoxReadOnly: void SetMultiTextBoxReadOnly. [HACK-POC D85] setter stubbed. */
+/* AIN SetMultiTextBoxReadOnly：void SetMultiTextBoxReadOnly。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMultiTextBoxReadOnly(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetMultiTextBoxReadOnlyBGColor: void SetMultiTextBoxReadOnlyBGColor. [HACK-POC D85] setter stubbed. */
+/* AIN SetMultiTextBoxReadOnlyBGColor：void SetMultiTextBoxReadOnlyBGColor。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMultiTextBoxReadOnlyBGColor(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -1978,14 +1978,14 @@ static void PE_Noop_SetMultiTextBoxReadOnlyBGColor(int a0, int a1, int a2, int a
 	(void)a3;
 }
 
-/* AIN SetMultiTextBoxVScrollShow: void SetMultiTextBoxVScrollShow. [HACK-POC D85] setter stubbed. */
+/* AIN SetMultiTextBoxVScrollShow：void SetMultiTextBoxVScrollShow。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetMultiTextBoxVScrollShow(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetNumeralFullPitch: void SetNumeralFullPitch. [HACK-POC D85] setter stubbed. */
+/* AIN SetNumeralFullPitch：void SetNumeralFullPitch。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetNumeralFullPitch(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -1993,7 +1993,7 @@ static void PE_Noop_SetNumeralFullPitch(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN SetNumeralShowPadding: void SetNumeralShowPadding. [HACK-POC D85] setter stubbed. */
+/* AIN SetNumeralShowPadding：void SetNumeralShowPadding。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetNumeralShowPadding(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -2001,7 +2001,7 @@ static void PE_Noop_SetNumeralShowPadding(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN SetNumeralShowType: void SetNumeralShowType. [HACK-POC D85] setter stubbed. */
+/* AIN SetNumeralShowType：void SetNumeralShowType。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetNumeralShowType(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -2009,42 +2009,42 @@ static void PE_Noop_SetNumeralShowType(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN SetOpenTextBoxIME: void SetOpenTextBoxIME. [HACK-POC D85] setter stubbed. */
+/* AIN SetOpenTextBoxIME：void SetOpenTextBoxIME。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetOpenTextBoxIME(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetPanelAlphaGradationBottom: void SetPanelAlphaGradationBottom. [HACK-POC D85] setter stubbed. */
+/* AIN SetPanelAlphaGradationBottom：void SetPanelAlphaGradationBottom。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetPanelAlphaGradationBottom(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetPanelAlphaGradationLeft: void SetPanelAlphaGradationLeft. [HACK-POC D85] setter stubbed. */
+/* AIN SetPanelAlphaGradationLeft：void SetPanelAlphaGradationLeft。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetPanelAlphaGradationLeft(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetPanelAlphaGradationRight: void SetPanelAlphaGradationRight. [HACK-POC D85] setter stubbed. */
+/* AIN SetPanelAlphaGradationRight：void SetPanelAlphaGradationRight。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetPanelAlphaGradationRight(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetPanelAlphaGradationTop: void SetPanelAlphaGradationTop. [HACK-POC D85] setter stubbed. */
+/* AIN SetPanelAlphaGradationTop：void SetPanelAlphaGradationTop。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetPanelAlphaGradationTop(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetPanelColor: void SetPanelColor. [HACK-POC D85] setter stubbed. */
+/* AIN SetPanelColor：void SetPanelColor。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetPanelColor(int a0, int a1, int a2, int a3, int a4)
 {
 	(void)a0;
@@ -2054,7 +2054,7 @@ static void PE_Noop_SetPanelColor(int a0, int a1, int a2, int a3, int a4)
 	(void)a4;
 }
 
-/* AIN SetPanelSize: void SetPanelSize. [HACK-POC D85] setter stubbed. */
+/* AIN SetPanelSize：void SetPanelSize。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetPanelSize(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -2062,7 +2062,7 @@ static void PE_Noop_SetPanelSize(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN SetRectangleDetectionPoint: void SetRectangleDetectionPoint. [HACK-POC D85] setter stubbed. */
+/* AIN SetRectangleDetectionPoint：void SetRectangleDetectionPoint。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetRectangleDetectionPoint(int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7, int a8, int a9)
 {
 	(void)a0;
@@ -2077,14 +2077,14 @@ static void PE_Noop_SetRectangleDetectionPoint(int a0, int a1, int a2, int a3, i
 	(void)a9;
 }
 
-/* AIN SetShowForBackScene: void SetShowForBackScene. [HACK-POC D85] setter stubbed. */
+/* AIN SetShowForBackScene：void SetShowForBackScene。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetShowForBackScene(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetSpinBoxBGColor: void SetSpinBoxBGColor. [HACK-POC D85] setter stubbed. */
+/* AIN SetSpinBoxBGColor：void SetSpinBoxBGColor。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetSpinBoxBGColor(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -2093,28 +2093,28 @@ static void PE_Noop_SetSpinBoxBGColor(int a0, int a1, int a2, int a3)
 	(void)a3;
 }
 
-/* AIN SetSpinBoxCGName: void SetSpinBoxCGName. [HACK-POC D85] setter stubbed. */
+/* AIN SetSpinBoxCGName：void SetSpinBoxCGName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetSpinBoxCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetSpinBoxCharSpace: void SetSpinBoxCharSpace. [HACK-POC D85] setter stubbed. */
+/* AIN SetSpinBoxCharSpace：void SetSpinBoxCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetSpinBoxCharSpace(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetSpinBoxDecimalPlace: void SetSpinBoxDecimalPlace. [HACK-POC D85] setter stubbed. */
+/* AIN SetSpinBoxDecimalPlace：void SetSpinBoxDecimalPlace。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetSpinBoxDecimalPlace(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetSpinBoxFrameColor: void SetSpinBoxFrameColor. [HACK-POC D85] setter stubbed. */
+/* AIN SetSpinBoxFrameColor：void SetSpinBoxFrameColor。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetSpinBoxFrameColor(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -2123,14 +2123,14 @@ static void PE_Noop_SetSpinBoxFrameColor(int a0, int a1, int a2, int a3)
 	(void)a3;
 }
 
-/* AIN SetSpinBoxReadOnly: void SetSpinBoxReadOnly. [HACK-POC D85] setter stubbed. */
+/* AIN SetSpinBoxReadOnly：void SetSpinBoxReadOnly。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetSpinBoxReadOnly(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetSpinBoxReadOnlyBGColor: void SetSpinBoxReadOnlyBGColor. [HACK-POC D85] setter stubbed. */
+/* AIN SetSpinBoxReadOnlyBGColor：void SetSpinBoxReadOnlyBGColor。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetSpinBoxReadOnlyBGColor(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -2139,7 +2139,7 @@ static void PE_Noop_SetSpinBoxReadOnlyBGColor(int a0, int a1, int a2, int a3)
 	(void)a3;
 }
 
-/* AIN SetSpinBoxSelectColor: void SetSpinBoxSelectColor. [HACK-POC D85] setter stubbed. */
+/* AIN SetSpinBoxSelectColor：void SetSpinBoxSelectColor。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetSpinBoxSelectColor(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -2148,7 +2148,7 @@ static void PE_Noop_SetSpinBoxSelectColor(int a0, int a1, int a2, int a3)
 	(void)a3;
 }
 
-/* AIN SetSpinBoxSize: void SetSpinBoxSize. [HACK-POC D85] setter stubbed. */
+/* AIN SetSpinBoxSize：void SetSpinBoxSize。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetSpinBoxSize(int a0, int a1, int a2)
 {
 	(void)a0;
@@ -2156,7 +2156,7 @@ static void PE_Noop_SetSpinBoxSize(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN SetTextBoxBGColor: void SetTextBoxBGColor. [HACK-POC D85] setter stubbed. */
+/* AIN SetTextBoxBGColor：void SetTextBoxBGColor。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetTextBoxBGColor(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -2165,14 +2165,14 @@ static void PE_Noop_SetTextBoxBGColor(int a0, int a1, int a2, int a3)
 	(void)a3;
 }
 
-/* AIN SetTextBoxCharSpace: void SetTextBoxCharSpace. [HACK-POC D85] setter stubbed. */
+/* AIN SetTextBoxCharSpace：void SetTextBoxCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetTextBoxCharSpace(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetTextBoxFrameColor: void SetTextBoxFrameColor. [HACK-POC D85] setter stubbed. */
+/* AIN SetTextBoxFrameColor：void SetTextBoxFrameColor。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetTextBoxFrameColor(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -2181,14 +2181,14 @@ static void PE_Noop_SetTextBoxFrameColor(int a0, int a1, int a2, int a3)
 	(void)a3;
 }
 
-/* AIN SetTextBoxReadOnly: void SetTextBoxReadOnly. [HACK-POC D85] setter stubbed. */
+/* AIN SetTextBoxReadOnly：void SetTextBoxReadOnly。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetTextBoxReadOnly(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetTextBoxReadOnlyBGColor: void SetTextBoxReadOnlyBGColor. [HACK-POC D85] setter stubbed. */
+/* AIN SetTextBoxReadOnlyBGColor：void SetTextBoxReadOnlyBGColor。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetTextBoxReadOnlyBGColor(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -2199,8 +2199,8 @@ static void PE_Noop_SetTextBoxReadOnlyBGColor(int a0, int a1, int a2, int a3)
 
 /* 用户组件 (component type 15)。引擎侧只存"名字 + 键值袋"，
  * TextButton 之类的行为与绘制由游戏的 AIN 代码实现：
- *   activity::detail::CallUserComponentCreateEventWithChild
- *   → PartsEngine.GetUserComponentName(parts_no)
+ *   活动创建用户组件事件的入口（CallUserComponentCreateEventWithChild）
+ *   → 引擎按部件号取用户组件名（GetUserComponentName）
  *   → 交给活动的用户组件事件委托。
  * 数据表就是 EX 的 数据 = ['オブジェクト名','TextButton','参数','标题,从头开始']。 */
 static struct string *PE_GetUserComponentName_str(int parts_no)
@@ -2229,77 +2229,77 @@ static struct string *PE_GetUserComponentData_str(int parts_no, struct string *k
 	return cstr_to_string(v);
 }
 
-/* AIN SetVScrollTotalSizeLinkNumber: void SetVScrollTotalSizeLinkNumber. [HACK-POC D85] setter stubbed. */
+/* AIN SetVScrollTotalSizeLinkNumber：void SetVScrollTotalSizeLinkNumber。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetVScrollTotalSizeLinkNumber(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetVScrollViewSizeLinkNumber: void SetVScrollViewSizeLinkNumber. [HACK-POC D85] setter stubbed. */
+/* AIN SetVScrollViewSizeLinkNumber：void SetVScrollViewSizeLinkNumber。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetVScrollViewSizeLinkNumber(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetVScrollbarFlatName: void SetVScrollbarFlatName. [HACK-POC D85] setter stubbed. */
+/* AIN SetVScrollbarFlatName：void SetVScrollbarFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetVScrollbarFlatName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetVScrollbarOverrideBGCGName: void SetVScrollbarOverrideBGCGName. [HACK-POC D85] setter stubbed. */
+/* AIN SetVScrollbarOverrideBGCGName：void SetVScrollbarOverrideBGCGName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetVScrollbarOverrideBGCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetVScrollbarOverrideBGFlatName: void SetVScrollbarOverrideBGFlatName. [HACK-POC D85] setter stubbed. */
+/* AIN SetVScrollbarOverrideBGFlatName：void SetVScrollbarOverrideBGFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetVScrollbarOverrideBGFlatName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetVScrollbarOverrideBarCGName: void SetVScrollbarOverrideBarCGName. [HACK-POC D85] setter stubbed. */
+/* AIN SetVScrollbarOverrideBarCGName：void SetVScrollbarOverrideBarCGName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetVScrollbarOverrideBarCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetVScrollbarOverrideBarFlatName: void SetVScrollbarOverrideBarFlatName. [HACK-POC D85] setter stubbed. */
+/* AIN SetVScrollbarOverrideBarFlatName：void SetVScrollbarOverrideBarFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetVScrollbarOverrideBarFlatName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetVScrollbarOverrideDownCGName: void SetVScrollbarOverrideDownCGName. [HACK-POC D85] setter stubbed. */
+/* AIN SetVScrollbarOverrideDownCGName：void SetVScrollbarOverrideDownCGName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetVScrollbarOverrideDownCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetVScrollbarOverrideDownFlatName: void SetVScrollbarOverrideDownFlatName. [HACK-POC D85] setter stubbed. */
+/* AIN SetVScrollbarOverrideDownFlatName：void SetVScrollbarOverrideDownFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetVScrollbarOverrideDownFlatName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetVScrollbarOverrideUpCGName: void SetVScrollbarOverrideUpCGName. [HACK-POC D85] setter stubbed. */
+/* AIN SetVScrollbarOverrideUpCGName：void SetVScrollbarOverrideUpCGName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetVScrollbarOverrideUpCGName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SetVScrollbarOverrideUpFlatName: void SetVScrollbarOverrideUpFlatName. [HACK-POC D85] setter stubbed. */
+/* AIN SetVScrollbarOverrideUpFlatName：void SetVScrollbarOverrideUpFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetVScrollbarOverrideUpFlatName(int a0, struct string * a1)
 {
 	(void)a0;
@@ -2307,25 +2307,25 @@ static void PE_Noop_SetVScrollbarOverrideUpFlatName(int a0, struct string * a1)
 }
 
 /* ==================================================================
- * D89: Activity subsystem (AIN f[22..52])
+ * D89：活动子系统（AIN f[22..52]）
  *
- * Previously every function here was a [HACK-POC D89] stub that silently
- * returned 0, so ReadActivityFile() never loaded anything, the parts table
- * stayed empty and nothing was rendered.
+ * 原先这里每个函数都是 [HACK-POC D89] 空桩，静默返回 0，
+ * 于是 ReadActivityFile() 什么也没加载，部件表始终是空的，
+ * 画面上什么都没有。
  *
- * The real work lives in src/parts/activity.c: parse the .pactex (System4 EX
- * tree), materialize a `struct parts` tree and keep an activity table. These
- * wrappers are thin, but they must exist with exactly these HLL names:
- * link_static_library() binds AIN functions to C symbols *by name*, not by
- * table position.
+ * 真正干活的是 src/parts/activity.c：解析 .pactex（System4 EX 树），
+ * 实例化出 `struct parts` 树，并维护一张活动表。这里的包装很薄，
+ * 但它们必须用一模一样的 HLL 名字存在：
+ * link_static_library() 是按名字把 AIN 函数绑到 C 符号的，
+ * 不看表里的位置。
  *
- * Structural facts that drove this design (see
- * Rance10_AIN底层研究-20261110.md):
- *  - The activity tree always has a root parts named "ルートパーツ" (GBK).
- *    activity::detail::CActivity@LoadActivity aborts if
- *    GetActivityPartsNumber(name, "ルートパーツ") == 0.
- *  - The AIN never builds the parts tree itself: Parts_SetPartsCG has only
- *    three call sites in the whole script.
+ * 驱动这套设计的结构事实（见
+ * Rance10_AIN底层研究-20261110.md）：
+ *  - 活动树永远有一个叫 ルートパーツ（GBK）的根部件。
+ *    如果 GetActivityPartsNumber(name, ルートパーツ) == 0，
+ *    activity::detail::CActivity@LoadActivity 会直接中止。
+ *  - AIN 从不自己搭部件树：整个脚本里 Parts_SetPartsCG 只有
+ *    三个调用点。
  * ================================================================== */
 
 static int PartsEngine_IsExistActivity(struct string *name)
@@ -2354,7 +2354,7 @@ static int PE_Act_ReleaseActivity(struct string *name, struct page **erase_numbe
 	return activity_release(name->text);
 }
 
-/* AIN f[25] SaveActivityEXText: editor only, not needed by the game flow. */
+/* AIN f[25] SaveActivityEXText：仅供编辑器，游戏流程用不到。 */
 static int PE_Act_SaveActivityEXText(struct page **a0, struct string *a1)
 {
 	(void)a0;
@@ -2362,9 +2362,9 @@ static int PE_Act_SaveActivityEXText(struct page **a0, struct string *a1)
 	return 0;
 }
 
-/* AIN f[26] LoadActivityEXText: load an activity from EX text instead of a
- * .pactex. The startup screen takes the file path, so this is unused there;
- * returning 0 makes the caller fall back to the file. */
+/* AIN f[26] LoadActivityEXText：从 EX 文本加载活动，而不是
+ * 从 .pactex 读。启动画面走的是文件路径那条，所以这里用不上；
+ * 返回 0 会让调用方回退到文件加载。 */
 static int PE_Act_LoadActivityEXText(struct string *name, struct string *text, int flag)
 {
 	(void)name;
@@ -2421,22 +2421,22 @@ static int PE_Act_NumofActivityParts(struct string *name)
 {
 	struct activity *act = name ? activity_get(name->text) : NULL;
 	int n = activity_nr_parts(act);
-	/* [D119 probe] AIN Activity@GetList uses this to size its parts list.
-	 * A zero result leaves the button objects uncreated. */
+	/* [D119 探针] AIN Activity@GetList 靠它确定部件列表的长度。
+	 * 返回 0 会导致那些按钮对象根本不被创建。 */
 	if (getenv("XSYS4_ACT_DBG"))
 		NOTICE("[act] Numof('%s') = %d", name && name->text ? name->text : "(null)", n);
 	return n;
 }
 
-/* AIN f[34] GetActivityParts(index, name, ref string out_name, ref int out_no).
+/* AIN f[34] GetActivityParts(index, name, ref string out_name, ref int out_no)。
  *
- * ffi hands ref parameters over as pointers into the heap slot / page cell, so
- * the C types are `struct string **` and `union vm_value *`.
+ * ffi 把 ref 形参当指针交过来，指向堆槽 / 页里的单元格，
+ * 所以 C 类型写成 `struct string **` 和 `union vm_value *`。
  *
- * Activity@CreateParts walks the activity by index through this function; when
- * it returns 0 the caller keeps its previous (empty) name and then reports
- * "PARTS_INVALID_NUMBER" once per iteration, which is exactly the warning the
- * startup screen used to emit seven times. */
+ * Activity@CreateParts 靠这个函数按下标遍历活动；
+ * 一旦它返回 0，调用方就会沿用上一次的（空）名字，
+ * 然后每轮迭代报一次 PARTS_INVALID_NUMBER ——
+ * 这正是启动画面以前连报七次的那条警告。 */
 static int PE_Act_GetActivityParts(int index, struct string *name,
 				   struct string **out_name, union vm_value *out_no)
 {
@@ -2515,7 +2515,7 @@ static int PE_Act_GetActivityEXID(struct string *name)
 	return 0;
 }
 
-/* AIN f[40..43]: EX text / background overrides (editor). */
+/* AIN f[40..43]：EX 文本 / 背景覆盖（编辑器用）。 */
 static void PE_Act_SetActivityEXText(struct string *name, struct string *text)
 {
 	(void)name;
@@ -2540,7 +2540,7 @@ static struct string *PE_Act_GetActivityBG(struct string *name)
 	return cstr_to_string(activity_background(act));
 }
 
-/* AIN f[44..47]: close / locked parts lists (input handling). */
+/* AIN f[44..47]：关闭/锁定的部件列表（输入处理用）。 */
 static void PE_Act_AddActivityCloseParts(struct string *name, struct string *parts_name)
 {
 	(void)name;
@@ -2563,8 +2563,8 @@ static int PE_Act_IsExistActivityLockedParts(struct string *name, struct string 
 	return PE_Act_IsExistActivityPartsByName(name, parts_name);
 }
 
-/* AIN f[48..52]: end keys. The list is in block 1 of some activity files;
- * not needed for the first frame, so report "none" for now. */
+/* AIN f[48..52]：结束键。这个列表在部分活动文件的 block 1 里；
+ * 首帧用不到，所以暂时一律报「没有」。 */
 static void PE_Act_SetActivityEndKey(struct string *name, int key)
 {
 	(void)name;
@@ -2597,9 +2597,9 @@ static int PE_Act_GetActivityEndKey(struct string *name, int index)
 	return -1;
 }
 
-/* AIN v12 PartsEngine.GetControllerLength (lib 27 fno 10): the count that
- * parts::detail::NumofLayer iterates over. Layers are controller indices in
- * this port, so it is the controller count (see case 5 of PartsEngine_PartsFunc). */
+/* AIN v12 PartsEngine.GetControllerLength（库 27 的第 10 号函数）：
+ * parts::detail::NumofLayer 遍历时用的计数。这个移植里「图层」就是
+ * 控制器下标，所以它就是控制器个数（见 PartsEngine_PartsFunc 的 case 5）。 */
 static int PE_GetControllerLength(void)
 {
 	return PE_get_nr_controllers();
@@ -2613,11 +2613,11 @@ static int PE_GetControllerID(int index)
 	return PE_get_controller_id(index);
 }
 
-/* PartsEngine.SetFlatFPSRate(parts_no, rate, state), AIN lib27 f[761].
- * [HACK][D119-FLATFPS] one global rate instead of per-parts/per-state storage;
- * enough to stop the unimplemented-HLL error that blocked the title scene.
- * Refactor: store the rate on the parts state and use it in
- * parts_update_animation(). Registered in TECH_DEBT. */
+/* PartsEngine.SetFlatFPSRate(parts_no, rate, state)，AIN 库27 的 f[761]。
+ * [HACK][D119-FLATFPS] 用一个全局 rate 代替按部件/按状态的存储；
+ * 足够让「未实现的 HLL」报错不再挡住标题画面。
+ * 待重构：把 rate 存到部件状态上，并在
+ * parts_update_animation() 里使用。已登记进技术债。 */
 static float parts_flat_fps_rate = 1.0f;
 
 static void PE_SetFlatFPSRate(int parts_no, float rate, int state)
@@ -2627,11 +2627,11 @@ static void PE_SetFlatFPSRate(int parts_no, float rate, int state)
 	parts_flat_fps_rate = rate > 0.0f ? rate : 1.0f;
 }
 
-/* AIN v12 declares Parts_GetPartsCGName(parts_no, state) -> string, while the
- * upstream binding is the out-parameter form
- * (parts_no, struct string **out, state). libffi passed the state where the
- * out pointer belongs, so the HLL wrote through a small integer and returned
- * 0x1 as the "string" (which then crashed the first %s that formatted it). */
+/* AIN v12 声明的是 Parts_GetPartsCGName(parts_no, state) -> string，
+ * 而上游绑定是出参形式
+ * (parts_no, struct string **out, state)。libffi 把 state 传到了
+ * 本该是出参指针的位置，于是 HLL 通过一个小整数写内存，
+ * 并把 0x1 当成「字符串」返回（第一个格式化它的 %s 就崩了）。 */
 static struct string *PE_GetPartsCGName_v12(int parts_no, int state)
 {
 	struct string *name = NULL;
@@ -2641,10 +2641,10 @@ static struct string *PE_GetPartsCGName_v12(int parts_no, int state)
 
 HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(_PreLink, PartsEngine_PreLink),
-	    // for versions without PartsEngine.Init
+	    // 给没有 PartsEngine.Init 的版本用
 	    HLL_EXPORT(_ModuleInit, PartsEngine_ModuleInit),
 	    HLL_EXPORT(_ModuleFini, PartsEngine_ModuleFini),
-	    // Oyako Rankan
+	    // 《Oyako Rankan》版本
 	    HLL_EXPORT(SetWantSaveBackScene, PE_SetWantSaveBackScene),
 	    HLL_EXPORT(GetActiveController, PE_get_active_controller),
 	    HLL_EXPORT(GetActiveParts, PE_GetActiveParts),
@@ -2672,7 +2672,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Update, PartsEngine_Update),
 	    HLL_TODO_EXPORT(UpdateGUIController, PartsEngine_UpdateGUIController),
 	    HLL_EXPORT(GetFreeSystemPartsNumber, PE_GetFreeNumber),
-	    // FIXME: what is the difference?
+	    // FIXME：这两个到底有什么区别？
 	    HLL_EXPORT(GetFreeSystemPartsNumberNotSaved, PE_GetFreeNumber),
 	    HLL_EXPORT(IsExistParts, PE_IsExist),
 	    HLL_EXPORT(SetPartsCG, PE_SetPartsCG),
@@ -2850,7 +2850,7 @@ HLL_LIBRARY(PartsEngine,
  * Unimplemented。PE_save_thumbnail() 本来就有实现，只差这一行。 */
 	    HLL_EXPORT(SaveThumbnail, PE_save_thumbnail),
 	    HLL_EXPORT(Load, PE_Load),
-	    // Rance 9
+	    // 兰斯9
 	    HLL_EXPORT(PartsFunc, PartsEngine_PartsFunc),
 	    HLL_EXPORT(Release, PE_ReleaseParts),
 	    HLL_TODO_EXPORT(ReleaseAll, PartsEngine_ReleaseAll),
@@ -2867,8 +2867,8 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Parts_SetThumbnailMode, PE_SetThumbnailMode),
 	    HLL_EXPORT(GetClickNumber, PE_GetClickPartsNumber),
 	    HLL_EXPORT(StopSoundWithoutSystemSound, PartsEngine_StopSoundWithoutSystemSound),
-	    /* Rance10.ain f[177] = Parts_SetComment. This table is indexed by
-	     * fno, not by name; see TECH_DEBT D26 (table rebuild pending). */
+	    /* Rance10.ain f[177] = Parts_SetComment。这张表是按函数号索引的，
+	     * 不是按名字；见技术债 D26（表待重建）。 */
 	    HLL_EXPORT(Parts_SetComment, PartsEngine_SetComment),
 	    HLL_EXPORT(Parts_GetComment, PartsEngine_GetComment),
 	    HLL_TODO_EXPORT(CrateActivityBinary, PartsEngine_CrateActivityBinary),
