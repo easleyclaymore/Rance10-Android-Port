@@ -114,14 +114,30 @@ static struct parts **parts_input_collect(int *out_nr)
 	return input_z_sorted;
 }
 
+/* [D207] 命中矩形 = 局部 hitbox + 直接父 global.pos。
+ *
+ * 抽成函数是为了让 parts_hittest() 和 [inp] 调试打印**共用同一套计算**：
+ * 之前两处各算一遍，日志显示的命中区与实测结果可能不是同一个值，
+ * 排查标题菜单时因此误判过一轮。
+ *
+ * 注意：XSYS4_PARTS_DUMP 打的是装载瞬间的 global.pos（例如 (548,718)），
+ * 而输入帧里这个字段已被 parts_update_global_pos() 重算成 (0,40)；
+ * 两者不是同一时刻的快照，别拿 dump 的坐标去点（D207 证伪记录见
+ * docs/HYPOTHESES.md H018）。 */
+static Rectangle parts_hitbox_at(struct parts *parts, int state)
+{
+	Rectangle hb = parts->states[state].common.hitbox;
+	if (parts->parent) {
+		hb.x += parts->parent->global.pos.x;
+		hb.y += parts->parent->global.pos.y;
+	}
+	return hb;
+}
+
 static bool parts_hittest(struct parts *parts, int state, Point pos)
 {
-	Rectangle hitbox = parts->states[state].common.hitbox;
-	if (parts->parent) {
-		hitbox.x += parts->parent->global.pos.x;
-		hitbox.y += parts->parent->global.pos.y;
-	}
-	return SDL_PointInRect(&pos, &hitbox);
+	Rectangle hb = parts_hitbox_at(parts, state);
+	return SDL_PointInRect(&pos, &hb);
 }
 
 static void drag_state_reset(void)
@@ -311,28 +327,29 @@ void PE_UpdateInputState(int passed_time)
 	if (dbg) {
 		for (int si = 0; si < sorted_nr; si++) {
 			parts = sorted[si];
-			Rectangle hb = parts->states[PARTS_STATE_DEFAULT].common.hitbox;
-			/* [D123] 命中判定实际用的是"局部 hitbox + 父 global.pos"，
-			 * 只打局部值会误判成"子活动部件都在 0,0 命中不到"。 */
+			/* [D207] 与 parts_hittest 共用同一套坐标基准，
+			 * 否则调试打印会把命中区显示在一个根本没被使用的位置。 */
+			Rectangle hb = parts_hitbox_at(parts, PARTS_STATE_DEFAULT);
 			int gx = hb.x, gy = hb.y;
-			if (parts->parent) {
-				gx += parts->parent->global.pos.x;
-				gy += parts->parent->global.pos.y;
-			}
 			/* [D189] 只打光标覆盖到的部件：40 条限流会被无关部件吃光，
 			 * 而"我点的位置到底有没有可点部件"才是判断按钮点不动的那条。 */
 			bool covers = cur_pos.x >= gx && cur_pos.x < gx + hb.w &&
 				cur_pos.y >= gy && cur_pos.y < gy + hb.h;
-			if (!covers)
+			/* [D207] XSYS4_INPUT_ALL=1：连"没覆盖光标"的部件也打出来。
+			 * 只打覆盖部件时，一个几何算错的按钮会完全消失在日志里，
+			 * 看起来像"这个部件不存在"——这正是标题菜单排查踩的坑。 */
+			bool dump_all = getenv("XSYS4_INPUT_ALL") != NULL;
+			if (!covers && !dump_all)
 				continue;
 			NOTICE("[inp]   parts=%d pos=(%d,%d) hb=(%d,%d,%d,%d) "
 			       "global=(%d,%d) parent=%d gz=%d click=%d pass=%d show=%d "
-			       "ctrl=%d uc=%s",
+			       "ctrl=%d cover=%d uc=%s",
 			       parts->no, parts->local.pos.x, parts->local.pos.y,
 			       hb.x, hb.y, hb.w, hb.h, gx, gy,
 			       parts->parent ? parts->parent->no : -1,
 			       parts->global.z, parts->clickable, parts->pass_cursor,
 			       parts->global.show, parts->controller_no,
+			       covers ? 1 : 0,
 			       parts->uc_object ? parts->uc_object : "-");
 		}
 	}

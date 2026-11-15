@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **137** 个开关，其中 **25** 个没有就近注释。
+共 **138** 个开关，其中 **25** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -57,7 +57,8 @@
 | 呈现与输入 | `XSYS4_ACT_PART_DBG` | `src/parts/parts.c:2107` | 打印活动部件的建造解析（名字/类型/尺寸/表示領域/flat 名）与 300 号段之后的 SetPos/SetZ |
 | 呈现与输入 | `XSYS4_CLICK_RETARGET` | `src/parts/message.c:73` | 点击被遮挡后重定向到下层部件 |
 | 呈现与输入 | `XSYS4_CTRL_DBG` | `src/parts/parts.c:1457` | controller 栈、视觉地板（cover_layer）、hide/remove 事件 |
-| 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:296` | 输入命中的候选部件表与点击状态 |
+| 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:341` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
+| 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:312` | 输入命中的候选部件表与点击状态 |
 | 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:1076` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
 | 呈现与输入 | `XSYS4_PARTS_DUMP_MAX` | `src/parts/parts.c:2978` | — |
 | 呈现与输入 | `XSYS4_PARTS_NO_BASE` | `src/parts/parts.c:2816` | — |
