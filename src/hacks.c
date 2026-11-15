@@ -92,14 +92,14 @@ void set_msgskip_delay(struct ain *ain, unsigned ms)
 	ain->code_size += out.index;
 }
 
-// Rance 02 (MangaGamer version)
+// 兰斯02（MangaGamer 版）
 // -----------------------------
-// Uses a custom proportional font implementation which makes assumptions
-// about the font. We replace the _CalculateWidth function with a font-generic
+// 它用的是自定义的比例字体实现，对字体做了些假设。
+// 我们把 _CalculateWidth 换成一个与字体无关的版本
 // implementation.
 //
-// '^' character is mapped to 'é' (Rosé)
-// '}' character is mapped to double-width dash
+// '^' 字符映射成 'é'（Rosé）
+// '}' 字符映射成双宽的破折号
 static void apply_rance02_hacks(struct ain *ain)
 {
 	int fno = ain_get_function(ain, "_CalculateWidth");
@@ -109,12 +109,12 @@ static void apply_rance02_hacks(struct ain *ain)
 	}
 	struct ain_function *f = &ain->functions[fno];
 
-	// Reduce the text scale if it wasn't set by the user
+	// 用户没设过就把文字缩放降下来
 	if (!config.manual_text_x_scale) {
 		config.text_x_scale = 0.9375;
 	}
 
-	// rewrite function
+	// 重写函数
 	struct buffer out;
 	buffer_init(&out, ain->code, ain->code_size);
 	buffer_seek(&out, f->address);
@@ -154,7 +154,7 @@ static void apply_rance02_hacks(struct ain *ain)
 	write_instruction1(&out, SH_LOCALREF, 2);
 	write_instruction0(&out, ADD);
 
-	// multiply by config.text_x_scale (if not 1.0)
+	// 乘上 config.text_x_scale（如果不等于 1.0）
 	buffer_write_int32_at(&out, jump_addr + 2, out.index);
 	if (fabsf(1.0f - config.text_x_scale) > 0.01) {
 		union { int32_t i; float f; } cast = { .f = config.text_x_scale };
@@ -170,7 +170,7 @@ static void apply_rance02_hacks(struct ain *ain)
 	game_rance02_mg = true;
 }
 
-// Rance VI (MangaGamer version)
+// 兰斯VI（MangaGamer 版）
 // -----------------------------
 // 'ﾉ' character is mapped to 'é' (Rosé)
 static void apply_rance6_hacks(struct ain *ain)
@@ -180,12 +180,12 @@ static void apply_rance6_hacks(struct ain *ain)
 	game_rance6_mg = true;
 }
 
-// Rance IX
+// 兰斯IX
 // --------
-// T_PartsNo class is implemented in an extremely inefficient way, which
-// causes noticable performance issues when using the UI (e.g. when loading
+// T_PartsNo 这个类的实现极其低效，
+// 用 UI 时（例如打开道具界面）会有明显的性能问题。
 // the items screen).
-// We rewrite this class to improve performance.
+// 我们重写这个类来提速。
 static void apply_rance9_hacks(struct ain *ain)
 {
 	int add_fno = ain_get_function(ain, "T_PartsNo@add");
@@ -276,9 +276,9 @@ static void apply_rance9_hacks(struct ain *ain)
 
 // Daibanchou (English fan translation)
 // ------------------------------------
-// Gpx2Plus.CopyStretchReduceAMap behaves differently in order to work around
-// text rendering issues caused by how the game calculates text width in
-// StructRegionalSelect::DrawMenuItem.
+// 为了绕开渲染问题，Gpx2Plus.CopyStretchReduceAMap 的行为要改：
+// 那问题来自游戏在 StructRegionalSelect::DrawMenuItem 里
+// 计算文字宽度的方式。
 static void apply_daibanchou_hacks(struct ain *ain)
 {
 	if (ain->nr_strings > 2 && !strcmp(ain->strings[2]->text, "Seijou Academy")) {
@@ -287,26 +287,26 @@ static void apply_daibanchou_hacks(struct ain *ain)
 }
 
 /*
- * [D204] AIN v12 dropped the MSGF section, but the _MSG instruction still
- * calls ain->msgf. libsys4's ain_open_conv() leaves msgf at the xcalloc
- * default (0 = the NULL function), so _MSG pushes (msg_no, nr_messages,
- * text) into a no-op frame and every line of dialogue is silently swallowed.
- * Setting msgf < 0 is not an option either: _MSG is a JMP-class instruction
- * (ip_inc == 0), so `if (ain->msgf < 0) break;` loops forever on the same
- * instruction.
+ * [D204] AIN v12 去掉了 MSGF 段，但 _MSG 指令仍然
+ * 会去调 ain->msgf。libsys4 的 ain_open_conv() 把 msgf 留在
+ * xcalloc 的默认值上（0 = NULL 函数），于是 _MSG 把
+ * (msg_no, nr_messages, text) 压进一个空操作帧，每一句对白都被悄悄吞掉。
+ * 把 msgf 设成 <0 也不行：_MSG 是 JMP 类指令
+ * （ip_inc == 0），`if (ain->msgf < 0) break;` 会在同一条
+ * 指令上死循环。
  *
- * The compiler still emits the handler into FUNC with the bare name
- * "message" and exactly the 3 locals (nMsgNum, nNumofMsg, szText) that _MSG
- * pushes (Rance10: fno 6100). fno 6109 ("S") even calls it directly as
- * message(0, 0, text). Recover msgf from that function.
+ * 编译器仍然把那个处理函数以裸名 "message" 编进 FUNC，
+ * 局部变量正好是 _MSG 压的那 3 个（nMsgNum、nNumofMsg、szText）
+ * （兰斯10：函数号 6100）。函数号 6109（"S"）甚至直接把它当
+ * message(0, 0, text) 调。从这个函数把 msgf 找回来。
  *
- * Default on since D204 (verified: ０２／ＳＴＡＲＴ runs, message text
- * reaches SetMessageWindowText, and clicking advances to the next MSG).
- * XSYS4_MSGF_FIX=0 disables it for A/B.
+ * 从 D204 起默认打开（已验证：０２／ＳＴＡＲＴ 能跑，对白文本
+ * 能到达 SetMessageWindowText，点击能推进到下一句 MSG）。
+ * XSYS4_MSGF_FIX=0 可关掉它做 A/B。
  */
 static void resolve_v12_msgf(struct ain *ain)
 {
-	/* Only for AINs that actually lost MSGF and still have the MSG1 table. */
+	/* 只对真正丢了 MSGF、但仍带 MSG1 表的 AIN 生效。 */
 	if (ain->MSGF.present || !ain->MSG1.present || ain->msgf > 0)
 		return;
 	for (int i = 1; i < ain->nr_functions; i++) {
@@ -349,7 +349,7 @@ void apply_game_specific_hacks(struct ain *ain)
 	}
 	free(game_name);
 
-	// XXX: we don't rely on game_name because mods change it
+	// XXX：我们不依赖 game_name，因为 mod 会改它
 	if (ain_get_library(ain, "SengokuRanceFont") >= 0)
 		game_rance7_mg = true;
 }

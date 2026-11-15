@@ -54,8 +54,8 @@ static int SystemService_GetGameVersion(void)
 	return ain->game_version;
 }
 
-/* AIN f[1]: string GetGameName() - v12 returns the string, the old
- * out-parameter form is legacy (D62). */
+/* AIN f[1]：string GetGameName() —— v12 直接返回字符串，
+ * 老那套出参形式是遗留物（D62）。 */
 static struct string *SystemService_GetGameName(void)
 {
 	return cstr_to_string(config.game_name ? config.game_name : "");
@@ -235,7 +235,7 @@ static bool SystemService_GetWindowSetting(int type, int *value)
 	return true;
 }
 
-// XXX: Values for 'type' above 1 are invalid in Haru Urare, may be different in other games
+// XXX：Haru Urare 里 type 大于 1 就是非法值，其他游戏可能不同
 #define NR_MOUSE_CURSOR_CONFIG 1
 static int mouse_cursor_config[NR_MOUSE_CURSOR_CONFIG] = {0};
 
@@ -255,7 +255,7 @@ static bool SystemService_GetMouseCursorConfig(int type, int *value)
 		WARNING("Invalid mouse cursor config type: %d", type);
 		return false;
 	}
-	// XXX: the value returned here is always 1 or 0
+	// XXX：这里返回的值永远是 1 或 0
 	*value = !!mouse_cursor_config[type];
 	return true;
 }
@@ -304,7 +304,7 @@ static bool SystemService_IsExistPlayingManual(void) {
 #ifndef _WIN32
 static char *percent_encode(const char *str) {
 	const char *hex = "0123456789ABCDEF";
-	// Worst case all characters are percent-encoded
+	// 最坏情况是所有字符都被百分号编码
 	char *encoded = xmalloc(strlen(str) * 3 + 1);
 
 	char *p = encoded;
@@ -372,13 +372,13 @@ static void SystemService_RestrainScreensaver(void) { }
 
 //static int SystemService_Debug_GetUseVideoMemorySize(void);
 
-// Rance 01
+// 兰斯01
 static void SystemService_Rance0123456789(struct string **text)
 {
 	*text = cstr_to_string("-RANCE010ECNAR-");
 }
 
-// Rance 01 trial edition
+// 兰斯01 体验版
 static void SystemService_XXXXX01XXXXXXXX(struct string **text)
 {
 	*text = cstr_to_string("RANCE01RANCEKAKKOII");
@@ -390,23 +390,23 @@ static void SystemService_Test(struct string **text)
 	*text = cstr_to_string("DELETE ALL 758490275489207548093");
 }
 
-// Drapeko trial edition
+// 《Drapeko》体验版
 static void SystemService_DRPKT(struct string **text)
 {
 	*text = cstr_to_string("DRPKT QWERTY NUFUAUEO 75849027582754829");
 }
 
-// Rance 9
+// 兰斯9
 static void SystemService_Rance96161988(struct string **text) {
 	*text = cstr_to_string("=Rance99/RANCE99=");
 }
 
-// Pascha3 Plus Contents
+// 《Pascha3 Plus Contents》
 static void SystemService_XXX(struct string **text) {
 	*text = cstr_to_string("FORMAT HDD ERASE 578205024758284076520478254092784789752384758204687293");
 }
 
-// Busou Shoujotai Blade Briders
+// 《武装少女 Blade Briders》
 static void SystemService_GetSystemBufferName(struct string **text) {
 	*text = cstr_to_string("xxx4wxx:xxxx-xxxxxfx5x3");
 }
@@ -418,8 +418,8 @@ static void SystemService_ModuleInit(void)
 	load_window_settings();
 }
 
-/* AIN f[11]/f[12]: game view scale rate. xsystem4 has a single fixed
- * game view, so keep the value written by SetGameViewScaleRate. */
+/* AIN f[11]/f[12]：游戏视图缩放率。xsystem4 只有一个固定的
+ * 游戏视图，所以保留 SetGameViewScaleRate 写进来的值。 */
 static float game_view_scale_rate = 1.0f;
 
 static void SystemService_SetGameViewScaleRate(float rate)
@@ -432,81 +432,81 @@ static float SystemService_GetGameViewScaleRate(void)
 	return game_view_scale_rate;
 }
 
-/* AIN f[34]: string GetGameVersionByText(). No version table is loaded in
- * the port; return a non-empty placeholder so callers can format it. */
+/* AIN f[34]：string GetGameVersionByText()。这个移植里没有装载
+ * 版本表；返回一个非空占位串，好让调用方能格式化它。 */
 static struct string *SystemService_GetGameVersionByText(void)
 {
 	return cstr_to_string("00sdf00000f29fo0000000sdhf1");
 }
 
-/* AIN SystemService.GameVariable_*: stage 1. No persisted game variables
- * in the port, so IsExist is always false and Get* return defaults (D80). */
+/* AIN SystemService.GameVariable_*：第一阶段。移植里没有持久化的
+ * 游戏变量，所以 IsExist 恒为 false，Get* 返回默认值（D80）。 */
 static bool SystemService_GameVariable_IsExist(uintptr_t a, uintptr_t b)
 {
 	(void)a; (void)b;
 	return false;
 }
-/* AIN f[50]: void ShowWaitMessage(bool). The port draws no wait overlay. */
+/* AIN f[50]：void ShowWaitMessage(bool)。这个移植不画等待遮罩。 */
 static void SystemService_ShowWaitMessage(int show)
 {
 	(void)show;
 }
-/* AIN SystemService f[7] GetDefaultViewWidth. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[7] GetDefaultViewWidth。[HACK-POC D91] Android/SystemService 占位桩。 */
 static int SS_Stub_GetDefaultViewWidth(void)
 {
 
 	return 0;
 }
 
-/* AIN SystemService f[8] GetDefaultViewHeight. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[8] GetDefaultViewHeight。[HACK-POC D91] Android/SystemService 占位桩。 */
 static int SS_Stub_GetDefaultViewHeight(void)
 {
 
 	return 0;
 }
 
-/* AIN SystemService f[13] SetViewSize. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[13] SetViewSize。[HACK-POC D91] Android/SystemService 占位桩。 */
 static void SS_Stub_SetViewSize(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SystemService f[14] SetWindowPos. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[14] SetWindowPos。[HACK-POC D91] Android/SystemService 占位桩。 */
 static void SS_Stub_SetWindowPos(int a0, int a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SystemService f[15] GetWindowPosX. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[15] GetWindowPosX。[HACK-POC D91] Android/SystemService 占位桩。 */
 static int SS_Stub_GetWindowPosX(void)
 {
 
 	return 0;
 }
 
-/* AIN SystemService f[16] GetWindowPosY. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[16] GetWindowPosY。[HACK-POC D91] Android/SystemService 占位桩。 */
 static int SS_Stub_GetWindowPosY(void)
 {
 
 	return 0;
 }
 
-/* AIN SystemService f[19] SetViewResizableMode. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[19] SetViewResizableMode。[HACK-POC D91] Android/SystemService 占位桩。 */
 static void SS_Stub_SetViewResizableMode(int a0)
 {
 	(void)a0;
 }
 
-/* AIN SystemService f[20] IsViewResizableMode. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[20] IsViewResizableMode。[HACK-POC D91] Android/SystemService 占位桩。 */
 static int SS_Stub_IsViewResizableMode(void)
 {
 
 	return 0;
 }
 
-/* AIN SystemService f[21] SaveScreenshot. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[21] SaveScreenshot。[HACK-POC D91] Android/SystemService 占位桩。 */
 static int SS_Stub_SaveScreenshot(struct string * a0, int a1, int a2, int a3, int a4)
 {
 	(void)a0;
@@ -517,120 +517,120 @@ static int SS_Stub_SaveScreenshot(struct string * a0, int a1, int a2, int a3, in
 	return 0;
 }
 
-/* AIN SystemService f[24] SetWaitVSyncMode. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[24] SetWaitVSyncMode。[HACK-POC D91] Android/SystemService 占位桩。 */
 static int SS_Stub_SetWaitVSyncMode(int a0)
 {
 	(void)a0;
 	return 0;
 }
 
-/* AIN SystemService f[25] GetWaitVSyncMode. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[25] GetWaitVSyncMode。[HACK-POC D91] Android/SystemService 占位桩。 */
 static int SS_Stub_GetWaitVSyncMode(void)
 {
 
 	return 0;
 }
 
-/* AIN SystemService f[35] SystemVariable_IsExist. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[35] SystemVariable_IsExist。[HACK-POC D91] Android/SystemService 占位桩。 */
 static int SS_Stub_SystemVariable_IsExist(struct string * a0)
 {
 	(void)a0;
 	return 0;
 }
 
-/* AIN SystemService f[36] SystemVariable_Set. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[36] SystemVariable_Set。[HACK-POC D91] Android/SystemService 占位桩。 */
 static void SS_Stub_SystemVariable_Set(struct string * a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SystemService f[38] SystemVariable_NumofKey. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[38] SystemVariable_NumofKey。[HACK-POC D91] Android/SystemService 占位桩。 */
 static int SS_Stub_SystemVariable_NumofKey(void)
 {
 
 	return 0;
 }
 
-/* AIN SystemService f[40] SystemVariable_Erase. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[40] SystemVariable_Erase。[HACK-POC D91] Android/SystemService 占位桩。 */
 static void SS_Stub_SystemVariable_Erase(struct string * a0)
 {
 	(void)a0;
 }
 
-/* AIN SystemService f[42] GameVariable_Set. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[42] GameVariable_Set。[HACK-POC D91] Android/SystemService 占位桩。 */
 static void SS_Stub_GameVariable_Set(struct string * a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SystemService f[44] GameVariable_NumofKey. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[44] GameVariable_NumofKey。[HACK-POC D91] Android/SystemService 占位桩。 */
 static int SS_Stub_GameVariable_NumofKey(void)
 {
 
 	return 0;
 }
 
-/* AIN SystemService f[46] GameVariable_Erase. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[46] GameVariable_Erase。[HACK-POC D91] Android/SystemService 占位桩。 */
 static void SS_Stub_GameVariable_Erase(struct string * a0)
 {
 	(void)a0;
 }
 
-/* AIN SystemService f[47] GetPlatformType. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[47] GetPlatformType。[HACK-POC D91] Android/SystemService 占位桩。 */
 static int SS_Stub_GetPlatformType(void)
 {
 
 	return 0;
 }
 
-/* AIN SystemService f[48] SetAndroidViewOrientation. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[48] SetAndroidViewOrientation。[HACK-POC D91] Android/SystemService 占位桩。 */
 static void SS_Stub_SetAndroidViewOrientation(int a0)
 {
 	(void)a0;
 }
 
-/* AIN SystemService f[49] SetAndroidViewKeepScreen. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[49] SetAndroidViewKeepScreen。[HACK-POC D91] Android/SystemService 占位桩。 */
 static void SS_Stub_SetAndroidViewKeepScreen(int a0)
 {
 	(void)a0;
 }
 
-/* AIN SystemService f[56] SetHookCloseApp. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[56] SetHookCloseApp。[HACK-POC D91] Android/SystemService 占位桩。 */
 static void SS_Stub_SetHookCloseApp(int a0)
 {
 	(void)a0;
 }
 
-/* AIN SystemService f[57] IsHookCloseApp. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[57] IsHookCloseApp。[HACK-POC D91] Android/SystemService 占位桩。 */
 static int SS_Stub_IsHookCloseApp(void)
 {
 
 	return 0;
 }
 
-/* AIN SystemService f[59] GetMemoryInfo. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[59] GetMemoryInfo。[HACK-POC D91] Android/SystemService 占位桩。 */
 static void SS_Stub_GetMemoryInfo(float a0, float a1)
 {
 	(void)a0;
 	(void)a1;
 }
 
-/* AIN SystemService f[63] Debug_GetUseMemorySize. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[63] Debug_GetUseMemorySize。[HACK-POC D91] Android/SystemService 占位桩。 */
 static int SS_Stub_Debug_GetUseMemorySize(void)
 {
 
 	return 0;
 }
 
-/* AIN SystemService f[65] Debug_SetShowMipmapLevel. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[65] Debug_SetShowMipmapLevel。[HACK-POC D91] Android/SystemService 占位桩。 */
 static void SS_Stub_Debug_SetShowMipmapLevel(int a0)
 {
 	(void)a0;
 }
 
-/* AIN SystemService f[66] Debug_IsShowMipmapLevel. [HACK-POC D91] Android/SystemService stub. */
+/* AIN SystemService f[66] Debug_IsShowMipmapLevel。[HACK-POC D91] Android/SystemService 占位桩。 */
 static int SS_Stub_Debug_IsShowMipmapLevel(void)
 {
 

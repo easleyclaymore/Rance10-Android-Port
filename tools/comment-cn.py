@@ -85,6 +85,12 @@ def needs_translation(line):
         return False
     if re.match(r'^#\w', body):        # 被注释掉的预处理指令（//#define）
         return False
+    # 被注释掉的 AIN 源码（hacks.c 里的 override 片段）：那是原始代码，
+    # 翻成中文就读不出它在说什么了。按代码特征识别。
+    if re.match(r'^(override|bool|void|int|float|if|else|for|while|return|this\.|\[)', body):
+        return False
+    if re.match(r'^[\w:]+\s*\(.*\)\s*[{;]?$', body):
+        return False
     return True
 
 

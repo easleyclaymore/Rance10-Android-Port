@@ -46,11 +46,11 @@ struct copy_data {
 #define ROTATE_DATA(dst, _sx, _sy, _w, _h)		\
 	{ .dx = 0, .dy = 0, .sx=_sx, .sy=_sy, .w=_w, .h=_h, .sw=_w, .sh=_h, .vpx=0, .vpy=0, .vpw=dst->w, .vph=dst->h }
 
-// set copy_data required for a stretch operation
+// 设置拉伸操作需要的 copy_data
 #define STRETCH_DATA(_dx, _dy, _dw, _dh, _sx, _sy, _sw, _sh)		\
 	{ .dx=_dx, .dy=_dy, .sx=_sx, .sy=_sy, .w=_dw, .h=_dh, .sw=_sw, .sh=_sh, .vpx=_dx, .vpy=_dy, .vpw=_dw, .vph=_dh }
 
-// set copy_data required for a simple copy operation
+// 设置简单拷贝操作需要的 copy_data
 #define COPY_DATA(_dx, _dy, _sx, _sy, _w, _h)			\
 	STRETCH_DATA(_dx, _dy, _w, _h, _sx, _sy, _w, _h)
 
@@ -97,63 +97,63 @@ static void load_copy_shader(struct copy_shader *s, const char *v_path, const ch
 	s->s.prepare = prepare_copy_shader;
 }
 
-// load shaders
+// 装载着色器
 void gfx_draw_init(void)
 {
-	// generic copy shader; discards fragments outside of a given rectangle
+	// 通用拷贝着色器；丢弃指定矩形之外的片元
 	load_copy_shader(&copy_shader, "shaders/render.v.glsl", "shaders/copy.f.glsl");
 
-	// copy shader which inverts colors
+	// 反色的拷贝着色器
 	load_copy_shader(&copy_color_reverse_shader, "shaders/render.v.glsl", "shaders/copy_color_reverse.f.glsl");
 
-	// copy shader which also discards fragments matching a color key
+	// 同时丢弃匹配色键片元的拷贝着色器
 	load_copy_shader(&copy_key_shader, "shaders/render.v.glsl", "shaders/copy_key.f.glsl");
 
-	// copy shader which also discards fragments matching an alpha key
+	// 同时丢弃匹配 alpha 键片元的拷贝着色器
 	load_copy_shader(&copy_alpha_key_shader, "shaders/render.v.glsl", "shaders/copy_alpha_key.f.glsl");
 
-	// copy shader that only keeps fragments below a certain alpha threshold
+	// 只保留 alpha 低于阈值的片元的拷贝着色器
 	load_copy_shader(&copy_use_amap_under_shader, "shaders/render.v.glsl", "shaders/copy_use_amap_under.f.glsl");
 
-	// copy shader that only keeps fragments above a certain alpha threshold
+	// 只保留 alpha 高于阈值的片元的拷贝着色器
 	load_copy_shader(&copy_use_amap_border_shader, "shaders/render.v.glsl", "shaders/copy_use_amap_border.f.glsl");
 
-	// copy shader with grayscale conversion
+	// 带灰度转换的拷贝着色器
 	load_copy_shader(&copy_grayscale_shader, "shaders/render.v.glsl", "shaders/copy_grayscale.f.glsl");
 
-	// copy shader that sets source RGB to a constant
+	// 把源 RGB 设成常量的拷贝着色器
 	load_copy_shader(&blend_amap_color_shader, "shaders/render.v.glsl", "shaders/blend_amap_color.f.glsl");
 
-	// copy shader that multiples the source color and alpha by a constant
+	// 把源颜色和 alpha 都乘一个常量的拷贝着色器
 	load_copy_shader(&blend_amap_alpha_bright_shader, "shaders/render.v.glsl", "shaders/blend_amap_alpha_bright.f.glsl");
 
 	load_copy_shader(&blend_use_amap_color_shader, "shaders/render.v.glsl", "shaders/blend_use_amap_color.f.glsl");
 
-	// basic fill shader
+	// 基础填充着色器
 	load_copy_shader(&fill_shader, "shaders/render.v.glsl", "shaders/fill.f.glsl");
 
-	// fill shader that only fills fragments above a certain alpha threshold
+	// 只填充 alpha 高于阈值的片元
 	load_copy_shader(&fill_amap_over_border_shader, "shaders/render.v.glsl", "shaders/fill_amap_over_border.f.glsl");
 
-	// fill shader that only fills fragments below a certain alpha threshold
+	// 只填充 alpha 低于阈值的片元
 	load_copy_shader(&fill_amap_under_border_shader, "shaders/render.v.glsl", "shaders/fill_amap_under_border.f.glsl");
 
-	// fill shader that fills the alpha map with a gradient
+	// 用渐变填充 alpha 图的着色器
 	load_copy_shader(&fill_amap_gradation_ud_shader, "shaders/render.v.glsl", "shaders/fill_amap_gradation_ud.f.glsl");
 
-	// shader that discards texels that fail a hitbox test
+	// 丢弃未通过命中盒测试的纹素的着色器
 	load_copy_shader(&hitbox_shader, "shaders/render.v.glsl", "shaders/hitbox.f.glsl");
 
-	// hitbox shader which ignores alpha component of texture (a=1)
+	// 忽略纹理 alpha 分量（a=1）的命中盒着色器
 	load_copy_shader(&hitbox_noblend_shader, "shaders/render.v.glsl", "shaders/hitbox_noblend.f.glsl");
 
-	// shader that sets the color to black or white depending on alpha value
+	// 按 alpha 值把颜色设成黑或白的着色器
 	load_copy_shader(&amap_saturate_shader, "shaders/render.v.glsl", "shaders/amap_saturate.f.glsl");
 
-	// shader that sets source RGB to a constant, using source red channel as alpha
+	// 把源 RGB 设成常量、并用源红通道当 alpha 的着色器
 	load_copy_shader(&blend_rmap_color_shader, "shaders/render.v.glsl", "shaders/blend_rmap_color.f.glsl");
 
-	// shader that dilates every pixel (for bold/outline text rendering)
+	// 对每个像素做膨胀（用于粗体/描边文字）
 	load_copy_shader(&dilate_shader, "shaders/render.v.glsl", "shaders/dilate.f.glsl");
 }
 
@@ -197,8 +197,8 @@ static void run_copy_shader(Shader *s, Texture *dst, Texture *src, struct copy_d
 
 static void run_fill_shader(Shader *s, Texture *dst, struct copy_data *data)
 {
-	// NOTE: this differs from `run_copy_shader(s, dst, NULL, data)` in that
-	//       `dst` can be sampled in the shader
+	// 注意：这里和 run_copy_shader(s, dst, NULL, data) 不同 ——
+	//       在着色器里可以对 dst 采样
 	_run_copy_shader(s, dst, dst, data->w, data->h, data);
 }
 
@@ -375,8 +375,8 @@ void gfx_blend_amap_src_only(Texture *dst, int dx, int dy, Texture *src, int sx,
 
 void gfx_blend_amap_color(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h, int r, int g, int b)
 {
-	// color = (r,g,b) * src_alpha + dst_color * (1 - src_alpha)
-	// alpha = dst_alpha
+	// color = (r,g,b) * 源 alpha + 目标色 * (1 - 源 alpha)
+	// alpha = 目标 alpha
 	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
 
 	struct copy_data data = COPY_DATA(dx, dy, sx, sy, w, h);
@@ -620,8 +620,8 @@ void gfx_screen_da_daxsa(Texture *dst, int dx, int dy, Texture *src, int sx, int
 
 void gfx_add_da_daxsa(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h)
 {
-	// color = dst_color
-	// alpha = src_alpha + dst_alpha
+	// color = 目标色
+	// alpha = 源 alpha + 目标 alpha
 	glBlendFuncSeparate(GL_ZERO, GL_ONE, GL_ONE, GL_ONE);
 
 	struct copy_data data = COPY_DATA(dx, dy, sx, sy, w, h);
@@ -632,8 +632,8 @@ void gfx_add_da_daxsa(Texture *dst, int dx, int dy, Texture *src, int sx, int sy
 
 void gfx_blend_da_daxsa(Texture *dst, int dx, int dy, Texture *src, int sx, int sy, int w, int h)
 {
-	// color = dst_color
-	// alpha = src_alpha * dst_alpha
+	// color = 目标色
+	// alpha = 源 alpha * 目标 alpha
 	glBlendFuncSeparate(GL_ZERO, GL_ONE, GL_ZERO, GL_SRC_ALPHA);
 
 	struct copy_data data = COPY_DATA(dx, dy, sx, sy, w, h);
@@ -644,8 +644,8 @@ void gfx_blend_da_daxsa(Texture *dst, int dx, int dy, Texture *src, int sx, int 
 
 void gfx_sub_da_daxsa(struct texture *dst, int dx, int dy, struct texture *src, int sx, int sy, int w, int h)
 {
-	// color = dst_color
-	// alpha = dst_alpha - src_alpha
+	// color = 目标色
+	// alpha = 目标 alpha - 源 alpha
 	glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_REVERSE_SUBTRACT);
 	glBlendFuncSeparate(GL_ZERO, GL_ONE, GL_ONE, GL_ONE);
 
@@ -667,10 +667,10 @@ void gfx_bright_dest_only(Texture *dst, int x, int y, int w, int h, int rate)
 	restore_blend_mode();
 }
 
-// FIXME: DrawGraph.dll does some really strange clipping on the src/dst rectangles
-//        before drawing. This implementation does what you would normally expect
-//        a stretch function to do when passed negative (x,y) coordinates.
-//        Probably no games depend on this behavior, but we'll see.
+// FIXME：DrawGraph.dll 在绘制前会对 src/dst 矩形做很奇怪的裁剪。
+//        这里的实现就是「拉伸函数拿到负 (x,y) 坐标时
+//        正常会做的事」。
+//        大概没有游戏依赖那个行为，走着看。
 void gfx_copy_stretch(Texture *dst, int dx, int dy, int dw, int dh, Texture *src, int sx, int sy, int sw, int sh)
 {
 	glBlendFuncSeparate(GL_ONE, GL_ZERO, GL_ZERO, GL_ONE);
@@ -681,7 +681,7 @@ void gfx_copy_stretch(Texture *dst, int dx, int dy, int dw, int dh, Texture *src
 	restore_blend_mode();
 }
 
-// FIXME: as above
+// FIXME：同上
 void gfx_copy_stretch_amap(Texture *dst, int dx, int dy, int dw, int dh, Texture *src, int sx, int sy, int sw, int sh)
 {
 	glBlendFuncSeparate(GL_ZERO, GL_ONE, GL_ONE, GL_ZERO);
@@ -737,17 +737,17 @@ void gfx_copy_stretch_blend_amap_alpha(struct texture *dst, int dx, int dy, int 
 	restore_blend_mode();
 }
 
-// FIXME: this doesn't work correctly when the src rectangle crosses the edge of the CG.
+// FIXME：src 矩形越过 CG 边缘时，这里不正确。
 static void copy_rot_zoom(Texture *dst, Texture *src, int sx, int sy, int w, int h, float rotate, float mag, Shader *shader)
 {
 	w = min(w, src->w - sx);
 	h = min(h, src->h - sy);
-	// 1. scale src vertices to texture size
-	// 2. translate so that center point of copy region is at origin
-	// 3. rotate
-	// 4. scale
-	// 4. tranlate to center of dst texture
-	// (applied in reverse order)
+	// 1. 把 src 顶点缩放到纹理尺寸
+	// 2. 平移，让拷贝区域的中心落在原点
+	// 3. 旋转
+	// 4. 缩放
+	// 4. 平移到 dst 纹理中心
+	// （按相反顺序应用）
 	mat4 mw_transform = GLM_MAT4_IDENTITY_INIT;
 	glm_translate(mw_transform, (vec3){ dst->w/2.0, dst->h/2.0, 0 });
 	glm_scale(mw_transform, (vec3){ mag, mag, 0 });
@@ -786,12 +786,12 @@ void gfx_copy_rot_zoom2(Texture *dst, float cx, float cy, Texture *src, float sc
 	gfx_fill_amap(dst, 0, 0, dst->w, dst->h, 0);
 	glBlendFuncSeparate(GL_ONE, GL_ZERO, GL_ONE, GL_ZERO);
 
-	// 1. scale src vertices to texture size
-	// 2. translate so that center point of copy region is at origin
-	// 3. rotate
-	// 4. scale
-	// 4. tranlate to center point of dst texture
-	// (applied in reverse order)
+	// 1. 把 src 顶点缩放到纹理尺寸
+	// 2. 平移，让拷贝区域的中心落在原点
+	// 3. 旋转
+	// 4. 缩放
+	// 4. 平移到 dst 纹理中心点
+	// （按相反顺序应用）
 	mat4 mw_transform = GLM_MAT4_IDENTITY_INIT;
 	glm_translate(mw_transform, (vec3){ cx, cy, 0 });
 	glm_scale(mw_transform, (vec3){ mag, mag, 0 });
@@ -824,7 +824,7 @@ static void copy_rotate_y(Texture *dst, Texture *front, Texture *back, int sx, i
 
 	mat4 proj_transform;
 	float fov = 45.0 * (M_PI / 180.0);
-	// calculate the camera distance such that the height at the pivot is unchanged
+	// 算出相机距离，使枢轴处的高度保持不变
 	float cam_off = ((float)dst->h * 0.5) / tanf(fov * 0.5);
 	glm_perspective(fov, (float)dst->w / dst->h, 0.1, cam_off + w * mag, proj_transform);
 	glm_translate(proj_transform, (vec3){ 0, 0, -cam_off });
@@ -863,7 +863,7 @@ static void copy_rotate_x(Texture *dst, Texture *front, Texture *back, int sx, i
 
 	mat4 proj_transform;
 	float fov = 22.5 * (M_PI / 180.0);
-	// calculate the camera distance such that the height at the pivot is unchanged
+	// 算出相机距离，使枢轴处的高度保持不变
 	float cam_off = ((float)dst->h * 0.5) / tanf(fov * 0.5);
 	glm_perspective(fov, (float)dst->w / dst->h, 0.1, cam_off + w * mag, proj_transform);
 	glm_translate(proj_transform, (vec3){ 0, 0, -cam_off });
@@ -1178,7 +1178,7 @@ void gfx_draw_quadrilateral(Texture *dst, Texture *src, struct gfx_vertex vertic
 	restore_blend_mode();
 }
 
-// XXX: Not an actual DrawGraph function; used for rendering text
+// XXX：这不是真正的 DrawGraph 函数；用于渲染文字
 void gfx_draw_glyph(Texture *dst, float dx, int dy, Texture *glyph, SDL_Color color, float scale_x, float bold_width, bool blend)
 {
 	if (blend) {

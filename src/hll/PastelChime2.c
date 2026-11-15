@@ -145,7 +145,7 @@ static void write_array(struct buffer *w, struct page *page, int array_type, int
 	buffer_write_cstringz(w, array_type == AIN_ARRAY_STRUCT
 		? ain->structures[struct_type].name : "");
 	if (!page) {
-		// empty array
+		// 空数组
 		buffer_write_int32(w, 0);
 	} else {
 		assert(page->type == ARRAY_PAGE);
@@ -194,7 +194,7 @@ static bool PastelChime2_DungeonDataSave(int id, struct page **dungeon)
 	struct page *m_dsd = heap_get_page(struct_get_var(*dungeon, "m_dsd")->i);
 	write_struct(&w, m_dsd, true);
 
-	// Write dungeon cells
+	// 写入地牢单元格
 	size_t prev = 0;
 	for (int y = 0; y < ctx->dgn->size_y; y++) {
 		for (int z = 0; z < ctx->dgn->size_z; z++) {
@@ -231,8 +231,8 @@ static bool PastelChime2_DungeonDataSave(int id, struct page **dungeon)
 				buffer_write_float(&w, cell->south_door_angle);
 				buffer_write_float(&w, cell->east_door_angle);
 				buffer_write_int32(&w, cell->walked);
-				// RLE compression: If the previous cell is identical to this one,
-				// increase the RLE count instead of writing the cell again.
+				// RLE 压缩：若前一个单元格与当前相同，
+				// 就把 RLE 计数加一，而不是再写一次单元格。
 				if (prev && !memcmp(w.buf + prev + 1, w.buf + current + 1, 128)) {
 					w.index -= 129;
 					if (++w.buf[prev] == 0xff) {
@@ -394,7 +394,7 @@ static bool PastelChime2_DungeonDataLoad(int id, struct page **dungeon)
 	int size_y = struct_get_var(map_size, "y")->i;
 	int size_z = struct_get_var(map_size, "z")->i;
 
-	// Read dungeon cells
+	// 读取地牢单元格
 	int index = 0;
 	if (ctx->dgn)
 		dgn_free(ctx->dgn);
@@ -477,7 +477,7 @@ static bool PastelChime2_DungeonDataToSaveData(int save_data_index)
 	char prefix[4];
 	snprintf(prefix, sizeof(prefix), "%03d", save_data_index);
 
-	// First, delete old save files for this slot.
+	// 先删掉这个存档位的旧文件。
 	char *filename;
 	while ((filename = readdir_utf8(dir))) {
 		const char *ext = file_extension(filename);
@@ -490,7 +490,7 @@ static bool PastelChime2_DungeonDataToSaveData(int save_data_index)
 	}
 	closedir_utf8(dir);
 
-	// Re-open the directory to copy current DSD files to DSA files.
+	// 重新打开目录，把当前的 DSD 文件拷成 DSA 文件。
 	dir = opendir_utf8(config.save_dir);
 	if (!dir) {
 		return false;
@@ -521,7 +521,7 @@ static bool PastelChime2_DungeonDataToSaveData(int save_data_index)
 
 static bool PastelChime2_DungeonDataFromSaveData(int save_data_index)
 {
-	// First, delete all *.DSD files
+	// 先删掉所有 *.DSD 文件
 	UDIR *dir = opendir_utf8(config.save_dir);
 	if (!dir) {
 		return false;
@@ -539,7 +539,7 @@ static bool PastelChime2_DungeonDataFromSaveData(int save_data_index)
 	}
 	closedir_utf8(dir);
 
-	// Re-open the directory to copy files
+	// 重新打开目录拷文件
 	dir = opendir_utf8(config.save_dir);
 	if (!dir) {
 		return false;
@@ -571,11 +571,11 @@ static bool PastelChime2_DungeonDataFromSaveData(int save_data_index)
 	return true;
 }
 
-// Finds the intersection between two line segments.
+// 求两条线段的交点。
 static bool check_line_segment_intersection(
 	struct line_segment *seg1, struct line_segment *seg2, vec2 out_intersection)
 {
-	// Let seg1 be P + t*r, and seg2 be Q + u*s for 0 <= t, u <= 1.
+	// 设 seg1 为 P + t*r，seg2 为 Q + u*s，且 0 <= t, u <= 1。
 	vec2 r, s;
 	glm_vec2_sub(seg1->p2, seg1->p1, r); // r = P2 - P1
 	glm_vec2_sub(seg2->p2, seg2->p1, s); // s = Q2 - Q1
@@ -588,12 +588,12 @@ static bool check_line_segment_intersection(
 		return false;  // The lines are parallel or collinear
 	}
 
-	// Solve for t and u
+	// 解出 t 和 u
 	float t = glm_vec2_cross(q_minus_p, s) / r_cross_s;
 	float u = glm_vec2_cross(q_minus_p, r) / r_cross_s;
 
 	if (0.f <= t && t <= 1.f && 0.f <= u && u <= 1.f) {
-		// Intersection point is P + t*r
+		// 交点即 P + t*r
 		out_intersection[0] = seg1->p1[0] + t * r[0];
 		out_intersection[1] = seg1->p1[1] + t * r[1];
 		return true;
@@ -601,14 +601,14 @@ static bool check_line_segment_intersection(
 	return false;
 }
 
-// Finds the intersection point of a line segment and a circle that is closest
-// to the start of the segment.
+// 求线段与圆的交点中
+// 离线段起点最近的那个。
 static bool find_closest_segment_circle_intersection(
 	vec2 center, float r, struct line_segment *seg, vec2 out_intersection)
 {
-	// Let the line be P1 + t*d, where d = P2 - P1.
-	// Let the circle be |X - C|^2 = r^2.
-	// Substitute X = P1 + t*d into the circle equation to get a quadratic equation in t:
+	// 设直线为 P1 + t*d，其中 d = P2 - P1。
+	// 设圆为 |X - C|^2 = r^2。
+	// 把 X = P1 + t*d 代入圆方程，得到关于 t 的二次方程：
 	// a*t^2 + b*t + c = 0
 	vec2 d;
 	glm_vec2_sub(seg->p2, seg->p1, d); // d = direction vector of the line
@@ -624,7 +624,7 @@ static bool find_closest_segment_circle_intersection(
 		return false; // No real intersection
 	}
 
-	// Solve for t using the quadratic formula.
+	// 用求根公式解 t。
 	discriminant = sqrtf(discriminant);
 	float t1 = (-b - discriminant) / (2 * a);
 	float t2 = (-b + discriminant) / (2 * a);
@@ -632,7 +632,7 @@ static bool find_closest_segment_circle_intersection(
 	bool t1_valid = t1 >= 0.f && t1 <= 1.f;
 	bool t2_valid = t2 >= 0.f && t2 <= 1.f;
 
-	// Choose the smallest valid t, as it represents the first intersection on the segment.
+	// 取最小的合法 t，它对应线段上的第一个交点。
 	float t;
 	if (t1_valid && t2_valid) {
 		t = min(t1, t2);
@@ -690,7 +690,7 @@ static int get_wall_segments(struct dgn *dgn, struct line_segment *dst, int x, i
 		i++;
 	}
 	if (cell->ceiling != -1) {
-		// Add segments for an octagon.
+		// 加上八条边，构成八边形。
 		float r = (cell->ceiling == 10) ? 0.35f : 0.5f;
 		float hr = 0.5f * r;
 
@@ -864,7 +864,7 @@ static void PastelChime2_Field_UpdateDoorNamePlate(
 		.y = struct_get_var(*pos_mouse, "y")->i,
 	};
 
-	// Iterate through all doors to update their nameplates.
+	// 遍历所有门，更新它们的铭牌。
 	for (int i = 0; i < (*doors)->nr_vars; i++) {
 		struct page *door = heap_get_page((*doors)->values[i].i);
 		int sp_plate_normal = struct_get_var(door, "nSpPlateNormal")->i;
@@ -873,20 +873,20 @@ static void PastelChime2_Field_UpdateDoorNamePlate(
 			continue;
 		}
 
-		// Hide nameplates if the player is walking.
+		// 玩家在走路时把铭牌藏起来。
 		if (walking) {
 			sact_SP_SetShow(sp_plate_normal, 0);
 			sact_SP_SetShow(sp_plate_select, 0);
 			continue;
 		}
 
-		// Check if the player is on the same grid tile as the door.
+		// 检查玩家是否和门在同一格。
 		if (struct_get_var(door, "nX")->i != roundf(player_pos[0]) ||
 		    struct_get_var(door, "nY")->i != roundf(player_pos[2])) {
 			continue;
 		}
 
-		// Check if the player is close enough to activate the nameplate.
+		// 检查玩家是否足够近，可以激活铭牌。
 		float fXc = struct_get_var(door, "fXc")->f;
 		float fYc = struct_get_var(door, "fYc")->f;
 		vec2 player_to_door = { player_pos[0] - fXc, player_pos[2] - fYc };
@@ -894,7 +894,7 @@ static void PastelChime2_Field_UpdateDoorNamePlate(
 			continue;
 		}
 
-		// Project the nameplate's 3D world position to 2D screen coordinates.
+		// 把铭牌的 3D 世界坐标投影到 2D 屏幕坐标。
 		vec3 nameplate_pos = {
 			fXc * block_size,
 			floor * block_size + 1.f,
@@ -904,13 +904,13 @@ static void PastelChime2_Field_UpdateDoorNamePlate(
 		if (!dungeon_project_world_to_screen(ctx, nameplate_pos, &screen_pos) ||
 		    screen_pos.x < 0 || screen_pos.y < 0 ||
 		    screen_pos.x >= field_sprite_rect.w || screen_pos.y >= field_sprite_rect.h) {
-			// Hide if projection fails or is off-screen.
+			// 投影失败或落在屏幕外就藏起来。
 			sact_SP_SetShow(sp_plate_normal, 0);
 			sact_SP_SetShow(sp_plate_select, 0);
 			continue;
 		}
 
-		// Calculate the final screen rectangle for the nameplate.
+		// 算出铭牌最终的屏幕矩形。
 		Rectangle nameplate_rect = {
 			.w = sact_SP_GetWidth(sp_plate_normal),
 			.h = sact_SP_GetHeight(sp_plate_normal)
@@ -920,7 +920,7 @@ static void PastelChime2_Field_UpdateDoorNamePlate(
 		sact_SP_SetPos(sp_plate_normal, nameplate_rect.x, nameplate_rect.y);
 		sact_SP_SetPos(sp_plate_select, nameplate_rect.x, nameplate_rect.y);
 
-		// Show normal or selected sprite based on mouse cursor position.
+		// 按鼠标位置显示普通或选中态精灵。
 		bool is_mouse_over = SDL_PointInRect(&mouse_pos, &nameplate_rect);
 		sact_SP_SetShow(sp_plate_normal, !is_mouse_over);
 		sact_SP_SetShow(sp_plate_select, is_mouse_over);
@@ -936,7 +936,7 @@ static void PastelChime2_Field_UpdateObjectNamePlate(struct page **dungeon, floa
 	struct page *m_dsd = heap_get_page(struct_get_var(*dungeon, "m_dsd")->i);
 	struct page *m_drd = heap_get_page(struct_get_var(*dungeon, "m_drd")->i);
 
-	// Get player and environment properties.
+	// 取玩家和环境属性。
 	struct page *fxyz_player = heap_get_page(struct_get_var(m_dsd, "fxyz")->i);
 	int floor = struct_get_var(m_dsd, "nFloor")->i;
 	struct page *objects = heap_get_page(struct_get_var(m_dsd, "aObject")->i);
@@ -959,7 +959,7 @@ static void PastelChime2_Field_UpdateObjectNamePlate(struct page **dungeon, floa
 		.y = struct_get_var(pos_mouse, "y")->i,
 	};
 
-	// Iterate through all objects to update their nameplates.
+	// 遍历所有对象，更新它们的铭牌。
 	for (int i = 0; i < objects->nr_vars; i++) {
 		struct page *object = heap_get_page(objects->values[i].i);
 		int sp_plate_normal = struct_get_var(object, "nSpPlateNormal")->i;
@@ -968,7 +968,7 @@ static void PastelChime2_Field_UpdateObjectNamePlate(struct page **dungeon, floa
 			continue;
 		}
 
-		// Default to hidden.
+		// 默认隐藏。
 		sact_SP_SetShow(sp_plate_normal, 0);
 		sact_SP_SetShow(sp_plate_select, 0);
 
@@ -981,19 +981,19 @@ static void PastelChime2_Field_UpdateObjectNamePlate(struct page **dungeon, floa
 			continue;
 		}
 
-		// Get object's grid position.
+		// 取对象的格坐标。
 		struct page *fpos = heap_get_page(struct_get_var(object, "fpos")->i);
 		float obj_grid_x = struct_get_var(fpos, "x")->f;
 		float obj_grid_z = struct_get_var(fpos, "y")->f;
 
-		// Convert grid position to 3D world coordinates.
+		// 把格坐标转成 3D 世界坐标。
 		vec3 obj_world_pos = {
 			obj_grid_x * block_size,
 			floor * block_size,
 			obj_grid_z * block_size
 		};
 
-		// Project world position to screen coordinates.
+		// 把世界坐标投影到屏幕坐标。
 		Point screen_pos;
 		if (!dungeon_project_world_to_screen(ctx, obj_world_pos, &screen_pos) ||
 		    screen_pos.x < 0 || screen_pos.y < 0 ||
@@ -1001,7 +1001,7 @@ static void PastelChime2_Field_UpdateObjectNamePlate(struct page **dungeon, floa
 			continue; // Off-screen
 		}
 
-		// Determine display range based on object type.
+		// 按对象类型决定显示范围。
 		float current_range = default_range;
 		switch (struct_get_var(object, "nType")->i) {
 		case 1: case 2: case 3:
@@ -1015,18 +1015,18 @@ static void PastelChime2_Field_UpdateObjectNamePlate(struct page **dungeon, floa
 			break;
 		}
 
-		// Check distance to player.
+		// 检查与玩家的距离。
 		if (glm_vec3_distance2(player_pos, obj_world_pos) > glm_pow2(current_range)) {
 			continue;
 		}
 
-		// Check line of sight.
+		// 检查视线是否被挡。
 		if (!PastelChime2_Field_CheckLook(player_pos[0] / block_size, player_pos[2] / block_size,
 		                                 obj_grid_x, obj_grid_z, floor, block_size)) {
 			continue;
 		}
 
-		// If all checks pass, show the nameplate.
+		// 所有检查都通过，就显示铭牌。
 		Rectangle nameplate_rect = {
 			.w = sact_SP_GetWidth(sp_plate_normal),
 			.h = sact_SP_GetHeight(sp_plate_normal)
@@ -1036,7 +1036,7 @@ static void PastelChime2_Field_UpdateObjectNamePlate(struct page **dungeon, floa
 		sact_SP_SetPos(sp_plate_normal, nameplate_rect.x, nameplate_rect.y);
 		sact_SP_SetPos(sp_plate_select, nameplate_rect.x, nameplate_rect.y);
 
-		// Show normal or selected sprite based on mouse cursor position.
+		// 按鼠标位置显示普通或选中态精灵。
 		bool is_mouse_over = SDL_PointInRect(&mouse_pos, &nameplate_rect);
 		sact_SP_SetShow(sp_plate_normal, !is_mouse_over);
 		sact_SP_SetShow(sp_plate_select, is_mouse_over);
@@ -1191,7 +1191,7 @@ static float PastelChime2_Field_CalcY(float fx, float fz, int floor, float block
 
 	struct dgn_cell *cell = dgn_cell_at(ctx->dgn, x, floor, z);
 	if (cell && cell->stairs_texture != -1) {
-		// The tile is an ascending stair belonging to the current floor.
+		// 该格是当前楼层的一段上行楼梯。
 		float position_in_tile = 0.f;
 		switch (cell->stairs_orientation) {
 		case 0:  // north-facing stair
@@ -1210,10 +1210,10 @@ static float PastelChime2_Field_CalcY(float fx, float fz, int floor, float block
 		return floor * block_size + ceilf(position_in_tile * 3.f) / 3.f;
 	}
 
-	// Check for stairs on the floor below.
+	// 检查下一层的楼梯。
 	cell = dgn_cell_at(ctx->dgn, x, floor - 1, z);
 	if (cell && cell->stairs_texture != -1) {
-		// The tile is a descending stair belonging to the floor below.
+		// 该格是下一层的一段下行楼梯。
 		float position_in_tile = 0.f;
 		switch (cell->stairs_orientation) {
 		case 0:  // north-facing stair
@@ -1232,7 +1232,7 @@ static float PastelChime2_Field_CalcY(float fx, float fz, int floor, float block
 		return floor * block_size - floorf(position_in_tile * 3.f) / 3.f;
 	}
 
-	// Flat ground
+	// 平地
 	return floor * block_size;
 }
 
@@ -1253,7 +1253,7 @@ static void PastelChime2_Field_UpdatePlayersUnit(
 	float *player3x, float *player3y, float *player3z, int chara_player3,
 	int cg_index_player1, bool walking)
 {
-	// Record the leader's (P1) movement path in the queue
+	// 把队长（P1）的移动路径记进队列
 	vec3 p1pos = { player1x, player1y, player1z };
 	struct player_move_point* new_point = xcalloc(1, sizeof(struct player_move_point));
 	glm_vec3_copy(p1pos, new_point->position);
@@ -1272,7 +1272,7 @@ static void PastelChime2_Field_UpdatePlayersUnit(
 	struct player_move_point p2state = *first_point;
 	struct player_move_point p3state = *first_point;
 
-	// Traverse the path backwards to calculate the positions for the followers
+	// 反向遍历路径，算出跟随者的位置
 	bool p2_calculated = false;
 	float accumulated_dist = 0.f;
 	struct player_move_point *current_point = NULL;
@@ -1283,7 +1283,7 @@ static void PastelChime2_Field_UpdatePlayersUnit(
 
 		accumulated_dist += current_point->distance_to_prev;
 
-		// Calculate P2's position
+		// 计算 P2 的位置
 		if (!p2_calculated && accumulated_dist >= DISTANCE_BETWEEN_PLAYERS) {
 			float t = (accumulated_dist - DISTANCE_BETWEEN_PLAYERS) / current_point->distance_to_prev;
 			glm_vec3_lerp(prev_point->position, current_point->position, t, p2state.position);
@@ -1291,7 +1291,7 @@ static void PastelChime2_Field_UpdatePlayersUnit(
 			p2_calculated = true;
 		}
 
-		// Calculate P3's position
+		// 计算 P3 的位置
 		if (accumulated_dist >= 2 * DISTANCE_BETWEEN_PLAYERS) {
 			float t = (accumulated_dist - 2 * DISTANCE_BETWEEN_PLAYERS) / current_point->distance_to_prev;
 			glm_vec3_lerp(prev_point->position, current_point->position, t, p3state.position);
@@ -1300,7 +1300,7 @@ static void PastelChime2_Field_UpdatePlayersUnit(
 		}
 	}
 
-	// Points before prev_point are not needed anymore, remove them
+	// prev_point 之前的点都不再需要，删掉
 	while (prev_point) {
 		struct player_move_point *first = TAILQ_FIRST(&player_move_queue);
 		if (!first || first == prev_point)
@@ -1340,7 +1340,7 @@ static void PastelChime2_Field_ClearPlayerMoveQueue(void)
 	}
 }
 
-// Checks for collision between a moving circle and a wall segment.
+// 检查运动中的圆与墙段之间的碰撞。
 static bool judge_hit_wall(
 	struct line_segment *move_seg, float radius, struct line_segment *wall,
 	vec2 hit_out, struct line_segment *slide_line_out)
@@ -1351,7 +1351,7 @@ static bool judge_hit_wall(
 	vec2 normal = {-wall_vec[1], wall_vec[0]};
 	glm_vec2_normalize(normal);
 
-	// Check collision with the sides of the wall
+	// 检查与墙两侧的碰撞
 	for (int i = 0; i < 2; i++) {
 		float side = (i == 0) ? 1.f : -1.f;
 		vec2 offset;
@@ -1367,9 +1367,9 @@ static bool judge_hit_wall(
 		}
 	}
 
-	// Check collision with the endpoints (caps) of the wall
+	// 检查与墙端点（两端圆帽）的碰撞
 	if (find_closest_segment_circle_intersection(wall->p1, radius, move_seg, hit_out)) {
-		// The line to slide along is the tangent to the endpoint circle at the hit point.
+		// 要贴着滑的线，是端点圆在碰撞点处的切线。
 		glm_vec2_copy(hit_out, slide_line_out->p1);
 		slide_line_out->p2[0] = hit_out[0] - (wall->p1[1] - hit_out[1]);
 		slide_line_out->p2[1] = (wall->p1[0] - hit_out[0]) + hit_out[1];
@@ -1411,24 +1411,24 @@ static bool PastelChime2_JudgeHitWall(
 
 static void adjust_move_pos(struct line_segment *move_seg, struct line_segment *wall)
 {
-	// The original intended movement vector.
+	// 原本想要的移动向量。
 	vec2 move_vec;
 	glm_vec2_sub(move_seg->p2, move_seg->p1, move_vec);
 
-	// The direction vector of the wall (the tangent to slide along).
+	// 墙的方向向量（沿它滑动的那条切线）。
 	vec2 wall_dir;
 	glm_vec2_sub(wall->p2, wall->p1, wall_dir);
 	glm_vec2_normalize(wall_dir);
 
-	// Project the movement vector onto the wall's direction vector.
-	// This gives the component of the movement that is parallel to the wall.
+	// 把移动向量投影到墙的方向向量上。
+	// 这样就得到移动中与墙平行的那个分量。
 	float slide_dist = glm_vec2_dot(move_vec, wall_dir);
 
-	// The new movement vector is the slide distance along the wall's direction.
+	// 新的移动向量就是沿墙方向滑过的距离。
 	vec2 slide_vec;
 	glm_vec2_scale(wall_dir, slide_dist, slide_vec);
 
-	// The final adjusted position is the old position plus the slide vector.
+	// 最终位置 = 原位置 + 滑动向量。
 	glm_vec2_add(move_seg->p1, slide_vec, move_seg->p2);
 }
 
@@ -1452,12 +1452,12 @@ static bool PastelChime2_Field_CalcMove(
 	if (!ctx || !ctx->dgn)
 		return false;
 
-	// Calculate the initial desired position without considering any collisions.
+	// 先算出理想位置，暂不考虑任何碰撞。
 	*new_x = map_delta_x / walk_step * delta_time + old_x;
 	*new_y = map_delta_y / walk_step * delta_time + old_y;
 
-	// Gather potential colliders in the 3x3 grid of blocks around the
-	// character's current position.
+	// 收集角色当前位置周围 3x3 格内的
+	// 潜在碰撞体。
 	int cx = roundf(old_x);
 	int cy = roundf(old_y);
 	struct line_segment segments[9 * MAX_WALL_SEGMENTS_PER_CELL];
@@ -1471,7 +1471,7 @@ static bool PastelChime2_Field_CalcMove(
 	if (nr_segments == 0)
 		return true;  // No collision possible, movement is clear.
 
-	// Find the closest collision.
+	// 找出最近的那次碰撞。
 	float closest_hit_dist_sq = FLT_MAX;
 	struct line_segment closest_slide_line;
 	struct line_segment move_seg = {{old_x, old_y}, {*new_x, *new_y}};
@@ -1491,17 +1491,17 @@ static bool PastelChime2_Field_CalcMove(
 	if (closest_hit_dist_sq == FLT_MAX)
 		return true;
 
-	// Adjust the character's position to slide along the closest wall that was hit.
+	// 调整角色位置，沿着撞到的那面最近墙滑动。
 	adjust_move_pos(&move_seg, &closest_slide_line);
 	*new_x = move_seg.p2[0];
 	*new_y = move_seg.p2[1];
 
-	// After sliding, check for secondary collisions with the *new* movement path.
-	// This handles complex cornering, preventing the character from sliding into another wall.
+	// 滑动之后再检查一遍：用新的移动路径做二次碰撞检测。
+	// 这处理复杂的拐角，避免角色滑进另一面墙里。
 	for (int i = 0; i < nr_segments; i++) {
 		vec2 hit_pos;
 		struct line_segment slide_line;
-		// If the adjusted path also leads to a collision, cancel all movement for this frame.
+		// 如果调整后的路径仍然会撞，这一帧就完全不动。
 		if (judge_hit_wall(&move_seg, radius, &segments[i], hit_pos, &slide_line)) {
 			*new_x = old_x;
 			*new_y = old_y;
@@ -1530,14 +1530,14 @@ static void PastelChime2_Field_UpdateEnemyPos(int delta_time, struct page **dung
 	for (int i = 0; i < objects->nr_vars; i++) {
 		struct page *object = heap_get_page(objects->values[i].i);
 
-		// Skip moving if the enemy is in an appearance animation.
+		// 敌人处于出现动画时跳过移动。
 		union vm_value *appearance_count = struct_get_var(object, "nAppearanceCount");
 		if (appearance_count->i > 0) {
 			appearance_count->i = max(appearance_count->i - delta_time, 0);
 			continue;
 		}
 
-		// Skip moving if the enemy is in a stopped state.
+		// 敌人处于停止状态时跳过移动。
 		union vm_value *nStopCount = struct_get_var(object, "nStopCount");
 		if (nStopCount->i > 0) {
 			nStopCount->i = max(nStopCount->i - delta_time, 0);
@@ -1550,7 +1550,7 @@ static void PastelChime2_Field_UpdateEnemyPos(int delta_time, struct page **dung
 			continue;
 		}
 
-		// Get enemy's current and base positions.
+		// 取敌人当前位置和基准位置。
 		struct page *fpos = heap_get_page(struct_get_var(object, "fpos")->i);
 		struct page *fpos_base = heap_get_page(struct_get_var(object, "fposBase")->i);
 		vec2 enemy_pos = {
@@ -1562,21 +1562,21 @@ static void PastelChime2_Field_UpdateEnemyPos(int delta_time, struct page **dung
 			struct_get_var(fpos_base, "y")->f
 		};
 
-		// Determine the target: the player or the enemy's base position.
+		// 决定目标：玩家，还是敌人的基准位置。
 		bool can_see_player = PastelChime2_Field_CheckLook(
 			enemy_pos[0], enemy_pos[1], player_pos[0], player_pos[1], floor, block_size);
 
 		vec2 target_vec;
 		if (can_see_player) {
-			// If the player is visible, target the player.
+			// 玩家可见就追玩家。
 			glm_vec2_sub(player_pos, enemy_pos, target_vec);
-			// But if the player is out of sense range, do nothing.
+			// 但玩家超出感知范围就什么都不做。
 			if (glm_vec2_distance2(player_pos, enemy_pos) > glm_pow2(sense_range)) {
 				struct_get_var(object, "nEventType")->i = 0;
 				continue;
 			}
 		} else {
-			// If the player is not visible, return to the base position.
+			// 玩家不可见就回基准位置。
 			struct_get_var(object, "nEventType")->i = 0;
 			glm_vec2_sub(enemy_base_pos, enemy_pos, target_vec);
 		}
@@ -1586,26 +1586,26 @@ static void PastelChime2_Field_UpdateEnemyPos(int delta_time, struct page **dung
 			continue; // Already at the target.
 		}
 
-		// Flawed attempt to normalize the movement vector? (This is needed to
-		// replicate the original behavior)
+		// 这里归一化移动向量的做法是有问题的？（但为了
+		// 复现原版行为，必须这么做）
 		vec2 move_vec = { norm / target_vec[0], norm / target_vec[1] };
 		if (fabsf(target_vec[0]) < fabsf(move_vec[0]))
 			move_vec[0] = target_vec[0];
 		if (fabsf(target_vec[1]) < fabsf(move_vec[1]))
 			move_vec[1] = target_vec[1];
 
-		// Calculate the new position with collision detection.
+		// 带碰撞检测地算出新位置。
 		float hit_range = struct_get_var(object, "fHitRange")->f;
 		float new_x, new_y;
 		PastelChime2_Field_CalcMove(
 			&new_x, &new_y, enemy_pos[0], enemy_pos[1], move_vec[0], move_vec[1],
 			hit_range, delta_time, walk_step, floor, block_size, true);
 
-		// Update the enemy's position in the game state.
+		// 更新游戏状态里敌人的位置。
 		struct_get_var(fpos, "x")->f = new_x;
 		struct_get_var(fpos, "y")->f = new_y;
 
-		// Update the position in 3D model.
+		// 更新 3D 模型里的位置。
 		int chara = struct_get_var(object, "nChara")->i;
 		dungeon_set_chara_pos(draw_field_sprite_number, chara, new_x * block_size, floor * block_size, new_y * block_size);
 	}
@@ -1634,7 +1634,7 @@ static void PastelChime2_Field_UpdateDoors(
 	if (!ctx || !ctx->dgn)
 		return;
 
-	// Prepare player position data in both float and integer grid coordinates.
+	// 准备玩家位置数据：浮点和整数格坐标各一份。
 	vec3 fpos[3] = {
 		{ fx1, fy1, fz1 },
 		{ fx2, fy2, fz2 },
@@ -1648,21 +1648,21 @@ static void PastelChime2_Field_UpdateDoors(
 	if (!dgn_is_in_map(ctx->dgn, pos[0][0], pos[0][1], pos[0][2]))
 		return;
 
-	// Calculate the bounding box of player positions to limit the update area.
+	// 算出玩家位置的包围盒，用来限定更新范围。
 	ivec3 min_pos, max_pos;
 	glm_ivec3_minv(pos[0], pos[1], min_pos);
 	glm_ivec3_minv(min_pos, pos[2], min_pos);
 	glm_ivec3_maxv(pos[0], pos[1], max_pos);
 	glm_ivec3_maxv(max_pos, pos[2], max_pos);
 
-	// Create a temporary grid for storing door state flags, with a margin.
+	// 建一张临时网格存门的状态标志，留出边距。
 	ivec3 base, size;
 	glm_ivec3_subs(min_pos, 2, base);
 	glm_ivec3_sub(max_pos, min_pos, size);
 	glm_ivec3_adds(size, 5, size);
 	uint8_t *flags = xcalloc(1, size[0] * size[1] * size[2]);
 
-	// Pass 1: Gather door state flags based on player proximity.
+	// 第一遍：按玩家距离收集门的状态标志。
 	for (int player = 0; player < 3; player++) {
 		if (player == 1 && !b_player2)
 			continue;
@@ -1677,7 +1677,7 @@ static void PastelChime2_Field_UpdateDoors(
 		int z = pos[player][2];
 		struct dgn_cell *cell = dgn_cell_at(ctx->dgn, x, y, z);
 
-		// Check distance for each of the four doors in the player's cell.
+		// 分别检查玩家所在格四扇门的距离。
 		if (cell->north_door != -1 && !cell->north_door_lock) {
 			float dist = (z * 2.f + 1.f) - fpos[player][2];
 			if (dist < DOOR_OPEN_DISTANCE)
@@ -1708,7 +1708,7 @@ static void PastelChime2_Field_UpdateDoors(
 		}
 	}
 
-	// Pass 2: Iterate through the bounding box and update door states.
+	// 第二遍：遍历包围盒，更新门的状态。
 	*open_out = false;
 	*close_out = false;
 	*open_tex_out = 0;
@@ -1726,7 +1726,7 @@ static void PastelChime2_Field_UpdateDoors(
 				int flag_index_south = flag_index - 1;
 				int flag_index_east = flag_index + size[1] * size[2];
 
-				// Open doors if needed.
+				// 需要的话把门打开。
 				if (flags[flag_index] & SHOULD_OPEN_NORTH && cell->north_door_angle == 0.f) {
 					cell->north_door_angle = DOOR_OPEN_ANGLE;
 					dgn_cell_at(ctx->dgn, x, y, z + 1)->south_door_angle = -DOOR_OPEN_ANGLE;
@@ -1752,7 +1752,7 @@ static void PastelChime2_Field_UpdateDoors(
 					*open_tex_out = cell->east_door;
 				}
 
-				// Close doors if no player is nearby.
+				// 附近没有玩家就把门关上。
 				if (!(flags[flag_index] & SHOULD_NOT_CLOSE_NORTH) &&
 				    !(flags[flag_index_north] & SHOULD_NOT_CLOSE_SOUTH) &&
 				    cell->north_door_angle != 0.f) {
