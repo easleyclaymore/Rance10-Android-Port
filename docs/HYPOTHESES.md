@@ -51,7 +51,7 @@
 | `H019` | `００１` 节点的 `.战斗` 返回空是**正常数据**，战斗事件挂在别的编号节点 | 离线 dump `game/Rance10EX.ex`：`任务数据 → 荷鲁斯的宇宙飞船 → ００１` 只有 `故事 = "０２／ＳＴＡＲＴ"`（**无 `战斗` 字段**）；`００２` 有 `战斗 = "m11杂鱼／１"`，`００３` = `m11杂鱼／２`，`０１２` = `m11杂鱼／３` | D207 / `exdump_tool game/Rance10EX.ex`；`/tmp/ex_tree.txt:96433` |
 
 | `H022` | KeyBase 是 `QuestMapParamAccessor.this.m0` 的**字符串本身**（`任务数据.荷鲁斯的宇宙飞船.００１`），不是循环算出来的编号；`GetQuestEventList`(28578) 的 `index` 只是同节点内 `.战斗２/.故事２` 的序号后缀 | `XSYS4_DUMP_AT=45c8aa` 同帧读出 `this.m0` 字符串、`index=1` 且 `s/b/m` 全空（循环正确退出）；诊断后门把末位改成 `２` 后 EX 立刻查 `００２.战斗` 并命中 `23489` | D209 / `logs/live_keydump.log:730-760`、`live_node002d.log` |
-| `H024` | 战斗链剩下的缺口是两组**跨库** HLL：`MainEXFile.Save/Load`（战斗前快照存档）与 `AFAFactory` 搜索族 6 个导出（战斗 UI 的 `Parts@ResolveFlatName`）；静态清单只扫 `Battle*` 所以漏判 | 补齐后 `23489 → 26388 → Game/Battle*` 32 个活动装载、VS 画面出图、零 `Unimplemented HLL` / 零崩溃 | D209 / `logs/live_battle3.log`；`docs/HLL-GAP.md` 结论已修正 |
+| `H024` | 战斗链剩下的缺口是两组**跨库** HLL：`MainEXFile.Save/Load`（战斗前快照存档）与 `AFAFactory` 搜索族 6 个导出（战斗 UI 的 `Parts@ResolveFlatName`）；静态清单只扫 `Battle*` 所以漏判 | 补齐后 `23489 → 26388 → Game/Battle*` 32 个活动装载、VS 画面出图、零 `Unimplemented HLL` / 零崩溃 | D209 / `logs/live_battle3.log`；结论见根 `TECH_DEBT.md`，阶段性清单归档 工作区根 `archive/Rance10_HLL-GAP-全文-20261115.md` |
 
 ## 改判链
 

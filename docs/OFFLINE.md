@@ -91,11 +91,15 @@ tools/bin/gsave_dump logs/savedir/<tag>/GlobalSave.asd
 用它们和跑测日志里的 `Unimplemented library function:` 求交集，
 就能一次性列出「AIN 真的会调用、但引擎没实现」的清单，
 **不需要猜哪些函数属于战斗、也不需要 alice-tools 逐个反汇编**。
-完整数据与战斗路径结论见 `docs/HLL-GAP.md`。
+阶段性缺口清单与战斗路径结论已归档（工作区根 `archive/Rance10_HLL-GAP-全文-20261115.md`，只读）；当前结论见工作区根 `TECH_DEBT.md`。
 
 > `calls` 的 400 个 site 硬上限已去掉（D197），默认全量；
 > `AIN_XREF_MAX=400` 可恢复截断。旧版只扫到 `fno=833`，
    战斗函数一个都进不来 —— 这个坑让一次普查得出过"战斗路径 0 个 HLL"的错误结论。
+
+> **「未实现」有两个不同的前缀**：链接期 `Unimplemented library function:`
+> （`fun=NULL` 的清单）是**全集**，运行期 `Unimplemented HLL function:`
+> 才是**当前路径实际命中**。排查时别把二者混为一谈。
 
 ## ain_audit / ain_spec / ain_locals / ain_icast / ain_refparam / ain_hllarity
 
