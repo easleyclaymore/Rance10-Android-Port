@@ -43,13 +43,13 @@ static FT_Library ft_lib;
 
 static bool is_half_width(uint32_t code)
 {
-	// ASCII characters
+	// ASCII 字符
 	if (code < 128)
 		return true;
-	// Latin letters
+	// 拉丁字母
 	if (0xbf <= code && code <= 0xff && code != 0xd7 && code != 0xf7)
 		return true;
-	// Halfwidth punctuation / katakana
+	// 半角标点 / 片假名
 	if (0xff61 <= code && code <= 0xff9f)
 		return true;
 	return false;
@@ -87,16 +87,16 @@ static float ft_font_get_actual_size(struct font *_, float size)
 	return roundf(size);
 }
 
-// NOTE: we create glyph textures slightly larger than necessary so that outlines
-//       aren't cut off at the texture boundary.
-// FIXME: the outline rendering code should be fixed so this isn't necessary.
+// 注意：字形纹理我们会做得比需要的大一点，这样描边
+//       不会在纹理边界被切掉。
+// FIXME：应该修好描边渲染的代码，这样就不需要这么做了。
 #define GLYPH_BORDER_SIZE 4
 
-// Convert a glyph rendered by FreeType to a block-sized texture.
-// Block size is size x 1.5*size (full-width) or size/2 x 1.5*size (half-width)
+// 把 FreeType 渲染出来的字形转成块大小的纹理。
+// 块大小是 size x 1.5*size（全角）或 size/2 x 1.5*size（半角）
 static Rectangle init_glyph_texture(Texture *dst, FT_Bitmap *glyph, int bitmap_left, int bitmap_top, int size, bool half_width)
 {
-	// calculate block size and offsets
+	// 算出块大小和偏移
 	int block_width = max(half_width ? size/2 : size, max(0, bitmap_left) + glyph->width);
 	int block_height = size + size/2;
 	int width = block_width + GLYPH_BORDER_SIZE*2;
@@ -105,7 +105,7 @@ static Rectangle init_glyph_texture(Texture *dst, FT_Bitmap *glyph, int bitmap_l
 	int off_y = max(0, size - bitmap_top) + GLYPH_BORDER_SIZE;
 	uint8_t *bitmap = xcalloc(1, width * height);
 
-	// Expand the glyph bitmap to block size
+	// 把字形位图扩到块大小
 	for (int row = 0; row < glyph->rows && row + off_y < height; row++) {
 		for (int col = 0; col < glyph->width && col + off_x < width; col++) {
 			uint8_t p = glyph->buffer[row*glyph->width + col];
@@ -113,7 +113,7 @@ static Rectangle init_glyph_texture(Texture *dst, FT_Bitmap *glyph, int bitmap_l
 		}
 	}
 
-	// create texture from block-size bitmap
+	// 用块大小的位图创建纹理
 	gfx_init_texture_rmap(dst, width, height, bitmap);
 	free(bitmap);
 
@@ -137,7 +137,7 @@ static bool ft_font_get_glyph(struct font_size *size, struct glyph *glyph, uint3
 {
 	Texture *t = &glyph->t[weight];
 
-	// render bitmap
+	// 渲染位图
 	bool half_width = is_half_width(code);
 	struct font_ft *font = (struct font_ft*)size->font;
 	ft_font_set_size(font, size->size);
@@ -151,7 +151,7 @@ static bool ft_font_get_glyph(struct font_size *size, struct glyph *glyph, uint3
 		FT_Bitmap_Embolden(ft_lib, &font->font->glyph->bitmap, bold_weight, 0);
 	}
 
-	// create texture from bitmap
+	// 用位图创建纹理
 	FT_Bitmap *bitmap = &font->font->glyph->bitmap;
 	if (bitmap->pixel_mode == FT_PIXEL_MODE_GRAY) {
 		glyph->rect = init_glyph_texture(t, bitmap, font->font->glyph->bitmap_left,
@@ -164,7 +164,7 @@ static bool ft_font_get_glyph(struct font_size *size, struct glyph *glyph, uint3
 			FT_Bitmap_Done(ft_lib, &tmp);
 			return false;
 		}
-		// round non-zero values up to 255 because FreeType doesn't
+		// 非零值直接拉满到 255，因为 FreeType 不做这一步
 		for (int i = 0; i < tmp.rows * tmp.width; i++) {
 			if (tmp.buffer[i])
 				tmp.buffer[i] = 255;
@@ -232,8 +232,8 @@ struct font *ft_font_load(const char *spec)
 	struct font_ft *font = xcalloc(1, sizeof(struct font_ft));
 
 #ifdef __ANDROID__
-	// On Android, path may be an asset name which FT_New_Face cannot read
-	// directly, so use SDL_LoadFile to load the content into memory.
+	// Android 上 path 可能是资源名，FT_New_Face 读不了，
+	// 所以用 SDL_LoadFile 把内容读进内存。
 	size_t size;
 	void *buf = SDL_LoadFile(path, &size);
 	if (!buf)

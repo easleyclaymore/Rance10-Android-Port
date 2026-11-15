@@ -241,7 +241,7 @@ static struct pae *parse_pae(char *text)
 	struct pae_object *current_object = NULL;
 
 	for (;;) {
-		// Skip whitespaces and comments
+		// 跳过空白和注释
 		for (;;) {
 			while (isspace(*text))
 				text++;
@@ -268,7 +268,7 @@ static struct pae *parse_pae(char *text)
 				pae->objects = xrealloc_array(pae->objects, pae->nr_objects, pae->nr_objects + 1, sizeof(struct pae_object));
 				current_object = &pae->objects[pae->nr_objects++];
 				current_object->name = utf2sjis(string_buf, 0);
-				// Default values.
+				// 默认值。
 				current_object->move_type = PARTICLE_MOVE_LINEAR;
 				current_object->texture_anime_frame = 1.0;
 				current_object->child_end_slope = 1.0;
@@ -277,7 +277,7 @@ static struct pae *parse_pae(char *text)
 				goto err;
 			}
 		} else {
-			// Object context
+			// 对象上下文
 			if (!*text) {
 				WARNING("unexpected EOF");
 				return false;
@@ -514,7 +514,7 @@ static void eval_pos_for_object(struct RE_instance *inst, struct particle_positi
 			break;
 		case PARTICLE_POS_UNIT_RAND:
 		case PARTICLE_POS_UNIT_RAND_POSITIVE_Y:
-			// These are computed per instance, in eval_pos_for_instance().
+			// 这些是按实例算的，见 eval_pos_for_instance()。
 			break;
 		case PARTICLE_POS_UNIT_ABSOLUTE:
 			glm_vec3_add(dest, unit->absolute, dest);
@@ -567,7 +567,7 @@ static void eval_pos_for_instance(struct particle_position *pp, vec3 dest)
 		case PARTICLE_POS_UNIT_ABSOLUTE:
 		case PARTICLE_POS_UNIT_BONE:
 		case PARTICLE_POS_UNIT_TARGET:
-			// These are computed per object, in eval_pos_for_object().
+			// 这些是按对象算的，见 eval_pos_for_object()。
 			break;
 		case PARTICLE_POS_UNIT_RAND:
 			dest[0] += (randf() * 2.0 - 1.0) * unit->rand.f;
@@ -639,14 +639,14 @@ struct pae *pae_load(struct archive *aar, const char *path)
 
 	char *sjis_text = xmalloc(dfile->size + 1);
 	memcpy(sjis_text, dfile->data, dfile->size);
-	// Replace null characters (written by buggy .pae formatter) with spaces.
+	// 把空字符（有 bug 的 .pae 生成器写出来的）换成空格。
 	for (size_t i = 0; i < dfile->size; i++) {
 		if (sjis_text[i] == '\0')
 			sjis_text[i] = ' ';
 	}
 	sjis_text[dfile->size] = '\0';
 
-	// We could parse the SJIS text directly, but convert it to UTF-8 for code
+	// 本来可以直接解析 SJIS 文本，但为了代码里统一用 UTF-8，先转一下
 	// clarity.
 	char *text = sjis2utf(sjis_text, dfile->size);
 	free(sjis_text);
@@ -794,8 +794,8 @@ void particle_effect_update(struct RE_instance *inst)
 				update_camera_quake(inst, pae_obj);
 			continue;
 		}
-		// These cannot be precomputed, because they may depend on the target's
-		// *current* bone matrix.
+		// 这些没法预计算，因为它们可能依赖目标的
+		// 当前骨骼矩阵。
 		eval_pos_for_object(inst, pae_obj->position[0], po->pos.begin);
 		eval_pos_for_object(inst, pae_obj->position[1], po->pos.end);
 		glm_vec3_sub(po->pos.end, po->pos.begin, po->move_vec);
@@ -824,7 +824,7 @@ static void calc_emitter_pos(struct particle_object *po, struct particle_instanc
 	if (move_vec)
 		glm_vec3_sub(end, begin, move_vec);
 
-	// Orbital rotation.
+	// 轨道旋转。
 	vec3 angle, dist;
 	glm_vec3_lerp(pae_obj->revolution_angle.begin, pae_obj->revolution_angle.end, t, angle);
 	glm_vec3_lerp(pae_obj->revolution_distance.begin, pae_obj->revolution_distance.end, t, dist);
@@ -842,7 +842,7 @@ static void calc_emitter_pos(struct particle_object *po, struct particle_instanc
 		dest[0] += dist[2] * cosf(angle[2]);
 	}
 
-	// Apply the curve.
+	// 应用曲线。
 	glm_vec3_muladds(pae_obj->curve_length, 4.9f * t * (1.0f - t), dest);
 }
 
@@ -871,7 +871,7 @@ static void calc_pos_and_up_vector(struct particle_object *po, struct particle_i
 		break;
 	case PARTICLE_MOVE_EMITTER:
 		{
-			// Calculate the instance's initial and final position.
+			// 算出实例的初始位置和结束位置。
 			float t0 = glm_clamp_zo(glm_percent(pae_obj->begin_frame, pae_obj->end_frame, pi->begin_frame));
 			vec3_range inst_pos;
 			calc_emitter_pos(po, pi, t0, inst_pos.begin, NULL);
@@ -896,10 +896,10 @@ static void calc_pos_and_up_vector(struct particle_object *po, struct particle_i
 				glm_vec3_negate(inst_move);
 				break;
 			}
-			// Current position of the instance.
+			// 实例的当前位置。
 			glm_vec3_lerp(inst_pos.begin, inst_pos.end, t, pos);
 
-			// Calculate the up vector.
+			// 算出 up 向量。
 			switch (pae_obj->up_vector_type) {
 			case PARTICLE_UP_VECTOR_Y_AXIS:
 				glm_vec3_copy(GLM_YUP, up_vector);
