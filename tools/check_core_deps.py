@@ -131,6 +131,16 @@ if _doc.returncode != 0:
     for line in _doc_out:
         print('  DOC ' + line)
     fail = True
+# [D212] 官方手册生成物校验：md 与 93 张图必须与权威源逐字节一致。
+# 单独 clone 时 gen-manual.py 自己会 SKIP，不阻塞外部使用者。
+_mn = subprocess.run([sys.executable, os.path.join(HERE, 'gen-manual.py'), '--check'],
+                     cwd=ROOT, capture_output=True, text=True)
+_mn_out = _mn.stdout.strip().splitlines()
+print('Manual docs  : %s' % (_mn_out[-1] if _mn_out else 'no output'))
+if _mn.returncode != 0:
+    for line in _mn_out:
+        print('  MANUAL ' + line)
+    fail = True
 if deg > DEGRADATION_BASELINE:
     print('  CORE new HACK-POC markers: +%d' % (deg - DEGRADATION_BASELINE))
     fail = True
