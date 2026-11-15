@@ -31,6 +31,7 @@
 | `I008` | D209 补 `MainEXFile.Save/Load` + `AFAFactory` 搜索族 6 个导出 | 战斗前快照存档链（`gamesave::detail::存档実行` 5590/5591）与战斗 UI 的 `Parts@ResolveFlatName`；均为通用库，改动局部 | 进战斗零 `Unimplemented HLL` + VS 画面出图 + 默认基线无回归 | `git revert` 本轮提交；`MainEXFile` 空操作的前提是 EX 表只读（代码已注明） | 通过 |
 | `I009` | D214 EX 布局盒初值改 `FREE` | **全局**：所有 EX 装载的布局盒/用户组件，标题菜单、回想对话框、選択肢、编队卡片列表的命中区与渲染坐标都会变；AIN 运行时显式设的布局类型不受影响 | 默认基线 + 标题/回想/選択肢画面 + `23489 → 26388 → Game/Battle*` + 零错误 | `XSYS4_EX_LAYOUT_FREE=0` 即时回退；`git revert` 代码提交；`baseline.sh` 标题坐标已同步为 `646,738` | 通过（`rc=0 / activities=36 / quest_map=1`） |
 | `I010` | D215 gsave ARRAY 分支容错 | 全部存档/读档路径；只把「断言 abort」改成写 `unset` + 限流告警，不改有效数组的字节 | 战斗前自动存档不崩 + 默认基线 `double_free=0` + 存档文件可生成 | `git revert` 本轮提交；与 STRUCT 分支既有 L2 容错同口径 | 通过 |
+| `I011` | D216 EX 比率坐标（`activity.c:parse_part_fields/build_part`） | **全局**：所有标了「座標を率として認識する=1」的 EX 部件；Rance10 里已知 `MessageWindow01/02/01_talk` 的 `SYS_消息窗口`，坐标由 `(0,1)` 变 `(0,1080)`（配合 `原点座標模式=7` 贴屏幕底边） | 默认零开关基线（`d216`: `rc=0 / activities=36 / errors=0 / core_dump=0 / quest_map=1 / double_free=0 / save_files=8`）+ ADV 截图首现正文 | `XSYS4_EX_RATIO_POS=0` 即时回退；`git revert` 本轮提交 | 通过（与 D214 基线逐项一致） |
 
 > 判据：每个「必重跑闭环」都要有当次实测数字或日志 tag；`待验` 条目收工前必须结掉。
 > 全部数字以 `docs/STATS.md`（`tools/gen-doc-numbers.py` 生成）为准，禁止手写。
