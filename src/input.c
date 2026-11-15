@@ -29,10 +29,10 @@
 
 bool key_state[VK_NR_KEYCODES];
 
-/* [D113] SDL reports mouse down/up as state changes. A short click can have
- * both events in the same event-pump, so polling key_state at frame time sees
- * "never pressed". Remember the press as a one-shot pulse so the parts input
- * layer still observes a press->release edge. */
+/* [D113] SDL 把鼠标按下/抬起报成状态变化。一次短点击可能
+ * 让两个事件落在同一次事件泵里，于是按帧轮询 key_state 会看到
+ * 「从没按下过」。把这次按下记成一个一次性脉冲，
+ * 部件输入层就仍然能看到一次「按下 -> 抬起」的边沿。 */
 static bool mouse_press_pulse = false;
 
 bool mouse_consume_press_pulse(void)
@@ -201,9 +201,9 @@ static uint32_t last_keyevent_timestamp;
 #define DEFERRED_KEY_DELAY 10
 #endif
 
-// Stores a mouse button event synthesized from a touch event (valid if
-// .timestamp != 0). We defer such events to prevent games from handling
-// button down events before reading the pointer position.
+// 存一个由触摸事件合成的鼠标按键事件（.timestamp != 0 时才有效）。
+// 这类事件我们延后处理，免得游戏在读到指针位置之前
+// 就先把按键按下事件处理掉了。
 static SDL_MouseButtonEvent deferred_synthetic_mouse_event;
 #define SYNTHETIC_MOUSE_EVENT_DELAY 50
 
@@ -311,7 +311,7 @@ static void synthetic_mouse_event(SDL_MouseButtonEvent *e)
 {
 	if (e->state == SDL_PRESSED) {
 		mouse_press_pulse = true;
-		// Touch outside the viewport is treated as right-click.
+		// 视口之外的触摸当作右键。
 		SDL_Point p = { .x = e->x, .y = e->y };
 		if (SDL_PointInRect(&p, &sdl.viewport))
 			key_state[VK_LBUTTON] = true;
@@ -337,13 +337,13 @@ enum joyaxis_direction {
 };
 
 enum joyaxis_state {
-	// A: Initial state
-	// - when joy_clear_flag is called, goes on long cooldown
-	//   and then enters JOYAXIS_STATE_B
+	// A：初始状态
+	// - joy_clear_flag 被调用后进入长冷却，
+	//   然后进入 JOYAXIS_STATE_B
 	JOYAXIS_STATE_A,
-	// B: Held state
-	// - when joy_clear_flag is called, goes on short cooldown
-	//   state remains JOYAXIS_STATE_B until direction changes
+	// B：按住状态
+	// - joy_clear_flag 被调用后进入短冷却，
+	//   方向不变就一直停在 JOYAXIS_STATE_B
 	JOYAXIS_STATE_B,
 };
 
@@ -371,7 +371,7 @@ static bool joy_check_axis(struct joyaxis *axis, enum joyaxis_direction directio
 		return true;
 	if (!axis->cooldown_expire_time)
 		return false;
-	// on cooldown: check if cooldown expired
+	// 冷却中：检查冷却是否到期
 	if (joy_time() >= axis->cooldown_expire_time) {
 		axis->state = JOYAXIS_STATE_B;
 		axis->cooldown_expire_time = 0;
@@ -382,7 +382,7 @@ static bool joy_check_axis(struct joyaxis *axis, enum joyaxis_direction directio
 
 bool joy_key_is_down(uint8_t code)
 {
-	// Default SACT key mapping in comments below
+	// 下面是 SACT 默认的按键映射
 	switch (code) {
 	case 1: // Left Arrow
 		return joy_check_axis(&joyaxis_state[JOYAXIS_X], JOYAXIS_DIR_LEFT_UP);
@@ -429,11 +429,11 @@ bool joy_key_is_down(uint8_t code)
 
 static float joy_calc_deg(int x, int y)
 {
-	// calculate angle (degrees)
+	// 算出角度（度）
 	float a = atan2f(y, x) * (180.0f/M_PI);
 	if (a < 0)
 		a += 360.0f;
-	// rotate so that up is 0/360
+	// 旋转，让「上」对应 0/360
 	a += 90.0f;
 	if (a > 360.0f)
 		a -= 360.0f;
@@ -442,16 +442,16 @@ static float joy_calc_deg(int x, int y)
 
 static float joy_calc_pow(int x, int y)
 {
-	// XXX: in theory this should be scaled according to the angle so that
-	//      (32767,32767) returns exactly 1, but alicesoft themselves seem
-	//      to simply clamp pythagoras as below
+	// XXX：理论上这里应该按角度缩放，让
+	//      (32767,32767) 正好返回 1，但 alicesoft 自己
+	//      似乎就是像下面这样直接夹取勾股值
 	return min(1.0f, sqrtf(x*x + y*y) / 32767.0f);
 }
 
 static float joy_calc_trigger(int left, int right)
 {
 	// for whatever reason alicesoft treats triggers as an analog stick
-	// (at least on an xbox controller)
+	// （至少在手柄上是这样）
 	float v = 315.0f;
 	v += ((float)left/32767.0f) * 90.0f;
 	v -= ((float)right/32767.0f) * 90.0f;
@@ -494,7 +494,7 @@ invalid:
 
 static void joyaxis_clear_flag(struct joyaxis *joy)
 {
-	// put axis on cooldown
+	// 让该轴进入冷却
 	if (joy->logical_direction) {
 		joy->logical_direction = 0;
 		if (joy->state == JOYAXIS_STATE_A) {
@@ -516,14 +516,14 @@ void joy_clear_flag(void)
 
 static void joyaxis_update(enum joyaxis_axis axis, int value)
 {
-	// determine direction
+	// 确定方向
 	int direction = 0;
 	if (value < -JOYAXIS_DEADZONE)
 		direction = -1;
 	else if (value > JOYAXIS_DEADZONE)
 		direction = 1;
 
-	// reset axis state if direction changed
+	// 方向变了就重置轴状态
 	if (direction != joyaxis_state[axis].real_direction) {
 		joyaxis_state[axis].state = JOYAXIS_STATE_A;
 		joyaxis_state[axis].cooldown_expire_time = 0;
@@ -585,20 +585,20 @@ static void fire_deferred_events(void)
 {
 	uint32_t now = SDL_GetTicks();
 
-	// Flush the deferred mouse button event if it's older than 50ms.
+	// 延后的鼠标按键事件超过 50ms 就强制发出。
 	if (deferred_synthetic_mouse_event.timestamp &&
 		deferred_synthetic_mouse_event.timestamp + SYNTHETIC_MOUSE_EVENT_DELAY < now) {
 		synthetic_mouse_event(&deferred_synthetic_mouse_event);
 		deferred_synthetic_mouse_event.timestamp = 0;
 	}
-	// Long touch emulates pressing the Ctrl key.
+	// 长按模拟按下 Ctrl 键。
 	if (long_touch_start_timestamp && long_touch_start_timestamp + LONG_TOUCH_DURATION < now) {
 		key_state[VK_LBUTTON] = false;
 		key_state[VK_CONTROL] = true;
 	}
 
 #ifdef __ANDROID__
-	// Fire the deferred keyboard and text input events.
+	// 发出延后的键盘与文本输入事件。
 	while (!STAILQ_EMPTY(&deferred_keyevent_queue) && now >= last_keyevent_timestamp + DEFERRED_KEY_DELAY) {
 		struct deferred_keyevent *ev = STAILQ_FIRST(&deferred_keyevent_queue);
 		switch (ev->e.type) {
@@ -688,9 +688,9 @@ void handle_events(void)
 		case SDL_KEYUP:
 #ifdef __ANDROID__
 			if (input_handler && e.key.timestamp < last_keyevent_timestamp + DEFERRED_KEY_DELAY) {
-				// Input from virtual keyboard is sent as consecutive
-				// SDL_KEYDOWN and SDL_KEYUP events. To give the game a chance
-				// to see the previous key event, delay the event.
+				// 虚拟键盘的输入是一串连续的
+				// SDL_KEYDOWN / SDL_KEYUP 事件。为了让游戏有机会
+				// 看到上一个按键事件，这里把事件延后。
 				struct deferred_keyevent *ev = xmalloc(sizeof(struct deferred_keyevent));
 				ev->e = e;
 				STAILQ_INSERT_TAIL(&deferred_keyevent_queue, ev, entry);
@@ -717,7 +717,7 @@ void handle_events(void)
 			break;
 		case SDL_FINGERDOWN:
 			if (SDL_GetNumTouchFingers(e.tfinger.touchId) >= 2) {
-				// The user is about to start a multi-touch gesture.
+				// 用户即将开始一个多点触控手势。
 				key_state[VK_LBUTTON] = false;
 				key_state[VK_RBUTTON] = false;
 				deferred_synthetic_mouse_event.timestamp = 0;
@@ -726,8 +726,8 @@ void handle_events(void)
 				break;
 			}
 			long_touch_start_timestamp = e.tfinger.timestamp;
-			// Movement within this rect (1% of the screen size from the touch
-			// start position) will be ignored.
+			// 在这个矩形内的移动（距触摸起点 1% 屏幕尺寸）
+			// 会被忽略。
 			long_touch_finger_rect = (SDL_FRect) {
 				.x = e.tfinger.x - 0.01,
 				.y = e.tfinger.y - 0.01,
@@ -738,7 +738,7 @@ void handle_events(void)
 		case SDL_FINGERMOTION:
 			if (SDL_PointInFRect(&(SDL_FPoint){ e.tfinger.x, e.tfinger.y }, &long_touch_finger_rect))
 				break;
-			// Cancel the timer only if Ctrl emulation has not already started.
+			// 只有在 Ctrl 模拟还没开始时才取消定时器。
 			if (!key_state[VK_CONTROL])
 				long_touch_start_timestamp = 0;
 			break;
@@ -772,7 +772,7 @@ void handle_events(void)
 				break;
 #ifdef __ANDROID__
 			} else if (!STAILQ_EMPTY(&deferred_keyevent_queue)) {
-				// The order of key events and text events must be preserved.
+				// 按键事件与文本事件的顺序必须保持。
 				struct deferred_keyevent *ev = xmalloc(sizeof(struct deferred_keyevent));
 				ev->e = e;
 				STAILQ_INSERT_TAIL(&deferred_keyevent_queue, ev, entry);
