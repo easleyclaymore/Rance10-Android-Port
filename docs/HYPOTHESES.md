@@ -19,7 +19,7 @@
 | ID | 假设 | 可证伪判据 | 验证方式 | 状态 |
 |---|---|---|---|---|
 | `H014` | 消息窗口正文不出是部件 `show/alpha` 或文本纹理路径（`[UC-TEXSHADER]`）问题，与消息链无关 | `SetMessageWindowText` 收到非空文本但 `900000347` 的 `show/alpha` 正常且字形纹理有像素 | `XSYS4_ACT_PART_DBG` + 渲染准入探针 + 截图 | 待验 |
-| `H021` | 把 `QuestMapParamAccessor` 的 KeyBase 从 `００１` 推进到 `００２`（真实点地图节点，而非 `StartMoveRoute` 后门）即可让 `GetBattleEventName` 返回 `m11杂鱼／１` 并触发 `23489` | 推进后 `EX_String` 收到 `任务数据.荷鲁斯的宇宙飞船.００２.战斗`，且 `23489 → 26388 → Game/Battle*` 命中 | 真实流程进地图后用 `XSYS4_INPUT_ALL` 找节点命中区再点；`XSYS4_FN_DUMP=5467` 看 key 变化 | 待验 |
+| `H022` | KeyBase 是 `QuestMapParamAccessor` 的内部状态，由 AIN 的回合/移动逻辑写入；要定位那个写入点（或找游戏里「结束回合 / 前进」按钮）才能把它从 `００１` 变成 `００２` | 反汇编 `QuestMapParamAccessor@0` 及成员 0 的写入点；或找到正常推进回合的 UI 按钮并点它，之后 `EX_String` 出现 `...００２.战斗` | `ain_xref call` 找写成员 0 的函数；真实流程点回合结束按钮 | 待验 |
 | `H020` | `GetQuestEventList` 的 `S_NOTE` 判空或 `Array.PushBack` 在引擎侧有偏差，导致明明查到了值也没进事件列表 | `EX_String` 对 `.战斗` 返回非空串，但 `28578` 的 `result` 仍 `nr=0` | 给 `EX_String`(5467) 加返回探针，或 `XSYS4_LVAR_DBG=28578:3` 看 `b` 的槽号是否 >0 | 待验 |
 
 ## 已证伪（保留，别回头查）
@@ -38,6 +38,7 @@
 | `H011` | 事件列表为空是 `AUTO_MAP`/`AUTO_MAP_ROUTE` 后门跳过真实地图节点选择所致 | 真实流程（点 `100,60` 进地图，不用任何后门）同样 `SetMessageWindowText` 333 次、同样停在 `ReplayMemoDialog`、`23489` 仍 0 次 | D207 / `logs/live_realflow.log` |
 | `H012` | 三个事件名 getter 全空是 EX KeyBase 拼错（D202 同类问题） | `XSYS4_FN_DUMP=5467` 实测 `EX_String` 收到的 key 完全正确：`任务数据.荷鲁斯的宇宙飞船.００１.故事` / `.战斗` / `.战斗２`，`００１` 编号已生效 | D207 / `logs/live_exkey.log`（1049 次调用） |
 | `H018` | `parts_hittest` 用「局部 hitbox + 直接父 global.pos」、渲染用 `global.pos`，两套坐标错开几百像素 | `PARTS_DUMP` 的 `(548,718)` 只是**装载瞬间快照**；input 帧里 `global.pos` 本就是 `(0,40)`，两套一致。加 `XSYS4_HITBOX_GLOBAL=1` 改用 global 基准后点 `646,738` 仍不进地图（证伪后已回退） | D207 / `logs/live_both.log`、`live_hitfix2.log`；`input.c:parts_hitbox_at` |
+| `H021` | 真实点中地图节点就能把 KeyBase 推进到 `００２` | 网格点击确实命中 `SceneQuestMap@RunCurrentObjectEvent`(23609)，但 `EX_String` 仍只查 `００１.战斗` / `００１.战斗２`；其它节点（００２/００３/４００…）只查 `.传送`（地图渲染用）。点击改不了 KeyBase | D207 / `logs/live_nodegrid.log`（7137 行，key 去重清单） |
 
 ## 已成立
 
@@ -61,7 +62,8 @@ H005 证伪 ──> H006/H007/H008 证伪 ──> H016 成立（空事件分支�
                                         ├──> H017 成立（真实流程可进地图）
                                         ├──> H018 证伪（坐标双基准是快照错觉）
                                         ├──> H019 成立（EX 铁证：战斗在 ００２ 节点）
-                                        │      └──> H021 待验（把 KeyBase 推进到 ００２）
+                                        │      ├──> H021 证伪（点节点不改 KeyBase）
+                                        │      └──> H022 待验（定位 KeyBase 写入点）
                                         └──> H020 / H014 待验
 H001 证伪 ──> H017 成立 的另一条证据：标题按钮命中区在 (0,40)-(196,80)
 ```
