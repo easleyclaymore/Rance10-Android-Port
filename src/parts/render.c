@@ -17,6 +17,7 @@
 #include <limits.h>
 #include <math.h>
 #include <assert.h>
+#include <stdlib.h>
 #include <cglm/cglm.h>
 
 #include "system4.h"
@@ -142,19 +143,50 @@ static bool uc_skip_dup_text(struct parts *parts, struct parts_text *t)
 	return false;
 }
 
+/* [PROBE-GATED] XSYS4_TEXT_RENDER_DBG 的文字层探针。
+ *
+ * 原来用「全局前 80 条」限流：地图上 5 个文字部件每帧各打一条，80 条
+ * 瞬间吃光，消息窗口（9000003xx）一条都打不出来 —— 「没有输出」被误读成
+ * 「正文没有文字层」。改成按部件号分流（每号最多 3 条），并允许用
+ * XSYS4_TEXT_RENDER_DBG=<部件号下限> 只盯动态号段；=1 等价于不过滤。
+ * 顺带把 parts_render() 的三条准入条件一起打出来，一次区分「没到渲染」
+ * 与「画了但不可见」。默认关闭，不改行为。 */
+static void text_render_probe(struct parts *parts, struct parts_text *t)
+{
+	static struct { int no, n; } seen[64];
+	static int rr;
+	const char *e = getenv("XSYS4_TEXT_RENDER_DBG");
+	if (!e || !*e || parts->uc_object || !t->nr_lines)
+		return;
+	int floor = atoi(e);
+	if (floor < 0 || parts->no < floor)
+		return;
+	int slot = -1;
+	for (int i = 0; i < 64; i++) {
+		if (seen[i].no == parts->no) { slot = i; break; }
+	}
+	if (slot < 0) {
+		slot = rr++ % 64;
+		seen[slot].no = parts->no;
+		seen[slot].n = 0;
+	}
+	if (seen[slot].n++ >= 3)
+		return;
+	NOTICE("[txtr] no=%d pos=(%d,%d) off=(%d,%d) wh=%dx%d lines=%d "
+	       "state=%d type=%d show=%d a=%d vis=%d mw=%d mwshow=%d uc=-",
+	       parts->no, parts->global.pos.x, parts->global.pos.y,
+	       t->common.origin_offset.x, t->common.origin_offset.y,
+	       t->common.w, t->common.h, t->nr_lines,
+	       parts->state, parts->states[parts->state].type,
+	       parts->global.show, (int)parts->global.alpha,
+	       parts_is_visible(parts) ? 1 : 0,
+	       parts->message_window ? 1 : 0,
+	       parts_message_window_show ? 1 : 0);
+}
+
 static void parts_render_text(struct parts *parts, struct parts_text *t)
 {
-	/* 探针保留：XSYS4_TEXT_RENDER_DBG=1 时列出非 UC 的文字层。 */
-	if (getenv("XSYS4_TEXT_RENDER_DBG") && t->nr_lines > 0 && !parts->uc_object) {
-		static int n;
-		if (n++ < 80)
-			NOTICE("[txtr] no=%d pos=(%d,%d) off=(%d,%d) wh=%dx%d "
-			       "lines=%d uc=- state=%d type=%d",
-			       parts->no, parts->global.pos.x, parts->global.pos.y,
-			       t->common.origin_offset.x, t->common.origin_offset.y,
-			       t->common.w, t->common.h, t->nr_lines,
-			       parts->state, parts->states[parts->state].type);
-	}
+	text_render_probe(parts, t);
 	if (uc_skip_dup_text(parts, t))
 		return;
 	int x = parts->global.pos.x + t->common.origin_offset.x;

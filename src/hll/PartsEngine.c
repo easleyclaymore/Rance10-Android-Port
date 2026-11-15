@@ -41,6 +41,18 @@
 		NOTICE("[pe-hack] %s", fname); \
 } while (0)
 
+/* [D216] 消息窗口配置族取证探针。
+ * 这批 setter 都是 noop（[HACK-POC D85]），静默吞掉参数，最容易查漏；
+ * 「消息框不画、正文不出」很可能正是它们负责的区域/CG 没落到位。
+ * XSYS4_MSGWIN_DBG=1 时打印名字与实参，每个函数各自限流 20 条，
+ * 默认关闭、不改变行为。 */
+#define MSGWIN_HIT(fmt, ...) do { \
+	if (getenv("XSYS4_MSGWIN_DBG")) { \
+		static int _n; \
+		if (_n++ < 20) NOTICE("[msgwin] " fmt, ##__VA_ARGS__); \
+	} \
+} while (0)
+
 static void PartsEngine_ModuleInit(void)
 {
 	PE_Init();
@@ -1610,6 +1622,7 @@ static void PE_Noop_SetLockInputState(int a0, int a1)
 /* AIN SetMessageWindowActive: void SetMessageWindowActive. [HACK-POC D85] setter stubbed. */
 static void PE_Noop_SetMessageWindowActive(int a0, int a1)
 {
+	MSGWIN_HIT("SetMessageWindowActive no=%d active=%d", a0, a1);
 	(void)a0;
 	(void)a1;
 }
@@ -1617,6 +1630,7 @@ static void PE_Noop_SetMessageWindowActive(int a0, int a1)
 /* AIN SetMessageWindowCGName: void SetMessageWindowCGName. [HACK-POC D85] setter stubbed. */
 static void PE_Noop_SetMessageWindowCGName(int a0, struct string * a1)
 {
+	MSGWIN_HIT("SetMessageWindowCGName no=%d len=%d", a0, a1 ? (int)strlen(a1->text) : -1);
 	(void)a0;
 	(void)a1;
 }
@@ -1624,6 +1638,7 @@ static void PE_Noop_SetMessageWindowCGName(int a0, struct string * a1)
 /* AIN SetMessageWindowFlatName: void SetMessageWindowFlatName. [HACK-POC D85] setter stubbed. */
 static void PE_Noop_SetMessageWindowFlatName(int a0, struct string * a1)
 {
+	MSGWIN_HIT("SetMessageWindowFlatName no=%d len=%d", a0, a1 ? (int)strlen(a1->text) : -1);
 	(void)a0;
 	(void)a1;
 }
@@ -1815,6 +1830,7 @@ static void PE_SetMessageWindowText(int no, struct string *text, int msg_num,
 	(void)func_name;
 	(void)ver;
 	(void)step;
+	MSGWIN_HIT("SetMessageWindowText no=%d len=%d", no, text ? (int)strlen(text->text) : -1);
 	if (!text)
 		return;
 	struct string **slot = msgwin_text_slot(no);
@@ -1840,6 +1856,7 @@ static bool PE_IsFixedMessageWindowText(int no)
 /* AIN SetMessageWindowTextArea: void SetMessageWindowTextArea. [HACK-POC D85] setter stubbed. */
 static void PE_Noop_SetMessageWindowTextArea(int a0, int a1, int a2, int a3, int a4)
 {
+	MSGWIN_HIT("SetMessageWindowTextArea no=%d x=%d y=%d w=%d h=%d", a0, a1, a2, a3, a4);
 	(void)a0;
 	(void)a1;
 	(void)a2;
@@ -1850,6 +1867,7 @@ static void PE_Noop_SetMessageWindowTextArea(int a0, int a1, int a2, int a3, int
 /* AIN SetMessageWindowTextOriginPosMode: void SetMessageWindowTextOriginPosMode. [HACK-POC D85] setter stubbed. */
 static void PE_Noop_SetMessageWindowTextOriginPosMode(int a0, int a1)
 {
+	MSGWIN_HIT("SetMessageWindowTextOriginPosMode no=%d mode=%d", a0, a1);
 	(void)a0;
 	(void)a1;
 }
@@ -1857,6 +1875,7 @@ static void PE_Noop_SetMessageWindowTextOriginPosMode(int a0, int a1)
 /* AIN SetMessageWindowTextSpace: void SetMessageWindowTextSpace. [HACK-POC D85] setter stubbed. */
 static void PE_Noop_SetMessageWindowTextSpace(int a0, int a1, int a2)
 {
+	MSGWIN_HIT("SetMessageWindowTextSpace no=%d letter=%d line=%d", a0, a1, a2);
 	(void)a0;
 	(void)a1;
 	(void)a2;
@@ -1865,6 +1884,7 @@ static void PE_Noop_SetMessageWindowTextSpace(int a0, int a1, int a2)
 /* AIN SetMessageWindowTextSpeed: void SetMessageWindowTextSpeed. [HACK-POC D85] setter stubbed. */
 static void PE_Noop_SetMessageWindowTextSpeed(int a0, int a1)
 {
+	MSGWIN_HIT("SetMessageWindowTextSpeed no=%d speed=%d", a0, a1);
 	(void)a0;
 	(void)a1;
 }

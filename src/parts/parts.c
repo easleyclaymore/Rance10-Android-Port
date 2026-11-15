@@ -2945,8 +2945,16 @@ void PE_DebugDumpParts(const char *tag)
 			 parts_cover_layer, ctrl_stack.active);
 		NOTICE("%s", lbuf);
 	}
+	/* [D216] 部件表按插入顺序遍历，地图（9000000xx）会先把
+	 * XSYS4_PARTS_DUMP_MAX 的名额吃光，动态号段（9000003xx）一条都打不出
+	 * —— 又一次 [PROBE-GATED]。XSYS4_PARTS_DUMP_MIN=<号> 只盯目标号段。 */
+	static int dump_min = -1;
+	if (dump_min < 0) {
+		const char *e = getenv("XSYS4_PARTS_DUMP_MIN");
+		dump_min = (e && *e) ? atoi(e) : 0;
+	}
 	TAILQ_FOREACH(p, &parts_list, parts_list_entry) {
-		if (!p->global.show)
+		if (!p->global.show || p->no < dump_min)
 			continue;
 		/* [D167] 必须打**当前状态**（`p->state`），不是 DEFAULT。
 		 * 绘制读的是 `states[p->state]`：一个 DEFAULT 有 CG 的部件，

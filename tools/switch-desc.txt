@@ -74,7 +74,7 @@ XSYS4_CLICK_RETARGET	点击被遮挡后重定向到下层部件
 XSYS4_UPD_DBG	PE_Update 的每帧诊断
 XSYS4_PE_DBG	PartsEngine 调用诊断
 XSYS4_UC_RENDER_DBG	用户组件（TextButton 等）渲染诊断
-XSYS4_TEXT_RENDER_DBG	文字渲染诊断（字体/码表/基线）
+XSYS4_TEXT_RENDER_DBG	=1 列全部非 UC 文字层；=<部件号下限> 只盯该号段（如 900000300），每号最多 3 条并附 show/alpha/vis/mw/mwshow 准入字段；修掉了「全局 80 条被地图吃光」的假阴性
 XSYS4_LAYER_TRACE	图层顺序追踪
 XSYS4_NO_LAYER_COVER	关闭「视觉地板」优化（怀疑遮挡算错时用）
 
@@ -110,3 +110,6 @@ XSYS4_MSGF_FIX	[D204] AIN v12 无 MSGF 段时按函数名把 msgf 解析到 "mes
 XSYS4_INPUT_ALL	[诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在"
 XSYS4_NODE_DIGIT	[D209 诊断后门] 把 QuestMapParamAccessor 的 KeyBase 末尾全角编号末位改成 0-9（００１→００２），仅在 23486 事件链生效；默认关，用于验证战斗链，不是正常游戏路径
 XSYS4_EX_LAYOUT_FREE	[D214 已转正] EX 装载的布局盒/用户组件初值改为 FREE（保留 EX 绝对坐标），避免 VERTICAL 自动重排把子部件推到屏幕外；默认生效，=0 回退做 A/B
+XSYS4_EX_RATIO_POS	[D216 已转正] EX「座標を率として認識する=1」的 座標 按视图宽高换算成像素；消息窗口 (0,1) 由此变成 (0,1080)，正文才从屏幕外进画面；默认生效，=0 回退做 A/B
+XSYS4_MSGWIN_DBG	[诊断] 打印消息窗口配置族 setter 的触达与实参（Active/Text/CGName/FlatName/TextArea/OriginPosMode/Space/Speed），每个函数限 20 条；用来判定「空桩是不是真被调用」
+XSYS4_PARTS_DUMP_MIN	[诊断] 只 dump 部件号 >= 此值的部件；部件表按插入序遍历，地图号段会吃光 PARTS_DUMP_MAX 名额，设 900000300 才能看到动态号段

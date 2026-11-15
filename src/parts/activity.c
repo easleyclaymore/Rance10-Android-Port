@@ -107,6 +107,10 @@ struct activity_part {
 	float x, y;
 	int z;
 	int origin_x, origin_y, origin_mode;
+	/* [D216] EX「座標を率として認識する」：为 1 时 座標 是相对视图尺寸
+	 * 的比率(0.0~1.0)，不是像素。MessageWindow01 的 SYS_消息窗口 就是
+	 * 座標=(0,1,1) + 原点座標模式=7(bottom-left)，本意贴屏幕底边。 */
+	bool pos_as_ratio;
 	bool flip_x, flip_y, show;
 	int alpha;
 	int add_rgb[3];
@@ -455,6 +459,7 @@ static void parse_part_fields(struct ex_tree *node, struct activity_part *part)
 	get_int(node, "原点座標模式", &part->origin_mode);
 
 	int b = 0;
+	part->pos_as_ratio = get_int(node, "座標を率として認識する", &b) ? b != 0 : false;
 	part->flip_x = get_int(node, "左右反转", &b) ? b != 0 : false;
 	b = 0;
 	part->flip_y = get_int(node, "上下反转", &b) ? b != 0 : false;
@@ -739,7 +744,23 @@ static int build_part(struct activity_part *part, int parent_no)
 		 * 流程能建出来、日志一切正常，但既画不出也点不到，回合推不动。 */
 		PE_SetPartsSize(part->parts_no, part->w, part->h, 1);
 	}
-	PE_SetPos(part->parts_no, (int)part->x, (int)part->y);
+	/* [D216] 比率坐标 → 视图像素。此前直接 (int)part->x/y，把 MessageWindow01
+	 * 的 (0.0, 1.0) 当成 (0,1) 像素，消息窗口整体留在屏幕左上角外，
+	 * 截图只剩名牌、没有消息框与正文（[ADV-TEXT-RENDER]）。
+	 * 只在 EX 装载期换算一次；AIN 之后显式 SetPos 仍可覆盖。
+	 * XSYS4_EX_RATIO_POS=0 回退做 A/B。 */
+	static int ex_ratio_pos = -1;
+	if (ex_ratio_pos < 0) {
+		const char *e = getenv("XSYS4_EX_RATIO_POS");
+		ex_ratio_pos = e && !strcmp(e, "0") ? 0 : 1;
+	}
+	int px = (int)part->x;
+	int py = (int)part->y;
+	if (ex_ratio_pos && part->pos_as_ratio) {
+		px = (int)(part->x * config.view_width);
+		py = (int)(part->y * config.view_height);
+	}
+	PE_SetPos(part->parts_no, px, py);
 	PE_SetZ(part->parts_no, part->z);
 	PE_SetShow(part->parts_no, part->show);
 	PE_SetAlpha(part->parts_no, part->alpha);
