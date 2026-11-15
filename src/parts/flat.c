@@ -418,6 +418,104 @@ bool parts_flat_load(struct parts *parts, struct parts_flat *f, struct string *f
 	return true;
 }
 
+/* [D226] 这个 flat 在当前帧**最多能画出多大 alpha**（0..255）。
+ *
+ * 只算真会把像素落到屏幕上的层：CG 库要有纹理、STOP_MOTION 要能映射到
+ * 有效 CG、TALT 图集要真的加载了；TIMELINE 库递归下去。
+ *
+ * 遮挡推断（`parts_update_cover_layer`）用它而不是 `global.alpha`：整屏
+ * flat 即使 nominal alpha=255，只要内部 key 已经淡到 0 或纹理没装载，就
+ * 画不出不透明的一层，不该当"视觉地板"把下面全滤掉（H038/H039）。
+ *
+ * 为什么不靠渲染侧反馈：场景稳定后精灵不再变脏，`scene_render` 不会重画，
+ * 反馈值就永远停在"没画过"，与旧口径等价（实测 paint=-1 一直不变）。 */
+static int flat_layer_paint_alpha(struct parts_flat *f, struct flat_layer_state *state,
+		struct flat_timeline *timelines, size_t nr_timelines,
+		int parent_alpha, int depth)
+{
+	if (!state || depth > 8)
+		return 0;
+	int best = 0;
+	for (size_t i = 0; i < nr_timelines; i++) {
+		struct flat_timeline *tl = &timelines[i];
+		if (tl->type != FLAT_TIMELINE_GRAPHIC)
+			continue;
+		int local = state->current_frame - tl->begin_frame;
+		if (local < 0 || local >= tl->frame_count)
+			continue;
+
+		int lib_idx = parts_flat_find_library(f->flat, tl->library_name->text);
+		struct flat_library *lib = (lib_idx >= 0 && (size_t)lib_idx < f->flat->nr_libraries)
+				? &f->flat->libraries[lib_idx] : NULL;
+		bool drawable = false;
+		if (lib) {
+			switch (lib->type) {
+			case FLAT_LIB_CG:
+				drawable = (size_t)lib_idx < f->nr_libraries &&
+					   f->textures[lib_idx].handle != 0;
+				break;
+			case FLAT_LIB_STOP_MOTION: {
+				int cg = parts_flat_stop_motion_get_cg_lib(f, lib_idx, local);
+				drawable = cg >= 0 && (size_t)cg < f->nr_libraries &&
+					   f->textures[cg].handle != 0;
+				break;
+			}
+			case FLAT_LIB_TIMELINE:
+				drawable = true;  /* 像素在子 timeline 里，下面递归 */
+				break;
+			default:
+				break;
+			}
+		} else if (f->nr_libraries > f->flat->nr_libraries &&
+			   f->flat->nr_talt_entries > 0) {
+			/* LIBL 为空、图形在 TALT 图集里（D200）：渲染侧按图集裁剪。 */
+			drawable = f->textures[f->flat->nr_libraries].handle != 0;
+		}
+		if (!drawable)
+			continue;
+
+		struct flat_key_data_graphic *keys;
+		uint32_t nr_keys;
+		if (tl->graphic.frames) {
+			keys = tl->graphic.frames[local].keys;
+			nr_keys = tl->graphic.frames[local].count;
+		} else {
+			if (local >= (int)tl->graphic.count)
+				continue;
+			keys = &tl->graphic.keys[local];
+			nr_keys = 1;
+		}
+		for (uint32_t k = 0; k < nr_keys; k++) {
+			int a = keys[k].alpha * parent_alpha / 255;
+			if (keys[k].alpha > 255)
+				a = parent_alpha;
+			if (a > best)
+				best = a;
+			if (lib && lib->type == FLAT_LIB_TIMELINE) {
+				struct flat_layer_state *child = state->children
+						? state->children[i] : NULL;
+				if (child) {
+					int sub = flat_layer_paint_alpha(f, child,
+							lib->timeline.timelines,
+							lib->timeline.nr_timelines,
+							a, depth + 1);
+					if (sub > best)
+						best = sub;
+				}
+			}
+		}
+	}
+	return best;
+}
+
+int parts_flat_max_paint_alpha(struct parts_flat *f)
+{
+	if (!f->flat || !f->root_state)
+		return 0;
+	return flat_layer_paint_alpha(f, f->root_state,
+			f->flat->timelines, f->flat->nr_timelines, 255, 0);
+}
+
 bool parts_flat_update(struct parts_flat *f, int passed_time)
 {
 	/* [D194] `fps <= 0` 只表示「这张 flat 不按时间推进」，**不能**把

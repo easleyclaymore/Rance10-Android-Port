@@ -653,6 +653,8 @@ bool parts_flash_seek(struct parts_flash *f, int frame);
 // flat.c
 void parts_flat_free(struct parts_flat *f);
 bool parts_flat_load(struct parts *parts, struct parts_flat *f, struct string *filename);
+/* [D226] flat 在当前帧最多能画出多大 alpha（0..255）：key alpha × 纹理可得性。 */
+int parts_flat_max_paint_alpha(struct parts_flat *f);
 bool parts_flat_update(struct parts_flat *f, int passed_time);
 int parts_flat_find_library(struct flat *fl, const char *name);
 int parts_flat_stop_motion_get_cg_lib(struct parts_flat *f, int sm_lib_idx, int local);

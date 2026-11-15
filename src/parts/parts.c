@@ -18,6 +18,7 @@
 
 #include "system4.h"
 #include "system4/cg.h"
+#include "system4/flat.h"
 #include "system4/hashtable.h"
 #include "system4/string.h"
 
@@ -1444,6 +1445,16 @@ static void parts_update_cover_layer(void)
 		struct parts_state *st = &p->states[p->state];
 		if (st->common.w < vw || st->common.h < vh)
 			continue;
+		/* [D226] 名义 alpha ≠ 画出来的 alpha。flat 的实际不透明度由内部
+		 * key 的 alpha 决定（`ctx.alpha = global.alpha * key.alpha`），
+		 * 而且纹理缺失时一个像素都不出。光看 global.alpha 会把「已经淡到
+		 * 0 的整屏遮罩」当成不透明地板，把下面所有层滤掉 —— 第二次点击
+		 * 进战斗回合时整屏变黑就是这个形状（H038/H039）。 */
+		if (st->type == PARTS_FLAT) {
+			int a = parts_flat_max_paint_alpha(&st->flat);
+			if ((int)p->global.alpha * a / 255 < 250)
+				continue;
+		}
 		ctrl_stack.opaque[c] = true;
 	}
 	for (int c = 0; c < ctrl_stack.nr_controllers; c++) {
@@ -1465,6 +1476,34 @@ static void parts_update_cover_layer(void)
 				n += snprintf(buf + n, sizeof(buf) - n, " L%d[o%d s%d]",
 					      c, ctrl_stack.opaque[c], ctrl_stack.show[c]);
 			NOTICE("%s", buf);
+			/* [D226] 谁把地板抬上去的：只列抬升层里铺满视图的那几个部件。
+			 * 没有这一行，"cover 从 7 跳到 10"只能靠翻全量部件表去猜。 */
+			int shown = 0;
+			struct parts *q;
+			TAILQ_FOREACH(q, &parts_list, parts_list_entry) {
+				if (shown >= 3 || q->controller_no != top || !q->global.show)
+					continue;
+				struct parts_state *qs = &q->states[q->state];
+				if (q->global.alpha < 250 || qs->common.w < vw || qs->common.h < vh)
+					continue;
+				NOTICE("[ctrl]   floor by no=%d st=%d %dx%d pos=(%d,%d) a=%d flatmax=%d",
+				       q->no, (int)qs->type, qs->common.w, qs->common.h,
+				       q->global.pos.x, q->global.pos.y, (int)q->global.alpha,
+				       qs->type == PARTS_FLAT
+					       ? parts_flat_max_paint_alpha(&qs->flat) : -1);
+				if (qs->type == PARTS_FLAT) {
+					size_t cgn = 0;
+					for (size_t i = 0; i < qs->flat.nr_libraries; i++)
+						if (qs->flat.textures[i].handle)
+							cgn++;
+					NOTICE("[ctrl]   floor flat loaded=%d root=%d hdr=%dx%d libs=%zu cg=%zu",
+					       qs->flat.flat != NULL, qs->flat.root_state,
+					       qs->flat.flat ? qs->flat.flat->hdr.width : -1,
+					       qs->flat.flat ? qs->flat.flat->hdr.height : -1,
+					       qs->flat.nr_libraries, cgn);
+				}
+				shown++;
+			}
 		}
 	}
 }
@@ -3030,6 +3069,24 @@ void PE_DebugDumpParts(const char *tag)
 		       parts_is_visible(p) ? 1 : 0,
 		       p->clickable ? 1 : 0, p->pass_cursor ? 1 : 0,
 		       p->uc_object ? p->uc_object : "-");
+		/* [D226] flat 部件的 `tex=` 列永远是 0（flat 不写 common.texture），
+		 * 光看主行分不清「加载成功、只是没有单张纹理」和「flat 根本没装载」
+		 * —— 后者 parts_render_flat() 直接 return，一个像素不画，却仍会被
+		 * parts_update_cover_layer() 当成"铺满全屏的不透明地板"，把下面
+		 * 所有层挡掉（H039）。补一行只打 flat 的加载事实。 */
+		if (st->type == PARTS_FLAT) {
+			size_t cgn = 0;
+			for (size_t i = 0; i < st->flat.nr_libraries; i++)
+				if (st->flat.textures[i].handle)
+					cgn++;
+			NOTICE("[parts] %s   flat no=%d loaded=%d root=%d hdr=%dx%d fps=%d tl=%zu libs=%zu cg=%zu",
+			       tag, p->no, st->flat.flat != NULL, st->flat.root_state,
+			       st->flat.flat ? st->flat.flat->hdr.width : -1,
+			       st->flat.flat ? st->flat.flat->hdr.height : -1,
+			       st->flat.flat ? st->flat.flat->hdr.fps : -1,
+			       st->flat.flat ? st->flat.flat->nr_timelines : (size_t)0,
+			       st->flat.nr_libraries, cgn);
+		}
 		static int dump_max = -1;
 		if (dump_max < 0) {
 			const char *e = getenv("XSYS4_PARTS_DUMP_MAX");
