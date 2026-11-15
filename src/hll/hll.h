@@ -14,7 +14,7 @@
 #define SYSTEM4_HLL_H
 
 /*
- * DSL for implementing libraries.
+ * 用于实现各个库的 DSL。
  */
 
 #include "vm.h"

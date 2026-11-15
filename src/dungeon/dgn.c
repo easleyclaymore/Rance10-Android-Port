@@ -117,7 +117,7 @@ struct dgn *dgn_parse(uint8_t *data, size_t size, bool for_draw_field)
 		cell->south_event = buffer_read_int32(&r);
 		cell->east_event = buffer_read_int32(&r);
 		cell->west_event = buffer_read_int32(&r);
-		// Skip (int32, string) pairs
+		// 跳过 (int32, string) 对
 		for (int j = 0; j < 6; j++) {
 			buffer_skip(&r, 4);
 			buffer_skip(&r, strlen(buffer_strdata(&r)) + 1);

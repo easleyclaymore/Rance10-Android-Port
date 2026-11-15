@@ -17,7 +17,7 @@
 #include "id_pool.h"
 
 /*
- * Generic data structure for managing a pool of objects accessed by integer IDs.
+ * 用整数 ID 访问的对象池的通用数据结构。
  */
 
 #define ID_POOL_INIT_SLOTS 32
