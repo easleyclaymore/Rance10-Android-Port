@@ -56,8 +56,8 @@ struct config {
 
 extern struct config config;
 
-// Convenience functions to avoid cumbersome memory management when passing
-// text to printf-like functions
+// 便利函数：给 printf 这类变参函数传文本时，
+// 省掉繁琐的内存管理
 const char *display_sjis0(const char *sjis);
 const char *display_sjis1(const char *sjis);
 const char *display_sjis2(const char *sjis);
@@ -83,8 +83,8 @@ void get_time(int *hour, int *min, int *sec, int *ms);
 
 void screenshot_save(void);
 
-/* Data directory is injected at startup, via XSYS4_DATA_DIR, or from the
- * build-time default supplied by meson. Never hardcoded in source. */
+/* 数据目录在启动时注入：优先 XSYS4_DATA_DIR，否则用 meson 给的构建期默认值。
+ * 源码里绝不写死路径。 */
 const char *xsys4_data_dir(void);
 void xsys4_set_data_dir(const char *dir);
 

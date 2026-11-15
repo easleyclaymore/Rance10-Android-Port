@@ -44,7 +44,7 @@ static inline fixed16 fixed16_mul(fixed16 a, fixed16 b) {
 }
 
 struct swf_rect {
-	// in twips (1/20 pixel)
+	// 单位是 twips（1/20 像素）
 	int32_t x_min;
 	int32_t x_max;
 	int32_t y_min;
@@ -74,7 +74,7 @@ struct swf_cxform_with_alpha {
 	fixed16 mult_terms[4]; // red, green, blue, alpha
 };
 
-// We only support clipped bitmap fill.
+// 只支持裁剪后的位图填充。
 struct swf_fill_style {
 	uint16_t bitmap_id;
 	bool smoothed;
@@ -87,7 +87,7 @@ struct swf_sound_spec {
 	uint8_t channels;
 };
 
-// Tags
+// 标签
 
 enum swf_tag_type {
 	TAG_END = 0,
@@ -121,7 +121,7 @@ struct swf_tag_define_bits_lossless {
 	uint8_t *data;
 };
 
-// We only support simple rectangle shapes with a fill style.
+// 只支持带填充样式的简单矩形形状。
 struct swf_tag_define_shape {
 	struct swf_tag t;
 	uint16_t shape_id;
@@ -221,17 +221,17 @@ struct swf_tag_start_sound {
 	uint16_t loop_count;
 };
 
-// Actions
+// 动作
 
 enum swf_action_type {
-	// Actions without payload.
+	// 无负载的动作。
 	ACTION_END = 0x00,
 	ACTION_PLAY = 0x06,
 	ACTION_STOP = 0x07,
 	ACTION_POP = 0x17,
 	ACTION_CALL_FUNCTION = 0x3d,
 
-	// Actions with payloads.
+	// 带负载的动作。
 	ACTION_GOTO_FRAME = 0x81,
 	ACTION_CONSTANT_POOL = 0x88,
 	ACTION_PUSH = 0x96,

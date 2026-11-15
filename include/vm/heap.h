@@ -30,7 +30,7 @@ enum vm_pointer_type {
 };
 #define NR_VM_POINTER_TYPES (VM_STRING+1)
 
-// Heap-backed objects. Reference counted.
+// 堆对象：带引用计数。
 struct vm_pointer {
 	int ref;
 	uint32_t seq;

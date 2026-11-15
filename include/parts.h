@@ -165,7 +165,7 @@ bool PE_ReleaseParts3DLayerPluginID(int parts_no, int state);
 // GUIEngine
 int PE_GetFreeNumber(void);
 bool PE_IsExist(int parts_no);
-// PartsFunc interface
+// PartsFunc 接口
 void PE_set_active_controller(int controller_no);
 int PE_get_active_controller(void);
 int PE_get_system_controller(void);
@@ -373,7 +373,7 @@ int PE_get_layoutbox_padding_bottom(int parts_no);
 int PE_get_layoutbox_padding_left(int parts_no);
 int PE_get_layoutbox_padding_right(int parts_no);
 
-// activity.c (D89)
+// activity.c（D89）
 struct activity;
 struct activity_part;
 bool activity_exists(const char *name);
