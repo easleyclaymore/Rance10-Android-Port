@@ -1,13 +1,13 @@
-/* ain_icast.c - census of X_ICAST (0x105) call sites and AIN interface metadata.
+/* ain_icast.c —— X_ICAST（0x105）调用点与 AIN 接口元数据的普查。
  *
- * Static evidence for D32/D28: what the X_ICAST operand is, how the following
- * bytecode consumes the result, and what vtable_offset values the AIN carries.
+ * 给 D32/D28 的静态证据：X_ICAST 的操作数是什么、后面的
+ * 字节码怎么消费结果、以及 AIN 里带的 vtable_offset 都是什么值。
  *
- * Build (from the xsystem4 repo root):
+ * 构建（在 xsystem4 仓库根目录）：
  *   gcc -O1 -I subprojects/libsys4/include tools/ain_icast.c \
  *       build/subprojects/libsys4/libsys4.a -o build/ain_icast \
  *       -lm -lz -ldeflate -lpthread
- * Usage:
+ * 用法：
  *   build/ain_icast <file.ain> [sample_sites]
  */
 #include <stdio.h>
@@ -113,7 +113,7 @@ int main(int argc, char **argv)
 		int iface = code[i].a0;
 		if (iface >= 0 && iface < 2048) operand[iface]++;
 
-		/* classify by how the following 12 instructions consume the result */
+		/* 按后面 12 条指令怎么消费结果来分类 */
 		int has_pop = 0, has_cmpm1 = 0, has_return = 0, has_rassign = 0;
 		for (size_t j = i + 1; j < ncode && j <= i + 12; j++) {
 			if (code[j].op == POP) has_pop = 1;

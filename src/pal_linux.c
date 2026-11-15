@@ -1,5 +1,5 @@
-/* Linux/POSIX implementation of the PAL. This is the ONLY place where
- * Linux-specific headers are allowed for platform services. */
+/* PAL 的 Linux/POSIX 实现。这是唯一允许出现
+ * Linux 专有头文件的平台服务位置。 */
 #define _DEFAULT_SOURCE
 #include <dirent.h>
 #include <errno.h>
@@ -74,8 +74,8 @@ static void lt_sleep_ms(uint32_t ms)
 static uint64_t lt_thread_id(void) { return (uint64_t)(uintptr_t)pthread_self(); }
 static int ln_resolve(const char *host, char *out, size_t out_size)
 {
-	/* Minimal placeholder: Android/JNI implementation will provide the
-	 * real resolver. Never fabricate an address. */
+	/* 最小占位实现：Android/JNI 版会提供
+	 * 真正的解析器。绝不编造地址。 */
 	(void)host; (void)out; (void)out_size;
 	return -1;
 }
@@ -104,8 +104,8 @@ static const IPlatformClock linux_clock = { lc_monotonic_ms, lc_wall_ms };
 static const IPlatformThread linux_thread = { lt_sleep_ms, lt_thread_id };
 static const IPlatformNet linux_net = { ln_resolve };
 static const IPlatformInfo linux_info = { li_platform_name, li_os_description, li_data_dir };
-/* RSS/peak for diagnostics ([mem]). Lives in the adapter because it reads a
- * Linux-specific file; Core asks through the vtable instead. */
+/* 诊断用的常驻/峰值内存（[mem]）。它放在适配层，因为要读
+ * Linux 专有的文件；Core 只通过 vtable 来问。 */
 static void linux_mem_usage(uint64_t *rss_bytes, uint64_t *peak_bytes)
 {
 	*rss_bytes = 0;

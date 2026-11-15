@@ -457,12 +457,12 @@ static void vmSprite_Draw(int update)
 
 static void vmSprite_DrawEffect(int effect, int time)
 {
-	// XXX: This function should only apply the effect to `dirty_rect`, while
-	// sact_Effect applies the effect to the whole screen. In most cases it
-	// doesn't make a difference because (1) the effect is no-op for pixels
-	// where the old and new colors are the same (e.g. crossfade), or (2) the
-	// whole screen is dirty. In Mamanyonyo, the exception is
-	// EFFECT_ROTATE_OUT_CW, which must be applied to `dirty_rect` correctly.
+	// XXX：这个函数本应只对 `dirty_rect` 应用效果，而
+	// sact_Effect 是对整屏应用。多数情况下
+	// 没区别，因为（1）旧新颜色相同的像素上效果是空操作
+	// （例如交叉淡入），或者（2）整屏都脏。
+	// 在《Mamanyonyo》里，例外是
+	// EFFECT_ROTATE_OUT_CW，它必须正确地应用到 `dirty_rect`。
 	if (effect != EFFECT_ROTATE_OUT_CW) {
 		sact_Effect(effect, time, 0);
 		return;
