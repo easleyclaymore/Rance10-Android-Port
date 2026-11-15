@@ -1,8 +1,8 @@
-/* exdump: print a System4 .ex / .pactex structure tree using libsys4's ex_read().
+/* exdump：用 libsys4 的 ex_read() 打印 System4 .ex / .pactex 结构树。
  *
  *   exdump <file.pactex> [max-depth]
  *
- * Used to reverse-engineer activity files field by field. Diagnostic tool only.
+ * 用来逐个字段逆推活动文件。纯诊断工具。
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,8 +15,8 @@
 static int depth_max = 12;
 static int lines = 0;
 
-/* Rance10 ships a GBK (Chinese) build: EX strings are GBK bytes, like the
- * rest of the engine's internal strings. use_gbk makes sjis2utf do GBK->UTF-8. */
+/* 兰斯10 出的是 GBK（中文）版：EX 字符串是 GBK 字节，
+ * 和引擎内部其他字符串一样。use_gbk 让 sjis2utf 做 GBK->UTF-8。 */
 static const char *U(struct string *s)
 {
 	static char buf[8][2048];

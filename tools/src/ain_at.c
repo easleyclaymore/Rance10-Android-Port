@@ -1,6 +1,6 @@
-/* Address/struct/opcode level AIN inspector. Diagnostic tool, links libsys4.a only.
+/* 地址/结构体/操作码三级 AIN 检查器。纯诊断工具，只链接 libsys4.a。
  *
- * Modes:
+ * 模式：
  *   at:<hex>       disasm N instructions from a raw code offset (may be misaligned)
  *   atf:<hex>      find the enclosing AIN function, print its header/locals,
  *                  then disasm from the FUNCTION START up to past <hex> (aligned)
@@ -27,7 +27,7 @@ static void disasm_at(struct ain*a,size_t ip,int n){
 		printf("\n"); ip+=instruction_width(op);
 	}
 }
-/* Aligned disassembly: walk from a known function start, mark the target ip. */
+/* 对齐反汇编：从已知函数入口开始走，标出目标 ip。 */
 static void disasm_range(struct ain*a,size_t from,size_t to,size_t mark){
 	size_t ip=from;
 	for(int i=0;i<2000 && ip<to && ip+2<=a->code_size;i++){

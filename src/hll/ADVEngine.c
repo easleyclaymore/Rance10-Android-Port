@@ -1,8 +1,8 @@
-/* ADVEngine - instrumented stub for Rance X bring-up.
+/* ADVEngine —— 兰斯10 启动用的带探针空桩。
  *
  * Semantics are undocumented (function-definition files, step/if execution,
- * delegate object IDs). Every entry point logs its arguments so the first run
- * tells us the real call sequence, then behaviour can be filled in.
+ * 委托对象 ID）。每个入口都会打日志记录实参，这样第一次跑
+ * 就能看到真实的调用顺序，之后再把行为补上。
  */
 #include <stdio.h>
 #include <string.h>

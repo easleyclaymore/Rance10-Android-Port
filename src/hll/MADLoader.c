@@ -25,8 +25,8 @@
 #include "gfx/gfx.h"
 #include "sact.h"
 
-// A MAD file consists of this header, followed by `nr_images` QNT images, each
-// prefixed with its size.
+// 一个 MAD 文件由这个头加上 `nr_images` 张 QNT 图组成，每张
+// 前面都带自己的尺寸。
 struct MADHeader {
 	char magic[4];  // "MAD\0"
 	unsigned char unknown1[8];
@@ -184,7 +184,7 @@ static bool MADLoader_IsKeepLastFrame(int handle)
 
 static bool MADLoader_IsLoading(int handle)
 {
-	// We don't support background loading.
+	// 不支持后台装载。
 	return false;
 }
 

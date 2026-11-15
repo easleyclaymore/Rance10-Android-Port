@@ -1,8 +1,8 @@
-/* EXWriter - minimal in-memory implementation for Rance X bring-up.
+/* EXWriter —— 兰斯10 启动用的最小内存实现。
  *
- * A handle-based key/value writer. SetInt/SetString/AddTable* store into an
- * in-memory map; Save/SaveToString serialize a flat listing. Real format
- * compatibility with the original is not attempted yet.
+ * 一个基于句柄的键值写入器。SetInt/SetString/AddTable* 都写进
+ * 内存里的 map；Save/SaveToString 序列化出一份扁平清单。
+ * 暂不追求和原版格式完全兼容。
  */
 #include <stdio.h>
 #include <stdlib.h>

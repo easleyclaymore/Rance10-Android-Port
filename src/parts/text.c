@@ -101,7 +101,7 @@ void parts_text_append(struct parts *parts, struct parts_text *t, struct string 
 		msgp = parts_text_append_char(t, msgp);
 	}
 
-	// calculate dimensions of the text
+	// 算出文本的尺寸
 	float f_width = 0;
 	int height = 0;
 	for (int i = 0; i < t->nr_lines; i++) {
@@ -348,9 +348,9 @@ bool PE_SetPartsFontEdgeWeight(int parts_no, float edge_weight, int state)
 	return true;
 }
 
-/* Character / line spacing as stored by PE_SetTextCharSpace /
- * PE_SetTextLineSpace. A missing parts or non-text state reads as 0, matching
- * the renderer's default of "no extra spacing". */
+/* PE_SetTextCharSpace / PE_SetTextLineSpace 存下的字符/行间距。
+ * 部件不存在或不是文本状态时读作 0，
+ * 与渲染器「不额外加间距」的默认一致。 */
 int PE_GetTextCharSpace(int parts_no, int state)
 {
 	if (!parts_state_valid(--state))

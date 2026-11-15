@@ -62,7 +62,7 @@ struct asset_manager {
 	struct archive_data *(*get_by_name)(struct asset_manager *manager, const char *name, int *id_out);
 };
 
-// XXX: also used for AFAv1 in Daiteikoku, Shaman's Sanctuary
+// XXX：《大帝国》《Shaman's Sanctuary》的 AFAv1 也走这里
 struct asset_manager_ald {
 	struct asset_manager manager;
 	struct archive *archive;
@@ -330,9 +330,9 @@ void asset_manager_init(void)
 	char *base = get_base_name(config.ain_filename);
 	size_t base_len = strlen(base);
 
-	// get ALD filenames
+	// 取 ALD 文件名
 	while ((d_name = readdir_utf8(dir))) {
-		// archive filename must begin with ain filename
+		// 压缩包文件名必须以 ain 文件名开头
 		if (strncasecmp(base, d_name, base_len))
 			goto loop_next;
 		const char *ext = file_extension(d_name);
@@ -415,7 +415,7 @@ void asset_manager_init(void)
 	closedir_utf8(dir);
 	free(base);
 
-	// open ALD archives
+	// 打开 ALD 压缩包
 	ald_init(ASSET_BGM, ald_filenames[ASSET_BGM], ald_count[ASSET_BGM]);
 	ald_init(ASSET_SOUND, ald_filenames[ASSET_SOUND], ald_count[ASSET_SOUND]);
 	ald_init(ASSET_VOICE, ald_filenames[ASSET_VOICE], ald_count[ASSET_VOICE]);
@@ -425,7 +425,7 @@ void asset_manager_init(void)
 	ald_init(ASSET_DATA, ald_filenames[ASSET_DATA], ald_count[ASSET_DATA]);
 	ald_init(ASSET_FLASH, ald_filenames[ASSET_FLASH], ald_count[ASSET_FLASH]);
 
-	// open AFA archives
+	// 打开 AFA 压缩包
 	afa_init(ASSET_BGM, afa_filenames[ASSET_BGM]);
 	afa_init(ASSET_SOUND, afa_filenames[ASSET_SOUND]);
 	afa_init(ASSET_VOICE, afa_filenames[ASSET_VOICE]);

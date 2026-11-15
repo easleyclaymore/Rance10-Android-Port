@@ -36,9 +36,9 @@ enum file_mode {
 
 static FILE *current_file = NULL;
 static enum file_mode current_mode;
-// Buffer for reading from / writing to binary format
+// 二进制格式读写的缓冲
 static struct buffer contents;
-// Buffer for reading from JSON format
+// JSON 格式读写的缓冲
 static char *json_contents = NULL;
 static size_t json_cursor = 0;
 
@@ -218,7 +218,7 @@ static int File_Read(struct page **_page)
 		VM_ERROR("File.Read called, but file wasn't opened for reading");
 	}
 
-	// read file into memory if needed
+	// 需要的话把文件读进内存
 	if (!json_contents && !contents.buf) {
 		fseek(current_file, 0, SEEK_END);
 		size_t file_size = ftell(current_file);
@@ -232,7 +232,7 @@ static int File_Read(struct page **_page)
 		}
 		buf[file_size] = '\0';
 
-		// Check if it's ZLIB compressed
+		// 检查是不是 ZLIB 压缩
 		if (file_size > 6 && buf[4] == 0x78 && buf[5] == 0x9c) {
 			size_t raw_size = LittleEndian_getDW(buf, 0);
 			uint8_t *raw_buf = xmalloc(raw_size);
@@ -245,7 +245,7 @@ static int File_Read(struct page **_page)
 			}
 			buffer_init(&contents, raw_buf, raw_size);
 		} else {
-			// JSON format created by old versions of xsystem4
+			// 老版本 xsystem4 生成的 JSON 格式
 			json_contents = (char*)buf;
 		}
 	}

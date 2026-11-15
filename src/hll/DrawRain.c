@@ -56,9 +56,9 @@ static void DrawRain_update(struct sact_sprite *sp)
 		return;
 	plugin->timestamp = timestamp;
 
-	// Unlike the AliceSoft's DrawRain, we draw random lines every frame
-	// ignoring the speed parameter. The difference is not noticeable unless
-	// the speed is very small.
+	// 和 AliceSoft 的 DrawRain 不同，我们每帧都画随机线，
+	// 忽略 speed 参数。除非 speed 非常小，
+	// 否则看不出区别。
 	struct texture *dst = sprite_get_texture(sp);
 	gfx_fill_amap(dst, 0, 0, dst->w, dst->h, 0);
 	float rad = plugin->angle * GLM_PIf / 180.f;

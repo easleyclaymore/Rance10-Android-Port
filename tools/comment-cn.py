@@ -97,6 +97,13 @@ def needs_translation(line):
     # 注释里的结构体定义（ChrLoader / vmMapLoader 的格式说明）也是代码。
     if re.match(r'^struct\s+\w+\s*\{', body) or body.startswith('};'):
         return False
+    # 注释里的结构体字段声明 / 被注释掉的函数定义
+    if re.match(r'^(char|short|int|long|float|double|unsigned|signed|uint\d+_t|size_t|static)\s', body):
+        return False
+    # 纯路径 / 环境变量名（// $XDG_DATA_HOME/xsystem4）：内容本身就是标识，
+    # 翻成中文反而找不到对应目录。
+    if body.startswith('$') or body.startswith('/'):
+        return False
     if body.endswith(',') and '(' in body:
         return False
     return True

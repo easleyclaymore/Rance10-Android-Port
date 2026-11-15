@@ -1,9 +1,9 @@
-/* Platform Abstraction Layer.
+/* 平台抽象层。
  *
- * Core logic must never include Linux/POSIX headers directly. Platform
- * services are injected through a Platform vtable: Linux development builds
- * use pal_linux(), Android builds provide a JNI-backed implementation via
- * pal_set(). No absolute paths or uid/root assumptions live in this layer.
+ * Core 逻辑绝不能直接 include Linux/POSIX 头文件。平台服务通过
+ * Platform vtable 注入：Linux 开发构建用 pal_linux()，
+ * Android 构建通过 pal_set() 提供 JNI 实现。
+ * 这一层不写死绝对路径，也不假定 uid/root。
  */
 #ifndef XSYSTEM4_PAL_H
 #define XSYSTEM4_PAL_H

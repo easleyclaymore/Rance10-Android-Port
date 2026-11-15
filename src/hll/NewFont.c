@@ -23,7 +23,7 @@ static Point NewFont_cursor = { 0, 0 };
 static struct text_render_metrics NewFont_metrics = {0};
 static struct text_render_metrics NewFont_shadow_metrics = {0};
 
-// XXX: not used
+// XXX：没用到
 //static void NewFont_AlphaComposite(int dst_sp, int dst_x, int dst_y, int src_sp, int src_x, int src_y, int w, int h)
 
 static int NewFont_SetTextMetrics(struct page **_tm)
@@ -135,7 +135,7 @@ static int NewFont_MeasureChar(int c1, int c2)
 	return ceilf(size->font->size_char_kerning(size, c1, c2));
 }
 
-// XXX: not used
+// XXX：没用到
 //static void NewFont_MultiplyAlphaByOriginalImageAlpha(int dst_sp, int dst_x, int dst_y, int src_sp, int src_x, int src_y, int w, int h)
 
 HLL_LIBRARY(NewFont,

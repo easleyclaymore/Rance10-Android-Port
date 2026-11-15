@@ -1,4 +1,4 @@
-/* system - implementation for Rance X bring-up.
+/* system —— 兰斯10 启动用实现。
  *
  * 存档/读档已接上 src/savedata.c 的 gsave 实现（D127）；ResumeSave/Load 仍是桩。
  */
@@ -15,7 +15,7 @@
 #include "savedata.h"
 #include "xsystem4.h"
 
-/* ---------------- save / load (stubs) ---------------- */
+/* ---------------- 存档 / 读档（空桩） ---------------- */
 
 static bool System_ResumeSave(struct string *a, struct string *b, int *c)
 {
@@ -38,7 +38,7 @@ static bool System_ResumeReadComment(struct string *a, struct string *b, struct 
 	return false;
 }
 
-/* ---------------- save / load ----------------
+/* ---------------- 存档 / 读档 ----------------
  *
  * [D127] 这四个原本是 `return false` 的空桩，导致：
  *   - 每次改配置都弹 `[Error] 存档文件「 AFConfig.asd 」保存失败`
@@ -119,7 +119,7 @@ static bool System_CopySaveFile(struct string *src, struct string *dst)
 	return ok;
 }
 
-/* ---------------- simple ---------------- */
+/* ---------------- 简单接口 ---------------- */
 
 static void System_Peek(void)
 {

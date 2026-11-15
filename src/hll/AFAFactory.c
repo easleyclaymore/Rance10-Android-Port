@@ -18,9 +18,9 @@
 #include "asset_manager.h"
 #include "hll.h"
 
-/* AIN AFAFactory type ids (see afa::CG/Flat/Sound_SearchTitle):
- * 2 = CG, 3 = FLAT, 5 = SOUND. Return int, not enum: an unsigned enum turned
- * the -1 sentinel into 0xffffffff and crashed asset_exists_by_name(). */
+/* AIN 的 AFAFactory 类型号（见 afa::CG/Flat/Sound_SearchTitle）：
+ * 2 = CG，3 = FLAT，5 = SOUND。返回 int 而不是枚举：无符号枚举会把
+ * -1 哨兵变成 0xffffffff，让 asset_exists_by_name() 崩掉。 */
 static int get_asset_type(int type)
 {
 	switch (type) {
@@ -43,8 +43,8 @@ bool AFAFactory_LoadArchive(int type, struct string *archive_name)
 	return asset_manager_load_archive(t, archive_name->text);
 }
 
-/* AFAFactory.SearchTitle(Type, Name) -> archive entry id, or -1.
- * Used by the title scene to resolve flat asset names. */
+/* AFAFactory.SearchTitle(Type, Name) -> 压缩包条目号，或 -1。
+ * 标题画面用它把 flat 资源名解析出来。 */
 static int AFAFactory_SearchTitle(int type, struct string *name)
 {
 	int t = get_asset_type(type);

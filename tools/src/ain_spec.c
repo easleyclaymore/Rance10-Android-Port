@@ -1,11 +1,11 @@
-/* ain_spec.c - reproducible static fact collector for AIN v12 bytecode.
+/* ain_spec.c —— AIN v12 字节码的可复现静态事实收集器。
  *
- * Build (from xsystem4 repo root):
+ * 构建（在 xsystem4 仓库根目录）：
  *   gcc -O1 -I subprojects/libsys4/include tools/ain_spec.c \
  *       build/subprojects/libsys4/libsys4.a -o /tmp/ain_spec \
  *       -lm -lz -ldeflate -lpthread
  *
- * Modes:
+ * 模式：
  *   opcodes                 full opcode frequency + unimplemented/TODO census
  *   xops [max_per_op]       0x10x extension call sites with local disassembly
  *   slots                   variable-slot width / void-placeholder census

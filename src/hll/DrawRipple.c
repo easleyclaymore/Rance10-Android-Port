@@ -64,7 +64,7 @@ static void draw_point(uint32_t *pixels, int w, int h, int x, int y)
 
 static void draw_ellipse(uint32_t *pixels, int dst_w, int dst_h, int cx, int cy, int rx, int ry)
 {
-	// Midpoint Ellipse Algorithm.
+	// 中点椭圆算法。
 	if (rx == 0 || ry == 0)
 		return;
 	const int rx2 = rx * rx;
@@ -74,7 +74,7 @@ static void draw_ellipse(uint32_t *pixels, int dst_w, int dst_h, int cx, int cy,
 	int px = 0;
 	int py = 2 * rx2 * y;
 
-	// Region 1
+	// 第 1 区域
 	int p = ry2 - (rx2 * ry) + (0.25 * rx2);
 	while (px < py) {
 		draw_point(pixels, dst_w, dst_h, cx + x, cy + y);
@@ -92,7 +92,7 @@ static void draw_ellipse(uint32_t *pixels, int dst_w, int dst_h, int cx, int cy,
 		}
 	}
 
-	// Region 2
+	// 第 2 区域
 	p = ry2 * (x + 0.5) * (x + 0.5) + rx2 * (y - 1) * (y - 1) - rx2 * ry2;
 	while (y > 0) {
 		draw_point(pixels, dst_w, dst_h, cx + x, cy + y);

@@ -136,7 +136,7 @@ static int BanMisc_LoadStruct(struct page **_page, struct string *file_name)
 		*_page = page;
 		return 1;
 	}
-	// load from JSON (for backward compatibility)
+	// 从 JSON 装载（向后兼容）
 	cJSON *json = cJSON_Parse((char *)buf);
 	free(buf);
 	if (!json) {
@@ -160,7 +160,7 @@ static void BanMisc_FadePlay(int ch, int num, int time, int volume, int loop)
 {
 	bgm_prepare(ch, num);
 	bgm_play(ch);
-	// TODO: fading
+	// TODO：淡入淡出
 }
 
 static int BanMisc_IsPlay(int ch)
@@ -219,7 +219,7 @@ static int BanMisc_SoundRelease(int ch)
 
 static int BanMisc_IsMute(int ch)
 {
-	// Returns 1 if ch is muted in the sound config dialog.
+	// 声音设置对话框里 ch 被静音时返回 1。
 	return 0;
 }
 
