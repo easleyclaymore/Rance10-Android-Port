@@ -541,6 +541,17 @@ static void PE_AddPartsConstructionProcess(int parts_no, struct page **ints,
 static void PartsEngine_UpdateComponent(int passed_time, int scaled_time,
 		int message_window_show, float mul_color_rate, float alpha_rate)
 {
+	/* [D228 诊断] XSYS4_UPD_DBG=1：每 120 次打一行真实时间实参。
+	 * 起因：`PartsMotionTask`/`CAS` 任务只在开局跑 4 次就再也不推进（H040），
+	 * 而 AIN 仍在帧循环里。若这里 `st=0`，说明"缩放时间"恒 0 —— 所有靠
+	 * scaled_time 推进的 motion 任务都会冻在 from 值上。 */
+	if (getenv("XSYS4_UPD_DBG")) {
+		static unsigned n;
+		if (n++ % 120 == 0)
+			NOTICE("[upd] t=%d st=%d mw=%d mul=%.2f alpha=%.2f n=%u",
+			       passed_time, scaled_time, message_window_show,
+			       mul_color_rate, alpha_rate, n);
+	}
 	(void)scaled_time; (void)mul_color_rate; (void)alpha_rate;
 	PE_Update(passed_time, message_window_show != 0);
 }
