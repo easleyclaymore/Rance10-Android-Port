@@ -172,7 +172,7 @@ static void cmd_launch(cJSON *args, cJSON *resp)
 		return;
 	}
 
-	// TODO: handle noDebug option
+	// TODO：处理 noDebug 选项
 	send_response(resp, true);
 	dap_launch_req_received = true;
 	if (dap_config_done_req_received)
@@ -190,14 +190,14 @@ static void cmd_configurationDone(cJSON *args, cJSON *resp)
 static void cmd_stackTrace(cJSON *args, cJSON *resp)
 {
 	cJSON *body, *stack_frames, *frame;
-	// FIXME: we ignore startFrame/levels arguments
+	// FIXME：我们忽略了 startFrame/levels 参数
 	cJSON_AddItemToObjectCS(resp, "body", body = cJSON_CreateObject());
 	cJSON_AddNumberToObject(body, "totalFrames", call_stack_ptr);
 	cJSON_AddItemToObjectCS(body, "stackFrames", stack_frames = cJSON_CreateArray());
 	for (int i = call_stack_ptr - 1; i >= 0; i--) {
 		cJSON_AddItemToArray(stack_frames, frame = cJSON_CreateObject());
 		cJSON_AddNumberToObject(frame, "id", i);
-		// this *shouldn't* happen, but since we're in the debugger...
+		// 这本来不该发生，但既然在调试器里……
 		int fno = call_stack[i].fno;
 		if (fno < 0 || fno >= ain->nr_functions) {
 			cJSON_AddStringToObject(frame, "name", "<invalid function>");
@@ -301,7 +301,7 @@ static void cmd_scopes(cJSON *args, cJSON *resp)
 		cJSON_AddNumberToObject(mem_scope, "variablesReference", mem_ref);
 	}
 
-	// TODO: stack values?
+	// TODO：栈上的值？
 
 	send_response(resp, true);
 }
@@ -464,7 +464,7 @@ static void cmd_variables(cJSON *args, cJSON *resp)
 
 	struct page *page = heap_get_page(slot);
 
-	// FIXME: filter/start/count are ignored
+	// FIXME：filter/start/count 被忽略
 
 	cJSON *vars = var_ref_to_json(page, type);
 	if (!vars) {
@@ -581,12 +581,12 @@ static void cmd_setInstructionBreakpoints(cJSON *args, cJSON *resp)
 		if (ref->valuestring[0] == '\0' || *endptr != '\0') {
 			goto fail;
 		}
-		// FIXME: offset is ignored
-		// TODO: condition
-		// TODO: hitCondition
+		// FIXME：offset 被忽略
+		// TODO：条件
+		// TODO：命中条件
 	}
 
-	// clear old breakpoints
+	// 清掉旧断点
 	for (int i = 0; i < nr_old_breakpoints; i++) {
 		dbg_clear_breakpoint(old_breakpoints[i], NULL);
 	}
@@ -601,10 +601,10 @@ static void cmd_setInstructionBreakpoints(cJSON *args, cJSON *resp)
 		cJSON_AddStringToObject(bp, "instructionReference", s_addr);
 		bool verified = dbg_set_address_breakpoint(addresses[i], NULL, NULL);
 		cJSON_AddBoolToObject(bp, "verified", verified);
-		// TODO: id, message, offset
+		// TODO：id、message、offset
 	}
 
-	// save new breakpoints list
+	// 保存新的断点列表
 	free(old_breakpoints);
 	old_breakpoints = addresses;
 	nr_old_breakpoints = nr_breakpoints;
@@ -653,7 +653,7 @@ static void cmd_evaluate(cJSON *args, cJSON *resp)
 	json_add_sjis_to_object(body, "result", s_val->text);
 	json_add_sjis_to_object(body, "type", s_type);
 	cJSON_AddNumberToObject(body, "variablesReference", make_var_ref(&type, val));
-	// TODO: presentationHint
+	// TODO：presentationHint
 
 	send_response(resp, true);
 }
@@ -762,7 +762,7 @@ static void cmd_disconnect(cJSON *args, cJSON *resp)
 	vm_exit(0);
 }
 
-// get scene metadata
+// 取场景元数据
 static void cmd_xsystem4_scene(cJSON *args, cJSON *resp)
 {
 	cJSON *body;
@@ -784,7 +784,7 @@ static bool get_id(cJSON *args, const char *id_name, int *id_out)
 	return true;
 }
 
-// render a scene entity (using sprite->render())
+// 渲染一个场景实体（用 sprite->render()）
 static void cmd_xsystem4_renderEntity(cJSON *args, cJSON *resp)
 {
 	int id;
@@ -795,16 +795,16 @@ static void cmd_xsystem4_renderEntity(cJSON *args, cJSON *resp)
 		return;
 	}
 
-	// create output texture
+	// 创建输出纹理
 	Texture t;
 	gfx_init_texture_rgb(&t, config.view_width, config.view_height, (SDL_Color){0,0,0});
 
-	// render entity to texture
+	// 把实体渲染到纹理
 	GLuint fbo = gfx_set_framebuffer(GL_DRAW_FRAMEBUFFER, &t, 0, 0, t.w, t.h);
 	sp->render(sp);
 	gfx_reset_framebuffer(GL_DRAW_FRAMEBUFFER, fbo);
 
-	// send response
+	// 发回响应
 	cJSON *body;
 	cJSON_AddItemToObjectCS(resp, "body", body = cJSON_CreateObject());
 	cJSON_AddNumberToObject(body, "entityId", id);
@@ -813,7 +813,7 @@ static void cmd_xsystem4_renderEntity(cJSON *args, cJSON *resp)
 	gfx_delete_texture(&t);
 }
 
-// get the stored texture data of a sact_sprite
+// 取 sact_sprite 存下来的纹理数据
 static void cmd_xsystem4_spriteTexture(cJSON *args, cJSON *resp)
 {
 	int id;
@@ -857,7 +857,7 @@ static void draw_rectangle(Texture *t, Color c, Rectangle r)
 	gfx_draw_line(t, r.x + r.w, r.y, r.x + r.w, r.y + r.h, c.r, c.g, c.b);
 }
 
-// render a parts object
+// 渲染一个 parts 对象
 static void cmd_xsystem4_renderParts(cJSON *args, cJSON *resp)
 {
 	int parts_id;
@@ -867,26 +867,26 @@ static void cmd_xsystem4_renderParts(cJSON *args, cJSON *resp)
 		return;
 	}
 
-	// create output texture, with darkened grayscale main surface as background
+	// 创建输出纹理，背景用调暗的灰度主表面
 	Texture t;
 	gfx_init_texture_rgb(&t, config.view_width, config.view_height, (SDL_Color){0,0,0});
 	gfx_copy_grayscale(&t, 0, 0, gfx_main_surface(), 0, 0, t.w, t.h);
 	gfx_fill_multiply(&t, 0, 0, t.w, t.h, 20, 20, 20);
 
-	// render parts to textre
+	// 把 parts 渲染到纹理
 	GLuint fbo = gfx_set_framebuffer(GL_FRAMEBUFFER, &t, 0, 0, t.w, t.h);
 	parts_render_family(parts);
 	gfx_reset_framebuffer(GL_FRAMEBUFFER, fbo);
 
 	struct parts_common *state = &parts->states[parts->state].common;
-	// draw bounds
+	// 画边界
 	draw_rectangle(&t, (Color){255,0,0}, (Rectangle) {
 		parts->global.pos.x + state->origin_offset.x,
 		parts->global.pos.y + state->origin_offset.y,
 		state->w,
 		state->h
 	});
-	// draw origin
+	// 画原点
 	draw_rectangle(&t, (Color){0,255,0}, (Rectangle) {
 		parts->global.pos.x - 1,
 		parts->global.pos.y - 1,
@@ -894,7 +894,7 @@ static void cmd_xsystem4_renderParts(cJSON *args, cJSON *resp)
 		3
 	});
 
-	// send response
+	// 发回响应
 	cJSON *body;
 	cJSON_AddItemToObjectCS(resp, "body", body = cJSON_CreateObject());
 	cJSON_AddNumberToObject(body, "partsId", parts_id);
@@ -903,7 +903,7 @@ static void cmd_xsystem4_renderParts(cJSON *args, cJSON *resp)
 	gfx_delete_texture(&t);
 }
 
-// get the stored texture data of a parts object
+// 取 parts 对象存下来的纹理数据
 static void cmd_xsystem4_partsTexture(cJSON *args, cJSON *resp)
 {
 	int parts_id;
@@ -944,7 +944,7 @@ static struct {
 	{ "variables", cmd_variables, true },
 	{ "setVariable", cmd_setVariable, true },
 	{ "disconnect", cmd_disconnect, true },
-	// DAP extensions
+	// DAP 扩展
 	{ "xsystem4.scene", cmd_xsystem4_scene, true },
 	{ "xsystem4.renderEntity", cmd_xsystem4_renderEntity, true },
 	{ "xsystem4.spriteTexture", cmd_xsystem4_spriteTexture, true },
@@ -1092,8 +1092,8 @@ void dbg_dap_log(const char *log, const char *fmt, va_list ap)
 	char *buf = xmalloc(len);
 	vsnprintf(buf, len, fmt, ap);
 #ifdef _WIN32
-	// Since the callers use display_sjis*(), buf is in Shift_JIS on Windows.
-	// Convert to UTF-8 for DAP.
+	// 调用方用的是 display_sjis*()，所以 Windows 上 buf 是 Shift_JIS。
+	// 转成 UTF-8 再交给 DAP。
 	char *utf8 = sjis2utf(buf, 0);
 	free(buf);
 	buf = utf8;

@@ -97,17 +97,17 @@ static void map_handles(struct ex_value *val)
 
 static void MainEXFile_ModuleInit(void)
 {
-	// load .ex file
+	// 装载 .ex 文件
 	if (!config.ex_path || !(ex = ex_read_file(config.ex_path)))
 		ERROR("Failed to load .ex file: %s", display_utf0(config.ex_path));
 
-	// assign IDs to each ex_value
+	// 给每个 ex_value 分配 ID
 	int id = 1;
 	for (unsigned i = 0; i <  ex->nr_blocks; i++) {
 		id = set_indices(&ex->blocks[i].val, id);
 	}
 
-	// create index mapping IDs to ex_values
+	// 建一张 ID -> ex_value 的索引表
 	nr_handles = id;
 	handles = xcalloc(nr_handles, sizeof(struct ex_value*));
 	for (unsigned i = 0; i < ex->nr_blocks; i++) {
@@ -127,7 +127,7 @@ static void MainEXFile_ModuleFini(void)
 HLL_WARN_UNIMPLEMENTED(false, bool, MainEXFile, ReloadDebugEXFile, void);
 
 /*
- * Get handle for top-level value.
+ * 取顶层值的句柄。
  */
 static int MainEXFile_Handle(struct string *name)
 {
@@ -650,10 +650,10 @@ static bool MainEXFile_GetNodeName(struct string *tree_path, int index, struct s
 static bool MainEXFile_GetEXName(struct string *tree_path, int index,
 				 struct string **ex_name);
 
-/* AIN f[31]/f[32]: bool GetNodeNameList / GetEXNameList(tree_path, ref array
- * out, int flags). Collects the child names of a tree node into a fresh string
- * array; `leaf` selects the EX (leaf) children instead of the node children.
- * `flags` (in-place reuse of an existing array) is not implemented (D80). */
+/* AIN f[31]/f[32]：bool GetNodeNameList / GetEXNameList(tree_path, ref array
+ * out, int flags)。把一个树节点的子节点名字收集进一个新的字符串数组；
+ * `leaf` 选的是 EX（叶子）子节点而不是节点子节点。
+ * `flags`（原地复用已有数组）没有实现（D80）。 */
 static bool ex_tree_name_list(struct string *tree_path, struct page **out, bool leaf)
 {
 	if (!out)
@@ -734,7 +734,7 @@ static bool MainEXFile_GetEXName(struct string *tree_path, int index, struct str
 	return false;
 }
 
-// Some games pass an EX name instead of a handle.
+// 有些游戏传的是 EX 名字而不是句柄。
 #define MAIN_EX_NAME_FUNCTIONS(X) \
 	X(int, Row, (struct string *name), (MainEXFile_Handle(name))) \
 	X(int, Col, (struct string *name), (MainEXFile_Handle(name))) \
@@ -778,17 +778,17 @@ MAIN_EX_NAME_FUNCTIONS(DEFINE_NAME_WRAPPER)
 
 static void MainEXFile_PreLink(void);
 
-/* ---- AIN v12 name-based access ------------------------------------------
- * v12 addresses values by NAME and returns them directly, with the caller's
- * default standing in for a missing entry (D38); the handle-based API above is
- * only used by the editor. The trailing int parameter of each declaration is a
- * row selector for the one-dimensional getters and unused elsewhere.
+/* ---- AIN v12 按名字访问 ------------------------------------------------
+ * v12 用名字寻址并直接返回值，缺失时用调用方的默认值顶上（D38）；
+ * 上面那套基于句柄的 API 只有编辑器在用。每个声明末尾的 int 参数
+ * 是一维取值函数的行选择器，其他地方不用。
  *
- * `TreePath` arguments (GetNodeName* / GetEXName*) address nodes of the .ex
- * tree, not top-level values, and are handled by the functions below. */
+ *
+ * `TreePath` 实参（GetNodeName* / GetEXName*）寻址的是 .ex 树的节点，
+ * 不是顶层值，由下面的函数处理。 */
 
-/* The value stored at `name`, indexed into when it is a container:
- * a table is indexed [row][col], a list by `row`. */
+/* `name` 处存的值，是容器时按下标取：
+ * 表按 [行][列] 取，列表按 `行` 取。 */
 static struct ex_value *v12_leaf(struct string *name, int row, int col)
 {
 	if (!ex || !name || !name->text)
@@ -964,8 +964,8 @@ static struct string *MainEXFile_A2String_v12(struct string *name, int r, int c,
 	return ex_value_string(v12_leaf(name, r, c), dflt);
 }
 
-/* Row/column indices are 0-based here, matching ex_row_at_* / ex_col_from_name;
- * a missing table maps to the caller's default. */
+/* 这里的行列下标都从 0 开始，与 ex_row_at_* / ex_col_from_name 一致；
+ * 表不存在时就返回调用方给的默认值。 */
 static int MainEXFile_GetRowAtIntKey_v12(struct string *name, int key, int dflt)
 {
 	struct ex_table *t = v12_table(name);
@@ -1088,13 +1088,13 @@ HLL_LIBRARY(MainEXFile,
 
 static void MainEXFile_PreLink(void)
 {
-	/* Rance10's AIN v12 declares every value accessor as
-	 *   (string name, [index...], default_value, row)
-	 * i.e. addressed by name and returning the value directly, while the
-	 * upstream bindings are the (int handle, ...) editor forms or the
-	 * (string name, ..., T *out) forms. Rebind the whole name-addressed
-	 * family onto the v12 implementations above; the handle-based entries in
-	 * the export table stay for the editor. */
+	/* 兰斯10 的 AIN v12 把每个取值函数都声明成
+	 *   (string name, [下标...], default_value, row)
+	 * 也就是按名字寻址、直接返回值；而上游绑定是 (int handle, ...) 的
+	 * 编辑器形式，或者 (string name, ..., T *out) 的出参形式。
+	 * 所以把整个「按名字寻址」这一族重新绑到上面的 v12 实现上；
+	 * 导出表里那些基于句柄的条目
+	 * 留给编辑器用。 */
 #define V12(name) \
 	static_library_replace(&lib_MainEXFile, #name, MainEXFile_##name##_v12)
 	V12(Row);

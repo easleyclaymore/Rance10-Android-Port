@@ -544,18 +544,18 @@ static void vmArray_OrRangeNum(struct page *s_array, int index, int min, int max
 	set_if(s_array, index, pred_in_range, &r, *d_array);
 }
 
-// Find num by visiting elements spirally around (x, y).
+// 以 (x, y) 为中心，按螺旋顺序找 num。
 static int vmArray_AroundRect(struct page *array, int width, int height, int x, int y, int length, int num, int *out_x, int *out_y)
 {
 	for (int dist = 1;; dist++) {
-		// walk one step north
+		// 往北走一步
 		if (--length < 0)
 			return 0;
 		y--;
 		if (0 <= x && x < width && 0 <= y && y < height && array->values[y * width + x].i == num)
 			goto found;
 
-		// walk southeast
+		// 往东南走
 		for (int i = 0; i < dist; i++) {
 			if (--length < 0)
 				return 0;
@@ -564,7 +564,7 @@ static int vmArray_AroundRect(struct page *array, int width, int height, int x, 
 			if (0 <= x && x < width && 0 <= y && y < height && array->values[y * width + x].i == num)
 				goto found;
 		}
-		// walk southwest
+		// 往西南走
 		for (int i = 0; i < dist; i++) {
 			if (--length < 0)
 				return 0;
@@ -573,7 +573,7 @@ static int vmArray_AroundRect(struct page *array, int width, int height, int x, 
 			if (0 <= x && x < width && 0 <= y && y < height && array->values[y * width + x].i == num)
 				goto found;
 		}
-		// walk northwest
+		// 往西北走
 		for (int i = 0; i < dist; i++) {
 			if (--length < 0)
 				return 0;
@@ -582,7 +582,7 @@ static int vmArray_AroundRect(struct page *array, int width, int height, int x, 
 			if (0 <= x && x < width && 0 <= y && y < height && array->values[y * width + x].i == num)
 				goto found;
 		}
-		// walk northeast
+		// 往东北走
 		for (int i = 0; i < dist - 1; i++) {
 			if (--length < 0)
 				return 0;
@@ -600,7 +600,7 @@ static int vmArray_AroundRect(struct page *array, int width, int height, int x, 
 	return 1;
 }
 
-/* Hex boards are indexed like this (width = 5, height = 3, for example):
+/* 六边形棋盘的下标是这样排的（例如宽 5、高 3）：
  *
  *    +--+  +--+  +--+
  *    | 0|--| 2|--| 4|
@@ -610,24 +610,24 @@ static int vmArray_AroundRect(struct page *array, int width, int height, int x, 
  *    |10|--|12|--|14|
  *    +--+  +--+  +--+
  *
- * Note that odd-numbered columns are one height lower. Because of this, indices
- * 11 and 13 are unused.
+ * 注意奇数列要低一格。因此下标
+ * 11 和 13 是空着不用的。
 */
 static bool is_valid_hex(int x, int y, int w, int h) {
 	return 0 <= x && x < w && 0 <= y && y < h && !(y == h - 1 && is_odd(x));
 }
 
-// Find num by visiting elements spirally around (x, y).
+// 以 (x, y) 为中心，按螺旋顺序找 num。
 static int vmArray_AroundHexa(struct page *array, int width, int height, int x, int y, int length, int num, int *out_x, int *out_y)
 {
 	for (int dist = 1;; dist++) {
-		// walk one step north
+		// 往北走一步
 		if (--length < 0)
 			return 0;
 		y--;
 		if (is_valid_hex(x, y, width, height) && array->values[y * width + x].i == num)
 			goto found;
-		// walk southeast
+		// 往东南走
 		for (int i = 0; i < dist; i++) {
 			if (--length < 0)
 				return 0;
@@ -636,7 +636,7 @@ static int vmArray_AroundHexa(struct page *array, int width, int height, int x, 
 			if (is_valid_hex(x, y, width, height) && array->values[y * width + x].i == num)
 				goto found;
 		}
-		// walk south
+		// 往南走
 		for (int i = 0; i < dist; i++) {
 			if (--length < 0)
 				return 0;
@@ -644,7 +644,7 @@ static int vmArray_AroundHexa(struct page *array, int width, int height, int x, 
 			if (is_valid_hex(x, y, width, height) && array->values[y * width + x].i == num)
 				goto found;
 		}
-		// walk southwest
+		// 往西南走
 		for (int i = 0; i < dist; i++) {
 			if (--length < 0)
 				return 0;
@@ -653,7 +653,7 @@ static int vmArray_AroundHexa(struct page *array, int width, int height, int x, 
 			if (is_valid_hex(x, y, width, height) && array->values[y * width + x].i == num)
 				goto found;
 		}
-		// walk northwest
+		// 往西北走
 		for (int i = 0; i < dist; i++) {
 			if (--length < 0)
 				return 0;
@@ -662,7 +662,7 @@ static int vmArray_AroundHexa(struct page *array, int width, int height, int x, 
 			if (is_valid_hex(x, y, width, height) && array->values[y * width + x].i == num)
 				goto found;
 		}
-		// walk north
+		// 往北走
 		for (int i = 0; i < dist; i++) {
 			if (--length < 0)
 				return 0;
@@ -670,7 +670,7 @@ static int vmArray_AroundHexa(struct page *array, int width, int height, int x, 
 			if (is_valid_hex(x, y, width, height) && array->values[y * width + x].i == num)
 				goto found;
 		}
-		// walk northeast
+		// 往东北走
 		for (int i = 0; i < dist - 1; i++) {
 			if (--length < 0)
 				return 0;
@@ -849,7 +849,7 @@ static int vmArray_CopyHexaToHexa(struct page **d_array_, int dw, int dh, int dx
 	return 1;
 }
 
-// Transpose s_array (as a 2D array of s_width * s_height) into d_array.
+// 把 s_array（当成 s_width * s_height 的二维数组）转置进 d_array。
 static int vmArray_ConvertRectSide(struct page **d_array_, struct page *s_array, int s_width, int s_height, int side)
 {
 	struct page *d_array = *d_array_;

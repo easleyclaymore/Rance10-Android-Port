@@ -1,21 +1,21 @@
-/* Delegate - HLL bindings over the real DELEGATE_PAGE representation.
+/* Delegate —— 基于真实 DELEGATE_PAGE 表示的 HLL 绑定。
  *
- * In AIN v12 a delegate is a VM page: `values[]` holds [obj, fun, seq] triplets
- * and DG_CALL walks it with delegate_get(). An earlier placeholder
- * (`struct xs4_delegate`) treated the argument as a plain {funcs,nr,cap} struct,
- * which is why Delegate.Set had to be rewritten (D69) -- but Add/Numof/Empty/
- * Exist/Erase/Clear were left on the placeholder. Reading a page pointer as a
- * struct yields garbage: Delegate.Empty() then reported "empty" for delegates
- * that did contain entries.
+ * 在 AIN v12 里，委托就是一张 VM 页：`values[]` 存 [obj, fun, seq]
+ * 三元组，DG_CALL 用 delegate_get() 遍历它。早先有个占位实现
+ * （`struct xs4_delegate`）把实参当成普通的 {funcs,nr,cap} 结构体，
+ * 这就是为什么 Delegate.Set 必须重写（D69）—— 但 Add/Numof/Empty/
+ * Exist/Erase/Clear 还留在占位实现上。把页指针当结构体读只会得到垃圾：
+ * Delegate.Empty() 于是对那些确实有内容的委托报「空」。
  *
- * That silently broke the whole per-frame update event chain:
+ *
+ * 这就静默地打断了整条逐帧更新事件链：
  *   SceneStack@WaitFrame -> AFL_Parts_AddBeginUpdateEvent(delegate CheckWaitExit)
  *   parts::detail::AddPartsUpdateEvent  -> Array.PushBack(g_dgPartsBeginUpdateEvent)
  *   parts::detail::CallPartsUpdateEvent -> Delegate.Empty(entry) -> skip
- * so the wait loop spun forever and the scene never advanced (D112).
+ * 于是等待循环一直自旋，场景永远不前进（D112）。
  *
- * ffi passes AIN_REF_DELEGATE as `struct page **` (pointer to the slot's page
- * field) and writes the page back after the call, so reallocation is safe.
+ * ffi 把 AIN_REF_DELEGATE 当 `struct page **` 传（指向槽的页字段），
+ * 调用后再把页写回去，所以重新分配是安全的。
  */
 
 #include <stdbool.h>
@@ -34,9 +34,9 @@ static struct page *as_delegate_page(struct page **delegate)
 	return NULL;
 }
 
-/* D69: Delegate.Set must write into the real DELEGATE_PAGE that DG_CALL
- * reads. The old xs4_delegate placeholder wrote into a stack address and
- * the registration was invisible to the VM. */
+/* D69：Delegate.Set 必须写进 DG_CALL 真正读的那张 DELEGATE_PAGE。
+ * 旧的 xs4_delegate 占位实现写的是栈上的地址，
+ * 那次注册对虚拟机完全不可见。 */
 static void Delegate_Set(struct page **delegate, int func)
 {
 	struct page *p = as_delegate_page(delegate);
@@ -70,13 +70,13 @@ static int Delegate_Numof(struct page **delegate)
 static bool Delegate_Empty(struct page **delegate)
 {
 	/* [D114] Do NOT route through Delegate_Numof(): delegate_numof() runs a
-	 * garbage-collection pass that *removes* entries whose obj slot has lost
-	 * its ref. parts::detail::CallPartsUpdateEvent uses Delegate.Empty() as
-	 * a harmless "is this registration still live?" query; the GC side
-	 * effect emptied fresh registrations, so the EndUpdateEvent list lost
-	 * its only entry on the first frame and EndEventCallback@Update was
-	 * never dispatched. That broke the whole FadeIn -> onFinish chain.
-	 * Empty() is a predicate and must not mutate the page. */
+	 * 那个会**删掉** obj 槽已经丢了引用的条目的垃圾回收。
+	 * parts::detail::CallPartsUpdateEvent 把 Delegate.Empty() 当作
+	 * 「这条注册还活着吗」的无害查询；而这个 GC 副作用
+	 * 把刚注册的东西清空了，于是 EndUpdateEvent 列表在第一帧
+	 * 就丢了唯一那条，EndEventCallback@Update 再也没被派发过。
+	 * 这一下打断了整条 FadeIn -> onFinish 链。
+	 * Empty() 是个谓词，绝不能改动页。 */
 	struct page *p = as_delegate_page(delegate);
 	return !p || p->nr_vars == 0;
 }
