@@ -99,7 +99,14 @@ def needs_translation(line):
     return True
 
 
+# 第三方文件：版权与许可声明属原作者，不翻译。
+#   dungeon/mtrand43.c —— Matsumoto/Nishimura 的 MT19937 原始实现
+SKIP_PATHS = ('dungeon/mtrand43.c',)
+
+
 def english_comment_lines(path, skip_head=0):
+    if any(path.replace('\\', '/').endswith(p) for p in SKIP_PATHS):
+        return []
     out = []
     with open(path, encoding='utf-8', errors='replace') as f:
         for i, line in enumerate(f, 1):

@@ -71,7 +71,7 @@ static void realloc_sprite_table(int n)
 	memset(sprites + old_nr_sprites, 0, sizeof(struct sact_sprite*) * (nr_sprites - old_nr_sprites));
 }
 
-// NOTE: Used externally by DrawGraph, SengokuRanceFont and dungeon.c
+// 注意：DrawGraph、SengokuRanceFont 和 dungeon.c 都从外部用到它
 struct sact_sprite *sact_get_sprite(int sp)
 {
 	if (sp < -1) {
@@ -98,7 +98,7 @@ int sact_init(possibly_unused int cg_cache_size, enum sprite_engine_type engine)
 	if (engine_type != UNINITIALIZED_SPRITE_ENGINE) {
 		if (engine_type != engine)
 			VM_ERROR("sact_init() called with different engine type: %d != %d", engine_type, engine);
-		// already initialized
+		// 已经初始化过了
 		return 1;
 	}
 	engine_type = engine;
@@ -111,7 +111,7 @@ int sact_init(possibly_unused int cg_cache_size, enum sprite_engine_type engine)
 	sprites = xmalloc(sizeof(struct sact_sprite*) * 257);
 	memset(sprites, 0, sizeof(struct sact_sprite*) * 257);
 
-	// create sprite for main_surface
+	// 给 main_surface 建精灵
 	Texture *t = gfx_main_surface();
 	struct sact_sprite *sp = sact_create_sprite(0, t->w, t->h, 0, 0, 0, 255);
 	sp->texture = *t; // XXX: textures normally shouldn't be copied like this...
@@ -119,7 +119,7 @@ int sact_init(possibly_unused int cg_cache_size, enum sprite_engine_type engine)
 
 	sprites++;
 
-	// initialize sprite renderer
+	// 初始化精灵渲染器
 	if (engine == CHIPMUNK_SPRITE_ENGINE)
 		sprite_init_chipmunk();
 	else
@@ -172,20 +172,20 @@ int sact_GetMainSurfaceNumber(void)
 	return -1;
 }
 
-/* [D113] Rance10 (System4 v12 / ChipmunkSpriteEngine) drives its frame from
- * AIN: view::Update -> ChipmunkSpriteEngine.Update (lib 7 f[0]) -> here.
- * Unlike older GUIEngine games there is NO AIN-side call to PartsEngine.Update
- * / GUIEngine.Update, so PE_UpdateInputState() never ran: parts_began_click
- * stayed false in the frame loop, clicked_parts stayed 0, and
- * parts::detail::WaitForClick (fno 8309, polls GetClickNumber() > 0) could
- * never be satisfied by a mouse click.
+/* [D113] 兰斯10（System4 v12 / ChipmunkSpriteEngine）的帧是由
+ * AIN 驱动的：view::Update -> ChipmunkSpriteEngine.Update（库 7 f[0]）-> 这里。
+ * 与更老的 GUIEngine 游戏不同，AIN 那边没有调 PartsEngine.Update
+ * / GUIEngine.Update，所以 PE_UpdateInputState() 从来没跑过：
+ * parts_began_click 在帧循环里一直是 false，clicked_parts 一直是 0，
+ * 而 parts::detail::WaitForClick（函数号 8309，轮询 GetClickNumber() > 0）
+ * 永远不可能被鼠标点击满足。
  *
- * Drive ONLY the input stage here. Calling the full PE_Update() also re-runs
- * PE_UpdateComponent()/parts_render_update(), which invalidates the sprites
- * the scene renderer already set up and leaves the window black (verified:
- * mean=0.0176 -> 0.0000). The remaining per-frame parts work is driven by
- * AIN's parts::detail::Update (fno 8292). This function is also bound by
- * SACT2/StoatSpriteEngine; on those games the extra input pass is harmless. */
+ * 这里只驱动输入阶段。调完整的 PE_Update() 还会重跑
+ * PE_UpdateComponent()/parts_render_update()，那会让场景渲染器
+ * 已经准备好的精灵失效，窗口变黑（实测：
+ * mean=0.0176 -> 0.0000）。剩下的逐帧部件工作由
+ * AIN 的 parts::detail::Update（函数号 8292）驱动。这个函数同时也被
+ * SACT2/StoatSpriteEngine 绑定；在那类游戏里多跑一遍输入无害。 */
 static uint32_t sact_prev_tick;
 
 int sact_Update(void)
@@ -198,19 +198,19 @@ int sact_Update(void)
 	sact_prev_tick = now;
 	if (passed_time < 0) passed_time = 0;
 	if (passed_time > 100) passed_time = 100;
-	/* Only the input stage is missing from this path. Calling the full
-	 * PE_Update() also re-runs PE_UpdateComponent/parts_render_update, which
-	 * invalidates the sprites the scene renderer has already set up and
-	 * leaves the window black (D113). */
+	/* 这条路径上只缺输入阶段。调完整的 PE_Update() 还会重跑
+	 * PE_UpdateComponent/parts_render_update，那会让场景渲染器
+	 * 已经准备好的精灵失效，
+	 * 窗口变黑（D113）。 */
 	PE_UpdateInputState(passed_time);
 
-	/* Present every frame. Drawing used to be gated on scene_is_dirty, which
-	 * only a handful of calls ever set (scene_set_wp and friends). Nothing in
-	 * AIN marks "a scene pushed a static dialog" or "a flat part changed its
-	 * frame", so the window kept showing whatever the last 3D frame put
-	 * there: the network confirmation dialog and the whole title screen were
-	 * built, loaded, validated and never painted. The render itself is a
-	 * cheap sprite-list walk; correctness first. */
+	/* 每帧都呈现。原来绘制是由 scene_is_dirty 门控的，而
+	 * 只有少数几个调用会置它（scene_set_wp 之类）。AIN 里没有任何东西
+	 * 标记「某个场景压了一张静态对话框」或「某个 flat 部件换了帧」，
+	 * 于是窗口一直显示最后那帧 3D 留下的东西：
+	 * 网络确认对话框和整个标题画面都被建好、装载、校验过，
+	 * 却从来没画出来。渲染本身只是一次廉价的精灵列表遍历；
+	 * 先保证正确。 */
 	scene_is_dirty = true;
 
 	if (scene_is_dirty) {
@@ -558,8 +558,8 @@ int sact_SP_SetTextCharSpace(int sp_no, int px)
 
 int sact_SP_SetTextPos(int sp_no, int x, int y)
 {
-	// XXX: In AliceSoft's implementation, this function succeeds even with
-	//      a negative sp_no...
+	// XXX：在 AliceSoft 的实现里，即使 sp_no 是负数，
+	//      这个函数也会成功……
 	struct sact_sprite *sp = sact_get_sprite(sp_no);
 	if (!sp) return 0;
 	sprite_set_text_pos(sp, x, y);
@@ -598,8 +598,8 @@ static void sact_text_metrics_to_text_style(struct text_style *ts, union vm_valu
 
 int _sact_SP_TextDraw(int sp_no, struct string *text, struct text_style *ts)
 {
-	// XXX: In AliceSoft's implementation, this function succeeds even with
-	//      a negative sp_no...
+	// XXX：在 AliceSoft 的实现里，即使 sp_no 是负数，
+	//      这个函数也会成功……
 	struct sact_sprite *sp = sact_get_sprite(sp_no);
 	if (!sp || !sp->rect.w || !sp->rect.h) return 0;
 	sprite_text_draw(sp, text, ts);
@@ -642,11 +642,11 @@ int sact_SP_TextNewLine(int sp_no, int size)
 
 int sact_SP_TextCopy(int dno, int sno)
 {
-	// XXX: the dest sprite gets allocated even if this function returns
-	//      0 because the source sprite doesn't exist
+	// XXX：即使因为源精灵不存在而返回 0，
+	//      目标精灵照样会被分配出来
 	struct sact_sprite *dsp = sact_try_get_sprite(dno);
 	if (!dsp) {
-		// FIXME? SP_GetWidth/SP_GetHeight return 0 in this case
+		// FIXME？这种情况下 SP_GetWidth/SP_GetHeight 返回的是 0
 		dsp = sact_create_sprite(dno, 1, 1, 0, 0, 0, 0);
 		if (!dsp) {
 			WARNING("Failed to create sprite: %d", dno);
