@@ -91,6 +91,11 @@ def needs_translation(line):
         return False
     if re.match(r'^[\w:]+\s*\(.*\)\s*[{;]?$', body):
         return False
+    # 被注释掉的宏调用 / 全大写函数调用（// HLL_EXPORT(Foo, Bar),）
+    if re.match(r'^[A-Z][A-Z0-9_]*\s*\(', body):
+        return False
+    if body.endswith(',') and '(' in body:
+        return False
     return True
 
 

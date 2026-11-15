@@ -32,13 +32,13 @@ static TAILQ_HEAD(sound_motion_list, sound_motion) sound_motion_list =
 static struct parts_motion_list global_motion_list =
 	TAILQ_HEAD_INITIALIZER(global_motion_list);
 
-// true after call to BeginMotion until the motion ends or EndMotion is called
+// BeginMotion 之后为真，直到 motion 结束或调用 EndMotion
 static bool is_motion = false;
-// true while the motion is paused (time does not advance)
+// motion 暂停期间为真（时间不推进）
 static bool is_motion_paused = false;
-// the elapsed time of the current motion
+// 当前 motion 已经过去的时间
 static int motion_t = 0;
-// the end time of the current motion
+// 当前 motion 的结束时间
 static int motion_end_t = 0;
 
 static struct parts_motion *parts_motion_alloc(enum parts_motion_type type, int begin_time, int end_time)
@@ -76,8 +76,8 @@ static void parts_motion_list_add(struct parts_motion_list *motion_list, struct 
 	TAILQ_INSERT_TAIL(motion_list, motion, entry);
 	if (motion->end_time > motion_end_t)
 		motion_end_t = motion->end_time;
-	// FIXME? What happens if we add a motion while is_motion=true?
-	//        Should we call parts_update_motion here?
+	// FIXME？如果 is_motion=true 时再加一个 motion 会怎样？
+	//        这里是不是该调 parts_update_motion？
 }
 
 void parts_clear_motion(struct parts *parts)
@@ -242,9 +242,9 @@ static void parts_update_all_motion(void)
 		TAILQ_FOREACH(motion, &parts->motion, entry) {
 			if (motion->begin_time > motion_t)
 				break;
-			// FIXME? What if a motion begins and ends within the span of another?
-			//        This implementation will cancel the earlier motion and remain
-			//        at the end-state of the second motion.
+			// FIXME？如果一个 motion 在另一个的时间范围内开始并结束呢？
+			//        这个实现会取消先前的 motion，停在
+			//        第二个 motion 的末状态。
 			parts_update_with_motion(parts, motion);
 		}
 	}
@@ -262,8 +262,8 @@ static void parts_update_all_motion(void)
 }
 
 /*
- * NOTE: If a motion begins at e.g. t=100 with a value of v=0, then that value
- *       becomes the initial value of v at t=0.
+ * 注意：如果一次 motion 从 t=100 开始、初始值 v=0，
+ *       那这个值就会成为 t=0 时的初值。
  */
 static void parts_init_all_motion(void)
 {
@@ -311,7 +311,7 @@ void PE_AddMotionPos(int parts_no, int begin_x, int begin_y, int end_x, int end_
 void PE_AddMotionPos_curve(int parts_no, int begin_x, int begin_y, int end_x, int end_y,
 		int begin_t, int end_t, struct string *curve_name)
 {
-	// TODO: use curve
+	// TODO：用曲线
 	PE_AddMotionPos(parts_no, begin_x, begin_y, end_x, end_y, begin_t, end_t);
 }
 
@@ -330,7 +330,7 @@ void PE_AddMotionAlpha(int parts_no, int begin_a, int end_a, int begin_t, int en
 void PE_AddMotionAlpha_curve(int parts_no, int begin_a, int end_a, int begin_t, int end_t,
 		struct string *curve_name)
 {
-	// TODO: use curve
+	// TODO：用曲线
 	PE_AddMotionAlpha(parts_no, begin_a, end_a, begin_t, end_t);
 }
 
@@ -357,7 +357,7 @@ void PE_AddMotionHGaugeRate_curve(int parts_no, float begin_numerator, float beg
 			    float end_numerator, float end_denominator, int begin_t, int end_t,
 			    struct string *curve_name)
 {
-	// TODO: use curve
+	// TODO：用曲线
 	PE_AddMotionHGaugeRate(parts_no, begin_numerator, begin_denominator,
 			end_numerator, end_denominator, begin_t, end_t);
 }
@@ -376,7 +376,7 @@ void PE_AddMotionVGaugeRate_curve(int parts_no, float begin_numerator, float beg
 			    float end_numerator, float end_denominator, int begin_t, int end_t,
 			    struct string *curve_name)
 {
-	// TODO: use curve
+	// TODO：用曲线
 	PE_AddMotionVGaugeRate(parts_no, begin_numerator, begin_denominator,
 			end_numerator, end_denominator, begin_t, end_t);
 }
@@ -393,7 +393,7 @@ void PE_AddMotionNumeralNumber(int parts_no, int begin_n, int end_n, int begin_t
 void PE_AddMotionNumeralNumber_curve(int parts_no, int begin_n, int end_n, int begin_t,
 		int end_t, struct string *curve_name)
 {
-	// TODO: use curve
+	// TODO：用曲线
 	PE_AddMotionNumeralNumber(parts_no, begin_n, end_n, begin_t, end_t);
 }
 
@@ -409,7 +409,7 @@ void PE_AddMotionMagX(int parts_no, float begin, float end, int begin_t, int end
 void PE_AddMotionMagX_curve(int parts_no, float begin, float end, int begin_t, int end_t,
 		struct string *curve_name)
 {
-	// TODO: use curve
+	// TODO：用曲线
 	PE_AddMotionMagX(parts_no, begin, end, begin_t, end_t);
 }
 
@@ -425,7 +425,7 @@ void PE_AddMotionMagY(int parts_no, float begin, float end, int begin_t, int end
 void PE_AddMotionMagY_curve(int parts_no, float begin, float end, int begin_t, int end_t,
 		struct string *curve_name)
 {
-	// TODO: use curve
+	// TODO：用曲线
 	PE_AddMotionMagY(parts_no, begin, end, begin_t, end_t);
 }
 
@@ -441,7 +441,7 @@ void PE_AddMotionRotateX(int parts_no, float begin, float end, int begin_t, int 
 void PE_AddMotionRotateX_curve(int parts_no, float begin, float end, int begin_t, int end_t,
 		struct string *curve_name)
 {
-	// TODO: use curve
+	// TODO：用曲线
 	PE_AddMotionRotateX(parts_no, begin, end, begin_t, end_t);
 }
 
@@ -457,7 +457,7 @@ void PE_AddMotionRotateY(int parts_no, float begin, float end, int begin_t, int 
 void PE_AddMotionRotateY_curve(int parts_no, float begin, float end, int begin_t, int end_t,
 		struct string *curve_name)
 {
-	// TODO: use curve
+	// TODO：用曲线
 	PE_AddMotionRotateY(parts_no, begin, end, begin_t, end_t);
 }
 
@@ -473,7 +473,7 @@ void PE_AddMotionRotateZ(int parts_no, float begin, float end, int begin_t, int 
 void PE_AddMotionRotateZ_curve(int parts_no, float begin, float end, int begin_t, int end_t,
 		struct string *curve_name)
 {
-	// TODO: use curve
+	// TODO：用曲线
 	PE_AddMotionRotateZ(parts_no, begin, end, begin_t, end_t);
 }
 
@@ -521,7 +521,7 @@ void PE_BeginMotion(void)
 	if (parts_began_click)
 		return;
 
-	// FIXME: starting a motion seems to clear non-default states
+	// FIXME：启动一次 motion 似乎会清掉非默认状态
 	motion_t = 0;
 	is_motion = true;
 	is_motion_paused = false;
@@ -558,9 +558,9 @@ void PE_SeekEndMotion(void)
 
 static int msgskip_speedup_rate = 1;
 
-/* Wall-clock of the last time AIN drove the motion clock. Zero when AIN has
- * never called UpdateMotionTime (Rance10 does not: its scenes animate through
- * Parts.Motion, but nothing in the bytecode ticks it while a scene waits). */
+/* AIN 最后一次驱动 motion 时钟的墙上时间。AIN 从没调过
+ * UpdateMotionTime 时是 0（兰斯10 就是如此：它的场景靠
+ * Parts.Motion 做动画，但场景等待期间字节码里没有任何东西去推它）。 */
 static uint32_t last_explicit_motion_tick;
 
 void PE_UpdateMotionTime(int time, bool skip)
@@ -574,14 +574,14 @@ void PE_UpdateMotionTime(int time, bool skip)
 		PE_SetMotionTime(motion_t + time);
 }
 
-/* Advance the motion clock when nobody else is doing it.
+/* 没人推的时候，由这里推进 motion 时钟。
  *
- * The whole Parts.Motion system (fade-ins, slides) is driven by
- * motion_t, which AIN is supposed to tick through
- * PartsEngine.UpdateMotionTime(). Rance10 never calls it: measured 0 calls in
- * a 200 s run, so every motion stayed at t=0 and the title menu buttons kept
- * alpha=0 forever. The VM frame pump calls this once per frame; if AIN ever
- * starts ticking the clock itself we back off, so the two never stack. */
+ * 整个 Parts.Motion 系统（淡入、滑动）都靠 motion_t 驱动，
+ * 按设计应由 AIN 通过 PartsEngine.UpdateMotionTime() 来推进。
+ * 兰斯10 从不调它：200 秒跑测里测到 0 次调用，
+ * 于是每个 motion 都停在 t=0，标题菜单按钮的 alpha 永远是 0。
+ * VM 帧泵每帧调这里一次；如果 AIN 哪天自己开始推进，
+ * 我们就退让，两者绝不会叠加。 */
 void PE_AdvanceMotionClock(int passed_time)
 {
 	if (!is_motion || is_motion_paused || passed_time <= 0)
@@ -622,8 +622,8 @@ void PE_PauseMotion(bool pause)
 		return;
 	is_motion_paused = pause;
 
-	// While paused, the per-frame advance stops updating the whole-screen
-	// vibration offset. Reset it to the origin so the screen doesn't stay
+	// 暂停期间，逐帧推进不再更新整屏震动偏移。
+	// 把它复位到原点，免得画面卡在上一次的抖动位置上。
 	// stuck at the last shake position.
 	if (pause)
 		parts_set_global_pos((Point){ 0, 0 });

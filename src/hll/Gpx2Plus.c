@@ -89,7 +89,7 @@ static struct texture *get_texture(int sf_no)
 
 static void Gpx2Plus_Init(possibly_unused void *imainsystem, possibly_unused struct string *link_file_name)
 {
-	// already initialized
+	// 已经初始化过了
 	if (surfaces)
 		return;
 
@@ -101,7 +101,7 @@ static void Gpx2Plus_Init(possibly_unused void *imainsystem, possibly_unused str
 	surfaces = xmalloc(sizeof(struct gpx_surface*) * 256);
 	memset(surfaces, 0, sizeof(struct gpx_surface*) * 256);
 
-	// create main surface
+	// 创建主表面
 	Texture *t = gfx_main_surface();
 	struct gpx_surface *sf = create_surface(t->w, t->h);
 	assert(sf && sf->no == 0);
@@ -196,7 +196,7 @@ static int Gpx2Plus_LoadCG(int cg_num)
 
 static void Gpx2Plus_Free(int surface)
 {
-	// surface 0 (main surface) cannot be freed
+	// 表面 0（主表面）不能被释放
 	if (surface <= 0 || surface >= nr_surfaces || !surfaces[surface])
 		return;
 	free_surface(surfaces[surface]);
@@ -712,7 +712,7 @@ static int Gpx2Plus_EffectCopy(int effect, int wx, int wy,
 		return 0;
 
 	if (effect == 0) {
-		// No effect, called while message skipping.
+		// 没有效果：跳过消息时会被调到。
 		gfx_copy(params.dst, wx, wy, params.new, sx, sy, width, height);
 		Gpx2Plus_Update(wx, wy, width, height);
 		return 1;
