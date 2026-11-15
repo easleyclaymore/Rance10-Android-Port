@@ -13,7 +13,7 @@
 #ifndef SYSTEM4_ID_POOL_H
 #define SYSTEM4_ID_POOL_H
 
-// A reasonable base value for pointer-based handles.
+// 基于指针的句柄，用一个合理的起始值。
 #define ID_POOL_HANDLE_BASE 0x100000
 
 struct id_pool {

@@ -19,7 +19,7 @@ HLL_WARN_UNIMPLEMENTED(, void, Timer, Init, void *imainsystem);
 
 static int Timer_Get(void)
 {
-	// Returns the same value as system.GetTime().
+	// 返回值和 system.GetTime() 一样。
 	return vm_time();
 }
 
