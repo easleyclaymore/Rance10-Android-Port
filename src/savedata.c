@@ -205,12 +205,23 @@ static int32_t add_value_to_gsave(enum ain_data_type type, union vm_value val, s
 	case AIN_ARRAY:
 	case AIN_ARRAY_TYPE:
 		{
-			struct page *page = heap_get_page(val.i);
-			if (!page) {
+			/* [D215] 与上面 STRUCT 分支的 L2 容错对齐：数组槽可能是 -1
+			 * (unset)、已释放的堆槽，或被复用成别的页类型。实测真实流程
+			 * 走到战斗前自动存档时，g_gameContext.QuestMapRestoreInfo.
+			 * MarkerErased 的槽不是 ARRAY_PAGE，裸 assert 直接 abort。
+			 * 写 "unset" (rank=-1) 而不是中止整局；读侧 gsave_index_ok
+			 * 会把 -1 映射回 unset，往返无损。限流告警不静默。 */
+			struct page *page = val.i >= 0 ? heap_get_page(val.i) : NULL;
+			if (!page || page->type != ARRAY_PAGE) {
+				static int nr_bad_array;
+				if (nr_bad_array++ < 5)
+					WARNING("save: array slot %d holds page type %d, not an"
+						" ARRAY_PAGE; writing as unset (at %s, root %s)",
+						val.i,
+						page ? (int)page->type : -1, gsave_ctx, gsave_root);
 				struct gsave_array array = { .rank = -1 };
 				return gsave_add_array(save, &array);
 			}
-			assert(page->type == ARRAY_PAGE);
 			/* [L2] A generic array keeps a_type == AIN_ARRAY until the first
 			 * store settles the element kind; array_type() then reports VOID.
 			 * Writing its elements as VOID produces a file the reader can
