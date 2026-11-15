@@ -22,7 +22,7 @@ static struct {
 	int blend_rate;
 } p3map;
 
-// Initializes the grid texture with isometric tiles based on the provided array.
+// 用给定的数组初始化等距（isometric）瓦片网格纹理。
 static void init_grid_texture(Texture *tile, int offset_x, int offset_y, int rows, int cols, struct page *array)
 {
 	if (array->nr_vars != rows * cols)
@@ -31,7 +31,7 @@ static void init_grid_texture(Texture *tile, int offset_x, int offset_y, int row
 		for (int col = 0; col < cols; col++) {
 			if (array->values[row * cols + col].i != 0)
 				continue;
-			// Isometric Coordinates.
+			// 等距坐标。
 			int x = ((col - row) - 1) * (tile->w / 2) + offset_x;
 			int y = (col + row) * (tile->h / 2) + offset_y;
 			gfx_copy_with_alpha_map(&p3map.grid, x, y, tile, 0, 0, tile->w, tile->h);
@@ -39,7 +39,7 @@ static void init_grid_texture(Texture *tile, int offset_x, int offset_y, int row
 	}
 }
 
-// Creates the map background and grid textures.
+// 创建地图背景和网格纹理。
 static bool P3MapSprite_Create(int src_sprite, int square_sprite, int x, int y, int line, int column, int blend_rate, struct page *array)
 {
 	struct sact_sprite *src = sact_try_get_sprite(src_sprite);
@@ -65,7 +65,7 @@ static bool P3MapSprite_Create(int src_sprite, int square_sprite, int x, int y, 
 	return true;
 }
 
-// Deletes the map background and grid textures.
+// 销毁地图背景和网格纹理。
 static void P3MapSprite_Delete(void)
 {
 	if (p3map.grid.handle)
@@ -74,7 +74,7 @@ static void P3MapSprite_Delete(void)
 		gfx_delete_texture(&p3map.bg);
 }
 
-// Copies the map background and optionally blends the grid to a destination sprite.
+// 拷贝地图背景，并按需把网格混合到目标精灵上。
 static bool P3MapSprite_Copy(int dest_sprite, int src_x, int src_y, bool copy_square)
 {
 	struct sact_sprite *dst = sact_get_sprite(dest_sprite);
@@ -89,14 +89,14 @@ static bool P3MapSprite_Copy(int dest_sprite, int src_x, int src_y, bool copy_sq
 	return true;
 }
 
-// Sets the blend rate for map rendering.
+// 设置地图渲染的混合比例。
 static bool P3MapSprite_CreateMatrixPixel(int blend_rate)
 {
 	p3map.blend_rate = blend_rate;
 	return true;
 }
 
-// Blends the grid texture onto a destination sprite.
+// 把网格纹理混到目标精灵上。
 static bool P3MapSprite_CopyMatrix(int dest_sprite, int dest_x, int dest_y, int src_x, int src_y, int width, int height)
 {
 	struct sact_sprite *dst = sact_get_sprite(dest_sprite);

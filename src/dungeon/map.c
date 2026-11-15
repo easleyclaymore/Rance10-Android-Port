@@ -120,8 +120,8 @@ void dungeon_map_init(struct dungeon_context *ctx)
 	int map_height;
 	switch (ctx->version) {
 	case DRAW_DUNGEON_1: {
-			// Calculate the bounding box on the XZ plane so that map is drawn in the
-			// center of the texture.
+			// 在 XZ 平面上算出包围盒，让地图画在
+			// 纹理的正中间。
 			uint32_t min_x = dgn->size_x;
 			uint32_t min_y = dgn->size_z;
 			uint32_t max_x = 0;
@@ -161,7 +161,7 @@ void dungeon_map_init(struct dungeon_context *ctx)
 		map->offset_y = 0;
 		break;
 	}
-	// Initial draw
+	// 首次绘制
 	for (uint32_t y = 0; y < dgn->size_y; y++) {
 		gfx_init_texture_rgba(&map->textures[y],
 			map_width * map->grid_size,
@@ -190,7 +190,7 @@ void dungeon_map_reveal(struct dungeon_context *ctx, int x, int y, int z, bool f
 		break;
 	case DRAW_DUNGEON_2:
 		if ((x == ctx->dgn->start_x && z == ctx->dgn->start_y) || cell->floor_event == 17) {
-			// Do not overwrite the start/goal symbol.
+			// 不要覆盖起点/终点符号。
 			gfx_fill_amap(dst, pos.x, pos.y, ctx->map->grid_size, ctx->map->grid_size, 255);
 		} else {
 			int rg = (cell->walked & 1) ? 0 : 255;
@@ -419,7 +419,7 @@ void dungeon_map_draw(int surface, int sprite)
 		return;
 
 	if (ctx->version == DRAW_DUNGEON_2) {
-		// Draw the entire map
+		// 画整张地图
 		dungeon_map_draw_lmap(surface, sprite);
 		return;
 	}
@@ -441,7 +441,7 @@ void dungeon_map_draw(int surface, int sprite)
 	int x = pos.x - (dst->w - CS) / 2;
 	int y = pos.y - (dst->h - CS) / 2;
 
-	// Clear the texture so that no garbage is left if copy from `src` is clipped.
+	// 先清空纹理，这样从 `src` 拷贝被裁剪时不会留下垃圾。
 	gfx_fill_with_alpha(dst, 0, 0, dst->w, dst->h, unenterable_cell_color.r, unenterable_cell_color.g, unenterable_cell_color.b, unenterable_cell_color.a);
 
 	gfx_copy_with_alpha_map(dst, 0, 0, src, x, y, dst->w, dst->h);
@@ -473,7 +473,7 @@ void dungeon_map_draw_lmap(int surface, int sprite)
 	if (ctx->map->all_visible)
 		gfx_fill_amap(dst, 0, 0, dst->w, dst->h, 255);
 
-	// Draw the player symbol.
+	// 画玩家符号。
 	Point pos = texture_pos(ctx, ctx->player_pos[0], ctx->player_pos[2]);
 	if (ctx->version == DRAW_FIELD) {
 		int ofs = (ctx->map->grid_size - 4) / 2;

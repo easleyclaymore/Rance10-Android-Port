@@ -39,7 +39,7 @@ struct sr_text_properties {
 	struct text_style ts;
 };
 
-// A font_size that uses FNL first and Gothic for missing glyphs.
+// 一个先用 FNL、缺字时退回 Gothic 的 font_size。
 struct sr_fallback_font_size {
 	struct font_size super;
 	struct font_size *fnl;
@@ -71,7 +71,7 @@ static bool sr_fallback_get_glyph(struct font_size *_size, struct glyph *glyph,
 	if (!size->gothic->font->get_glyph(size->gothic, glyph,
 			sjis_code_to_unicode(code), weight))
 		return false;
-	// Align the gothic glyph toward the bottom of the FNL line.
+	// 把 gothic 字形对齐到 FNL 行的底部。
 	glyph->rect.y += size->fnl->y_offset - size->gothic->y_offset;
 	glyph->rect.y -= lroundf((size->fnl->size - size->gothic->size)
 		* SR_FALLBACK_VERTICAL_SHIFT_RATIO);
@@ -109,7 +109,7 @@ static struct font sr_fallback_font = {
 
 static struct font_size *sr_get_fallback_size(struct font_size *fnl)
 {
-	// One wrapper per FNL size.
+	// 每个 FNL 字号一个包装器。
 	for (struct sr_fallback_font_size *size = sr_fallback_sizes; size;
 			size = size->next) {
 		if (size->fnl == fnl)
@@ -133,7 +133,7 @@ static void sr_prepare_text_style(struct text_style *ts)
 	if (ts->font_size)
 		return;
 	struct font_size *size = gfx_font_get_size(ts->face, ts->size);
-	// Install the wrapper only on FNL text styles.
+	// 只在 FNL 文本样式上装这个包装器。
 	ts->font_size = size->font->charmap == CHARMAP_SJIS
 		? sr_get_fallback_size(size) : size;
 }
@@ -350,10 +350,10 @@ static void SengokuRanceFont_SP_TextCopy(int dno, int sno)
 	if (!dsp || !ssp)
 		return;
 
-	// copy texture
+	// 拷纹理
 	sprite_text_copy(dsp, ssp);
 
-	// copy properties
+	// 拷属性
 	struct sr_text_properties *d_prop = get_sp_properties(dno);
 	struct sr_text_properties *s_prop = get_sp_properties(sno);
 	*d_prop = *s_prop;
@@ -382,7 +382,7 @@ static void SengokuRanceFont_SP_SetTextMetricsClassic(int sp_no, struct page *pa
 	ts->color.b       = page->values[2].i;
 	ts->color.a       = 255;
 	ts->size          = page->values[3].i;
-	// XXX: weight seems to be ignored (page->values[4].i)
+	// XXX：weight 好像被忽略了（page->values[4].i）
 	ts->face          = page->values[5].i;
 	ts->edge_left     = page->values[6].i;
 	ts->edge_up       = page->values[7].i;
@@ -428,7 +428,7 @@ static float sp_text_draw(struct sact_sprite *sp, struct sr_text_properties *tp,
 		gfx_init_texture_rgba(&sp->text.texture, sp->rect.w, sp->rect.h, COLOR(0, 0, 0, 0));
 	}
 
-	// save last char code
+	// 记住最后一个字符的编码
 	int last_char = -1;
 	for (char *p = text->text; *p; p = sjis_skip_char(p)) {
 		last_char = sjis_code(p);
@@ -451,8 +451,8 @@ static void SengokuRanceFont_SP_TextDraw(int sp_no, struct string *text)
 	p->x += sp_text_draw(sp, p, text, p->x, p->y);
 }
 
-// As far as I can tell, this just renders the text slightly higher than
-// SengokuRanceFont.SP_TextDraw
+// 据我所知，这只是把文字画得比
+// SengokuRanceFont.SP_TextDraw 略高一点
 static void SengokuRanceFont_SP_TextDrawClassic(int sp_no, struct string *text)
 {
 	struct sact_sprite *sp = sact_try_get_sprite(sp_no);

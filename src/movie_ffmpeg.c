@@ -61,8 +61,8 @@ struct movie_context {
 	int voice;
 	int volume;
 
-	// Time keeping data. Written by audio handler and referenced by video
-	// handler (i.e. we sync the video to the audio).
+	// 计时数据。由音频回调写、视频回调读
+	// （也就是让视频跟着音频走）。
 	double stream_time;  // in seconds
 	uint32_t wall_time_ms;
 	SDL_mutex *timer_mutex;
@@ -190,7 +190,7 @@ static int audio_callback(sts_mixer_sample_t *sample, void *data)
 		r += mc->bytes_per_sample;
 	}
 
-	// Update the timestamp.
+	// 更新时间戳。
 	SDL_LockMutex(mc->timer_mutex);
 	mc->stream_time += (double)samples / mc->audio.ctx->sample_rate;
 	mc->wall_time_ms = SDL_GetTicks();
@@ -292,7 +292,7 @@ void movie_free(struct movie_context *mc)
 
 bool movie_play(struct movie_context *mc)
 {
-	// Start the audio stream.
+	// 启动音频流。
 	mc->stream_time = 0.0;
 	mc->wall_time_ms = SDL_GetTicks();
 	mc->sts_stream.userdata = mc;
@@ -342,23 +342,23 @@ bool movie_draw(struct movie_context *mc, struct sact_sprite *sprite)
 			mc->sws_buf, AV_PIX_FMT_RGBA, texture->w, texture->h, 1);
 	}
 
-	// Decode a frame, unless we already have one.
+	// 解码一帧，除非已经有一帧了。
 	if (!mc->has_pending_video_frame && !decode_frame(&mc->video, mc))
 		return mc->video.finished;
 
-	// If the frame's timestamp is in the future, save the frame and return.
+	// 如果这一帧的时间戳还在未来，就存下来返回。
 	double pts = av_q2d(mc->video.stream->time_base) * mc->video.frame->best_effort_timestamp;
 	SDL_LockMutex(mc->timer_mutex);
 	double now = mc->stream_time + (SDL_GetTicks() - mc->wall_time_ms) / 1000.0;
 	SDL_UnlockMutex(mc->timer_mutex);
 	if (pts > now) {
 		mc->has_pending_video_frame = true;
-		// We have spare time, let's buffer some packets.
+		// 还有余量，先缓冲几个包。
 		preload_packets(mc);
 		return true;
 	}
 
-	// Convert to RGB and update the texture.
+	// 转成 RGB 并更新纹理。
 	sws_scale(mc->sws_ctx, (const uint8_t **)mc->video.frame->data, mc->video.frame->linesize,
 		 0, mc->video.ctx->height, mc->sws_frame->data, mc->sws_frame->linesize);
 	gfx_update_texture_with_pixels(texture, mc->sws_buf);
@@ -367,7 +367,7 @@ bool movie_draw(struct movie_context *mc, struct sact_sprite *sprite)
 	if (sprite) {
 		sprite_dirty(sprite);
 	} else {
-		// Draw directly to the main framebuffer.
+		// 直接画到主帧缓冲。
 		gfx_clear();
 		gfx_render_texture(&mc->temp_surface, NULL);
 		gfx_swap();
