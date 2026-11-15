@@ -1,14 +1,14 @@
-/* ain_xref: cross-reference helper for Rance10 AIN research.
+/* ain_xref：兰斯10 AIN 研究的交叉引用工具。
  *
  *   ain_xref <file.ain> hll <libno> <fno> [ctx]   CALLHLL sites for one HLL function
  *   ain_xref <file.ain> calls <opcode> [ctx]      any opcode sites (e.g. 0x103 X_GETENV)
  *   ain_xref <file.ain> str <str-index> [ctx]     S_PUSH sites for a string constant
  *   ain_xref <file.ain> funcs <substr>            list functions whose name matches
  *
- * Every site prints: enclosing function (fno/name/addr), the site address and a
- * decoded window around it. ctx = instructions before/after (default 4).
+ * 每个站点打印：所在函数（fno/名字/地址）、站点地址，以及
+ * 它周围解码出来的一段窗口。ctx = 前后各取多少条指令（默认 4）。
  *
- * Diagnostic tool only; link against libsys4.a like the other tools/ helpers.
+ * 纯诊断工具；和 tools/ 下其他工具一样，链接 libsys4.a。
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -49,7 +49,7 @@ static const char *opname(int op)
 	return n ? n : "?";
 }
 
-/* enclosing function for an address: last function whose address <= ip */
+/* 某个地址所在的函数：地址 <= ip 的最后一个函数 */
 static struct ain_function *owner(struct ain *ain, size_t ip, int *fno)
 {
 	struct ain_function *best = NULL;
@@ -68,7 +68,7 @@ static struct ain_function *owner(struct ain *ain, size_t ip, int *fno)
 static void print_window(struct ain *ain, size_t ip, int ctx)
 {
 	size_t start = ip;
-	/* walk back ctx instructions */
+	/* 往回走 ctx 条指令 */
 	for (int k = 0; k < ctx; k++) {
 		size_t p = start;
 		int guard = 0;
@@ -145,9 +145,9 @@ static void dis_print(struct ain *ain, struct dec *d)
 	printf("\n");
 }
 
-/* Walk the control-flow graph instead of the linear code stream: the compiler
- * interleaves inline lambda bodies, so a function's instructions are not
- * contiguous. Visited addresses are printed in address order. */
+/* 沿控制流图遍历，而不是线性扫代码流：编译器
+ * 不保证一个函数的函数体在 AIN 里连续。
+ * 访问到的地址按地址顺序打印。 */
 static void dis_func(struct ain *ain, int fno)
 {
 	if (fno < 0 || fno >= ain->nr_functions) return;
@@ -188,7 +188,7 @@ static void dis_func(struct ain *ain, int fno)
 		}
 		if (nw < 8192) work[nw++] = ip + d.w;
 	}
-	/* print in address order */
+	/* 按地址顺序打印 */
 	for (int i = 0; i < nv; i++) {
 		for (int j = i + 1; j < nv; j++) {
 			if (visited[j] < visited[i]) { size_t t = visited[i]; visited[i] = visited[j]; visited[j] = t; }
@@ -265,9 +265,9 @@ static int sites_call(struct ain *ain, int target, int ctx)
 		if ((d.op == CALLFUNC || d.op == CALLFUNC2) && d.a[0] == target) {
 			hit = 1;
 		} else if (d.op == CALLMETHOD) {
-			/* v12 CALLMETHOD: nargs in the immediate, fno pushed on the
-			 * stack. The compiler always emits PUSHSTRUCTPAGE; PUSH <fno>
-			 * before the argument pushes. */
+			/* v12 的 CALLMETHOD：nargs 在立即数里，fno 压在
+			 * 栈上。编译器总是先发 PUSHSTRUCTPAGE；PUSH <fno>，
+			 * 然后才是压实参。 */
 			for (int k = 0; k + 1 < nw; k++) {
 				if (win[k].op == PUSHSTRUCTPAGE && win[k + 1].op == PUSH
 				    && win[k + 1].a[0] == target) {

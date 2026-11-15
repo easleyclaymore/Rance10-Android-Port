@@ -27,10 +27,10 @@
 #include "xsystem4.h"
 
 /*
- * Special SaveData API for savings sets of integers and strings
- * (e.g. unlocked CGs).
+ * 用来存一组一组整数和字符串的特殊 SaveData API
+ * （例如已解锁的 CG）。
  *
- * The data is stored in a file with the following format:
+ * 数据存在文件里，格式如下：
  *
  * struct psr_file {
  *     char     magic[4];               // "PSR\0"
@@ -40,7 +40,7 @@
  *     uint8_t  data[compressed_size];  // ZLIB-compressed data
  * };
  *
- * The uncompressed data is a structure of the following form:
+ * 解压后的数据是下面这种结构：
  *
  * struct psr_data {
  *     uint32_t nr_integers;
@@ -164,7 +164,7 @@ static void read_register_psr(struct passregister *reg, uint8_t *data, size_t da
 
 static void read_register_json(struct passregister *reg, char *data)
 {
-	// parse/validate JSON data
+	// 解析/校验 JSON 数据
 	cJSON *obj = type_check(cJSON_Object, cJSON_Parse(data));
 	cJSON *integers = type_check(cJSON_Array, cJSON_GetObjectItem(obj, "integers"));
 	cJSON *strings = type_check(cJSON_Array, cJSON_GetObjectItem(obj, "strings"));
@@ -198,12 +198,12 @@ static void read_register(unsigned handle, const char *filename)
 	if (!memcmp(data, "PSR", 4)) {
 		read_register_psr(reg, (uint8_t *)data, data_len);
 	} else {
-		// JSON format created by old versions of xsystem4
+		// 老版本 xsystem4 生成的 JSON 格式
 		read_register_json(reg, data);
 	}
 	free(data);
 
-	// Make sure the arrays are sorted.
+	// 确保数组是排好序的。
 	qsort(reg->integers, reg->nr_integers, sizeof(int), compare_int);
 	qsort(reg->strings, reg->nr_strings, sizeof(char*), compare_string);
 }
@@ -235,7 +235,7 @@ static bool PassRegister_RegistNumber(int handle, int n)
 
 	struct passregister *reg = registers + handle;
 	reg->integers = xrealloc_array(reg->integers, reg->nr_integers, reg->nr_integers+1, sizeof(int));
-	// NOTE: this could be improved by using O(n) insertion
+	// 注意：这里可以改成 O(n) 插入来优化
 	reg->integers[reg->nr_integers++] = n;
 	qsort(reg->integers, reg->nr_integers, sizeof(int), compare_int);
 	write_register(handle);
@@ -257,7 +257,7 @@ static bool PassRegister_RegistText(int handle, struct string *text)
 
 	struct passregister *reg = registers + handle;
 	reg->strings = xrealloc_array(reg->strings, reg->nr_strings, reg->nr_strings+1, sizeof(char*));
-	// NOTE: this could be improved by using O(n) insertion
+	// 注意：这里可以改成 O(n) 插入来优化
 	reg->strings[reg->nr_strings++] = strdup(text->text);
 	qsort(reg->strings, reg->nr_strings, sizeof(char*), compare_string);
 	write_register(handle);
