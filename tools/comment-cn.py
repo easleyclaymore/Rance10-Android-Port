@@ -2,7 +2,7 @@
 """注释中文化工作流（仅供本仓库使用的小工具）。
 
 用法：
-    python3 tools/comment-cn.py list  <file> [--skip-head 25]
+    python3 tools/comment-cn.py list  <file> [--skip-head 0]
         列出该文件里"还是英文"的注释行（行号 + 原文），方便逐行翻译。
 
     python3 tools/comment-cn.py apply <file> <tsv>
@@ -11,7 +11,14 @@
         避免把代码或字符串误当成注释改掉。
 
     python3 tools/comment-cn.py stats
-        全仓统计还有多少英文注释行（排除第三方库与许可证头）。
+        全仓统计还有多少英文注释行（排除第三方库）。
+
+术语表（本仓库统一口径，2026-11-15 用户要求"术语也换成中文"）：
+     page→页   heap→堆   slot→槽   delegate→委托   interface/iface→接口
+     vtable→虚表   parts→部件   sprite→精灵   texture→纹理   scene→场景
+     struct→结构体   frame→帧   layer→图层   opcode→操作码   stack→栈
+     保留原文的：AIN / VM / HLL / EX / FLAT（文件格式名）/ 函数名 / 类型名 /
+     日志 tag / D 编号。代码形式的引用（`struct parts`、heap[0].s）不改。
 
 为什么用"行号 + 整行替换"而不是正则：注释里全是标点和括号，正则很容易
 改到代码或字符串字面量。行号替换只动指定行，且 apply 时会校验行首标记。
@@ -34,7 +41,7 @@ SKIP_FILES = {
 }
 SKIP_DIRS = ('subprojects/', 'build/', '.git/')
 
-CJK = re.compile(r'[\u4e00-\u9fff]')
+CJK = re.compile(r'[\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]')
 LATIN = re.compile(r'[A-Za-z]{3,}')
 
 
@@ -75,7 +82,7 @@ def needs_translation(line):
     return True
 
 
-def english_comment_lines(path, skip_head=25):
+def english_comment_lines(path, skip_head=0):
     out = []
     with open(path, encoding='utf-8', errors='replace') as f:
         for i, line in enumerate(f, 1):
@@ -86,7 +93,7 @@ def english_comment_lines(path, skip_head=25):
     return out
 
 
-def cmd_list(path, skip_head=25):
+def cmd_list(path, skip_head=0):
     rows = english_comment_lines(path, skip_head)
     for i, line in rows:
         print(f'{i}\t{line}')
@@ -147,7 +154,7 @@ if __name__ == '__main__':
         sys.exit(__doc__)
     cmd = sys.argv[1]
     if cmd == 'list':
-        skip = 25
+        skip = 0
         args = [a for a in sys.argv[2:] if not a.startswith('--')]
         if '--skip-head' in sys.argv:
             skip = int(sys.argv[sys.argv.index('--skip-head') + 1])
