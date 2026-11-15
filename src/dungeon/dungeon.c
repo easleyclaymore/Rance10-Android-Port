@@ -268,7 +268,7 @@ bool dungeon_load_dungeon(struct dungeon_context *ctx, const char *filename, int
 
 bool dungeon_load_texture(struct dungeon_context *ctx, const char *filename)
 {
-	// load .dtx
+	// 装载 .dtx
 	char *path = gamedir_path(filename);
 	size_t dtx_len;
 	uint8_t *dtx = file_read(path, &dtx_len);
@@ -286,7 +286,7 @@ bool dungeon_load_texture(struct dungeon_context *ctx, const char *filename)
 		return false;
 	}
 
-	// load .tes
+	// 装载 .tes
 	if (ctx->tes)
 		tes_free(ctx->tes);
 	ctx->tes = NULL;
@@ -335,8 +335,8 @@ void dungeon_set_perspective(int surface, int width, int height, float near, flo
 		return;
 
 	float aspect = (float)width / height;
-	// XXX: Pastel Chime Continue sets unnecessarily small near (0.1) and large
-	//      far (10000), which degrades depth buffer precision.
+	// XXX：Pastel Chime Continue 设的近平面（0.1）小得没必要，
+	//      远平面（10000）又太大，深度缓冲精度会掉。
 	near = max(near, 0.4f);
 	far = min(far, 500.f);
 	glm_perspective(glm_rad(deg), aspect, near, far, ctx->proj_transform);
@@ -362,7 +362,7 @@ static void model_view_matrix(struct dungeon_context *ctx, mat4 mv_out)
 		dist * -cosf(camera->angle) * cosf(camera->angle_p),
 	};
 	if (ctx->version != DRAW_FIELD) {
-		// The actual camera position is slightly behind camera->pos.
+		// 实际相机位置略微在 camera->pos 后面。
 		vec3 eye;
 		glm_vec3_sub(camera->pos, front, eye);
 		glm_lookat(eye, camera->pos, GLM_YUP, mv_out);
@@ -434,7 +434,7 @@ static void neighbor_reveal(struct dungeon_context *ctx, int x, int y, int z)
 		break;
 	case DRAW_DUNGEON_14:
 	case DRAW_FIELD:
-		// do nothing
+		// 什么都不做
 		break;
 	}
 }
@@ -499,7 +499,7 @@ int dungeon_calc_conquer(int surface)
 }
 
 /*
- * WalkData serialization format:
+ * WalkData 的序列化格式：
  *
  * struct DrawDungeon1_WalkData {
  *     int version;  // zero
@@ -527,7 +527,7 @@ enum {
 	WALK_DATA_BROKEN = -2,
 };
 
-// When the map is not found, *end is set to the offset after the last map.
+// 找不到地图时，*end 指向最后一张地图之后的偏移。
 static int dd1_find_walk_data(struct page *array, int map_no, struct dgn *dgn, int *end)
 {
 	if (!array)
@@ -776,7 +776,7 @@ bool dungeon_project_world_to_screen(struct dungeon_context *ctx, vec3 world_pos
 	ndc[2] = clip_coords[2] / clip_coords[3];
 
 	screen_pos->x = roundf(((ndc[0] + 1.f) / 2.f) * ctx->texture.w);
-	// Y is inverted from NDC to screen space (NDC is bottom-up, screen is top-down)
+	// Y 要从 NDC 转到屏幕空间（NDC 是自下而上，屏幕是自上而下）
 	screen_pos->y = roundf(((1.f - ndc[1]) / 2.f) * ctx->texture.h);
 	return true;
 }

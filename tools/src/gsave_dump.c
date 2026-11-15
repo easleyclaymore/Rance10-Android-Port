@@ -1,26 +1,26 @@
-/* gsave_dump -- offline inspector for the .asd save files this engine writes.
+/* gsave_dump —— 本引擎写的 .asd 存档的离线检查工具。
  *
- * Why it exists: the save subsystem is the one place where a bug is silent.
- * A wrong array rank or an out-of-range table index does not crash at write
- * time; it produces a file that the next run either rejects ("Invalid save
- * file") or loads as garbage. Reading the file with the SAME parser the
- * engine uses, but outside the game loop, turns that into a two-second check.
+ * 为什么要有它：存档子系统是唯一「出错也不报」的地方。
+ * 数组 rank 错了、表下标越界，写入时都不会崩；
+ * 只会生成一个文件，下次运行时要么被拒（「Invalid save
+ * file」），要么读成一堆垃圾。用引擎同一个解析器、
+ * 但在游戏循环之外读一遍，就能把这件事变成两秒钟的检查。
  *
- * Build (from xsystem4/):
+ * 构建（在 xsystem4/ 下）：
  *   cc -O1 -I subprojects/libsys4/include tools/gsave_dump.c \
  *      build/subprojects/libsys4/libsys4.a -o /tmp/gsave_dump \
  *      -lz -lm -ldeflate
  *
- * Use:
+ * 用法：
  *   /tmp/gsave_dump logs/savedir/<tag>/<file>.asd
  *
- * Read the output as:
+ * 读输出时这样看：
  *   - "OK" / "Invalid save file" per file        -> parser agrees with writer
  *   - every array line rank>=1 with plausible dims -> generic arrays serialised
  *   - no "ARRAY-INDEX-OOB" markers                -> global indices in range
  *
- * With -a it also prints every global, which is how you spot a value that
- * points at the wrong table entry.
+ * 加 -a 还会打印每一个全局变量，用它可以发现某个值
+ * 指到了错误的表项。
  */
 #include <stdbool.h>
 #include <stdint.h>

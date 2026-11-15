@@ -111,9 +111,9 @@ bool StoatSpriteEngine_SP_SetTextSprite(int sp_no, struct string *text)
 	extract_sjis_char(text->text, s);
 	int w = ceilf(gfx_size_char(&text_sprite_ts, s));
 	int h = text_sprite_ts.size;
-	// XXX: System40.exe lies about the height of half-width characters.
-	//      E.g. a size 64 letter "H" is reported as 32 pixels tall.
-	//      Probably doesn't matter...?
+	// XXX：System40.exe 会把半角字符的高度报错。
+	//      例如字号 64 的字母 "H" 被报成 32 像素高。
+	//      大概无关紧要……？
 	struct sact_sprite *sp = sact_create_sprite(sp_no, w, h, 0, 0, 0, 0);
 	sprite_get_texture(sp); // XXX: force initialization of texture
 	gfx_render_text(&sp->texture, 0.0f, 0, s, &text_sprite_ts, false);
@@ -188,7 +188,7 @@ HLL_QUIET_UNIMPLEMENTED((keep_previous_view = on, true), bool, StoatSpriteEngine
 HLL_QUIET_UNIMPLEMENTED(keep_previous_view, bool, StoatSpriteEngine, KeepPreviousView_GetMode);
 
 /*
- * NOTE: The multisprite "type" alters the behavior of the multisprite functions.
+ * 注意：multisprite 的 type 会改变这些 multisprite 函数的行为。
  *
  *     Type 0 - Default y pos is 300; linked message frame by default
  *     Type 5 - Text sprites; SetCG has no effect; SetText only works on type 5
@@ -369,7 +369,7 @@ static void multisprite_update(struct multisprite *ms)
 			if (ms->type != 5)
 				sprite_set_cg_from_asset(&ms->sp, ms->cg);
 		} else {
-			// clear the texture
+			// 清空纹理
 			sprite_init_color(&ms->sp, 1, 1, 0, 0, 0, 0);
 		}
 		ms->cg_dirty = false;
@@ -442,7 +442,7 @@ static bool StoatSpriteEngine_MultiSprite_SetTransitionInfo(int type, int n, int
 {
 	struct multisprite *ms = multisprite_get(type, n);
 	if (!ms) return false;
-	// FIXME: when does this transition actually occur?
+	// FIXME：这个切换到底什么时候发生？
 	ms->trans.no = trans_no;
 	ms->trans.time = trans_time;
 	return true;
@@ -689,7 +689,7 @@ static void multisprite_set_move_current_time(struct multisprite *ms, int time)
 		return;
 	}
 
-	// adjust for begin wait
+	// 按开始等待做调整
 	time -= ms->move.begin_wait_time;
 
 	if (time >= ms->move.time) {
@@ -697,11 +697,11 @@ static void multisprite_set_move_current_time(struct multisprite *ms, int time)
 		return;
 	}
 
-	// calculate (x,y) at time/move_time
+	// 算出 time/move_time 时刻的 (x,y)
 	int d_x = ms->move.end.x - ms->move.start.x;
 	int d_y = ms->move.end.y - ms->move.start.y;
 	double percent = (double)time / ms->move.time;
-	// TODO: acceleration
+	// TODO：加速度
 	ms->pos.x = ms->move.start.x + (d_x * percent);
 	ms->pos.y = ms->move.start.y + (d_y * percent);
 }
@@ -1189,7 +1189,7 @@ HLL_LIBRARY(StoatSpriteEngine,
 	    HLL_EXPORT(ADVLogList_GetNumofADVLog, ADVLogList_GetNumofADVLog),
 	    HLL_EXPORT(ADVLogList_GetNumofADVLogText, ADVLogList_GetNumofADVLogText),
 	    HLL_EXPORT(ADVLogList_GetADVLogText, ADVLogList_GetADVLogText),
-	    // XXX: StoatSpriteEngine interface differs from AnteaterADVEngine here
+	    // XXX：这里 StoatSpriteEngine 的接口和 AnteaterADVEngine 不一样
 	    HLL_EXPORT(ADVLogList_GetADVLogVoice, ADVLogList_GetADVLogVoiceLast),
 	    HLL_EXPORT(ADVLogList_Save, ADVLogList_Save),
 	    HLL_EXPORT(ADVLogList_Load, ADVLogList_Load),

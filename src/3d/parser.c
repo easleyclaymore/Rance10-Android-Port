@@ -31,7 +31,7 @@ static char *read_cstring(struct buffer *r)
 
 static void read_position(struct buffer *r, vec3 v)
 {
-	// left->right handed system
+	// 左手系 -> 右手系
 	v[0] = buffer_read_float(r) * METERS_PER_INCH;
 	v[1] = buffer_read_float(r) * METERS_PER_INCH;
 	v[2] = -buffer_read_float(r) * METERS_PER_INCH;
@@ -39,7 +39,7 @@ static void read_position(struct buffer *r, vec3 v)
 
 static void read_direction(struct buffer *r, vec3 v)
 {
-	// left->right handed system
+	// 左手系 -> 右手系
 	v[0] = buffer_read_float(r);
 	v[1] = buffer_read_float(r);
 	v[2] = -buffer_read_float(r);
@@ -47,7 +47,7 @@ static void read_direction(struct buffer *r, vec3 v)
 
 static void read_quaternion(struct buffer *r, versor q)
 {
-	// left->right handed system
+	// 左手系 -> 右手系
 	float w = buffer_read_float(r);
 	float x = -buffer_read_float(r);
 	float y = -buffer_read_float(r);
@@ -106,12 +106,12 @@ static void destroy_material_group(struct pol_material_group *mg)
 	}
 }
 
-// Material tree layout:
-//   level 0: top-level material per pol->materials[]. Either a textured leaf
-//            or a group containing sub-materials, never both.
-//   level 1: sub-material. Either a textured leaf or, in v4 only, a "blend
-//            group" (is_group=1) with exactly 2 leaf children.
-//   level 2: leaf children of a v4 blend group; cannot themselves be a group.
+// 材质树的布局：
+//   第 0 层：每个 pol->materials[] 对应一个顶层材质。要么是带贴图的叶子，
+//            要么是含子材质的组，不会两者兼有。
+//   第 1 层：子材质。要么是带贴图的叶子，要么（仅 v4）
+//            是一个 is_group=1 的「混合组」，正好 2 个叶子子节点。
+//   第 2 层：v4 混合组的叶子子节点；它们本身不能再是组。
 static void parse_material_group(struct buffer *r, int pol_version,
 		struct pol_material_group *mg, int level)
 {
@@ -666,9 +666,9 @@ void opr_load(uint8_t *data, size_t size, struct pol *pol)
 				pol->meshes[i]->specular_power = f1;
 			}
 		} else if (sscanf(line, "ParallaxScale = %f", &f1) == 1) {
-			// parallax mapping is not implemented
+			// 没实现视差贴图
 		} else if (sscanf(line, "ReliefScale = %f", &f1) == 1) {
-			// relief mapping is not implemented
+			// 没实现浮雕贴图
 		} else if (sscanf(line, "MeshCombinable = %s", s) == 1) {
 			if (strcmp(s, "true") && strcmp(s, "false"))
 				WARNING("invalid MeshCombinable: %s", s);

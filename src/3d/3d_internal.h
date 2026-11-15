@@ -99,7 +99,7 @@ struct motion {
 	int texture_index;
 };
 
-// Attribute variable locations
+// 顶点属性变量的位置
 enum RE_attribute_location {
 	VATTR_POS = 0,
 	VATTR_NORMAL,
@@ -118,7 +118,7 @@ struct shadow_renderer {
 	GLuint fbo;
 	GLuint texture;
 
-	// Uniform variable locations
+	// 各 uniform 变量的位置
 	GLint local_transform;
 	GLint view_transform;
 	GLint has_bones;
@@ -127,7 +127,7 @@ struct shadow_renderer {
 struct outline_renderer {
 	GLuint program;
 
-	// Uniform variable locations
+	// 各 uniform 变量的位置
 	GLint local_transform;
 	GLint view_transform;
 	GLint proj_transform;
@@ -145,7 +145,7 @@ struct RE_renderer {
 	struct shadow_renderer shadow;
 	struct outline_renderer outline;
 
-	// Uniform variable locations
+	// 各 uniform 变量的位置
 	GLint view_transform;
 	GLint texture;
 	GLint local_transform;
@@ -418,8 +418,8 @@ void particle_object_calc_local_transform(struct RE_instance *inst, struct parti
 
 // s3de.c
 
-// .3de effect system. The 's' prefix is just to avoid an identifier starting
-// with a digit; it stands for SealEngine.
+// .3de 效果系统。's' 前缀只是为了避免标识符以
+// 数字开头；它代表 SealEngine。
 
 enum s3de_object_type {
 	S3DE_OBJ_BILLBOARD,
@@ -593,8 +593,8 @@ struct s3de_particle {
 	float fade_in_frames, fade_out_frames;
 };
 
-// Emitter-level values interpolated once per frame by s3de_effect_update,
-// then read (and combined with per-particle values) during rendering.
+// 发射器级的值，由 s3de_effect_update 每帧插值一次，
+// 渲染时再读出（并与逐粒子的值结合）。
 struct s3de_object_state {
 	vec3 emitter_pos;
 	float emitter_size, emitter_x_size, emitter_y_size;
@@ -705,7 +705,7 @@ struct pol_mesh {
 	float *blend_weights;
 	uint32_t nr_triangles;
 	struct pol_triangle *triangles;
-	// Parameters in .opr file.
+	// .opr 文件里的参数。
 	Color edge_color;
 	float edge_size;
 	vec2 uv_scroll;
@@ -831,7 +831,7 @@ struct mpr {
 	bool has_mesh_alpha;                 // any mesh_tracks[i]->nr_mul_alpha > 0
 };
 
-// Per-draw material modulation.
+// 每次绘制的材质调制。
 struct mpr_modulation {
 	float alpha;
 	vec3 ambient;
