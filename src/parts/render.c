@@ -938,6 +938,26 @@ static void parts_render_flash(struct parts *parts, struct parts_flash *f)
 
 void parts_render(struct parts *parts)
 {
+	/* [D217 诊断] 消息窗口底板 CG 是 1920x330 / 1920x417 的部件。
+	 * XSYS4_MSGWIN_FRAME_DBG=1 时打印它有没有被 parts_render 调用、
+	 * origin_offset 与各项准入；用来区分「没到渲染」与「画了看不见」。 */
+	if (getenv("XSYS4_MSGWIN_FRAME_DBG")) {
+		static int fn;
+		struct parts_state *fst = &parts->states[parts->state];
+		if (fst->type == PARTS_CG && fst->common.w >= 1900 &&
+		    fst->common.h >= 300 && fst->common.h <= 500 && fn++ < 12)
+			NOTICE("[frame] no=%d tex=%u pos=(%d,%d) off=(%d,%d) "
+			       "%dx%d vis=%d mw=%d mwshow=%d link=%d a=%d",
+			       parts->no, fst->common.texture.handle,
+			       parts->global.pos.x, parts->global.pos.y,
+			       fst->common.origin_offset.x,
+			       fst->common.origin_offset.y,
+			       fst->common.w, fst->common.h,
+			       parts_is_visible(parts) ? 1 : 0,
+			       parts->message_window ? 1 : 0,
+			       parts_message_window_show ? 1 : 0,
+			       parts->linked_to, (int)parts->global.alpha);
+	}
 	/* [D128] 图层整体隐藏时（AIN 的 SceneStack@IsShow）该层所有部件都不画。 */
 	if (!parts_is_visible(parts))
 		return;

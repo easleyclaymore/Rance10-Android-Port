@@ -129,6 +129,11 @@ struct activity_part {
 	 * parts stay 0x0, hitbox 0x0, and buttons can never be clicked. */
 	char *flat_name;       /* GBK bytes, NULL when absent */
 	int w, h;              /* explicit 尺寸, 0 when absent */
+	/* [D217] 消息窗口组件的 种类別情报（EX 原文见 MessageWindow01.pactex） */
+	int text_area[4];      /* 文本エリア = (470,233,0,0) */
+	int font_size;         /* 字体尺寸 = 39（此前退化成默认 16px） */
+	int font_color[3];     /* 字体色 = (255,255,255) */
+	int char_space, line_space; /* 文字间距 = -2 / 行间距 = 7 */
 
 	/* 用户组件 (component type 15): the EX payload is
 	 *   数据 = ['オブジェクト名', 'TextButton', '参数', '标题,从头开始']
@@ -525,6 +530,22 @@ static void parse_part_fields(struct ex_tree *node, struct activity_part *part)
 		}
 
 		struct ex_tree *src = state ? state : type_info;
+		/* [D217] 消息窗口的排版参数全在 种类別情报 里，此前一个都没读：
+		 * 文本エリア=(470,233,0,0) / 字体尺寸=39 / 字体色=白 /
+		 * 文字间距=-2 / 行间距=7。缺了它们，正文只剩 16px 默认字，
+		 * 再加上底板 CG 没加载，画面上就只有名牌没有消息框。 */
+		if (part->type == ACT_COMP_MESSAGE_WINDOW) {
+			memset(part->text_area, 0, sizeof(part->text_area));
+			get_int_list(type_info, "文本エリア", part->text_area, 4);
+			part->font_size = 0;
+			get_int(type_info, "字体尺寸", &part->font_size);
+			part->font_color[0] = part->font_color[1] = part->font_color[2] = 255;
+			get_int_list(type_info, "字体色", part->font_color, 3);
+			part->char_space = 0;
+			part->line_space = 0;
+			get_int(type_info, "文字间距", &part->char_space);
+			get_int(type_info, "行间距", &part->line_space);
+		}
 		if (!part->cg_name)
 			part->cg_name = get_string(src, "ＣＧ名");
 		if (!part->cg_name)
@@ -795,6 +816,45 @@ static int build_part(struct activity_part *part, int parent_no)
 	} else {
 		ACT_DEBUG("[act] %s parts_no=%d type=%d (no cg)", part->name,
 			  part->parts_no, part->type);
+	}
+
+	/* [D217] 消息窗口：EX 声明的 39px 字体 + 底板ＣＧ。
+	 * parts_state 是 union，CG 与 TEXT 不能共存 —— PE_SetText() 会把
+	 * state 重置成 PARTS_TEXT，任何先设在同部件上的 CG 都会被抹掉。
+	 * 所以底板用一个独立 CG 部件承载（AIN 按名字找部件，不按号找它），
+	 * 文字部件保留原号继续接 SetMessageWindowText。
+	 * XSYS4_MSGWIN_FULL=0 回退做 A/B。 */
+	static int msgwin_full = -1;
+	if (msgwin_full < 0) {
+		const char *e = getenv("XSYS4_MSGWIN_FULL");
+		msgwin_full = e && !strcmp(e, "0") ? 0 : 1;
+	}
+	if (msgwin_full && part->type == ACT_COMP_MESSAGE_WINDOW) {
+		if (part->font_size > 0)
+			PE_SetPartsFontSize(part->parts_no, part->font_size, 1);
+		PE_SetPartsFontColor(part->parts_no, part->font_color[0],
+				part->font_color[1], part->font_color[2], 1);
+		PE_SetTextCharSpace(part->parts_no, part->char_space, 1);
+		PE_SetTextLineSpace(part->parts_no, part->line_space, 1);
+		if (part->cg_name && *part->cg_name) {
+			int frame_no = PE_GetFreeNumber();
+			/* 顺序：先定原点模式/位置，再 SetPartsCG —— 后者的
+			 * parts_set_dims() 会按当时的 origin_mode 算 origin_offset，
+			 * 顺序反了 CG 就会落到 (0,1080) 以下的屏幕外。 */
+			PE_SetPartsOriginPosMode(frame_no, part->origin_mode);
+			PE_SetPos(frame_no, px, py);
+			PE_SetZ(frame_no, part->z);
+			struct string *cg = cstr_to_string(part->cg_name);
+			bool ok = PE_SetPartsCG(frame_no, cg, part->deform, 1);
+			if (ok) {
+				PE_SetShow(frame_no, part->show);
+				PE_SetAlpha(frame_no, part->alpha);
+				PE_SetPassCursor(frame_no, true);
+			}
+			ACT_DEBUG("[act] msgwin frame no=%d cg='%s' set=%d",
+				  frame_no, part->cg_name, ok);
+			free_string(cg);
+		}
 	}
 
 	/* [D119] flat/button parts load their artwork from the FLAT archive.

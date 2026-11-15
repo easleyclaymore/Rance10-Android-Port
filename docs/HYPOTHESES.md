@@ -19,7 +19,9 @@
 | ID | 假设 | 可证伪判据 | 验证方式 | 状态 |
 |---|---|---|---|---|
 | `H014` | 消息窗口正文不出是 `show/alpha` 或文本纹理路径（`[UC-TEXSHADER]`）问题 | `SetMessageWindowText` 非空且 `show/alpha` 正常 → 假设错 | `XSYS4_TEXT_RENDER_DBG=900000300` 实测 `show=1 a=255 vis=1 mwshow=1 lines=1 wh=208x16`，准入全过 | 证伪 → 改判 H027 |
-| `H027` | 剩余三项都是 EX「消息窗口」组件的 `种类別情报` 没落地：① `ＣＧ名="シス／ＡＤＶ／提示"` 被 `type==ACT_COMP_CG` 门限挡掉（类型 10 映射成 `PARTS_FLAT`）；② `字体尺寸=39` 未应用（现 16px）；③ `文本エリア=(470,233,0,0)` 未应用 | 三者补齐后截图仍无完整消息框 / 大字正文 | `alice.sh ex dump` 已给出三字段原文；`build_part` 逐项实现 + A/B 截图 | 待验 |
+| `H027` | 消息窗口三项 EX 语义缺失：底板 `ＣＧ名` / `字体尺寸=39` / `文本エリア=(470,233,0,0)` | 补齐后 `字体尺寸` 实测生效（文字层 `185x39`/`481x39`）、底板 `set=1`；但截图仍无可见消息框 | D217 / `logs/live_msgwinB.log`、`live_msgwinD.log` | 成立（`文本エリア` 由 AIN 运行时接管，EX 装载期不必应用） |
+| `H029` | 底板画不出来是**合成层**问题：半透明黑底板叠在同样全黑的 ADV 背景上，或 CG 纹理采样 / alpha 合成有缺陷 | 换到默认零开关真实流程后，底板若仍不可见则假设成立 | `[frame]` 探针 12 条 + 红色 add_color PoC 像素统计；真实流程 `d217full_16_wait.png` 底板清晰可见 | 证伪 → 改判 H031 |
+| `H031` | `XSYS4_AUTO_MAP` 后门直调 `RunGameChapter1` 跳过背景层初始化，制造「ADV 全黑、底板一像素没画」的假象；**渲染验收必须用默认零开关真实流程** | 同一份代码在真实流程下画面仍全黑 → 假设错 | `logs/live_d217full.log` + `/tmp/d217full_16_wait.png`（背景 CG / 底板 / 名牌 / 正文全出图）vs `/tmp/msgwinC_05_wait.png`（全黑） | 成立 |
 | `H025` | 战斗画面里残留的回想对话框文字是 SceneStack 残留层未清理（渲染/控制器层），不影响战斗链路 | 关掉该层后文字消失且 `Game/Battle/*` 活动数不变 | `XSYS4_ACT_PART_DBG` 找残留部件号 + `PE_ReleaseParts` | 待验 |
 | `H020` | `GetQuestEventList` 的 `S_NOTE` 判空或 `Array.PushBack` 在引擎侧有偏差，导致明明查到了值也没进事件列表 | `EX_String` 对 `.战斗` 返回非空串，但 `28578` 的 `result` 仍 `nr=0` | 给 `EX_String`(5467) 加返回探针，或 `XSYS4_LVAR_DBG=28578:3` 看 `b` 的槽号是否 >0 | 待验 |
 
@@ -29,6 +31,7 @@
 |---|---|---|---|
 | `H001` | ADV 背景不出是 `cover_layer` / 背景快照 / `message_window_show` 遮挡 | 真正原因是 `PartsEngine.UpdateComponent`(f12) 空桩，帧心跳根本没跑；修后截图 10910B→680564B | D203 / `PartsEngine.c`；`archive/` 取证链 |
 | `H028` | 正文不出是被 z=1000+ 的 ADV 背景 CG 覆盖（正文部件 z=2，名牌 z=6003） | B 组把 `message_window` 一族抬到 z=100000 后截图与 A 组完全一致，正文仍不出现；真因是 EX 比率坐标未换算，正文在屏幕外 | `XSYS4_MSGWIN_Z=1` / `logs/live_advtextD.log`、`/tmp/advtextD_05_wait.png`；实验代码已按纪律回退 |
+| `H030` | 消息框不画是 `ＣＧ名` 没加载（`type==ACT_COMP_CG` 门限）或底板部件没进渲染 | 独立 CG 部件 `set=1`、`1920x330 tex=1 vis=1`；`[frame]` 探针实测 `tex=320 off=(0,-330) vis=1 link=-1 a=255` 准入全过，红色 add_color 仍 0 像素 → 问题在合成/背景，不在加载 | D217 / `logs/live_msgwinB.log`、`live_msgwinD.log`、`/tmp/msgwinC_05_wait.png`；红色 PoC 已删 |
 | `H002` | AIN 无 MSGF 段时把 `msgf` 设成 `-1` 就行 | `_MSG` 是 JMP 类（`ip_inc=0`），`if (msgf<0) break;` 会死循环；实测执行约 2693 万次 | `vm.c` `_MSG` case；`instructions.c` `_JMP(_MSG,…)` |
 | `H003` | 剧情推进慢纯粹是逐字动画，按住 Ctrl 快进后就能一路到战斗 | Ctrl 快进确实把 14 分钟压到 60 秒，但 60 秒 / 4 分钟 / 补点击三次结果完全一致（333 次 Set），停点固定 | D205 / `logs/live_ctrlskip.log`、`live_ctrllong.log`、`live_ctrlbreak.log` |
 | `H004` | 硬置 `global[28]`（`advengine::detail::IsSkip` 直接返回它）能跳过逐句绘制 | 后门确实触发，但剧情**根本没进** `０２／ＳＴＡＲＴ`（0 命中），卡在等待 | `logs/live_advskip.log`；PoC 已按纪律回退 |
