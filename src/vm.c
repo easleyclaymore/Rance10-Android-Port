@@ -1761,6 +1761,21 @@ bool vm_iface_pair(int iface_no, int ref_slot, int *obj, int *offset)
 	return false;
 }
 
+/* [D227] 按值传参且**拥有堆引用**的类型。`AIN_REF_TYPE` 是宏（多 case），
+ * 不能放进表达式；它那类参数由 function_call() 自己 heap_ref，见调用点。 */
+static bool hll_arg_owns_ref(enum ain_data_type type)
+{
+	switch (type) {
+	case AIN_STRING:
+	case AIN_STRUCT:
+	case AIN_DELEGATE:
+	case AIN_ARRAY_TYPE:
+		return true;
+	default:
+		return false;
+	}
+}
+
 /* Invoke the AIN function an AIN_HLL_FUNC argument refers to.
  *
  * AIN v12 pushes a function value as a [this, fno] pair; ffi.c keeps only the
@@ -1821,6 +1836,23 @@ bool vm_call_hll_closure(int fno, const union vm_value *args, int nargs,
 			stack_push((union vm_value){ .i = offset });
 			pushed += 2;
 		} else {
+			/* [D227] 借来的实参必须在这里补一份引用。
+			 *
+			 * `function_call()` 对**按值**的参数按"所有权转移"处理：
+			 * 值进被调帧的局部页，帧销毁时 unref。而 HLL 侧（Array 的
+			 * 谓词族：Find/Where/Any/All/First/BinarySearch）传进来的
+			 * 是数组元素的**副本**，原元素仍归数组所有 —— 不补引用就
+			 * 等于把数组那一份引用送给了被调帧，被调帧用完 unref 一次，
+			 * 字符串/页提前释放，数组里留下悬空槽。
+			 *
+			 * 判据：战斗回合切换时 `Array.Find(ref array<string>, 谓词)`
+			 * 的谓词做 `S_EQUALE`，对已释放槽 heap_unref，slot=918493
+			 * 越界 → SIGSEGV（core 里 Array_Find_ → heap_unref）。
+			 * `AIN_REF_*` 参数不补：`function_call()` 自己会 heap_ref，
+			 * 由被调帧借用。 */
+			if (hll_arg_owns_ref(param->data) &&
+			    heap_index_valid(args[i].i))
+				heap_ref(args[i].i);
 			stack_push(args[i]);
 			pushed++;
 		}
