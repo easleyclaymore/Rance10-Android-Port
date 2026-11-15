@@ -106,3 +106,4 @@ XSYS4_FLAT_DBG	打印 flat 的加载名/hdr 尺寸/库数，以及渲染时的 f
 XSYS4_AUTO_MAP_ROUTE	[后门] 地图稳定后直调 SceneQuestMap@StartMoveRoute(23606)，毫秒=延迟
 XSYS4_ACT_PART_DBG	打印活动部件的建造解析（名字/类型/尺寸/表示領域/flat 名）与 300 号段之后的 SetPos/SetZ
 XSYS4_EX_DUMP	按部件名 dump 整棵 EX 子树（查「尺寸」「表示領域」写在哪个键上）；值=部件名
+XSYS4_MSGF_FIX	[D204] AIN v12 无 MSGF 段时按函数名把 msgf 解析到 "message"/3（Rance10: fno 6100）；默认开启，=0 关闭做 A/B

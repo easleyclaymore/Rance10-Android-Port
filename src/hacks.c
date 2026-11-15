@@ -290,8 +290,49 @@ static void apply_daibanchou_hacks(struct ain *ain)
 	}
 }
 
+/*
+ * [D204] AIN v12 dropped the MSGF section, but the _MSG instruction still
+ * calls ain->msgf. libsys4's ain_open_conv() leaves msgf at the xcalloc
+ * default (0 = the NULL function), so _MSG pushes (msg_no, nr_messages,
+ * text) into a no-op frame and every line of dialogue is silently swallowed.
+ * Setting msgf < 0 is not an option either: _MSG is a JMP-class instruction
+ * (ip_inc == 0), so `if (ain->msgf < 0) break;` loops forever on the same
+ * instruction.
+ *
+ * The compiler still emits the handler into FUNC with the bare name
+ * "message" and exactly the 3 locals (nMsgNum, nNumofMsg, szText) that _MSG
+ * pushes (Rance10: fno 6100). fno 6109 ("S") even calls it directly as
+ * message(0, 0, text). Recover msgf from that function.
+ *
+ * Default on since D204 (verified: ０２／ＳＴＡＲＴ runs, message text
+ * reaches SetMessageWindowText, and clicking advances to the next MSG).
+ * XSYS4_MSGF_FIX=0 disables it for A/B.
+ */
+static void resolve_v12_msgf(struct ain *ain)
+{
+	/* Only for AINs that actually lost MSGF and still have the MSG1 table. */
+	if (ain->MSGF.present || !ain->MSG1.present || ain->msgf > 0)
+		return;
+	for (int i = 1; i < ain->nr_functions; i++) {
+		struct ain_function *f = &ain->functions[i];
+		if (!f->name || f->nr_args != 3 || strcmp(f->name, "message"))
+			continue;
+		ain->msgf = i;
+		NOTICE("[msgf] v12: no MSGF section; resolved handler to fno=%d (%s)",
+		       i, f->name);
+		return;
+	}
+	NOTICE("[msgf] v12: no MSGF section and no 'message'/3 function; msgf stays %d",
+	       ain->msgf);
+}
+
 void apply_game_specific_hacks(struct ain *ain)
 {
+	/* [D204] 默认生效；XSYS4_MSGF_FIX=0 可关掉做 A/B 对照。 */
+	const char *msgf_off = getenv("XSYS4_MSGF_FIX");
+	if (!msgf_off || strcmp(msgf_off, "0"))
+		resolve_v12_msgf(ain);
+
 	char *game_name = sjis2utf(config.game_name, 0);
 	if (!strcmp(game_name, "大番長")) {
 		apply_daibanchou_hacks(ain);

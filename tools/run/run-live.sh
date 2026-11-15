@@ -47,6 +47,9 @@ MAX_BYTES="${MAX_LOG_BYTES:-20000000}"
 OK_X="${RANCE10_LIVE_OK_X:-963}"
 OK_Y="${RANCE10_LIVE_OK_Y:-817}"
 RC_LIMIT="${RANCE10_LIVE_RCLICKS:-8}"
+# 序列里 click/rclick 之后的停顿。默认 1.2s 不变；长剧情连点时用
+# RANCE10_CLICK_SLEEP=0.5 之类收紧，否则 200+ 步要跑十几分钟。
+CLICK_SLEEP="${RANCE10_CLICK_SLEEP:-1.2}"
 
 # [D170] 路径锚点：向上找到 tools/lib/common.sh —— 这样一来脚本放到
 # 任何子目录（run/ build/ env/）都不用改路径计算，只改这一行不用动。
@@ -345,7 +348,7 @@ if [ -n "${RANCE10_LIVE_SEQ:-}" ]; then
                 IFS=',' read -r cx cy <<< "$arg"
                 if [ "$act" = "click" ]; then btn=1; else btn=3; fi
                 click "$cx" "$cy" "$btn"
-                sleep 1.2
+                sleep "$CLICK_SLEEP"
                 ;;
             # key:<X11 keysym>，例如 key:Return / key:Escape
             key)

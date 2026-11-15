@@ -510,6 +510,22 @@ static void AnteaterADVEngine_ADVLogList_AddText_by_value(struct string *text, i
 	ADVLogList_AddText(&text);
 }
 
+/* [D204] Rance10 declares AnteaterADVLogList.AddText(Text:string,
+ * WindowName:string): both arguments are AIN_STRING, i.e. by value, so
+ * libffi hands the C function two `struct string *`. The table entry
+ * ADVLogList_AddText(struct string **) expects a ref-string instead and
+ * dereferences the string object's own header as a pointer. That yields a
+ * bogus `struct string *` (observed in a core dump: 0x100000800000008)
+ * and a SEGV in string_append(). The Evenicle adapter above cannot be used:
+ * it only looks up the *prefixed* name and replaces the *prefixed* table
+ * entry, neither of which Rance10 has. */
+static void AnteaterADVLogList_AddText_by_value(struct string *text,
+						struct string *window_name)
+{
+	(void)window_name;
+	ADVLogList_AddText(&text);
+}
+
 static void AnteaterADVEngine_ADVLogList_AddVoice_by_name(struct string *voice)
 {
 	if (!enabled) return;
@@ -620,5 +636,19 @@ static void AnteaterADVEngine_PreLink(void)
 	if (fun && fun->nr_arguments == 3 && fun->arguments[2].type.data == AIN_REF_STRING) {
 		static_library_replace(&lib_AnteaterADVEngine, "ADVLogList_GetADVLogVoice",
 			AnteaterADVEngine_ADVLogList_GetADVLogVoice_by_name);
+	}
+
+	/* [D204] Rance10 keeps the same library under the name
+	 * AnteaterADVLogList but drops the "ADVLogList_" prefix from every
+	 * function. The by-value signature check above therefore never fires
+	 * and AddText stays bound to the ref-string implementation. */
+	int advlog = ain_get_library(ain, "AnteaterADVLogList");
+	if (advlog >= 0) {
+		fun = get_fun(advlog, "AddText");
+		if (fun && fun->nr_arguments == 2 &&
+		    fun->arguments[0].type.data == AIN_STRING) {
+			static_library_replace(&lib_AnteaterADVEngine, "AddText",
+				AnteaterADVLogList_AddText_by_value);
+		}
 	}
 }
