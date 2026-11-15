@@ -3075,13 +3075,15 @@ void PE_DebugDumpParts(const char *tag)
 			for (size_t i = 0; i < st->flat.nr_libraries; i++)
 				if (st->flat.textures[i].handle)
 					cgn++;
-			NOTICE("[parts] %s   flat no=%d loaded=%d root=%d hdr=%dx%d fps=%d tl=%zu libs=%zu cg=%zu",
+			NOTICE("[parts] %s   flat no=%d loaded=%d root=%d hdr=%dx%d fps=%d tl=%zu libs=%zu cg=%zu frame=%d end=%d adv=%d stop=%d",
 			       tag, p->no, st->flat.flat != NULL, st->flat.root_state,
 			       st->flat.flat ? st->flat.flat->hdr.width : -1,
 			       st->flat.flat ? st->flat.flat->hdr.height : -1,
 			       st->flat.flat ? st->flat.flat->hdr.fps : -1,
 			       st->flat.flat ? st->flat.flat->nr_timelines : (size_t)0,
-			       st->flat.nr_libraries, cgn);
+			       st->flat.nr_libraries, cgn,
+			       st->flat.root_state ? st->flat.root_state->current_frame : -1,
+			       st->flat.end_frame, st->flat.needs_advance, st->flat.stopped);
 		}
 		static int dump_max = -1;
 		if (dump_max < 0) {
