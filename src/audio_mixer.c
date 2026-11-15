@@ -33,9 +33,9 @@
 #endif
 
 /*
- * The actual mixer implementation is contained in this header.
- * The rest of this file implements a high level interface for managing mixer
- * channels (loading audio, starting/stopping, etc.)
+ * 真正的混音器实现就在这个头文件里。
+ * 本文件其余部分实现的是管理混音通道的高层接口
+ * （加载音频、启停等）。
  */
 #define STS_MIXER_IMPLEMENTATION
 #include "sts_mixer.h"
@@ -54,21 +54,21 @@ struct fade {
 };
 
 struct channel {
-	// archive data
+	// 压缩包数据
 	struct archive_data *dfile;
 	int mixer_no;
 
-	// audio file data
+	// 音频文件数据
 	SNDFILE *file;
 	SF_INFO info;
 	sf_count_t offset;
 
-	// stream data
+	// 流数据
 	atomic_int voice;
 	sts_mixer_stream_t stream;
 	float data[CHUNK_SIZE * 2];
 
-	// main thread read-only
+	// 主线程只读
 	atomic_uint_least32_t frame;
 
 	atomic_uint volume;
@@ -99,7 +99,7 @@ static int nr_mixers = 0;
 static SDL_AudioDeviceID audio_device = 0;
 
 /*
- * The SDL2 audio callback.
+ * SDL2 音频回调。
  */
 static void audio_callback(possibly_unused void *data, Uint8 *stream, int len)
 {
@@ -110,8 +110,8 @@ static void audio_callback(possibly_unused void *data, Uint8 *stream, int len)
 }
 
 /*
- * Seek to the specified position in the stream.
- * Returns true if the seek succeeded, otherwise returns false.
+ * 定位到流里的指定位置。
+ * 成功返回 true，否则返回 false。
  */
 static bool cb_seek(struct channel *ch, uint_least32_t pos)
 {
@@ -128,8 +128,8 @@ static bool cb_seek(struct channel *ch, uint_least32_t pos)
 }
 
 /*
- * Seek to loop start, if the stream should loop.
- * Returns true if the stream should loop, false if it should stop.
+ * 如果该流要循环，就定位到循环起点。
+ * 要循环返回 true，要停止返回 false。
  */
 static bool cb_loop(struct channel *ch)
 {
@@ -143,42 +143,42 @@ static bool cb_loop(struct channel *ch)
 }
 
 /*
- * Callback to refill the stream's audio data.
- * Called from sys_mixer_mix_audio.
+ * 回填流音频数据的回调。
+ * 由 sys_mixer_mix_audio 调用。
  */
 static int cb_read_frames(struct channel *ch, float *out, sf_count_t frame_count, uint_least32_t *num_read)
 {
 	*num_read = 0;
 
-	// handle case where chunk crosses loop point (seamless)
-	// NOTE: it's assumed that the length of the loop is greater than the chunk length
+	// 处理数据块跨越循环点的情况（无缝衔接）
+	// 注意：这里假定循环长度大于块长度
 	if (ch->frame + frame_count >= ch->loop_end) {
-		// read frames up to loop_end
+		// 读到 loop_end 为止
 		*num_read = sf_readf_float(ch->file, out, ch->loop_end - ch->frame);
-		// adjust parameters for later
+		// 调整后续要用的参数
 		ch->frame += *num_read;
 		out += *num_read;
 		frame_count -= *num_read;
-		// seek to loop_start
+		// 定位到 loop_start
 		if (!cb_loop(ch))
 			return STS_STREAM_COMPLETE;
 	} else if (ch->frame >= ch->loop_end) {
-		// seek to loop_start
+		// 定位到 loop_start
 		if (!cb_loop(ch))
 			return STS_STREAM_COMPLETE;
 	}
 
-	// read remaining data
+	// 读剩下的数据
 	sf_count_t n = sf_readf_float(ch->file, out, frame_count);
 	*num_read += n;
 	ch->frame += n;
 	out += *num_read;
 	frame_count -= *num_read;
 
-	// XXX: This *shouldn't* be necessary, but sometimes libsndfile seems to stop reading
-	//      just before the end of file (i.e. ch->frame + frame_count is < ch->info.frames,
-	//      yet sf_readf_float returns less that the requested amount of frames).
-	//      Not sure if this is a bug in xsystem4 or libsndfile
+	// XXX：这本来不该需要，但 libsndfile 有时会在文件末尾之前
+	//      就停止读取（即 ch->frame + frame_count 小于 ch->info.frames，
+	//      而 sf_readf_float 返回的帧数少于请求量）。
+	//      不确定这是 xsystem4 还是 libsndfile 的 bug
 	if (frame_count > 0) {
 		if (!cb_loop(ch))
 			return STS_STREAM_COMPLETE;
@@ -203,7 +203,7 @@ static float fade_curve(enum fade_curve curve, float t)
 }
 
 /*
- * Calculate the gain for a fade at a given sample.
+ * 计算某个采样点上淡变的增益。
  */
 static float cb_calc_fade(struct fade *fade)
 {
@@ -224,10 +224,10 @@ static int refill_stream(sts_mixer_sample_t *sample, void *data)
 	uint_least32_t frames_read;
 	memset(ch->data, 0, sizeof(float) * sample->length);
 
-	// read audio data from file
+	// 从文件读音频数据
 	int r = cb_read_frames(ch, ch->data, CHUNK_SIZE, &frames_read);
 
-	// convert mono to stereo
+	// 单声道转立体声
 	if (ch->info.channels == 1) {
 		for (int i = CHUNK_SIZE-1; i >= 0; i--) {
 			ch->data[i*2+1] = ch->data[i];
@@ -235,7 +235,7 @@ static int refill_stream(sts_mixer_sample_t *sample, void *data)
 		}
 	}
 
-	// reverse LR channels
+	// 左右声道互换
 	else if (ch->swapped) {
 		for (int i = 0; i < CHUNK_SIZE; i++) {
 			float tmp = ch->data[i*2];
@@ -244,7 +244,7 @@ static int refill_stream(sts_mixer_sample_t *sample, void *data)
 		}
 	}
 
-	// set gain for fade
+	// 设置淡变增益
 	if (ch->fade.fading) {
 		float gain = cb_calc_fade(&ch->fade);
 		mixers[ch->mixer_no].mixer.voices[ch->voice].gain = gain;
@@ -382,10 +382,10 @@ int channel_fade(struct channel *ch, int time, int volume, bool stop, enum fade_
 	if (!time && stop)
 		return channel_stop(ch);
 
-	// XXX: Fade with time=0 is used to set volume. This needs to
-	//      take effect immediately, not via the audio callback
-	//      because the stream isn't necessarily playing yet.
-	//      E.g. the below call sequence should fade from 0 -> 33:
+	// XXX：time=0 的淡变用来设音量。这个必须
+	//      立即生效，而不是走音频回调 ——
+	//      因为此时流不一定已经在播了。
+	//      例如下面这个调用序列应当从 0 淡到 33：
 	//
 	//          SACT2.Music_Fade(ch, 0, 0, 0);
 	//          SACT2.Music_Fade(ch, 33, 4000, 0);
@@ -409,8 +409,8 @@ int channel_fade(struct channel *ch, int time, int volume, bool stop, enum fade_
 int channel_stop_fade(struct channel *ch)
 {
 	SDL_LockAudioDevice(audio_device);
-	// XXX: we need to set the volume to end_volume and potentially stop the
-	//      stream here; better to let the callback do it
+	// XXX：这里需要把音量设成 end_volume，可能还要停掉
+	//      流；但交给回调去做更合适
 	ch->fade.elapsed = ch->fade.frames;
 	SDL_UnlockAudioDevice(audio_device);
 	return 1;
@@ -423,14 +423,14 @@ int channel_is_fading(struct channel *ch)
 
 int channel_pause(possibly_unused struct channel *ch)
 {
-	// NOTE: not implemented in Sengoku Rance's SACT2.dll
+	// 注意：《战国兰斯》的 SACT2.dll 里没有实现
 	WARNING("channel_pause not implemented");
 	return 0;
 }
 
 int channel_restart(possibly_unused struct channel *ch)
 {
-	// NOTE: not implemented in Sengoku Rance's SACT2.dll
+	// 注意：《战国兰斯》的 SACT2.dll 里没有实现
 	WARNING("channel_restart not implemented");
 	return 0;
 }
@@ -447,7 +447,7 @@ int channel_get_pos(struct channel *ch)
 
 int channel_get_length(struct channel *ch)
 {
-	// FIXME: how is this different than channel_get_time_length?
+	// FIXME：它和 channel_get_time_length 有什么区别？
 	return muldiv(ch->info.frames, 1000, ch->info.samplerate);
 }
 
@@ -463,7 +463,7 @@ int channel_get_sample_length(struct channel *ch)
 
 int channel_seek(struct channel *ch, int pos)
 {
-	// NOTE: SACT2.Music_Seek doesn't seem to do anything in Sengoku Rance...
+	// 注意：SACT2.Music_Seek 在《战国兰斯》里好像什么也不做……
 	SDL_LockAudioDevice(audio_device);
 	int r = cb_seek(ch, muldiv(pos, ch->info.samplerate, 1000));
 	SDL_UnlockAudioDevice(audio_device);
@@ -554,7 +554,7 @@ static bool init_channel(struct channel *ch)
 		return false;
 	}
 
-	// create stream
+	// 创建流
 	ch->stream.userdata = ch;
 	ch->stream.callback = refill_stream;
 	ch->stream.sample.frequency = ch->info.samplerate;
@@ -577,7 +577,7 @@ struct channel *channel_open_archive_data(struct archive_data *dfile)
 	struct channel *ch = xcalloc(1, sizeof(struct channel));
 	ch->dfile = dfile;
 
-	// open file
+	// 打开文件
 	ch->file = sf_open_virtual(&channel_vio, SFM_READ, &ch->info, ch);
 
 	if (!init_channel(ch)) {
@@ -624,7 +624,7 @@ void channel_close(struct channel *ch)
 
 void mixer_init(void)
 {
-	// initialize mixer naming
+	// 初始化混音器命名
 	if (!config.mixer_nr_channels) {
 		nr_mixers = 3;
 		mixers = xcalloc(nr_mixers, sizeof(struct mixer));
@@ -633,8 +633,8 @@ void mixer_init(void)
 		mixers[2].name = strdup("Master");
 		master = &mixers[2];
 	} else {
-		// NOTE: Older games don't have an explicit master channel.
-		//       We add an extra mixer in this case for consistency.
+		// 注意：老游戏没有显式的 master 通道。
+		//       为了保持一致，这种情况我们补一个混音器。
 		int need_master = 1;
 		if (!strcmp(config.mixer_channels[0], "Master") || !strcmp(config.mixer_channels[0], SJIS_MASTER)) {
 			need_master = 0;
@@ -652,10 +652,10 @@ void mixer_init(void)
 		}
 	}
 
-	// initialize mixer hierarchy
-	// NOTE: "Master" and "Voice" are special nodes; all channels following
-	//       them in the list become their children. This appears to be
-	//       hardcoded behavior in system 4.
+	// 初始化混音器层级
+	// 注意：Master 和 Voice 是特殊节点；列表里跟在它们
+	//       后面的通道都成为它们的子节点。这看起来是
+	//       System 4 里写死的行为。
 	struct mixer *parent = master;
 	for (int i = 0; i < nr_mixers; i++) {
 		if (&mixers[i] == master)
@@ -668,14 +668,14 @@ void mixer_init(void)
 		}
 	}
 
-	// initialize mixers
+	// 初始化各混音器
 	for (int i = 0; i < nr_mixers; i++) {
 		sts_mixer_init(&mixers[i].mixer, 44100, STS_MIXER_SAMPLE_FORMAT_FLOAT);
 		int volume = i < (int)config.mixer_nr_channels ? config.mixer_volumes[i] : config.default_volume;
 		mixers[i].mixer.gain = clamp(0.0f, 1.0f, (float)volume / 100.0f);
 	}
 
-	// initialize mixer streams
+	// 初始化混音器的流
 	for (int i = 0; i < nr_mixers; i++) {
 		if (&mixers[i] == master)
 			continue;
@@ -688,7 +688,7 @@ void mixer_init(void)
 		mixers[i].voice = sts_mixer_play_stream(&mixers[i].parent->mixer, &mixers[i].stream, 1.0f);
 	}
 
-	// initialize SDL audio
+	// 初始化 SDL 音频
 	SDL_AudioSpec have;
 	SDL_AudioSpec want = {
 		.format = AUDIO_F32,
@@ -697,7 +697,7 @@ void mixer_init(void)
 		.samples = CHUNK_SIZE,
 		.callback = audio_callback,
 	};
-	/* XSYS4_NO_AUDIO: skip the SDL/ALSA device in headless setups. */
+	/* XSYS4_NO_AUDIO：无头环境里跳过 SDL/ALSA 设备。 */
 	if (!SDL_getenv("XSYS4_NO_AUDIO"))
 		audio_device = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
 	if (audio_device > 0)
@@ -706,8 +706,8 @@ void mixer_init(void)
 
 int mixer_get_numof(void)
 {
-	// Return the number of mixers specified in System40.ini, even if
-	// xsystem4 added more mixers.
+	// 返回 System40.ini 里指定的混音器数量，
+	// 即使 xsystem4 后来又加了混音器。
 	return config.mixer_nr_channels;
 }
 
