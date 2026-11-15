@@ -83,6 +83,8 @@ def needs_translation(line):
         return False
     if body.endswith(';'):              # 被注释掉的代码
         return False
+    if re.match(r'^#\w', body):        # 被注释掉的预处理指令（//#define）
+        return False
     return True
 
 

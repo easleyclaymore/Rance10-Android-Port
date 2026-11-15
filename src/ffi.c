@@ -102,8 +102,8 @@ static FILE *stub_log_file(void)
 		const char *p = getenv("XSYS4_STUB_LOG");
 		char path[512];
 		if (!p || !*p) {
-			/* [L3] No hardcoded /tmp path in Core Layer: honour the
-			 * platform's temp directory and fall back to CWD. */
+			/* [L3] Core 层不允许写死 /tmp 路径：要用平台的
+			 * 临时目录，取不到再退回当前工作目录。 */
 			const char *tmp = getenv("TMPDIR");
 			snprintf(path, sizeof(path), "%s/xsys4_stubs.txt",
 				 (tmp && *tmp) ? tmp : ".");
@@ -180,7 +180,7 @@ bool library_function_exists(int libno, int fno)
 }
 
 /*
- * Primitive HLL function tracing facility.
+ * HLL 函数调用的简易跟踪设施（默认关，见下面的 TRACE_HLL）。
  */
 //#define TRACE_HLL
 #ifdef TRACE_HLL
@@ -423,9 +423,9 @@ static void trace_hll_call(struct ain_library *lib, struct ain_hll_function *f,
 }
 #endif /* TRACE_HLL */
 
-/* Type tag of the CALLHLL whose HLL body is currently executing.
- * Exposed to HLL implementations through hll_generic_result_type() so that
- * generic Array/Container calls can materialise correctly typed elements. */
+/* 当前正在执行的这段 HLL 函数体所属 CALLHLL 的类型标签。
+ * 通过 hll_generic_result_type() 暴露给 HLL 实现，
+ * 这样泛型 Array/Container 调用才能实例化出类型正确的元素。 */
 static int hll_result_tag = -1;
 static int hll_call_fno = -1;
 
@@ -439,28 +439,28 @@ int hll_current_fno(void)
 	return hll_call_fno;
 }
 
-/* An AIN_IFACE / AIN_WRAP value occupies two stack slots:
- * [object heap slot, vtable offset]. Rance10 passes and returns such values
- * through the generic Array element type (AIN_HLL_PARAM / AIN_REF_HLL_PARAM)
- * with the concrete element type in CALLHLL's third immediate, so the
- * marshalling has to know when a generic value is two slots wide. */
+/* 一个 AIN_IFACE / AIN_WRAP 值占两个栈槽：
+ * [对象堆槽, 虚表偏移]。兰斯10 通过泛型数组元素类型
+ * （AIN_HLL_PARAM / AIN_REF_HLL_PARAM）传递和返回这类值，
+ * 具体元素类型放在 CALLHLL 的第三个立即数里，
+ * 所以编组层必须知道「泛型值什么时候是两槽宽」。 */
 static bool hll_tag_is_two_slot(int tag)
 {
 	return tag == AIN_IFACE || tag == AIN_WRAP || tag == AIN_IFACE_WRAP;
 }
 
-/* A reference to a heap-owned object is just the object's handle (one stack
- * value); a reference to a value living inside a page is a two-value
- * [page, var] pair. This is not inferred from runtime behaviour: the AIN
- * variable-slot census (logs/ain_spec_slots.txt) shows AIN_REF_INT/FLOAT/
- * BOOL/ENUM, AIN_WRAP and AIN_IFACE are always followed by an AIN_VOID
- * placeholder slot, while AIN_REF_STRUCT/STRING/DELEGATE/ARRAY occupy one
- * slot; the ref-argument marshalling above has the same two-slot list.
- * Independent confirmation: tools/ain_refparam.c classifies all 452 typed
- * AIN_REF_HLL_PARAM call sites in Rance10.ain by how the following bytecode
- * consumes the result - tags 10/47/89/92 are 100% R_ASSIGN (two values),
- * tags 12/13/21 are 100% ASSIGN/CALLMETHOD (one value), no exceptions
- * (logs/ain_refparam.txt).
+/* 指向堆对象的引用，本身就是对象句柄（一个栈值）；
+ * 指向「页里的值」的引用，则是两个值 [页, 变量号] 的对。
+ * 这不是从运行期行为推出来的：AIN 变量槽普查
+ * （logs/ain_spec_slots.txt）显示 AIN_REF_INT/FLOAT/
+ * BOOL/ENUM、AIN_WRAP 和 AIN_IFACE 后面总跟着一个 AIN_VOID
+ * 占位槽，而 AIN_REF_STRUCT/STRING/DELEGATE/ARRAY 只占一个槽；
+ * 上面那套 ref 实参编组用的是同一张两槽清单。
+ * 独立佐证：tools/ain_refparam.c 把 Rance10.ain 里全部 452 个
+ * 带类型的 AIN_REF_HLL_PARAM 调用点，按后随字节码怎么消费结果
+ * 分了类 —— 标签 10/47/89/92 是 100% 的 R_ASSIGN（两个值），
+ * 标签 12/13/21 是 100% 的 ASSIGN/CALLMETHOD（一个值），无一例外
+ * （logs/ain_refparam.txt）。
  * See Rance10_AINv12_字节码规范-20261107.md, "引用槽宽" . */
 static int hll_ref_result_is_single_value(int tag)
 {
@@ -567,13 +567,13 @@ void hll_call(int libno, int fno, int result_tag)
 
 	void *args[HLL_MAX_ARGS];
 	void *ptrs[HLL_MAX_ARGS];
-	// Copy reference arguments to the stack to protect against heap
-	// reallocation during HLL calls.
+	// 把 ref 实参再拷一份到栈上，防止 HLL 调用期间堆被重新分配。
+	// （Heap realloc 会让传出去的指针失效。）
 	void *heap_ptrs[HLL_MAX_ARGS];
 	int heap_slots[HLL_MAX_ARGS];
-	/* AIN_HLL_PARAM is an 8-byte value while VM stack slots are 4 bytes.
-	 * Materialise full-width temporaries so libffi never reads into the
-	 * adjacent stack slot (that produced values like 0x7F0000003E). */
+	/* AIN_HLL_PARAM 是 8 字节的值，而 VM 的栈槽是 4 字节。
+	 * 所以要造出满宽的临时变量，免得 libffi 读到相邻的栈槽
+	 * （那会产生 0x7F0000003E 这样的值）。 */
 	uint64_t hll_values[HLL_MAX_ARGS];
 	memset(heap_slots, 0, sizeof(heap_slots));
 	memset(hll_values, 0, sizeof(hll_values));
@@ -584,7 +584,7 @@ void hll_call(int libno, int fno, int result_tag)
 		case AIN_REF_LONG_INT:
 		case AIN_REF_BOOL:
 		case AIN_REF_FLOAT: {
-			// need to create pointer for immediate ref types
+			// 立即数式的 ref 类型需要先造出指针
 			stack_ptr -= 2;
 			int pageno = stack[stack_ptr].i;
 			int varno  = stack[stack_ptr+1].i;
@@ -623,13 +623,13 @@ void hll_call(int libno, int fno, int result_tag)
 				stack[stack_ptr].i = heap_slots[i];
 			}
 			heap_ptrs[i] = heap[heap_slots[i]].page;
-			/* D72: a ref-array parameter must point at an ARRAY_PAGE. Some
-			 * Parts UI globals hold a 0-slot placeholder instead; Array.PushBack
-			 * skipped them so the array never grew. Normalise to an empty array. */
+			/* D72：ref array 形参必须指向一张 ARRAY_PAGE。有些
+			 * 部件 UI 的全局变量放的是 0 槽占位页；Array.PushBack
+			 * 会跳过它们，数组于是永远长不大。这里统一成空数组。 */
 			struct page *cur = (struct page *)heap_ptrs[i];
-			/* [FIX D99] A live slot whose page is NULL must also be normalised:
-			 * the old `cur &&` guard skipped that case and passed NULL to the
-			 * HLL, so Array.Numof() returned 0 and CreateHandle produced -1. */
+			/* [FIX D99] 槽活着但页是 NULL 的情况也要统一：
+			 * 原来那句 `cur &&` 守卫跳过了这种情况，把 NULL 传给 HLL，
+			 * 于是 Array.Numof() 返回 0、CreateHandle 产出 -1。 */
 			if (!cur || cur->type != ARRAY_PAGE) {
 				if (getenv("XSYS4_ARR_DBG"))
 					NOTICE("[ARR] subst slot=%d ref=%d page=%p type=%d fno=%d",
@@ -649,7 +649,7 @@ void hll_call(int libno, int fno, int result_tag)
 			break;
 		case AIN_HLL_PARAM:
 			if (hll_tag_is_two_slot(result_tag)) {
-				/* [object, vtable offset]: the object is the value. */
+				/* [对象, 虚表偏移]：对象就是值。 */
 				stack_ptr -= 2;
 				hll_values[i] = (uint32_t)stack[stack_ptr].i;
 			} else {
@@ -659,7 +659,7 @@ void hll_call(int libno, int fno, int result_tag)
 			args[i] = &hll_values[i];
 			break;
 		case AIN_HLL_FUNC:
-			/* D59/D68: v12 T_FUNC args are [obj, fno] pairs; lib 5 and lib 11 both push two values. */
+			/* D59/D68：v12 的 T_FUNC 实参是 [对象, 函数号] 对；库 5 和库 11 都压两个值。 */
 			if (libno == 5 || libno == 11) {
 				stack_ptr -= 2;
 				hll_values[i] = (uint32_t)stack[stack_ptr + 1].i;
@@ -671,7 +671,7 @@ void hll_call(int libno, int fno, int result_tag)
 			break;
 		case AIN_REF_DELEGATE:
 		case AIN_DELEGATE:
-			/* Delegate.Set expects a delegate PAGE pointer (D59). */
+			/* Delegate.Set 期望的是委托页指针（D59）。 */
 			stack_ptr--;
 			heap_slots[i] = stack[stack_ptr].i;
 			heap_ptrs[i] = (heap_slots[i] > 0 && heap_slots[i] < heap_size) ? heap[heap_slots[i]].page : NULL;
@@ -697,8 +697,8 @@ void hll_call(int libno, int fno, int result_tag)
 
 
 	for (int i = 0, j = 0; i < f->nr_arguments; i++, j++) {
-		// XXX: We don't increase the ref count when passing ref arguments to HLL
-		//      functions, so we need to avoid decreasing it via variable_fini
+		// XXX：把 ref 实参传给 HLL 时我们没有加引用计数，
+		//      所以这里要避免再通过 variable_fini 减一次
 		switch (f->arguments[i].type.data) {
 		case AIN_REF_INT:
 		case AIN_REF_LONG_INT:
@@ -709,7 +709,7 @@ void hll_call(int libno, int fno, int result_tag)
 				j++;
 			break;
 		case AIN_REF_STRING:
-			/* D75: slot 0 is the reserved GLOBAL_PAGE; never clobber it. */
+			/* D75：槽 0 是保留的全局页，绝不能被覆盖。 */
 			if (heap_slots[i] > 0 && heap_slots[i] < heap_size)
 				heap[heap_slots[i]].s = heap_ptrs[i];
 			break;
@@ -729,12 +729,12 @@ void hll_call(int libno, int fno, int result_tag)
 		case AIN_REF_FUNC_TYPE:
 		case AIN_REF_DELEGATE:
 		case AIN_DELEGATE:
-			/* D69: HLL may have reallocated the delegate page; write it back. */
+			/* D69：HLL 可能重新分配过委托页，要写回去。 */
 			if (heap_slots[i] > 0 && heap_slots[i] < heap_size)
 				heap[heap_slots[i]].page = heap_ptrs[i];
 			break;
 		case AIN_ARRAY_TYPE:
-			// Sys41VM doesn't make a copy when passing an array by value.
+			// Sys41VM 在按值传数组时不做拷贝。
 			if (ain->version <= 1)
 				break;
 			// fallthrough
@@ -749,11 +749,11 @@ void hll_call(int libno, int fno, int result_tag)
 	case AIN_VOID:
 		break;
 	case AIN_STRING:
-		/* A function declared to return a string must hand back a
-		 * `struct string *`. A small integer means the C binding does not
-		 * match its declaration (wrong arity or a stub), and storing it makes
-		 * the slot a "string" whose payload crashes the first %s that reads
-		 * it. Keep the slot empty and name the offender once. */
+		/* 声明返回字符串的函数，必须交回一个 `struct string *`。
+		 * 交回一个小整数说明 C 绑定和声明对不上（参数个数不对，或者是空桩），
+		 * 存进槽里就得到一个「字符串」，它的负载会让第一个读它的 %s 崩掉。
+		 * 所以让这个槽保持空，
+		 * 并把肇事函数名报一次。 */
 		if ((uintptr_t)r.ref < 0x1000) {
 			static int n;
 			if (n++ < 20)
@@ -772,9 +772,9 @@ void hll_call(int libno, int fno, int result_tag)
 #pragma GCC diagnostic pop
 		break;
     case AIN_REF_HLL_PARAM: {
-        /* A HLL ref-param returns an element address. Resolve it only
-         * against THIS call's argument slots: scanning the whole heap can
-         * match a stale/aliased slot and create a dangling reference. */
+        /* HLL 的 ref 形参返回的是一个元素地址。只能拿它和本次调用的
+         * 实参槽比对：全堆扫描会匹配到一个过期/别名的槽，
+         * 造出一个悬空引用。 */
         void *addr = r.ref;
         int32_t hi = -1, pi = -1;
         struct page *elem_page = NULL;
@@ -785,15 +785,15 @@ void hll_call(int libno, int fno, int result_tag)
                     continue;
                 if (heap[slot].type != VM_PAGE)
                     continue;
-                /* [FIX D94] Resolve `addr` against the page the HLL call left in
-                 * heap_ptrs[i], not heap[slot].page: the callee may have
-                 * realloc'ed the array (Array.EmplaceBack does `*a = np`), and
-                 * that page is only written back to heap[slot].page AFTER this
-                 * result block. Matching against the stale page made every
-                 * Array.EmplaceBack with tag=47 return (hi=-1,pi=-1), so
-                 * CASTimerManager@CreateHandle produced invalid handles and
-                 * CheckHandle reported "manager deleted" -- the frame timer
-                 * stopped and the scene never advanced past WaitFrame. */
+                /* [FIX D94] 拿 `addr` 去和 HLL 调用留在 heap_ptrs[i] 里的那张页比对，
+                 * 而不是 heap[slot].page：被调方可能重新分配过数组
+                 * （Array.EmplaceBack 就会做 `*a = np`），而那张新页要等
+                 * 这个结果块之后才写回 heap[slot].page。
+                 * 拿过期的页去比对，导致每个 tag=47 的 Array.EmplaceBack
+                 * 都返回 (hi=-1,pi=-1)，于是 CASTimerManager@CreateHandle
+                 * 产出非法句柄，CheckHandle 报「manager deleted」——
+                 * 帧计时器停了，
+                 * 场景再也走不出 WaitFrame。 */
                 struct page *cand = NULL;
                 switch (f->arguments[i].type.data) {
                 case AIN_REF_ARRAY:
@@ -822,26 +822,26 @@ void hll_call(int libno, int fno, int result_tag)
                     break;
             }
         }
-        /* AIN v12 CALLHLL's third immediate is the concrete element type of
-         * this generic call. AIN_REF_HLL_PARAM returns a REFERENCE, whose
-         * stack representation is decided by that type (see the helper's
-         * comment), not by guessing a pair of (index, value).
+        /* AIN v12 CALLHLL 的第三个立即数是这次泛型调用的具体元素类型。
+         * AIN_REF_HLL_PARAM 返回的是一个引用，它在栈上怎么表示
+         * 由那个类型决定（见前面辅助函数的注释），
+         * 而不是靠猜一对 (下标, 值)。
          *
-         * Disassembly of CASTimerManager@CreateHandle proves both forms are
-         * consumed inside one function:
+         * CASTimerManager@CreateHandle 的反汇编证明两种形态
+         * 都在同一个函数里被消费：
          *   0x56a0 CALLHLL Array.EmplaceBack tag=13(AIN_STRUCT) -> 1 value,
          *          assigned to local[1] (AIN_REF_STRUCT), then DELETEd;
          *   0x56f6 CALLHLL Array.EmplaceBack tag=47(AIN_BOOL)  -> 2 values,
          *          stored by R_ASSIGN into local[2..3] (AIN_REF_BOOL +
          *          AIN_VOID placeholder) and dereferenced by ASSIGN.
-         * Returning the raw element index as the leading value made DELETE
-         * heap_unref() an unrelated heap slot (D31). */
-        /* The number of slots this result owns is decided by CALLHLL's
-         * concrete element type, and an *unresolved* reference must still
-         * leave exactly that many values behind: pushing a two-value pair for
-         * a single-value tag shifted the operand stack by one on every empty
-         * `Array.Max`/`Array.Find`, which walked the caller's stack into the
-         * wrong slots (the `PlayerCardCollection@Add` corruption). */
+         * 把原始元素下标当作前导值返回，会让随后的 DELETE
+         * 去 heap_unref() 一个毫不相干的堆槽（D31）。 */
+        /* 这个结果占几个槽，由 CALLHLL 的具体元素类型决定；
+         * 而且未解析的引用也必须留下正好那么多值：
+         * 给一个单值标签压两个值的对，会让每次空的
+         * `Array.Max`/`Array.Find` 都把操作数栈错开一个，
+         * 从而把调用方的栈读进错误的槽
+         * （`PlayerCardCollection@Add` 那次损坏）。 */
         bool is_iface = result_tag >= 0 && hll_tag_is_two_slot(result_tag);
         bool is_single = result_tag >= 0 && hll_ref_result_is_single_value(result_tag);
         bool resolved = addr && hi > 0;
@@ -868,9 +868,9 @@ void hll_call(int libno, int fno, int result_tag)
         }
 
         if (is_iface) {
-            /* [object, vtable offset]; -1 in the object slot is the null
-             * interface. The container owns the reference it holds, and the
-             * caller DELETEs its own copy, so take one for it. */
+            /* [对象, 虚表偏移]；对象槽里是 -1 表示空接口。
+             * 容器拥有它持有的那份引用，调用方会 DELETE 自己那份，
+             * 所以这里给容器加一次引用。 */
             int iface = (resolved && elem_page && elem_page->type == ARRAY_PAGE)
                 ? elem_page->array.struct_type : -1;
             int obj = -1, offset = 0;
@@ -883,18 +883,18 @@ void hll_call(int libno, int fno, int result_tag)
             stack_push((union vm_value){ .i = obj });
             stack_push((union vm_value){ .i = offset });
         } else if (is_single) {
-            /* One heap handle: the container keeps its reference, the caller
-             * DELETEs its own (D21). */
+            /* 一个堆句柄：容器保留自己那份引用，调用方
+             * DELETE 自己那份（D21）。 */
             if (elem.i > 0 && elem.i < heap_size && heap[elem.i].ref > 0)
                 heap_ref(elem.i);
             stack_push(elem);
         } else {
-            /* [FIX D101] The reference form returns [hi, pi] where hi is the
-             * page slot. AIN then R_ASSIGNs both and DELETEs local[2] (=hi),
-             * which heap_unref()s the page. The container already holds its
-             * own reference, so without an extra ref the DELETE drops it to 0
-             * and frees the array (the observed double free in CreateHandle's
-             * cleanup). */
+            /* [FIX D101] 引用形态返回 [hi, pi]，其中 hi 是页槽。
+             * 随后 AIN 会对两者做 R_ASSIGN，并 DELETE local[2]（=hi），
+             * 这就会 heap_unref() 那张页。
+             * 容器本来就持有自己那份引用，
+             * 所以不多加一次 ref 的话，这次 DELETE 会把它减到 0 并释放数组
+             * （就是 CreateHandle 清理时观测到的 double free）。 */
             if (hi > 0 && hi < heap_size && heap[hi].ref > 0)
                 heap_ref(hi);
             stack_push((union vm_value){ .i = hi });
@@ -908,9 +908,9 @@ void hll_call(int libno, int fno, int result_tag)
 	}
 
 	if (getenv("XSYS4_HLL_ARGDBG")) {
-		/* After the marshalling loop the arguments are already off the stack,
-		 * so the only expected change is the declared return value.
-		 * AIN_IFACE / AIN_WRAP / AIN_OPTION returns leave two slots. */
+		/* 编组循环结束后，实参已经从栈上摘掉了，
+		 * 所以唯一预期的变化就是声明的返回值。
+		 * AIN_IFACE / AIN_WRAP / AIN_OPTION 返回会留下两个槽。 */
 		int rt = f->return_type.data;
 		int slots;
 		if (rt == AIN_VOID)
@@ -918,9 +918,9 @@ void hll_call(int libno, int fno, int result_tag)
 		else if (rt == AIN_IFACE || rt == AIN_WRAP || rt == AIN_OPTION)
 			slots = 2;
 		else if (rt == AIN_REF_HLL_PARAM)
-			/* The generic return's width is decided by CALLHLL's concrete
-			 * element type, not by the declared type (see
-			 * hll_ref_result_is_single_value). */
+			/* 泛型返回值的宽度由 CALLHLL 的具体元素类型决定，
+			 * 而不是由声明的类型决定（见
+			 * hll_ref_result_is_single_value）。 */
 			slots = (result_tag >= 0 &&
 				 hll_ref_result_is_single_value(result_tag)) ? 1 : 2;
 		else
@@ -1271,7 +1271,7 @@ static void link_static_library_function(struct hll_function *dst, struct ain_hl
 }
 
 /*
- * "Link" a library that has been compiled into the xsystem4 executable.
+ * 把已经编译进 xsystem4 可执行文件的库「链接」起来。
  */
 static struct hll_function *link_static_library(struct ain_library *ainlib, struct static_library *lib)
 {
@@ -1312,10 +1312,10 @@ static struct hll_function *link_static_library(struct ain_library *ainlib, stru
 			link_static_library_function(&dst[i], &ainlib->functions[i], best->fun);
 			matched = true;
 		}
-		/* [HACK][ZERO-STUB] AIN functions with no C export at all still need a
-		 * prepared ffi cif so the soft-stub path can supply a correctly typed
-		 * zero stub. With XSYS4_SOFT_STUB unset dst[i].fun stays NULL and the
-		 * original VM_ERROR behaviour is preserved. Registered in TECH_DEBT. */
+		/* [HACK][ZERO-STUB] 完全没有 C 导出的 AIN 函数，也仍然需要一个
+		 * 准备好的 ffi cif，好让软桩路径能提供一个类型正确的零桩。
+		 * 不设 XSYS4_SOFT_STUB 时 dst[i].fun 保持 NULL，
+		 * 原来的 VM_ERROR 行为不变。已登记进技术债。 */
 		if (!matched)
 			link_static_library_function(&dst[i], &ainlib->functions[i], NULL);
 		if (!dst[i].fun) {
