@@ -1,20 +1,20 @@
-/* gfx/private.h  SDL/OpenGL only private data
+/* gfx/private.h  SDL/OpenGL 专有的私有数据
  *
- * Copyright (C) 2019 Nunuhara Cabbage <nunuhara@haniwa.technology>
- * Copyright (C) 2000- Fumihiko Murata <fmurata@p1.tcnet.ne.jp>
+ * 版权所有 (C) 2019 Nunuhara Cabbage <nunuhara@haniwa.technology>
+ * 版权所有 (C) 2000- Fumihiko Murata <fmurata@p1.tcnet.ne.jp>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
+ * 本程序是自由软件：你可以依据自由软件基金会发布的
+ * GNU 通用公共许可证（第 2 版，或你选择的任何更高版本）的条款，
+ * 重新分发和/或修改本程序。
  * (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * 分发本程序是希望它有用，但不作任何担保；
+ * 甚至不担保适销性或适用于特定用途。
+ * 详见 GNU 通用公共许可证了解更多。
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, see <http://gnu.org/licenses/>.
+ *
+ * 你应当已经随本程序收到一份 GNU 通用公共许可证的副本；
+ * 如果没有，见 <http://gnu.org/licenses/>。
  */
 
 #ifndef SYSTEM4_GFX_PRIVATE_H

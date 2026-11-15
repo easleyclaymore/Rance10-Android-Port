@@ -269,7 +269,7 @@ static struct swf_tag_define_bits_lossless *parse_define_bits_lossless(struct bu
 	tag->width = buffer_read_u16(r);
 	tag->height = buffer_read_u16(r);
 
-	// Only 32-bit RGB/ARGB images are supported.
+	// 只支持 32 位 RGB/ARGB 图像。
 	if (tag->format != 5)
 		ERROR("DefineBitsLossless: unsupported format %d", tag->format);
 
@@ -310,12 +310,12 @@ static struct swf_tag_define_shape *parse_define_shape(struct buffer *r)
 		ERROR("DefineShape: line styles are not supported");
 	uint8_t fill_bits = buffer_read_u8(r) >> 4;
 
-	// We support shapes consisting of only a single rectangle. That is, one
-	// StyleChangeRecord followed by four StraightEdgeRecords. The rectangle
-	// should match `bounds`, so we'll just skip coordinate values below.
+	// 我们只支持「由单个矩形构成」的形状，即一条
+	// StyleChangeRecord 加四条 StraightEdgeRecord。矩形
+	// 应当与 `bounds` 一致，所以下面直接跳过坐标值。
 	struct bit_reader br = {.buf = r};
 
-	// Read a StyleChangeRecord.
+	// 读一条 StyleChangeRecord。
 	uint8_t style_flags = read_unsigned_bits(&br, 6);
 	if (!style_flags || style_flags >> 3)
 		ERROR("DefineShape: unexpected shape structure");
@@ -335,7 +335,7 @@ static struct swf_tag_define_shape *parse_define_shape(struct buffer *r)
 	tag->fill_style = fill_styles[fill_style - 1];
 	free(fill_styles);
 
-	// Read four vertical / horizontal StraightEdgeRecords.
+	// 读四条垂直/水平的 StraightEdgeRecord。
 	for (int i = 0; i < 4; i++) {
 		uint8_t flags = read_unsigned_bits(&br, 2);
 		if (flags != 3)  // straight edge
@@ -346,7 +346,7 @@ static struct swf_tag_define_shape *parse_define_shape(struct buffer *r)
 			ERROR("DefineShape: unexpected shape structure");
 		read_signed_bits(&br, num_bits + 3);  // vert_line_flag and delta
 	}
-	// Read a EndShapeRecord.
+	// 读一条 EndShapeRecord。
 	if (read_unsigned_bits(&br, 6) != 0)
 		ERROR("DefineShape: unexpected shape structure");
 	return tag;
@@ -634,10 +634,10 @@ static const uint8_t aff_mask[] = {
 
 struct swf *aff_load(uint8_t *data, size_t size)
 {
-	// aff_header:
+	// aff_header：
 	//   char magic[4];   // "AFF\0"
-	//   uint32 version;  // 1
-	//   uint32 size;     // file size
+	//   uint32 version;  // 版本号 = 1
+	//   uint32 size;     // 文件大小
 	//   uint32 unknown;  // 0x4d2
 	if (size < 16 ||
 	    memcmp(data, "AFF", 4) ||

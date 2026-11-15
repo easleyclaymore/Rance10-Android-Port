@@ -23,7 +23,7 @@
 #include "system4/file.h"
 #include "xsystem4.h"
 
-// XXX: can't include gfx/gfx.h because windows.h redefines Rectangle
+// XXX：不能直接 include gfx/gfx.h，因为 windows.h 会重定义 Rectangle
 typedef struct texture Texture;
 Texture *gfx_main_surface(void);
 int gfx_save_texture(Texture *t, const char *path, enum cg_type);
@@ -53,8 +53,8 @@ static char *default_filename(void)
 
 static char *default_path(void)
 {
-	// FIXME: Earlier games use "[gamedir]/Snapshot/", but later games save under
-	//        "Documents/AliceSoft/[gamename]/Screenshot/"
+	// FIXME：早期游戏用 [gamedir]/Snapshot/，后期游戏存到
+	//        Documents/AliceSoft/[gamename]/Screenshot/
 	char *path = gamedir_path("Snapshot");
 	if (mkdir_p(path)) {
 		WARNING("mkdir_p: %s", strerror(errno));
@@ -118,8 +118,8 @@ static char *default_filename(void)
 	char datetime[128];
 	strftime(datetime, sizeof(datetime), "%Y%m%d_%H%M%S", tm);
 
-	// FIXME: Earlier games use "[gamedir]/Snapshot/", but later games save under
-	//        "Documents/AliceSoft/[gamename]/Screenshot/"
+	// FIXME：早期游戏用 [gamedir]/Snapshot/，后期游戏存到
+	//        Documents/AliceSoft/[gamename]/Screenshot/
 	char name[PATH_MAX];
 	snprintf(name, sizeof(name), "Snapshot/%s_%s.png", config.game_name, datetime);
 	return gamedir_path(name);
@@ -148,12 +148,12 @@ static char *zenity_get_filename(const char *dflt)
 	if (!fp)
 		return NULL;
 
-	// read filename
+	// 读文件名
 	char *filename = fgets(buf, sizeof(buf), fp);
 	if (filename && *filename) {
 		filename = xstrdup(filename);
 
-		// delete trailing newline
+		// 删掉行尾换行
 		size_t len = strlen(filename);
 		if (filename[len-1] == '\n')
 			filename[len-1] = '\0';
@@ -161,7 +161,7 @@ static char *zenity_get_filename(const char *dflt)
 		filename = NULL;
 	}
 
-	// empty pipe and close
+	// 清空管道并关闭
 	while (fgets(buf, sizeof(buf), fp))
 		/* nothing */;
 	pclose(fp);
@@ -192,7 +192,7 @@ void screenshot_save(void)
 		}
 		return;
 	}
-	// get filename
+	// 取文件名
 	char *name = default_filename();
 	if (have_zenity()) {
 		char *tmp = zenity_get_filename(name);
@@ -202,7 +202,7 @@ void screenshot_save(void)
 			return;
 	}
 
-	// create directory
+	// 创建目录
 	char *dir = path_dirname(name);
 	if (mkdir_p(dir)) {
 		WARNING("mkdir_p: %s", strerror(errno));
@@ -210,11 +210,11 @@ void screenshot_save(void)
 		return;
 	}
 
-	// save screenshot
+	// 保存截图
 	gfx_save_texture(gfx_main_surface(), name, ALCG_PNG);
 
-	// XXX: this uses zenity on wayland, so there is no confirmation
-	//      that anything happened if zenity is not installed
+	// XXX：Wayland 下这里用 zenity，所以没装 zenity 时
+	//      完全没有「已经截好了」的反馈
 	char msg[PATH_MAX + 64];
 	snprintf(msg, sizeof(msg), "Screenshot saved to %s", name);
 	SDL_ShowSimpleMessageBox(0, "xsystem4", msg, NULL);
