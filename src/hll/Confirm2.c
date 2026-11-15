@@ -21,8 +21,8 @@ HLL_WARN_UNIMPLEMENTED(1, int,  Confirm2, ExistKeyFile, struct string *filename,
 
 static void Confirm2_ExistKeyFile2(possibly_unused struct string *pIFileName, possibly_unused int nKeyNum, struct string **pIResult)
 {
-	// XXX: this is the magic value for Yokubori Saboten
-	//      need to check if this works for other games
+	// XXX：这是《Yokubori Saboten》的魔法值
+	//      需要确认对其他游戏是否成立
 	*pIResult = make_string("moke-", 5);
 }
 

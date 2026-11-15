@@ -40,7 +40,7 @@ static int PlayMovie_Play(void)
 
 HLL_WARN_UNIMPLEMENTED(, void, PlayMovie, Stop, void);
 
-// PlayMovie is used like this:
+// PlayMovie 是这样用的：
 //
 //   PlayMovie.Load(filename);
 //   PlayMovie.Play();
@@ -49,7 +49,7 @@ HLL_WARN_UNIMPLEMENTED(, void, PlayMovie, Stop, void);
 //       system.Sleep(1);
 //   }
 //
-// SACT.Update is not called inside the loop, so we do rendering in IsPlay().
+// 循环里不调 SACT.Update，所以我们在 IsPlay() 里做渲染。
 static int PlayMovie_IsPlay(void)
 {
 	if (!mc)

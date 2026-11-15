@@ -275,7 +275,7 @@ bool check_collision(struct collider *collider, vec2 p0, vec2 p1, float radius, 
 		vec2 q;
 		float sq_distance = distance2_point_to_segment(out, e->vertices[0], e->vertices[1], q);
 		if (sq_distance < radius * radius) {
-			// out = q + normalize(out - q) * radius
+			// out = q + normalize(out - q) * radius（沿边界法线推出半径距离）
 			vec2 v;
 			glm_vec2_sub(out, q, v);
 			glm_vec2_normalize(v);

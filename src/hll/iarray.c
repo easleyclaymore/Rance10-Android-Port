@@ -21,7 +21,7 @@
 #include "iarray.h"
 
 /*
- * Serialization interface for various Save/Load HLL functions that write/read
+ * 给各种 Save/Load HLL 函数用的序列化接口（它们写/读下面这些结构）。
  * integer arrays.
  */
 

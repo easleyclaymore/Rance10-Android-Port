@@ -322,7 +322,7 @@ bool parts_flash_seek(struct parts_flash *f, int frame)
 		case TAG_FILE_ATTRIBUTES:
 		case TAG_SET_BACKGROUND_COLOR:
 		case TAG_SOUND_STREAM_HEAD2:
-			// Do nothing.
+			// 什么都不做。
 			break;
 		case TAG_END:
 			f->has_ended = true;
@@ -345,7 +345,7 @@ bool parts_flash_seek(struct parts_flash *f, int frame)
 			break;
 		case TAG_DO_ACTION:
 			if ((seek_frame = do_action(f, (struct swf_tag_do_action*)t)) >= 0)
-				// XXX: ensure one frame is rendered when seeking to start
+				// XXX：定位到开头时要保证至少渲染一帧
 				return parts_flash_seek(f, max(1, seek_frame));
 			break;
 		case TAG_PLACE_OBJECT2:

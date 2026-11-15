@@ -22,7 +22,7 @@ struct string;
 struct page;
 struct ain_type;
 
-// TODO: implement using array page directly?
+// TODO：直接改用 array page 实现？
 struct iarray_writer {
 	unsigned allocated;
 	unsigned size;

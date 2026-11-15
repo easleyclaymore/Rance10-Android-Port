@@ -57,7 +57,7 @@ static void vmSurface_New(void)
 	gfx_init();
 	id_pool_init(&pool, ID_POOL_HANDLE_BASE);
 
-	// create main surface
+	// 创建主表面
 	Texture *t = gfx_main_surface();
 	struct vm_surface *sf = vm_surface_create(t->w, t->h);
 	sf->texture = *t; // XXX: textures normally shouldn't be copied like this...

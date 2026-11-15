@@ -623,8 +623,8 @@ void PE_PauseMotion(bool pause)
 	is_motion_paused = pause;
 
 	// 暂停期间，逐帧推进不再更新整屏震动偏移。
-	// 把它复位到原点，免得画面卡在上一次的抖动位置上。
-	// stuck at the last shake position.
+	// 把它复位到原点，免得画面
+	// 卡在上一次的抖动位置上。
 	if (pause)
 		parts_set_global_pos((Point){ 0, 0 });
 }

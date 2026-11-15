@@ -54,7 +54,7 @@ static char *default_filename(void)
 static char *default_path(void)
 {
 	// FIXME：早期游戏用 [gamedir]/Snapshot/，后期游戏存到
-	//        Documents/AliceSoft/[gamename]/Screenshot/
+	//        Documents/AliceSoft/<游戏名>/Screenshot/
 	char *path = gamedir_path("Snapshot");
 	if (mkdir_p(path)) {
 		WARNING("mkdir_p: %s", strerror(errno));
@@ -119,7 +119,7 @@ static char *default_filename(void)
 	strftime(datetime, sizeof(datetime), "%Y%m%d_%H%M%S", tm);
 
 	// FIXME：早期游戏用 [gamedir]/Snapshot/，后期游戏存到
-	//        Documents/AliceSoft/[gamename]/Screenshot/
+	//        Documents/AliceSoft/<游戏名>/Screenshot/
 	char name[PATH_MAX];
 	snprintf(name, sizeof(name), "Snapshot/%s_%s.png", config.game_name, datetime);
 	return gamedir_path(name);

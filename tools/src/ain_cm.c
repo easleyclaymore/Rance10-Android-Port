@@ -1,4 +1,4 @@
-/* sample CALLMETHOD call sites with preceding instructions */
+/* 采样 CALLMETHOD 调用点，连同它前面的指令一起打印 */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

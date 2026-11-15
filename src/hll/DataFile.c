@@ -265,7 +265,7 @@ static int DataFile_Open(int link)
 	size_t uncompressed_size = buffer_read_int32(&r);
 	uint32_t compressed_size = buffer_remaining(&r);
 
-	// decode compressed data
+	// 解码压缩数据
 	uint8_t *compressed_data = xmalloc(compressed_size);
 	buffer_read_bytes(&r, compressed_data, compressed_size);
 	archive_free_data(dfile);

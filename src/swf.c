@@ -638,7 +638,7 @@ struct swf *aff_load(uint8_t *data, size_t size)
 	//   char magic[4];   // "AFF\0"
 	//   uint32 version;  // 版本号 = 1
 	//   uint32 size;     // 文件大小
-	//   uint32 unknown;  // 0x4d2
+	//   uint32 unknown;  // 未知字段，值 0x4d2
 	if (size < 16 ||
 	    memcmp(data, "AFF", 4) ||
 	    LittleEndian_getDW(data, 4) != 1 ||

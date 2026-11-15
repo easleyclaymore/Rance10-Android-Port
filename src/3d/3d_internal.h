@@ -780,9 +780,9 @@ struct amt_material {
 enum amt_field_index {
 	AMT_SPECULAR_STRENGTH = 0,
 	AMT_SPECULAR_SHININESS = 2,
-	// amt v4+
+	// amt v4 及以后
 	AMT_SHADOW_DARKNESS = 6,
-	// amt v5+
+	// amt v5 及以后
 	AMT_RIM_EXPONENT = 7,
 	AMT_RIM_R = 8,
 	AMT_RIM_G = 9,

@@ -32,8 +32,8 @@ static bool ACXLoader_Load(struct string *filename)
 	char *path = gamedir_path(filename->text);
 	acx = acx_load(path, &error);
 
-	// XXX: Fix for games (e.g. Tsuma Shibori) that shipped with incorrectly
-	//      cased file names
+	// XXX：给那些文件名大小写写错的游戏（例如《Tsuma Shibori》）
+	//      打的补丁
 	if (error == ACX_ERROR_FILE) {
 		char *ipath = path_get_icase(path);
 		if (ipath) {

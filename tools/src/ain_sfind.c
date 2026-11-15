@@ -1,4 +1,4 @@
-/* Locate every S_PUSH <n> in the AIN code section and name its function. */
+/* 定位 AIN 代码段里每一条 S_PUSH <n>，并标出它属于哪个函数。 */
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>

@@ -18,8 +18,8 @@
 
 static void handle_events_throttled(void)
 {
-	// Big Bang Age uses busy loops to wait input events. To prevent taking 100%
-	// CPU time, sleep 10ms every 30 input event checks.
+	// 《Big Bang Age》用忙循环等输入事件。为了不吃掉 100%
+	// CPU，每检查 30 次输入事件就睡 10ms。
 	static int count;
 	if (++count == 30) {
 		count = 0;

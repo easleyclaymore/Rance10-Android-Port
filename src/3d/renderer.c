@@ -1468,8 +1468,8 @@ struct height_detector *RE_renderer_create_height_detector(struct RE_renderer *r
 	aabb[1][1] += 1.0;
 	memcpy(hd->aabb, aabb, sizeof(aabb));
 
-	// 建一个正交投影矩阵，从正上方往下看这个实例。
-	// right above.
+	// 建一个正交投影矩阵，从
+	// 正上方往下看这个实例。
 	mat4 view_matrix, proj_matrix;
 	glm_mat4_identity(view_matrix);
 	glm_rotate_x(view_matrix, glm_rad(90.0), view_matrix);

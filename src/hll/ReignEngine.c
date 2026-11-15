@@ -1120,7 +1120,7 @@ static int ReignEngine_GetShadowMapResolutionLevel(int plugin)
 
 static bool ReignEngine_SetShadowMapType(int plugin, int type)
 {
-	// Toushin Toshi 3 uses only type 0.
+	// 《Toushin Toshi 3》只用 type 0。
 	if (type != 0)
 		WARNING("non-zero shadow map type is not supported");
 	return true;

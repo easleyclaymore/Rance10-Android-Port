@@ -31,7 +31,7 @@
 static bool is_array_type(enum ain_data_type t)
 {
 	/* Do NOT use a numeric range: the array ids are scattered (14..17,
-	 * 30, 50, 58, 66, 79) and e.g. AIN_BOOL=47 sits between them. */
+	 * 30、50、58、66、79），而 AIN_BOOL=47 夹在它们中间。 */
 	switch (t) {
 	case AIN_ARRAY_INT:
 	case AIN_ARRAY_FLOAT:

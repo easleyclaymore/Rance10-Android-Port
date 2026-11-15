@@ -216,7 +216,7 @@ static void index_timemap(void)
 	timemap_name_by_number = ht_create(nr_timemap * 3 / 2);
 	for (size_t i = 0; i < nr_timemap; i++) {
 		struct timemap_entry *e = &timemap[i];
-		// When two entries have the same name, use the entry that was loaded first.
+		// 两条记录同名时，用先装载的那条。
 		struct ht_slot *name_slot = ht_put(timemap_meta_by_name, e->name->text, &e->meta);
 		if (name_slot->value != &e->meta)
 			continue;
@@ -224,7 +224,7 @@ static void index_timemap(void)
 		int number;
 		if (sscanf(e->name->text, "%d", &number) != 1)
 			continue;
-		// When two names start with the same number, use the name that is first in name order.
+		// 两个名字都以同一个数字开头时，用名字序在前的那个。
 		struct ht_slot *number_slot = ht_put_int(timemap_name_by_number, number, e->name);
 		struct string *first = number_slot->value;
 		if (strcmp(e->name->text, first->text) < 0)

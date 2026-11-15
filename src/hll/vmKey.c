@@ -32,8 +32,8 @@ static struct id_pool pool;
 
 static void handle_events_throttled(void)
 {
-	// To prevent taking 100% CPU time in busy input loops,
-	// sleep 10ms every 30 input event checks.
+	// 为了不在忙等输入的循环里吃掉 100% CPU，
+	// 每检查 30 次输入事件就睡 10ms。
 	static int count;
 	if (++count == 30) {
 		count = 0;
