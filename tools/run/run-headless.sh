@@ -41,28 +41,40 @@ HERE="$TOOLS_DIR"
 unset DISPLAY WAYLAND_DISPLAY XAUTHORITY
 
 # 从 :90 起找空闲 display，避开 :0/:1 等真实会话以及别人的 Xvfb
+# [D219] 两个跑测并行启动时，光靠 -e 检查会让它们同时选中同一个 display
+# （实测两个进程都抢到 :90，后者把前者的 X server 打断：
+#  "XIO: fatal IO error 11 ... X connection to :90 broken"）。
+# 用 mkdir 原子占位：谁先建目录谁拿锁，拿不到的继续往后找。
 DNUM=""
+LOCK=""
 for n in $(seq 90 120); do
     [ -e "/tmp/.X${n}-lock" ] && continue
     [ -e "/tmp/.X11-unix/X${n}" ] && continue
-    DNUM="$n"
-    break
+    if mkdir "/tmp/.xsys4_X${n}.lock" 2>/dev/null; then
+        LOCK="/tmp/.xsys4_X${n}.lock"
+        DNUM="$n"
+        break
+    fi
 done
 if [ -z "$DNUM" ]; then
     echo "no free X display in :90..:120" >&2
     exit 1
 fi
 
+XPID=""
+cleanup() {
+    if [ -n "$XPID" ]; then
+        kill "$XPID" 2>/dev/null || true
+        wait "$XPID" 2>/dev/null || true
+    fi
+    [ -n "$LOCK" ] && rmdir "$LOCK" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
 RES="${RANCE10_HEADLESS_RES:-1920x1080x24}"
 Xvfb ":${DNUM}" -screen 0 "$RES" -nolisten tcp -ac -noreset \
     > "/tmp/xvfb_${DNUM}.log" 2>&1 &
 XPID=$!
-
-cleanup() {
-    kill "$XPID" 2>/dev/null || true
-    wait "$XPID" 2>/dev/null || true
-}
-trap cleanup EXIT INT TERM
 
 SOCK="/tmp/.X11-unix/X${DNUM}"
 for _ in $(seq 1 60); do
