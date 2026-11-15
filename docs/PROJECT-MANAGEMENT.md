@@ -484,7 +484,7 @@ GUIDE 5.6 节直接列出「坏假设 / 好假设」对照表；5.7 节补了一
 | 五层方法论、三个判据、差分对照、出画判据、可证伪假设、探针工程化 | `docs/GUIDE/README.md`、`docs/GUIDE/01-evidence.md` 1.4–1.6、`docs/GUIDE/05-verification.md` 5.1–5.7 |
 | 术语定义、健康项目标准、反模式 | `docs/GUIDE/appendix-checklist.md` A.3–A.6 |
 | 日志前缀即 API、开关默认全关、门禁 | `docs/SDK.md`；`tools/xsys4` 的 `check)` 分支；`tools/gen-switches.py`；`tools/switch-desc.txt` |
-| 静态清单替代逐个试探 | `docs/HLL-GAP.md` |
+| 静态清单替代逐个试探 | 普查方法见 `docs/OFFLINE.md`；阶段性结论已归档至工作区根 `archive/Rance10_HLL-GAP-全文-20261115.md` |
 | 结论推翻与探针误判的完整时间线 | `.workbuddy/memory/2026-11-14.md`（D192–D202 各段） |
 | 里程碑验收表、风险分档、分维度完成度 | 工作区根目录 `移植进度汇报-2026-11-14.html` |
 | 子模块补丁与推送纪律 | 提交 `0eefd70`、`8fa4e5a`；`README.md` 构建段；`patches/` |
