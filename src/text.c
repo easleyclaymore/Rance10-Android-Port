@@ -24,16 +24,16 @@
 #include "xsystem4.h"
 
 /*
- * NOTE: There are two different text rendering APIs: SACT2 and DrawGraph.
+ * 注意：文本渲染有两套不同的 API：SACT2 和 DrawGraph。
  *
- *       SACT2 is a stateless API which uses the text_metrics structure.
- *       It is implemented via the single function gfx_render_text and
- *       supports bold and outlined font styles.
+ *       SACT2 是无状态 API，用 text_metrics 结构体。
+ *       它由单个函数 gfx_render_text 实现，
+ *       支持粗体与描边字体样式。
  *
- *       DrawGraph is a stateful API that uses the font_metrics structure.
- *       The various gfx_setfont_* and gfx_draw_text* functions implement
- *       this API. It supports bold, underline and strikethrough font
- *       styles and two different rendering modes (pixel map and alpha map)
+ *       DrawGraph 是有状态 API，用 font_metrics 结构体。
+ *       那一族 gfx_setfont_* 和 gfx_draw_text* 函数实现的就是它。
+ *       它支持粗体、下划线和删除线，
+ *       以及两种绘制模式（像素图与 alpha 图）
  */
 
 #define DEFAULT_FONT_GOTHIC "fonts/VL-Gothic-Regular.ttf"
@@ -43,7 +43,7 @@
 struct font *font_ttf[2] = {0};
 struct font *font_fnl[MAX_FNL_FONTS] = {0};
 
-// Controls whether edge widths are taken into account during text layout.
+// 控制排版时是否把描边宽度算进去。
 bool gfx_text_advance_edges = false;
 
 /* [D131] GBK 中文版缺字修复。
@@ -93,7 +93,7 @@ static struct font *load_font(enum font_face type)
 	};
 
 	struct font *font;
-	// user specified font
+	// 用户指定的字体
 	if (config.font_paths[type]) {
 		if ((font = ft_font_load(config.font_paths[type])))
 			return font;
@@ -114,13 +114,13 @@ static struct font *load_font(enum font_face type)
 			free(spec);
 		}
 	}
-	// installed default font
+	// 系统安装的默认字体
 	char default_path[1024];
 	snprintf(default_path, sizeof(default_path), "%s/%s", xsys4_data_dir(),
 	         local_font_paths[type]);
 	if ((font = ft_font_load(default_path)))
 		return font;
-	// local default font
+	// 本地默认字体
 	if ((font = ft_font_load(local_font_paths[type])))
 		return font;
 	ERROR("Failed to load %s font", type == FONT_GOTHIC ? "gothic" : "mincho");
@@ -186,10 +186,10 @@ static struct glyph *font_get_glyph(struct font_size *size, uint32_t code, enum 
 	struct ht_slot *slot = ht_put_int(size->glyph_table, code, NULL);
 	if (slot->value && ((struct glyph*)slot->value)->t[weight].handle)
 		return slot->value;
-	// alloc if necessary
+	// 必要时分配
 	if (!slot->value)
 		slot->value = xcalloc(1, sizeof(struct glyph));
-	// render glyph
+	// 渲染字形
 	if (!size->font->get_glyph(size, slot->value, code, weight))
 		return NULL;
 	return slot->value;
@@ -262,7 +262,7 @@ float _gfx_render_text(Texture *dst, char *msg, struct text_render_metrics *tm)
 
 	while (*msg) {
 		pos_x += tm->edge_spacing;
-		// get glyph for character
+		// 取该字符的字形
 		float scale_x = *msg == ' ' ? tm->space_scale_x : tm->scale_x;
 		uint32_t code = char_to_code(msg, tm->font_size->font->charmap);
 		msg += SJIS_2BYTE(*msg) ? 2 : 1;
@@ -282,7 +282,7 @@ float _gfx_render_text(Texture *dst, char *msg, struct text_render_metrics *tm)
 			continue;
 		}
 
-		// render glyph
+		// 渲染字形
 		Texture *t = &glyph->t[tm->weight];
 		if (tm->mode == RENDER_COPY) {
 			float x = pos_x - glyph->rect.x;
@@ -307,18 +307,18 @@ float _gfx_render_text(Texture *dst, char *msg, struct text_render_metrics *tm)
 
 enum font_weight gfx_int_to_font_weight(int weight)
 {
-	// 0 -> 550 = LIGHT
+	// 0 -> 550 = 细体（LIGHT）
 	if (weight <= 550)
 		return FONT_WEIGHT_NORMAL;
-	// 551 -> 999 = BOLD
+	// 551 -> 999 = 粗体（BOLD）
 	if (weight <= 999)
 		return FONT_WEIGHT_BOLD;
-	// 1000 = LIGHT
+	// 1000 = 细体
 	if (weight == 1000)
 		return FONT_WEIGHT_NORMAL;
-	// x001 -> x550 = MEDIUM
-	// x551 -> x999 = HEAVY-BOLD
-	// NOTE: we don't distinguish between MEDIUM and BOLD (they are nearly identical)
+	// x001 -> x550 = 中等（MEDIUM）
+	// x551 -> x999 = 特粗（HEAVY-BOLD）
+	// 注意：中等和粗体我们不加区分（两者几乎一样）
 	return (weight % 1000) < 551 ? FONT_WEIGHT_BOLD : FONT_WEIGHT_HEAVY;
 }
 
@@ -376,7 +376,7 @@ void gfx_render_dash_text(Texture *dst, struct text_style *ts)
 	Texture glyph;
 	gfx_init_texture_rgba(&glyph, dst->w, dst->h, COLOR(0, 0, 0, 0));
 
-	// draw a horizontal line
+	// 画一条水平线
 	int x = lroundf(ts->size * 0.12f);
 	int w = dst->w - x * 2;
 	int h = max(1, lroundf(ts->size * 0.06f));
@@ -402,7 +402,7 @@ struct font_metrics {
 	SDL_Color color;
 };
 
-// current font state
+// 当前字体状态
 static struct font_metrics font_metrics = {
 	.size = 16,
 	.face = FONT_GOTHIC,
@@ -433,7 +433,7 @@ static void gfx_draw_text(Texture *dst, int x, int y, char *text, enum text_rend
 		.mode = mode,
 		.font_size = font_size,
 	};
-	// TODO: underline and strikethrough
+	// TODO：下划线与删除线
 	_gfx_render_text(dst, text, &metrics);
 }
 

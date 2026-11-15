@@ -41,14 +41,14 @@ struct marker_info {
 };
 
 enum floor_marker {
-	// Rance VI
+	// 兰斯VI
 	R6_MAGIC_CIRCLE = 1,
 	R6_RED_OCTAGRAM = 63,
-	// Dungeons & Dolls
+	// 《Dungeons & Dolls》
 	DD_MAGIC_CIRCLE = 40,
 	DD_RED_OCTAGRAM = 41,
 	DD_WHITE_OCTAGRAM = 42,
-	// GALZOO Island
+	// 《GALZOO Island》
 	GZ_MAGIC_CIRCLE = 0,
 };
 
@@ -110,7 +110,7 @@ struct raster_shader {
 struct dungeon_renderer {
 	enum draw_dungeon_version version;
 	struct shader shader;
-	// Uniform variable locations
+	// 各 uniform 变量的位置
 	GLint local_transform;
 	GLint proj_transform;
 	GLint alpha_mod;
@@ -449,7 +449,7 @@ struct dungeon_renderer *dungeon_renderer_create(enum draw_dungeon_version versi
 	r->draw_event_markers = true;
 
 	if (version == DRAW_DUNGEON_2 && is_dolls_boss_floor(num)) {
-		// Use special marker table for Dungeons & Dolls boss floor
+		// 《Dungeons & Dolls》的首领层用特殊的标记表
 		r->marker_table = dolls_boss_marker_info;
 	} else {
 		r->marker_table = marker_tables[version];
@@ -576,7 +576,7 @@ static void draw_floating_marker(struct dungeon_renderer *r, const struct marker
 	if (info->texture_count) {
 		int frame = t / 100;   // 100ms per frame
 		texture += frame % info->texture_count;
-		// Make a billboard matrix
+		// 构造公告板矩阵
 		mat3 r;
 		glm_mat4_pick3t(view_mat, r);
 		glm_mat4_ins3(r, m);
@@ -641,7 +641,7 @@ static void draw_cell(struct dungeon_renderer *r, struct dgn_cell *cell, bool re
 		struct material *material = get_material(r, DTX_CEILING, cell->ceiling);
 		if (material && material->opaque == render_opaque) {
 			if (r->version == DRAW_FIELD) {
-				// Draw as a billboard.
+				// 当公告板来画。
 				mat4 m;
 				vec3 pos = {x, y, z};
 				glm_translate_make(m, pos);
@@ -821,7 +821,7 @@ static void draw_character(struct dungeon_renderer *r, struct drawfield_characte
 	mat4 m;
 	glm_translate_make(m, chara->pos);
 
-	// Make it a billboard of 2.0 x 2.0
+	// 做成 2.0 x 2.0 的公告板
 	mat3 r_bill;
 	glm_mat4_pick3t(view_mat, r_bill);
 	glm_mat4_ins3(r_bill, m);
@@ -880,22 +880,22 @@ void dungeon_renderer_render(struct dungeon_renderer *r, struct dgn_cell **cells
 	glUniform1f(r->alpha_mod, 1.0);
 	glUniform1i(r->use_lightmap, 0);
 
-	// Render opaque objects, from near to far.
+	// 渲染不透明对象，从近到远。
 	glDisable(GL_BLEND);
 	for (int i = 0; i < nr_cells; i++)
 		draw_cell(r, cells[i], true, view_transform);
 
-	// Render the skybox.
+	// 渲染天空盒。
 	skybox_render(r->skybox, view_transform, proj_transform);
 	glUseProgram(r->shader.program);
 
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	// DrawField: draw characters.
+	// DrawField：画角色。
 	draw_characters(r, characters, view_transform);
 
-	// Render transparent objects, from far to near.
+	// 渲染透明对象，从远到近。
 	for (int i = nr_cells - 1; i >= 0; i--)
 		draw_cell(r, cells[i], false, view_transform);
 
@@ -938,10 +938,10 @@ static void load_raster_shader(struct raster_shader *s)
 
 void dungeon_renderer_run_post_processing(struct dungeon_renderer *r, struct texture *src, struct texture *dst)
 {
-	// This function flips the image upside down, because the image in `src`
-	// (rendered by dungeon_renderer_render) is bottom-up (the first pixel is at
-	// the bottom-left), but sprite textures are top-down (the first pixel is at
-	// the top-left).
+	// 这个函数把图上下翻转，因为 `src` 里的图
+	// （由 dungeon_renderer_render 渲染）是自下而上的（第一个像素在
+	// 左下角），而精灵纹理是自上而下的（第一个像素在
+	// 左上角）。
 
 	if (r->raster_scroll) {
 		mat4 mw_transform = MAT4(

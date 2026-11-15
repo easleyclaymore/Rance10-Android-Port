@@ -46,7 +46,7 @@ static struct collider_triangle *fill_triangles(struct collider_triangle *t, str
 		}
 		glm_vec3_divs(t->center, 3.f, t->center);
 
-		// Do some precomputation so that we can calculate height(x, z) quickly.
+		// 做一些预计算，好让 height(x, z) 能快速算出来。
 		vec3 v1, v2, normal;
 		glm_vec3_sub(t->vertices[1], t->vertices[0], v1);
 		glm_vec3_sub(t->vertices[2], t->vertices[0], v2);
@@ -89,7 +89,7 @@ static void link_neighbors(struct collider *collider, int t1_index, int t2_index
 
 static void init_edges(struct collider *collider, struct pol_mesh *mesh)
 {
-	// Link neighboring triangles.
+	// 把相邻三角形连起来。
 	if (mesh->nr_triangles >= 65535)
 		ERROR("Too many triangles in collision mesh: %d", mesh->nr_triangles);
 	const int nv = mesh->nr_vertices;
@@ -111,7 +111,7 @@ static void init_edges(struct collider *collider, struct pol_mesh *mesh)
 			}
 		}
 	}
-	// Collect boundary edges, i.e., edges that belong to only one triangle.
+	// 收集边界边，也就是只属于一个三角形的边。
 	collider->nr_edges = nr_edges;
 	collider->edges = xcalloc(nr_edges, sizeof(struct collider_edge));
 	struct collider_edge* edge = collider->edges;
@@ -139,8 +139,8 @@ struct collider *collider_create(struct pol_mesh *mesh)
 	return collider;
 }
 
-// Creates a collider for raycasting only (no edges / neighbor links), from the
-// union of the given meshes' triangles. Used for SealEngine HeightDetection meshes.
+// 只给射线检测用的碰撞体（不带边和邻接关系），由
+// 给定网格的三角形合并而成。SealEngine 的 HeightDetection 网格用它。
 struct collider *collider_create_raycast(struct pol_mesh **meshes, int nr_meshes)
 {
 	struct collider *collider = xcalloc(1, sizeof(struct collider));
@@ -199,7 +199,7 @@ bool collider_height(struct collider *collider, vec2 xz, float *h_out)
 	return true;
 }
 
-// Calculates the squared distance from a point to a line segment in 2D space.
+// 算二维空间里点到线段的距离平方。
 static float distance2_point_to_segment(vec2 p, vec2 a, vec2 b, vec2 closest_point_out)
 {
 	vec2 v, w;
@@ -229,7 +229,7 @@ static bool segments_intersect(vec2 p0, vec2 p1, vec2 q0, vec2 q1)
 	glm_vec2_sub(q1, q0, s);
 	float r_cross_s = glm_vec2_cross(r, s);
 	if (r_cross_s == 0.f) {
-		// The segments are collinear.
+		// 这些线段共线。
 		return false;
 	}
 	vec2 q0_p0;
@@ -246,7 +246,7 @@ bool check_collision(struct collider *collider, vec2 p0, vec2 p1, float radius, 
 	} else {
 		if (!find_triangle(collider, p0))
 			return false;
-		// Find a point on the "collision" mesh, using binary search.
+		// 用二分查找在「碰撞」网格上找一个点。
 		vec2 good, bad;
 		glm_vec2_copy(p0, good);
 		glm_vec2_copy(p1, bad);
@@ -264,7 +264,7 @@ bool check_collision(struct collider *collider, vec2 p0, vec2 p1, float radius, 
 		glm_vec2_copy(good, out);
 	}
 
-	// Ensure that `out` is at least `radius` away from any boundary edge.
+	// 保证 `out` 离任何边界边至少 `radius`。
 	vec2 aabb[2];
 	glm_vec2_subs(out, radius, aabb[0]);
 	glm_vec2_adds(out, radius, aabb[1]);
@@ -281,7 +281,7 @@ bool check_collision(struct collider *collider, vec2 p0, vec2 p1, float radius, 
 			glm_vec2_normalize(v);
 			glm_vec2_copy(q, out);
 			glm_vec2_muladds(v, radius, out);
-			// update AABB
+			// 更新 AABB
 			glm_vec2_subs(out, radius, aabb[0]);
 			glm_vec2_adds(out, radius, aabb[1]);
 		}
@@ -291,7 +291,7 @@ bool check_collision(struct collider *collider, vec2 p0, vec2 p1, float radius, 
 
 bool collider_raycast(struct collider *collider, vec3 origin, vec3 direction, vec3 out)
 {
-	// Return the intersection nearest to the ray origin (closest to the camera).
+	// 返回离射线起点最近的那个交点（也就是离相机最近）。
 	float nearest = FLT_MAX;
 	struct collider_triangle* t = collider->triangles;
 	for (; t < collider->triangles + collider->nr_triangles; t++) {
@@ -376,7 +376,7 @@ static bool is_point_visible(vec3 point, mat4 vp_transform)
 {
 	vec4 p = { point[0], point[1], point[2], 1.f };
 	glm_mat4_mulv(vp_transform, p, p);
-	// Check if the point is in the view frustum.
+	// 检查点是否在视锥内。
 	return p[0] >= -p[3] && p[0] <= p[3] &&
 	       p[1] >= -p[3] && p[1] <= p[3] &&
 	       p[2] >= -p[3] && p[2] <= p[3];
@@ -390,7 +390,7 @@ bool collider_find_path(struct collider *collider, vec3 start, vec3 goal, mat4 v
 		collider->path_points = NULL;
 	}
 
-	// A* search for a graph with triangle centers as nodes and neighbors as edges.
+	// 以三角形中心为节点、邻接关系为边做 A*。
 	struct collider_triangle* start_t = find_triangle(collider, (vec2){ start[0], start[2] });
 	if (!start_t || !is_point_visible(start_t->center, vp_transform))
 		return false;
@@ -441,7 +441,7 @@ bool collider_find_path(struct collider *collider, vec3 start, vec3 goal, mat4 v
 		}
 	}
 	if (pf.nodes[goal_i].pred != -2) {
-		// Reconstruct the path.
+		// 还原路径。
 		int path_length = 0;
 		int current_i = goal_i;
 		while (current_i != -1) {
@@ -463,7 +463,7 @@ bool collider_find_path(struct collider *collider, vec3 start, vec3 goal, mat4 v
 	return !!collider->path_points;
 }
 
-// determines if a segment intersects with any collider edges, or is close enough to them.
+// 判断一条线段是否与任何碰撞体边相交，或离它们足够近。
 static bool test_segment(struct collider *collider, vec2 p0, vec2 p1, float threshold)
 {
 	vec2 aabb[2];
@@ -500,8 +500,8 @@ static bool test_segment(struct collider *collider, vec2 p0, vec2 p1, float thre
 static void optimize_path_rec(struct collider *collider, vec3 *points, int start, int end)
 {
 	if (end - start >= 2) {
-		// If the segment (points[start], points[end]) does not intersect any
-		// collider edges, we can skip all points in between.
+		// 如果线段 (points[start], points[end]) 不与任何
+		// 碰撞体边相交，中间那些点就可以全部跳过。
 		vec2 p0 = { points[start][0], points[start][2] };
 		vec2 p1 = { points[end][0], points[end][2] };
 		if (test_segment(collider, p0, p1, 0.5f)) {
