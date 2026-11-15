@@ -74,6 +74,10 @@ def needs_translation(line):
         return False
     if CJK.search(line) or not LATIN.search(line):
         return False
+    # 块注释里 `*` 后跟 2 个以上空格的是缩进代码/示例（调用链、伪代码），
+    # 翻成中文会破坏对齐，而且读者要的是原名。
+    if re.match(r'^[\t ]*\*[\t ]{2,}\S', line):
+        return False
     body = line.lstrip().lstrip('/*!').strip()
     if IDENT_ONLY.match(body):          # 纯标识符 / 文件名
         return False
