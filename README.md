@@ -1,162 +1,106 @@
-<div align="center">
-
 # xsystem4 · Rance10 原生移植 fork
 
-**让《ランス10》（Rance10）在 Linux / Android 上以原生方式运行**，不走 proot、不套转译层。
+[nunuhara/xsystem4](https://github.com/nunuhara/xsystem4) 的下游 fork：让《ランス10》
+在 Linux / Android 上**原生**运行，不走 proot / 转译层。上游是 AliceSoft System4 引擎的
+类 Unix 开源实现（C + SDL2 + OpenGL）。Rance10 用 **AIN v12** 字节码，在值表示、
+接口派发、泛型容器、存档格式上都有上游未覆盖的语义，本 fork 用字节码与存档文件
+逐条取证补齐。目标交付 arm64 APK（验收设备 realme RMX3700），当前在 Linux 桌面推进。
 
-本仓库是 [nunuhara/xsystem4](https://github.com/nunuhara/xsystem4) 的下游 fork。
-上游是 AliceSoft **System4** 引擎在类 Unix 系统上的开源实现（C + SDL2 + OpenGL）。
+> **本仓库不维护项目状态。**
+> 现状 / 阶段 / 卡点 / 必读契约 / 技术债的**唯一信息源**是工作区根
+> `../README.md` 与 `../TECH_DEBT.md` —— 它们在 git 仓库之外，单独 clone 本仓库时拿不到。
+> 本文件只回答「这个仓库是什么、怎么构建、边界在哪」，其余按下方文档地图找。
+> 开关数 / HLL 覆盖率 / 基线 KPI 等数字以 `docs/STATS.md` 为准（脚本生成，禁止手写）。
 
-</div>
+## 获取源码
 
----
+`libsys4` 是 submodule，remote 指向上游（我们无推送权限）：必须递归拉取，
+再把 `patches/*.patch` 应用到工作树。**绝不用 gitlink 记一个别人拉不到的本地提交。**
 
-## 这是什么
+```sh
+git clone --recurse-submodules https://github.com/easleyclaymore/Rance10-Android-Port.git
+git -C subprojects/libsys4 apply ../../patches/0001-libsys4-gsave-v8.patch
+git -C subprojects/libsys4 apply ../../patches/0002-libsys4-ajp-metrics.patch
+```
 
-上游 `xsystem4` 能跑一部分 System4 游戏；Rance10 用的是 **AIN v12** 字节码，
-在值表示、接口派发、泛型容器、存档格式上都有上游没覆盖的情况。
-本 fork 的工作是：**只用字节码和存档文件，把 v12 的语义一条条取证并补齐**，
-直到游戏能真正跑起来。
-
-目标交付物是 arm64 APK（验收设备 realme RMX3700），当前先在 Linux 桌面推进。
-
-## 当前状态
-
-**进行中，尚未通关。** 启动链、标题界面、第一章任务地图均已跑通并出画。
-
-| 环节 | 状态 |
-|---|---|
-| 构建 / 启动 | ✅ `ninja` 无 error，门禁 `check_core_deps.py` PASS |
-| 平台 / 登录 / 网络确认 | ✅ 自动化跑测可稳定通过 |
-| 标题界面 | ✅ 按官方说明书 `game/Manual/img/rm02.jpg` 绘制：红色圆形按钮 + 金色小按钮 + MENU（D141） |
-| 标题 → 章节 | ✅ 可进第一章（后门直接调用 `Rance10@RunGameChapter1`） |
-| 第一章任务地图 `SceneQuestMap` | ✅ 场景装载、对象装载、出画全通；主线推进到信息对话框 |
-| 部队编成界面 `SceneParty` | ✅ **真实点击进出闭环**：点地图右下 (1819,1002) 进编队、右键退出（`OnRClick` → `Close` → `SceneStack@Exit`），退出后地图正确重绘。卡片立绘正常显示 |
-| 编队加卡 | ✅ `OnClickCard` → `RemoveCardFromFormations` / `FindEmptyIndex` + `AddCardToFormations` 全链路，`err=0` |
-| 地图回合推进 | ⏳ 選択肢按钮能点、能推进 4 级选择、已触发 `PreBattleAutoSave`，但按钮整组坐标出屏（见根目录 `TECH_DEBT.md` 的 `[SELECTION-BUTTON-GEOM]`），尚未进战斗 |
-| 存档 `GroupSave / GroupLoad` | ✅ 写读闭环，含泛型 `array`；支持官方 **gsave v8**，可载入 PC 原版通关档；离线检查器可验 |
-| 内存 | ✅ 长跑稳定（地图装载约 370 MB，不再失控） |
-
-默认配置基线：`acts=107 / err=0 / core=0 / party=101`（`XSYS4_AUTO_MAP=1 XSYS4_AUTO_RUNPARTY=8000`，
-30 秒）。改默认行为前请先跑 `tools/run/baseline.sh` 对齐这组数。
-
-**当前工作重点**：任务地图回合推进。选择逻辑、存档、输入都已通，
-只差 `QuestMapSelectionButton` 的坐标合成（父 `global.pos` 与子 `local.pos`
-都是绝对屏幕坐标，被叠加成出屏值）。
-
-`[STORY-PHASE]` 已还（D142/D143）：第一章"从地图开始"是正常流程，
-"开场剧情没播"是误诊 —— 真症状是任务面板有框没字，一层原因是
-`SetMessageWindowText` 等三个函数是空桩/未导出，另一层是 D141 的文本
-去重判据（`h==16`）把面板正文一起吞了，现已改为按内容比对。修复后
-任务名/地名/战场/「応用」/「没有编队，请进行编组」都能正常显示。
-
-开始界面已按官方说明书重绘（D141，按钮是 `TextButton` 内建控件、
-不是缺失的 CG）；接口派发（`CALLMETHOD invalid function index -1`）
-已于 D140 修掉，根因是 `A_REF` 复制接口数组时把 vtable 偏移当成
-结构体引用深拷贝。
-
-未结债务与已证伪的假设都记在根目录的 `TECH_DEBT.md`（不在本仓库内，见「文档」）。
-
-## 这套 fork 主要改了什么
-
-- **值表示**：`AIN_IFACE` / `AIN_WRAP` 是**两槽** `[对象, vtable 偏移]`，`nr_args`
-  只数逻辑参数；泛型 `array` 由首个存入的元素定型，不能默认成 int 数组。
-- **HLL 返回槽宽**：由 `CALLHLL` 第三立即数（具体元素类型）决定，**不是**声明类型。
-  判错的后果是操作数栈整体错位，几层调用之外才炸。
-- **接口元素数组**：2 槽/元素，字节码用 `i*2` 索引，所以**分配 / 增长 / 计数**
-  三处必须同时按槽处理（少一处就会出现"数组翻倍"式的内存雪崩）。
-- **存档子系统**：`system.GroupSave / GroupLoad / ExistSaveFile / DeleteSaveFile /
-  CopySaveFile` 接到 `src/savedata.c`，实现 gsave 读写。
-- **内存**：堆槽回收、存活对象硬上限、`XSYS4_MEM_STAT` 构成统计。
-- **诊断**：一批默认关闭的 `XSYS4_*` 开关（见根目录 README 第 5 节）。
+补丁内容：gsave v8 / 泛型数组、AJP metrics。已应用过会提示 `already applied`，忽略即可。
 
 ## 构建
 
-依赖（括号内为 Debian/Ubuntu 包名）：
-
-| 库 | 包 |
-|---|---|
-| meson / ninja | `meson` `ninja-build` |
-| SDL2 | `libsdl2-dev` |
-| GLEW | `libglew-dev` |
-| freetype | `libfreetype-dev` |
-| libpng / libwebp / libturbojpeg | `libpng-dev` `libwebp-dev` `libturbojpeg0-dev` |
-| libsndfile | `libsndfile-dev` |
-| libffi / zlib / libdeflate | `libffi-dev` `zlib1g-dev` `libdeflate-dev` |
-| bison / flex | `bison` `flex` |
-| cglm（可缺省） | `libcglm-dev`，缺省时 meson 自动拉取 |
-| chibi-scheme（可选，调试器） | — |
+依赖（Debian/Ubuntu 包名）：`meson` `ninja-build`、`libsdl2-dev`、`libglew-dev`、
+`libfreetype-dev`、`libpng-dev` `libwebp-dev` `libturbojpeg0-dev`、`libsndfile-dev`、
+`libffi-dev` `zlib1g-dev` `libdeflate-dev`、`bison` `flex`、`libcglm-dev`（可缺省，
+meson 自动拉取）、chibi-scheme（可选调试器）。完整清单见 `meson.build`，
+本机备忘见 `tools/env/inst-deps.sh`。
 
 ```bash
-git submodule init && git submodule update     # 或 clone 时加 --recurse-submodules
-# 上游 libsys4 不认识 Rance10 的存档格式（gsave v8 / 泛型数组），补一刀：
-git -C subprojects/libsys4 apply ../../patches/0001-libsys4-gsave-v8.patch
-git -C subprojects/libsys4 apply ../../patches/0002-libsys4-ajp-metrics.patch
 mkdir build && meson build && ninja -C build
 ```
 
-> `libsys4` 的 remote 指向上游 `nunuhara/libsys4`，我们没有推送权限，
-> 所以补丁以 `patches/*.patch` 形式入库，而不是靠 submodule 指针指向一个
-> 远端不存在的 commit（那样别人 `git submodule update` 会直接失败）。
-> 若补丁已应用过，`git apply` 会提示 "already applied"，忽略即可。
+> **踩坑**：桌面环境里 `PYTHONHOME` / `PYTHONPATH` 指向别的 Python 时，meson 会死在
+> `ModuleNotFoundError: encodings`。构建前把变量摘掉：
+> `env -u PYTHONPATH -u PYTHONHOME -u PYTHONDONTWRITEBYTECODE ninja -C build`
 
-> **构建踩坑**：桌面环境里 `PYTHONHOME` / `PYTHONPATH` 指向别的 Python 时，
-> meson 会直接死在 `ModuleNotFoundError: encodings`。构建命令请把变量摘掉：
->
-> ```bash
-> env -u PYTHONPATH -u PYTHONHOME -u PYTHONDONTWRITEBYTECODE ninja -C build
-> ```
-
-## 运行
+## 运行与跑测
 
 ```bash
-build/src/xsystem4 /path/to/game_directory
-# 或者进入游戏目录后直接
-build/src/xsystem4
+build/src/xsystem4 /path/to/game_directory     # 或进入游戏目录后直接执行
 ```
 
-### 跑测脚本（`tools/`）
+跑测**只走** `tools/run/run-headless.sh`（独立 Xvfb + 3G 内存上限）。
+命令、动作序列语法、跑测配方、日志前缀契约、诊断开关的总入口见
+**[`docs/SDK.md`](docs/SDK.md)**；离线工具（不启动游戏、不需要 X）的参数与模式细节见
+**[`docs/OFFLINE.md`](docs/OFFLINE.md)**；`tools/` 目录分层见 `tools/MAP.md`。
 
-| 脚本 | 用途 |
-|---|---|
-| `tools/run/run-headless.sh tag 150 /tmp/a.png` | **首选**：独立 Xvfb + 完整点击序列 |
-| `tools/run/baseline.sh tag 120` | 全默认配置基线，输出六项指标 |
-| `tools/run/storm.sh tag 60` | 直冲地图（后门调 `RunGameChapter1`，不点菜单） |
+## 门禁与分支
 
-**两条硬纪律**（都是踩过 OOM 换来的）：
-
-1. **不要在真实桌面上跑。** `run-live.sh` 会 `xdotool` 移动鼠标、`x11grab` 截屏；
-   它只接受 `:90..:129` 的独立 Xvfb，其余 `DISPLAY` 直接 `exit 3`。
-2. **每个入口都有内存上限。** `run-headless.sh` 与 `run-live.sh` 都默认
-   `systemd-run -p MemoryMax=3G -p MemorySwapMax=0` 自包一层。
-
-## 离线工具
-
-`Rance10_Port/tools/`（相对本仓库的 `../tools/`）里有只读 AIN / 存档的小工具：
-`ain_at`（反汇编、按名字查函数、库函数签名、结构体成员）、`gsave_dump`（存档能否读回）、
-`ain_xref`（交叉引用）等。它们**不启动游戏、不需要 X**，秒级返回 —— 排查问题应当先用它们。
-子模块的本地改动固化在 `tools/patches/`，`git submodule update` 后需重新应用。
-
-```bash
-../tools/build.sh
-../tools/bin/ain_at game/Rance10.ain findsym:Chapter1@Run
-../tools/bin/gsave_dump logs/savedir/<tag>/GlobalSave.asd
+```sh
+python3 tools/check_core_deps.py    # Core Layer 无 Linux-only 头 / 硬编码路径 + 文档数字校验
 ```
 
-## 文档
+Core Layer = `vm.c` / `page.c` / `heap.c` / `ffi.c` / `pal.c` 及对应头文件；平台服务经
+`include/pal.h` 注入，Linux 实现在 `src/pal_linux.c`，Android 阶段提供 JNI 实现。
 
-| 位置 | 内容 |
+| 分支 | 用途 |
 |---|---|
-| `PROJECT.md` | 移植进度与里程碑（本仓库） |
-| `../README.md` | 主文档：现状、跑测、必读契约、卡点 |
-| `../TECH_DEBT.md` | 未结债务（A 结构性 / B 会炸的 / C 长尾） |
-| `docs/GUIDE/` | 《黑盒字节码引擎移植实战指南》，独立成书（仓库内唯一副本） |
-| `game/Manual/`（工作区） | 官方中文说明书；参考手册 `r01..r14.html` + `img/rm*.jpg` 是界面出画的客观基准 |
-| `docs/PROJECT-MANAGEMENT.md` | 《复杂底层项目的工程管理》：本项目工程管理体系复盘与改进建议 |
-| `notes/` | 字节码规范取证笔记（AIN v12 引用槽宽等） |
+| `main` | 远端交付基线（单提交，历史已扁平化）；`git push origin $(git rev-parse public-baseline):main` |
+| `public-baseline` | 本地单提交基线指针 |
+| `rance10-native` | 开发分支，完整移植历史；日常提交与推送都在这里 |
+| `upstream` | 上游基线，仅用于对照 |
+
+## 内容边界
+
+| 路径 | 内容 | 入库 |
+|---|---|---|
+| `src/`, `include/`, `meson.build` | VM / 渲染 / HLL 源码 | 是 |
+| `subprojects/libsys4` | 上游 submodule（gitlink） | 是 |
+| `tools/`, `patches/` | 离线工具、构建/跑测脚本、门禁、子模块补丁 | 是 |
+| `docs/` | 方法论 / 工具链 / 台账 / 生成物 | 是 |
+| `build/`, `game/`, `logs/` | 编译产物、游戏本体（有版权）、跑测日志 | 否 |
+
+## 文档地图（每类信息只有一个源）
+
+| 想知道 | 唯一源 |
+|---|---|
+| 现状 / 阶段 / 卡点 / 必读契约 / 纪律 | `../README.md`（仓库外，工作区根） |
+| 未结技术债 / 已清零索引 | `../TECH_DEBT.md`（仓库外，工作区根） |
+| 工具链入口 / 动作序列 / 跑测配方 / 日志前缀 | `docs/SDK.md` |
+| 离线工具参数与模式 | `docs/OFFLINE.md` |
+| 诊断开关总表（生成） | `docs/SWITCHES.md` |
+| 项目数字（生成，禁止手写） | `docs/STATS.md` |
+| 假设台账 / 变更影响面清单 | `docs/HYPOTHESES.md` / `docs/IMPACT.md` |
+| HLL 缺口与战斗路径风险评估 | `docs/HLL-GAP.md` |
+| 引擎移植方法论（对外成书） | `docs/GUIDE/` |
+| 工程管理体系复盘（面向管理者，历史快照） | `docs/PROJECT-MANAGEMENT.md` |
+| `tools/` 目录分层 | `tools/MAP.md` |
+| 历史全文 / 取证链 / 阶段报告 | `../archive/`（只读） |
+
+> **单一信息源规则**：任何当前状态、数字、契约、配置**只在上表对应的那一份里定义**；
+> 其它文档需要引用时只能写链接或一句指针，不得复制一份会过期的副本。
+> `PROJECT.md` 与仓库内 `README.md` 曾各维护一份状态，均已收敛（全文存 `../archive/`）。
 
 ## 上游与许可
 
 - 上游：[nunuhara/xsystem4](https://github.com/nunuhara/xsystem4)
 - 许可：**GPL-2.0**（见 `COPYING`）。本 fork 同样以 GPL-2.0 发布。
-- 游戏本体、图像、音频等素材版权归 AliceSoft 所有，**不包含在本仓库内**。
+- 游戏本体、图像、音频等素材版权归 AliceSoft，**不包含在本仓库内**。

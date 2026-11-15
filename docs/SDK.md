@@ -1,8 +1,10 @@
 # xsystem4 移植工具链（SDK 参考）
 
-> 这份文档回答「我要做 X，该用哪条命令」。
-> 离线工具的详细用法看 [`OFFLINE.md`](OFFLINE.md)，开关总表看 `SWITCHES.md`（自动生成）。
-> 方法论在 `docs/GUIDE/`（仓库内唯一副本，工作区不再保留写作副本），**不要往这份文档里写踩坑经过**。
+> 这份文档回答「我要做 X，该用哪条命令」，是 **`xsys4` 入口命令与跑测链的唯一定义处**。
+> 离线工具的参数 / 模式只在 [`OFFLINE.md`](OFFLINE.md) 定义（本文只给路由，不列参数）；
+> 开关总表看 `SWITCHES.md`、项目数字看 `STATS.md`（均由脚本生成）；
+> 项目状态 / 卡点看工作区根 `../README.md`（**不在本仓库内**）。
+> 方法论在 `docs/GUIDE/`，**不要往这份文档里写踩坑经过或当前状态**。
 
 ## 这是什么
 
@@ -122,6 +124,8 @@ for f in 24317 24300; do echo "$f=$(grep -ac "($f)" ../logs/live_probe1.log)"; d
 ./tools/xsys4 sym CheckNoLeader    # 按子串找
 ```
 
+> `at:` / `fno:` / `findsym:` 等参数与模式见 [OFFLINE.md](OFFLINE.md)；这里只给入口命令。
+
 ### 我要知道「部件为什么不显示」
 
 ```bash
@@ -240,7 +244,7 @@ clone 仓库的人只有引擎和工具，`debt` 会报"找不到"。同理 `xsy
 | `[ARR]` | 数组操作 | `XSYS4_ARR_DBG` |
 | `[stub]` | 软桩命中 | `XSYS4_SOFT_STUB` / `XSYS4_STUB_LOG` |
 
-### 两条纪律
+### 三条纪律
 
 **一、探针限流会骗人。** 带"前 N 次"或"每 N 次"闸门的打印，
 **没有输出 ≠ 没有发生**。判断某功能是否坏，必须至少有第二个独立证据
@@ -249,42 +253,37 @@ clone 仓库的人只有引擎和工具，`debt` 会报"找不到"。同理 `xsy
 **二、开关默认全关。** 交付前 `./tools/xsys4 check` 必须 PASS；
 常驻诊断只用默认关闭的 `XSYS4_*`，临时探针用完删掉。
 
+**三、不要裸跑。** 不要手写 `timeout ... xvfb-run ... > logs/*.log`：
+曾因 `xvfb-run` fork 的引擎成为孤儿进程、继续写数小时，产生 124 GB 日志。
+统一走 `tools/xsys4 seq` / `run-headless.sh`（自带 Xvfb 与内存上限）。
+
 ## 目录职责
+
+工作区结构（**状态文档在仓库外**，这是最容易踩的一点）：
 
 ```
 兰斯10/
-├── README.md            现状 / 阶段 / 卡点（随项目推进更新）
-├── TECH_DEBT.md         未结债（A 结构性 / B 会炸的 / C 长尾）
+├── README.md            状态唯一源（现状 / 阶段 / 卡点 / 契约 / 纪律）
+├── TECH_DEBT.md         未结债唯一源
+├── archive/             历史全文与取证链（只读）
 └── Rance10_Port/
-    ├── game/            游戏数据（不入库）
-    ├── logs/            跑测日志（不入库）
-    ├── tools/           离线工具 + 构建脚本
-    └── xsystem4/
-        ├── tools/
-        │   ├── xsys4        统一入口
-        │   ├── MAP.md       脚本分工地图（谁调谁、该用哪个）
-        │   ├── lib/common.sh 路径锚点（所有脚本从这里取路径）
-        │   ├── run/         跑测（8 个）
-        │   ├── build/       构建（2 个）
-        │   ├── env/         依赖（2 个）
-        │   ├── src/         离线工具源码（*.c）
-        │   ├── offline/     离线辅助（afa_ls / pactex_dump / alice.sh）
-        │   └── bin/         离线工具产物（已 gitignore）
-        ├── docs/GUIDE/     方法论（不随项目状态更新，对外开源）
-        ├── docs/PROJECT-MANAGEMENT.md  工程管理手册（面向管理者）
-        ├── docs/SDK.md      本文档
-        ├── docs/SWITCHES.md 开关总表（生成）
-        └── src/             引擎源码
+    ├── game/  logs/     游戏数据 / 跑测日志（均不入库）
+    └── xsystem4/        本仓库
+        ├── README.md    仓库元信息 + 构建 + 文档地图（不写状态）
+        ├── tools/       入口 `xsys4`；内部分层见 `tools/MAP.md`
+        ├── docs/        SDK / OFFLINE / GUIDE / 台账 / 生成物
+        └── src/         引擎源码
 ```
 
-**文档只维护三处**（README / TECH_DEBT / 仓库内 `docs/GUIDE/`），加这份 SDK 参考和生成的
-开关表。其余一律 `archive/`，只读。
+**文档分工与体积纪律以工作区根 `../README.md` §5–§6 的文档地图为准** ——
+本文不复述「只维护几处」，避免制度描述出现第二个版本。历史全文与取证链进
+`../archive/`，只读。
 
 ## 还没做到的
 
 诚实记录，避免下一个人重复踩：
 
-- `SWITCHES.md` 里有 24 个开关没有用途说明（`./tools/xsys4 check` 会报这个数）
+- `SWITCHES.md` 里仍有开关缺用途说明；**数量以 `docs/STATS.md` 的「未标注开关」为准**，`./tools/xsys4 check` 会报这个数
 - 12 个跑测脚本里还有 6 个是历史遗留（`safe_run*` `storm` 等），职责与
   `run-headless.sh` 重叠，尚未合并
 - 动作序列不支持"读屏决策"（例如"看到红色才点"），只能靠 `until` / `clickunless`

@@ -179,4 +179,8 @@ multibyte` 并截断、`ar extract -n "<名字>"` 永远匹配不到。`../tools
 跑测脚本（`baseline.sh` / `storm.sh` / `run-headless.sh` / `run-live.sh`）留在
 `../tools/run/` —— 它们依赖引擎目录结构，且**必须在独立 Xvfb 里跑**：
 `run-live.sh` 会 `xdotool` 点鼠标、`x11grab` 截屏，跑在真实桌面上会干扰你正在用的会话。
-详见项目根 `README.md` 的「两条硬纪律」。
+跑测纪律（独立 Xvfb / 内存上限 / 不要裸跑）见 [`SDK.md`](SDK.md) 的「三条纪律」。
+
+> **单一信息源**：本文只定义离线工具的参数与模式；`xsys4` 入口命令、动作序列语法、
+> 跑测配方、日志前缀契约一律看 `SDK.md`；项目状态看工作区根 `../README.md`。
+> 两边都不复制对方的内容，需要时只写链接。
