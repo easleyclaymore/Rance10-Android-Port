@@ -24,7 +24,7 @@
 
 static void cJSON_AddSjisToObject(cJSON *obj, const char *name, const char *sjis)
 {
-	// TODO: can avoid copy by implementing this as part of cJSON proper
+	// TODO：把这段实现进 cJSON 本身就可以避免拷贝
 	char *utf = sjis2utf(sjis, 0);
 	cJSON_AddStringToObject(obj, name, utf);
 	free(utf);
@@ -436,7 +436,7 @@ cJSON *parts_sprite_to_json(struct sprite *sp, bool verbose)
 
 cJSON *parts_engine_to_json(struct sprite *sp, bool verbose)
 {
-	// XXX: only add parts to sprite object in verbose mode
+	// XXX：只有 verbose 模式才把部件加到精灵对象上
 	cJSON *obj = scene_sprite_to_json(sp, verbose);
 	if (!verbose)
 		return obj;
@@ -606,7 +606,7 @@ static void parts_cmd_parts_save(unsigned nr_args, char **args)
 		return;
 	}
 
-	// TODO: infer format from extension
+	// TODO：从扩展名推断格式
 	gfx_save_texture(&parts->states[parts->state].common.texture, args[1], ALCG_PNG);
 }
 
@@ -621,17 +621,17 @@ static void parts_cmd_parts_render(unsigned nr_args, char **args)
 		return;
 	}
 
-	// create output texture
+	// 创建输出纹理
 	Texture t;
 	gfx_init_texture_rgba(&t, config.view_width, config.view_height, (SDL_Color){0,0,0,0});
 
-	// render parts to texture
+	// 把 parts 渲染到纹理
 	GLuint fbo = gfx_set_framebuffer(GL_DRAW_FRAMEBUFFER, &t, 0, 0, t.w, t.h);
 	parts_render(parts);
 	gfx_reset_framebuffer(GL_DRAW_FRAMEBUFFER, fbo);
 
-	// write texture to disk
-	// TODO: infer format from extension
+	// 把纹理写进磁盘
+	// TODO：从扩展名推断格式
 	gfx_save_texture(&t, args[1], ALCG_PNG);
 	gfx_delete_texture(&t);
 }

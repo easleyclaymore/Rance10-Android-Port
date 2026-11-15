@@ -38,8 +38,8 @@ static STAILQ_HEAD(, parts_message) msg_queue =
 
 void parts_msg_push(struct parts* parts, int type, const char *fmt, ...)
 {
-	/* [D114] XSYS4_MSG_DBG=1: confirm that the multi-controller message
-	 * system is enabled and that click messages actually reach the queue. */
+	/* [D114] XSYS4_MSG_DBG=1：确认多控制器消息
+	 * 系统已启用，并确认点击消息确实进了队列。 */
 	static int msg_dbg_n;
 	/* 只打非悬停消息，否则前 60 条全被 MOUSE_ON 占满，看不到点击。 */
 	if (getenv("XSYS4_MSG_DBG") && type != PARTS_MSG_MOUSE_ON && msg_dbg_n < 120) {
@@ -49,7 +49,7 @@ void parts_msg_push(struct parts* parts, int type, const char *fmt, ...)
 		       parts ? parts->delegate_index : 0);
 	}
 
-	// Message system is introduced in Rance 9
+	// 消息系统是兰斯9 引入的
 	if (!parts_multi_controller)
 		return;
 
@@ -76,10 +76,10 @@ void parts_msg_push(struct parts* parts, int type, const char *fmt, ...)
 			msg->delegate_index = di;
 		}
 	}
-	/* [D119 probe] AIN CPartsMessageManager@CallDelegate drops any message
-	 * whose delegate_index < 0 (return 0 immediately). Activity parts created
-	 * by activity.c keep the default -1, so per-parts clicks never dispatch.
-	 * Controlled experiment: fall back to index 0 when explicitly enabled. */
+	/* [D119 探针] AIN 的 CPartsMessageManager@CallDelegate 会丢掉所有
+	 * delegate_index < 0 的消息（立刻返回 0）。activity.c 创建的
+	 * 活动部件保持默认的 -1，所以逐部件的点击永远派发不出去。
+	 * 受控实验：显式打开时回退到下标 0。 */
 	if (msg->delegate_index < 0 && getenv("XSYS4_DI_FALLBACK"))
 		msg->delegate_index = 0;
 	msg->type = type;
@@ -149,12 +149,12 @@ static void msg_trace(const char *what, int a, int b)
 
 int PE_GetMessageType(void)
 {
-	/* [D112] -1, not 0, is the "queue empty" sentinel:
+	/* [D112] 「队列空」的哨兵是 -1，不是 0：
 	 *   CPartsMessageManager@Update: MessageType = GetMessageType();
 	 *   while (MessageType != -1) { if (!CallDelegate(t)) PopMessage(); ... }
-	 * Returning 0 on an empty queue made the loop treat "no message" as
-	 * message type 0 forever (PopMessage is a no-op when empty), which is the
-	 * busy loop that froze SceneStack@WaitFrame. */
+	 * 空队列时返回 0，会让循环把「没有消息」永远当成
+	 * 消息类型 0（PopMessage 在空队列上是空操作），
+	 * 这就是那个把 SceneStack@WaitFrame 卡死的忙循环。 */
 	struct parts_message *msg = STAILQ_FIRST(&msg_queue);
 	if (!msg && getenv("XSYS4_MSG_NO_SENTINEL"))
 		return 0;   /* demo knob: reproduce the pre-D112 busy-wait (frozen start screen) */
@@ -192,7 +192,7 @@ int PE_GetMessageVariableCount(void)
 
 int PE_GetMessageVariableType(possibly_unused int index)
 {
-	// In the current implementation, all variables are integers.
+	// 当前实现里所有变量都是整数。
 	msg_trace("vtype", index, 1);
 	return 1;
 }

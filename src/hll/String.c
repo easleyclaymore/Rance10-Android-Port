@@ -1,4 +1,4 @@
-/* String / Int / Float - System 4.3 string & number helpers for Rance X.
+/* String / Int / Float —— 兰斯10 用的 System 4.3 字符串与数字辅助函数。
  */
 #include <ctype.h>
 #include <regex.h>
@@ -14,7 +14,7 @@
 #include "vm/heap.h"
 #include "vm/page.h"
 
-/* ---------------- Int / Float ---------------- */
+/* ---------------- 整数 / 浮点 ---------------- */
 
 static struct string *Int_String(int *v)
 {
@@ -34,7 +34,7 @@ static struct string *Float_String(float *v, int precision)
 
 HLL_LIBRARY(Float, HLL_EXPORT(String, Float_String));
 
-/* ---------------- String ---------------- */
+/* ---------------- 字符串 ---------------- */
 
 #define SV(x) ((x) ? (x)->text : "")
 
@@ -75,7 +75,7 @@ static int String_Length(struct string **s)
 {
 	if (!s || !*s)
 		return 0;
-	/* count characters (UTF-8 aware) */
+	/* 数字符个数（UTF-8 感知） */
 	const unsigned char *p = (const unsigned char *)(*s)->text;
 	int n = 0;
 	while (*p) {
@@ -379,9 +379,9 @@ static struct string *String_GetPart(struct string **s, int pos)
 
 static struct string *String_GetPartLen(struct string **s, int pos, int count)
 {
-	/* D63: the old implementation broke out of the copy loop before advancing
-	 * p, so count==1 always returned an empty string. main() uses
-	 * GetPart(s,6,1) -> Int() as a loop condition and spun forever. */
+	/* D63：旧实现在推进 p 之前就跳出了拷贝循环，
+	 * 所以 count==1 永远返回空串。main() 把
+	 * GetPart(s,6,1) -> Int() 当循环条件，于是死循环。 */
 	if (!s || !*s || count <= 0)
 		return string_dup(&EMPTY_STRING);
 	const unsigned char *p = (const unsigned char *)(*s)->text;
@@ -529,9 +529,9 @@ static struct string *String_TrimEndChars(struct string **s, struct string *char
 }
 
 /* String.Split(ref string s, string sep, bool keep_empty) -> ref string[]
- * AIN lib30 f[35], used by Parts@ResolveFlatName to split flat asset paths.
- * Byte-wise splitting is safe here: Rance10 uses ASCII separators ("/", "\\"),
- * and the payload is kept as GBK bytes just like every other string in the VM. */
+ * AIN 库30 的 f[35]，Parts@ResolveFlatName 用它切分 flat 资源路径。
+ * 这里按字节切是安全的：兰斯10 用的是 ASCII 分隔符（"/"、"\\"），
+ * 而负载和 VM 里其他字符串一样保持 GBK 字节。 */
 static struct page *String_Split(struct string **s, struct string *sep, bool keep_empty)
 {
 	(void)keep_empty;
@@ -564,11 +564,11 @@ static struct page *String_Split(struct string **s, struct string *sep, bool kee
 		p = hit + nlen;
 		start = p;
 	}
-	/* [HACK][D119-SPLIT] ret=t79 falls through ffi.c's default branch, which
-	 * pushes the raw C return value; AIN addresses pages by heap slot. Register
-	 * the array page here and hand the slot back through the pointer-typed
-	 * return. Refactor: add an explicit "returns_page" flag to static_hll_function
-	 * and let ffi.c do heap_alloc_page() generically. See TECH_DEBT. */
+	/* [HACK][D119-SPLIT] ret=t79 会落到 ffi.c 的默认分支，那里
+	 * 压的是 C 的原始返回值；而 AIN 是按堆槽寻址页的。所以这里先注册
+	 * 数组页，再把槽号通过指针类型的返回值交回去。
+	 * 重构方向：给 static_hll_function 加一个显式的 returns_page 标志，
+	 * 由 ffi.c 统一做 heap_alloc_page()。见技术债。 */
 	return (struct page *)(intptr_t)(int32_t)heap_alloc_page(arr);
 }
 
@@ -589,8 +589,8 @@ HLL_LIBRARY(String,
 	HLL_EXPORT(EndsWith, String_EndsWith),
 	HLL_EXPORT(Replace, String_Replace),
 	HLL_EXPORT(ReplaceRegex, String_ReplaceRegex),
-/* AIN v12 f[22] GetPart(ref string,int,int)->string is 3-arg;
-	 * String_GetPart is the legacy 2-arg form (D62). */
+/* AIN v12 的 f[22] GetPart(ref string,int,int)->string 是 3 参；
+	 * String_GetPart 是老的两参形式（D62）。 */
 	/* [D152] 2 参与 3 参是两个重载，必须分开标 arity。
 	 * 以前两条都叫 GetPart 却都指向 3 参实现，2 参调用读到垃圾 count。 */
 	HLL_EXPORT_N(GetPart, String_GetPart, 2),
@@ -608,5 +608,5 @@ HLL_LIBRARY(String,
 	HLL_EXPORT(TrimStartChars, String_TrimStartChars),
 	HLL_EXPORT(TrimEnd, String_TrimEnd),
 	HLL_EXPORT(TrimEndChars, String_TrimEndChars),
-	/* AIN lib30 f[35]; linked by name so the table order stays compatible. */
+	/* AIN 库30 的 f[35]；按名字链接，保持表顺序兼容。 */
 	HLL_EXPORT(Split, String_Split));

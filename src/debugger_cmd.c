@@ -281,7 +281,7 @@ static struct dbg_cmd dbg_default_commands[] = {
 static struct dbg_cmd_list dbg_commands = {0};
 
 /*
- * Get a command by name.
+ * 按名字取一条命令。
  */
 static struct dbg_cmd_node *dbg_get_node(struct dbg_cmd_list *list, const char *name)
 {
@@ -416,7 +416,7 @@ static int cmd_rl_event_hook(void)
 }
 
 /*
- * Get a string from the user. The result can be modified but shouldn't be free'd.
+ * 从用户那里读一个字符串。返回值可以改，但不应该 free。
  */
 static char *cmd_gets(void)
 {
@@ -430,7 +430,7 @@ static char *cmd_gets(void)
 }
 #else
 /*
- * Get a string from the user. The result can be modified but shouldn't be free'd.
+ * 从用户那里读一个字符串。返回值可以改，但不应该 free。
  */
 static char *cmd_gets(void)
 {
@@ -445,7 +445,7 @@ static char *cmd_gets(void)
 #endif
 
 /*
- * Parse a line into an array of words. Modified the input string.
+ * 把一行解析成单词数组。会修改输入字符串。
  */
 static char **cmd_parse(char *line, unsigned *nr_words)
 {
@@ -453,12 +453,12 @@ static char **cmd_parse(char *line, unsigned *nr_words)
 
 	*nr_words = 0;
 	while (*line) {
-		// skip whitespace
+		// 跳过空白
 		while (*line && isspace(*line)) line++;
 		if (!*line) break;
-		// save word ptr
+		// 记下单词指针
 		words[(*nr_words)++] = line;
-		// skip word
+		// 跳过单词
 		while (*line && !isspace(*line)) line++;
 		if (!*line) break;
 		*line = '\0';

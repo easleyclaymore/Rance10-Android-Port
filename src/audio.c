@@ -25,8 +25,8 @@
 #include "queue.h"
 
 /*
- * Common audio interface for SACT2/KiwiSoundEngine.
- * This is just a wrapper over the generic audio interface in audio_mixer.c.
+ * SACT2/KiwiSoundEngine 共用的音频接口。
+ * 它只是对 audio_mixer.c 里那套通用音频接口的一层包装。
  */
 
 static struct id_pool wav;
@@ -41,9 +41,9 @@ struct audio_se_playback {
 };
 
 struct audio_se_player {
-	// Minimum time in milliseconds between two playbacks of the same sound.
+	// 同一声音两次播放之间的最小间隔（毫秒）。
 	int play_span;
-	// If false, a new playback stops the playbacks of the same sound.
+	// 为假时，新的播放会打断同一声音正在进行的播放。
 	bool multi_play;
 	LIST_HEAD(, audio_se_playback) playbacks;
 };
@@ -107,8 +107,8 @@ static struct channel *open_asset_channel(enum asset_type type, int no)
 	return data ? channel_open_archive_data(data) : NULL;
 }
 
-// Anonymous channels for playing sounds in-engine. audio_update must be called
-// periodically to clean up channels that have finished playing.
+// 引擎内部播放音效用的匿名通道。必须周期性调用 audio_update，
+// 把已经播完的通道清理掉。
 #define NR_ANONYMOUS_CHANNELS 64
 static int anonymous_channels[NR_ANONYMOUS_CHANNELS];
 
@@ -239,7 +239,7 @@ static int pool_play(struct id_pool *pool, int id)
 {
 	struct channel *ch = id_pool_get(pool, id);
 	if (!ch) {
-		// NOTE: SACT2 brings up error GUI here
+		// 注意：SACT2 在这里会弹出错误对话框
 		WARNING("Tried to play from unprepared audio channel");
 		return 0;
 	}
@@ -633,7 +633,7 @@ bool audio_se_play(int se_id, struct string *name)
 	if (!player)
 		return false;
 	se_cleanup(player);
-	// play_span and multi_play apply only to playbacks of the same sound.
+	// play_span 和 multi_play 只对同一声音的播放生效。
 	struct audio_se_playback *p;
 	LIST_FOREACH(p, &player->playbacks, entry) {
 		if (!strcmp(p->name->text, name->text)

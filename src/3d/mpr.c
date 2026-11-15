@@ -19,7 +19,7 @@
 
 #include "3d_internal.h"
 
-// .mpr parser.
+// .mpr 解析器。
 
 static int resolve_mesh_index(struct model *model, const char *name)
 {
@@ -56,7 +56,7 @@ static void append_int_key(struct mpr_int_key **arr, int *nr, int frame, int v)
 	(*nr)++;
 }
 
-// All mpr_*_key structs have `int frame` as their first field.
+// 所有 mpr_*_key 结构体的第一个字段都是 `int frame`。
 static int cmp_key_by_frame(const void *a, const void *b)
 {
 	return *(const int *)a - *(const int *)b;
@@ -172,10 +172,10 @@ void mpr_free(struct mpr *mpr)
 	free(mpr);
 }
 
-// Keyframe evaluation.
+// 关键帧求值。
 
-// Returns the largest index i with keys[i].frame <= frame.
-// Returns -1 if frame < keys[0].frame.
+// 返回满足 keys[i].frame <= frame 的最大下标 i。
+// frame < keys[0].frame 时返回 -1。
 #define DEFINE_FIND_KEY(NAME, KEY_TYPE) \
 	static int NAME(const KEY_TYPE *keys, int nr, float frame) \
 	{ \
@@ -238,7 +238,7 @@ static int eval_int(const struct mpr_int_key *keys, int nr, float frame, int fal
 	return keys[i].v;  // step
 }
 
-// Combine inst defaults with .mpr Object-scope keyframes.
+// 把实例默认值和 .mpr 里 Object 作用域的关键帧合并。
 void mpr_evaluate_object(const struct mpr *mpr, float frame,
 		struct RE_instance *inst, struct mpr_modulation *out)
 {
@@ -254,7 +254,7 @@ void mpr_evaluate_object(const struct mpr *mpr, float frame,
 	eval_vec3(mpr->object.mul_diffuse, mpr->object.nr_mul_diffuse, frame, (vec3){1,1,1}, out->diffuse);
 }
 
-// Combine the object-scope values with .mpr Mesh-scope keyframes for one mesh.
+// 把对象作用域的值和 .mpr 里某个网格的 Mesh 作用域关键帧合并。
 void mpr_evaluate_mesh(const struct mpr_track_set *mt, float frame,
 		const struct mpr_modulation *obj, struct mpr_modulation *out)
 {
@@ -270,9 +270,9 @@ void mpr_evaluate_mesh(const struct mpr_track_set *mt, float frame,
 	glm_vec3_mul(out->diffuse, mul, out->diffuse);
 }
 
-// MeshTextureAnime writes to the shared material slot, so all meshes
-// referencing the same material pick up the animation even if .mpr only names
-// one of them. Caller supplies the output buffer sized to model->nr_materials.
+// MeshTextureAnime 写的是共享的材质槽，所以所有引用同一材质的网格
+// 都会跟着播动画，即使 .mpr 里只点了其中一个。
+// 调用方负责提供按 model->nr_materials 大小的输出缓冲。
 void mpr_build_mat_tex_index(const struct model *model, const struct RE_instance *inst,
 		const struct mpr *mpr, float frame, int *mat_tex_index)
 {

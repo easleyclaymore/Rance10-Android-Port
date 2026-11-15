@@ -37,8 +37,8 @@ bool sact_dirty = true;
 LIST_HEAD(listhead, sact_sprite) sprites_with_plugins =
 	LIST_HEAD_INITIALIZER(sprites_with_plugins);
 
-// XXX: sprites should typically be set to zero and then initialized with this
-//      function upon allocation.
+// XXX：精灵通常应当先清零，然后在分配时用这个
+//      函数初始化。
 void sprite_init(struct sact_sprite *sp)
 {
 	sp->blend_rate = 255;
@@ -55,7 +55,7 @@ void sprite_free(struct sact_sprite *sp)
 			sp->plugin->free(sp->plugin);
 		LIST_REMOVE(sp, entry);
 	}
-	// restore to initial state
+	// 恢复到初始状态
 	memset(sp, 0, sizeof(struct sact_sprite));
 	sprite_init(sp);
 }
@@ -212,10 +212,10 @@ void sprite_set_cg(struct sact_sprite *sp, struct cg *cg)
 	sprite_dirty(sp);
 }
 
-// XXX: Only used in English Rance VI
+// XXX：只在英文版《兰斯VI》里用到
 void sprite_set_cg_2x(struct sact_sprite *sp, struct cg *cg)
 {
-	// load CG at 1x
+	// 按 1 倍装载 CG
 	Texture tmp;
 	gfx_init_texture_with_cg(&tmp, cg);
 
@@ -223,7 +223,7 @@ void sprite_set_cg_2x(struct sact_sprite *sp, struct cg *cg)
 	int w = cg->metrics.w*2;
 	int h = cg->metrics.h*2;
 
-	// upscale into sprite texture
+	// 放大到精灵纹理里
 	gfx_delete_texture(&sp->texture);
 	if (cg->metrics.has_alpha) {
 		gfx_init_texture_rgba(&sp->texture, w, h, c);
@@ -290,7 +290,7 @@ int sprite_save_cg(struct sact_sprite *sp, const char *path)
 }
 
 /*
- * Attach pixel data to a sprite. The texture is initialized lazily.
+ * 把像素数据挂到精灵上。纹理会惰性初始化。
  */
 void sprite_init_color(struct sact_sprite *sp, int w, int h, int r, int g, int b, int a)
 {
@@ -457,7 +457,7 @@ bool sprite_is_point_in(struct sact_sprite *sp, int x, int y)
 	if (!sprite_is_point_in_rect(sp, x, y))
 		return 0;
 
-	// check alpha
+	// 检查 alpha
 	struct texture *t = sprite_get_texture(sp);
 	SDL_Color c = gfx_get_pixel(t, x - sp->rect.x, y - sp->rect.y);
 	return !!c.a;

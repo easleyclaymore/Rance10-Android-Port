@@ -43,8 +43,8 @@ struct movie_context {
 	int voice;
 	int volume;
 
-	// Time keeping data. Written by audio handler and referenced by video
-	// handler (i.e. we sync the video to the audio).
+	// 计时数据。由音频回调写、视频回调读
+	// （也就是让视频跟着音频走）。
 	double stream_time;  // in seconds
 	uint32_t wall_time_ms;
 	SDL_mutex *timer_mutex;
@@ -67,7 +67,7 @@ static int audio_callback(sts_mixer_sample_t *sample, void *data)
 	sample->length = frame->count * 2;
 	sample->data = frame->interleaved;
 
-	// Update the timestamp.
+	// 更新时间戳。
 	SDL_LockMutex(mc->timer_mutex);
 	mc->stream_time = frame->time;
 	mc->wall_time_ms = SDL_GetTicks();
@@ -166,7 +166,7 @@ void movie_free(struct movie_context *mc)
 
 bool movie_play(struct movie_context *mc)
 {
-	// Start the audio stream.
+	// 启动音频流。
 	mc->stream_time = 0.0;
 	mc->wall_time_ms = SDL_GetTicks();
 	mc->sts_stream.userdata = mc;
@@ -179,7 +179,7 @@ bool movie_play(struct movie_context *mc)
 
 bool movie_draw(struct movie_context *mc, struct sact_sprite *sprite)
 {
-	// Decode a frame, unless we already have one.
+	// 解码一帧，除非已经有一帧了。
 	plm_frame_t *frame = mc->pending_video_frame;
 	mc->pending_video_frame = NULL;
 	if (!frame) {
@@ -190,7 +190,7 @@ bool movie_draw(struct movie_context *mc, struct sact_sprite *sprite)
 			return plm_video_has_ended(mc->plm->video_decoder);
 	}
 
-	// If the frame's timestamp is in the future, save the frame and return.
+	// 如果这一帧的时间戳还在未来，就存下来返回。
 	SDL_LockMutex(mc->timer_mutex);
 	double now = mc->stream_time + (SDL_GetTicks() - mc->wall_time_ms) / 1000.0;
 	SDL_UnlockMutex(mc->timer_mutex);
@@ -199,7 +199,7 @@ bool movie_draw(struct movie_context *mc, struct sact_sprite *sprite)
 		return true;
 	}
 
-	// Render the frame.
+	// 把这一帧渲染出来。
 	update_texture(GL_TEXTURE0, mc->textures[0], &frame->y);
 	update_texture(GL_TEXTURE1, mc->textures[1], &frame->cb);
 	update_texture(GL_TEXTURE2, mc->textures[2], &frame->cr);
@@ -212,7 +212,7 @@ bool movie_draw(struct movie_context *mc, struct sact_sprite *sprite)
 		h = texture->h;
 		fbo = gfx_set_framebuffer(GL_DRAW_FRAMEBUFFER, texture, 0, 0, w, h);
 	} else {
-		// Draw directly to the main framebuffer.
+		// 直接画到主帧缓冲。
 		w = config.view_width;
 		h = config.view_height;
 		gfx_clear();
