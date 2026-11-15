@@ -24,8 +24,8 @@
 /*
  * AnteaterADVEngine
  * -----------------
- * This library was first introduced in Shaman's Sanctuary, however the
- * functions existed as part of StoatSpriteEngine before that.
+ * 这个库最早出现在《Shaman's Sanctuary》里，但那些函数
+ * 在那之前就已经作为 StoatSpriteEngine 的一部分存在了。
  */
 
 struct adv_log {
@@ -39,7 +39,7 @@ struct adv_log {
 static bool enabled = true;
 static bool voice_by_name = false;
 
-// A circular buffer of logs.
+// 一个环形缓冲的日志。
 #define LOG_BUFFER_SIZE 1000
 static struct adv_log *logs = NULL;
 static unsigned log_first;
@@ -74,7 +74,7 @@ static void free_log(struct adv_log *log)
 	log->voice_names = NULL;
 }
 
-// Ensure there is at least one log allocated
+// 确保至少分配了一条日志
 static void ensure_log(void)
 {
 	if (!logs) {
@@ -98,7 +98,7 @@ static struct string **current_line(struct adv_log *log)
 
 void ADVLogList_Clear(void)
 {
-	// XXX: this function works even if logging is disabled
+	// XXX：即使关掉日志，这个函数也能工作
 	if (!logs) return;
 	for (unsigned i = log_first;; i = (i + 1) % LOG_BUFFER_SIZE) {
 		free_log(&logs[i]);
@@ -161,7 +161,7 @@ int ADVLogList_GetNumofADVLog(void)
 
 static struct adv_log *log_entry(int log_no)
 {
-	// NOTE: AnteaterADVEngine.dll segfaults on invalid index
+	// 注意：AnteaterADVEngine.dll 遇到非法下标会段错误
 	ensure_log();
 	if (log_no < 0 || (unsigned)log_no >= ADVLogList_GetNumofADVLog())
 		VM_ERROR("Invalid log number: %d", log_no);
@@ -176,7 +176,7 @@ int ADVLogList_GetNumofADVLogText(int log_no)
 void ADVLogList_GetADVLogText(int log_no, int line_no, struct string **text)
 {
 	struct adv_log *log = log_entry(log_no);
-	// NOTE: AnteaterADVEngine.dll segfaults on invalid index
+	// 注意：AnteaterADVEngine.dll 遇到非法下标会段错误
 	if (line_no < 0 || (unsigned)line_no >= log->nr_lines)
 		VM_ERROR("Invalid line number: %d", line_no);
 
@@ -211,17 +211,17 @@ bool ADVLogList_Save(struct page **iarray)
 	// 0x64 <- 'A'
 	// 0x68 <- 'D'
 	// 0x76 <- 'L'
-	// 0x0  <- end of header
+	// 0x0  <- 头部结束
 	// 0x0  <- ???
-	// n    <- number of pages (min 1)
-	// n    <- number of lines in page (min 1)
-	// ...  <- strings (one per line)
-	// n    <- number of voices in page
-	// ...  <- integers (one per voice)
+	// n    <- 页数（至少 1）
+	// n    <- 该页的行数（至少 1）
+	// ...  <- 字符串（每行一个）
+	// n    <- 该页的语音数
+	// ...  <- 整数（每个语音一个）
 	// 0x1  <- ???
 	ensure_log();
 
-	// encode log as array of integers
+	// 把日志编码成整数数组
 	struct iarray_writer b;
 	iarray_init_writer(&b, "ADL");
 	iarray_write(&b, 0);
@@ -243,7 +243,7 @@ bool ADVLogList_Save(struct page **iarray)
 	}
 	iarray_write(&b, 1);
 
-	// write integers into caller array variable
+	// 把整数写进调用方给的数组变量
 	if (*iarray) {
 		delete_page_vars(*iarray);
 		free_page(*iarray);
@@ -270,9 +270,9 @@ bool ADVLogList_Load(struct page **data)
 		goto error;
 	}
 
-	// XXX: For whatever reason this function always creates a blank page 0,
-	//      and then loads the input pages after that. So a consecutive save
-	//      and load will increase all page numbers by 1.
+	// XXX：不管什么原因，这个函数总会先建一个空白的第 0 页，
+	//      然后再把输入的页装到它后面。所以连着存一次读一次
+	//      会让所有页码都 +1。
 	ensure_log();
 
 	for (int i = 1; i < nr_pages + 1; i++) {
@@ -418,9 +418,9 @@ bool ADVSceneKeeper_Save(struct page **iarray)
 		delete_page_vars(*iarray);
 		free_page(*iarray);
 	}
-	// NOTE: AnteaterADVEngine.dll knows about the structure of the input;
-	//       this implementation just serializes whatever it's given. Note
-	//       also that the structure of 画面保管_t objects differs between games.
+	// 注意：AnteaterADVEngine.dll 知道输入的结构；
+	// 这个实现就把它拿到的东西原样序列化。
+	// 另外 画面保管_t 对象的结构在不同游戏里也不一样。
 	struct iarray_writer w;
 	iarray_init_writer(&w, "SCS");
 	iarray_write(&w, 0); // version
@@ -500,21 +500,21 @@ static void AnteaterADVEngine_ADVLogList_AddText_with_window(struct string **tex
 	ADVLogList_AddText(text);
 }
 
-// Signature changes in Evenicle.
+// Evenicle 里签名变了。
 static void AnteaterADVEngine_ADVLogList_AddText_by_value(struct string *text, int window_no)
 {
 	ADVLogList_AddText(&text);
 }
 
-/* [D204] Rance10 declares AnteaterADVLogList.AddText(Text:string,
- * WindowName:string): both arguments are AIN_STRING, i.e. by value, so
- * libffi hands the C function two `struct string *`. The table entry
- * ADVLogList_AddText(struct string **) expects a ref-string instead and
- * dereferences the string object's own header as a pointer. That yields a
- * bogus `struct string *` (observed in a core dump: 0x100000800000008)
- * and a SEGV in string_append(). The Evenicle adapter above cannot be used:
- * it only looks up the *prefixed* name and replaces the *prefixed* table
- * entry, neither of which Rance10 has. */
+/* [D204] ADVLogList_AddText 的 AIN 声明是 (int, string,
+ * WindowName:string)：两个实参都是 AIN_STRING，也就是按值传，
+ * 所以 libffi 交给 C 函数的是两个 `struct string *`。表里那条
+ * ADVLogList_AddText(struct string **) 要的是 ref-string，
+ * 于是它把字符串对象自己的头当成指针去解引用，
+ * 得到一个假的 `struct string *`（core dump 里看到
+ * 0x100000800000008），然后在 string_append() 里 SEGV。
+ * 上面那个 Evenicle 适配也用不了：它只查带前缀的名字、
+ * 也只替换带前缀的表项，而兰斯10 两者都没有。 */
 static void AnteaterADVLogList_AddText_by_value(struct string *text,
 						struct string *window_name)
 {
@@ -634,10 +634,10 @@ static void AnteaterADVEngine_PreLink(void)
 			AnteaterADVEngine_ADVLogList_GetADVLogVoice_by_name);
 	}
 
-	/* [D204] Rance10 keeps the same library under the name
-	 * AnteaterADVLogList but drops the "ADVLogList_" prefix from every
-	 * function. The by-value signature check above therefore never fires
-	 * and AddText stays bound to the ref-string implementation. */
+	/* [D204] 兰斯10 把同一个库挂在 AnteaterADVLogList 名下，
+	 * 但把每个函数的 ADVLogList_ 前缀去掉了。
+	 * 所以上面那个按值签名检查永远不会触发，
+	 * AddText 仍然绑在 ref-string 实现上。 */
 	int advlog = ain_get_library(ain, "AnteaterADVLogList");
 	if (advlog >= 0) {
 		fun = get_fun(advlog, "AddText");

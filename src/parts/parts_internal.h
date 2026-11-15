@@ -24,7 +24,7 @@ typedef struct cJSON cJSON;
 struct string;
 struct hash_table;
 
-// NOTE: actual value is +1
+// 注意：实际值要 +1
 enum parts_state_type {
 	PARTS_STATE_DEFAULT = 0,
 	PARTS_STATE_HOVERED = 1,
@@ -142,11 +142,11 @@ struct parts_animation {
 };
 
 enum parts_numeral_font_type {
-	// each digit has a separate CG (only first CG number stored in `cg_no` member)
+	// 每个数字一张独立 CG（`cg_no` 成员里只存第一个 CG 号）
 	PARTS_NUMERAL_FONT_SEPARATE = 0,
-	// digits packed into single CG
+	// 数字打包进一张 CG
 	PARTS_NUMERAL_FONT_COMBINED = 1,
-	// each digit has a separate CG (CG numbers stored in `width` member)
+	// 每个数字一张独立 CG（CG 号存在 `width` 成员里）
 	PARTS_NUMERAL_FONT_SEPARATE2 = 2,
 };
 
@@ -174,7 +174,7 @@ struct parts_gauge {
 	float rate;
 };
 
-// Serialized in save data. Do not reorder.
+// 会序列化进存档。不要重排顺序。
 enum parts_cp_op_type {
 	PARTS_CP_CREATE,
 	PARTS_CP_CREATE_PIXEL_ONLY,
@@ -298,16 +298,16 @@ struct flat_layer_state {
 	bool stopped;
 	bool suppress_advance;
 	int jump_target;  // pending jump frame, -1 = none
-	// Per-timeline: last matched script key index for change detection
-	// (-2 = uninitialized, -1 = no match, >= 0 = key index)
+	// 每条时间线：上次匹配到的脚本关键帧下标，用于检测变化
+	// （-2 = 未初始化，-1 = 没匹配上，>= 0 = 关键帧下标）
 	int *last_script_keys;
-	// Per-timeline: child layer state (for TIMELINE libs), NULL otherwise
+	// 每条时间线：子图层的状态（TIMELINE 库用），否则是 NULL
 	struct flat_layer_state **children;
 	size_t nr_timelines;
 };
 
-// Per-frame CG list for a STOP_MOTION library. lib_indices[k] is
-// the library index of the CG to display at frame k.
+// STOP_MOTION 库里每帧的 CG 列表。lib_indices[k] 是
+// 第 k 帧要显示的 CG 的库下标。
 struct flat_stop_motion_frames {
 	int *lib_indices;
 	int count;
@@ -325,7 +325,7 @@ struct parts_flat {
 	struct flat_layer_state *root_state;
 	size_t nr_libraries;
 	Texture *textures;  // indexed by library index (only CG libs have valid textures)
-	// Indexed by library index. Only entries for STOP_MOTION libraries have lib_indices populated.
+	// 按库下标索引。只有 STOP_MOTION 库的条目才填了 lib_indices。
 	struct flat_stop_motion_frames *stop_motion_frames;
 };
 
@@ -340,11 +340,11 @@ enum parts_layout_type {
 	PARTS_LAYOUT_HORIZONTAL = 2,
 };
 
-// In AliceSoft's PartsEngine implementation, LayoutBox is a component type
-// that is NOT per-state. We store it per-state for uniformity with other
-// component types, but parts_get_layout_box() and all code in layoutbox.c
-// operate on states[0] only. This is safe as long as game scripts never
-// convert a LayoutBox parts to/from another component type.
+// 在 AliceSoft 的 PartsEngine 实现里，LayoutBox 是一种
+// 不按状态区分的组件类型。这里为了和其他组件类型一致
+// 也按状态存，但 parts_get_layout_box() 和 layoutbox.c 里
+// 所有代码都只用 states[0]。只要游戏脚本从不把 LayoutBox
+// 部件转成/转出别的组件类型，这就是安全的。
 struct parts_layout_box {
 	struct parts_common common;
 	enum parts_layout_type layout_type;
@@ -365,11 +365,11 @@ struct parts_3dlayer {
 
 struct parts_state {
 	enum parts_type type;
-	/* Rance10 component-type number last passed to PE_SetComponentType(),
-	 * or -1 when the state was created implicitly (then it is derived from
-	 * `type`). Kept per state because PE_GetComponentType() must round-trip
-	 * exactly what the game set: the AIN Activity layer switches on this
-	 * number to pick the wrapper class. */
+	/* 最后一次传给 PE_SetComponentType() 的兰斯10 组件类型号，
+	 * 或 -1（表示该状态是隐式创建的，此时从 `type` 推出来）。
+	 * 按状态存是因为 PE_GetComponentType() 必须原样往返游戏设过的值：
+	 * AIN 的 Activity 层就是靠这个号来选包装类。
+	 * 存成 int 而不是枚举，是因为要能存下 -1。 */
 	int component_type;
 	union {
 		struct parts_common common;
@@ -467,15 +467,15 @@ struct parts {
 // parts.c
 extern struct parts_list parts_list;
 
-// A "controller" is stored internally by its position in the stack (0 = bottom).
-// AIN, however, distinguishes a stable layer *ID* from a stack *index*:
-//   GetLayerID(index) / GetLayerIndex(id)  (PartsFunc cases 4 / 3)
-// SceneStack remembers the ID returned by AddLayer and compares it with
-// GetActiveLayer() in IsActive. If IDs were just indices, removing a layer
-// from the middle would shift every higher index and the comparison would
-// fail forever -> SceneStack@Join never finishes (D129 / DIALOG-STUCK).
-// So the stack owns id[index] (monotonically increasing, never reused) and
-// everything crossing the HLL boundary is converted between ID and index.
+// 内部是按它在栈里的位置存 controller 的（0 = 栈底）。
+// 但 AIN 区分「稳定的图层 ID」和「栈下标」：
+//   GetLayerID(index) / GetLayerIndex(id)（PartsFunc 的 case 4 / 3）
+// SceneStack 记住 AddLayer 返回的 ID，并在 IsActive 里
+// 和 GetActiveLayer() 比较。如果 ID 就是下标，从中间
+// 移除一层会让上面所有下标平移，比较就永远不成立
+// -> SceneStack@Join 永远结束不了（D129 / DIALOG-STUCK）。
+// 所以栈自己维护 id[index]（单调递增、绝不复用），
+// 跨界传出去时在 ID 和下标之间转换。
 #define PARTS_CONTROLLER_STACK_MAX 10000
 #define PARTS_CONTROLLER_SYSTEM_OVERLAY PARTS_CONTROLLER_STACK_MAX
 
@@ -666,7 +666,7 @@ struct flat_emitter_particle {
 	int cg_lib_idx;    // CG library index of the texture for this particle
 };
 
-// Per-key emitter properties after applying the emitter's inherit_* flags.
+// 应用发射器 inherit_* 开关之后，每帧的发射器属性。
 struct flat_emitter_layer_effective {
 	vec2 pos;
 	bool reverse_lr, reverse_tb;

@@ -97,7 +97,7 @@ void dbg_init(const char *debug_info_path)
 	if (debug_info_path) {
 		dbg_info = dbg_info_load(debug_info_path);
 	} else {
-		// Try to load from the default location
+		// 试着从默认位置装载
 		char *path = gamedir_path("src/debug_info.json");
 		if (file_exists(path)) {
 			dbg_info = dbg_info_load(path);
@@ -141,10 +141,10 @@ static void add_breakpoint(uint32_t addr, struct breakpoint *bp)
 
 static void delete_breakpoint(uint32_t addr, struct breakpoint *bp)
 {
-	// restore opcode
+	// 还原操作码
 	LittleEndian_putW(ain->code, addr, bp->restore_op);
 
-	// remove from hash table
+	// 从哈希表里移除
 	struct ht_slot *slot = ht_put_int(bp_table, addr, NULL);
 	assert(slot->value == bp);
 	slot->value = NULL;
@@ -225,7 +225,7 @@ bool dbg_set_address_breakpoint(uint32_t address, void(*cb)(struct breakpoint*),
 		return false;
 	}
 
-	// XXX: this is not very robust; some illegal addresses will slip through
+	// XXX：这里不太稳；有些非法地址会漏过去
 	//      if the data looks like a valid opcode
 	enum opcode op = LittleEndian_getW(ain->code, address);
 	if (op < 0 || op >= NR_OPCODES) {
@@ -248,8 +248,8 @@ bool dbg_set_address_breakpoint(uint32_t address, void(*cb)(struct breakpoint*),
 
 static void dbg_step_breakpoint_cb(struct breakpoint *bp)
 {
-	// XXX: mutually recursive functions could trigger breakpoint early.
-	//      use size of call stack to check for this case
+	// XXX：相互递归的函数可能提前触发断点。
+	//      用调用栈深度来判定这种情况
 	if ((intptr_t)bp->data != call_stack_ptr)
 		return;
 	delete_breakpoint(instr_ptr, bp);
@@ -280,7 +280,7 @@ static int32_t get_function_address(int fno)
 	return ain->functions[fno].address;
 }
 
-/* Determine the next address at the current instruction. */
+/* 确定当前指令的下一个地址。 */
 static int32_t dbg_next_address(bool into, int *call_index)
 {
 	*call_index = call_stack_ptr;
@@ -304,7 +304,7 @@ static int32_t dbg_next_address(bool into, int *call_index)
 	case _MSG:
 		if (!into)
 			break;
-		// TODO: step into message function
+		// TODO：步入消息函数
 		return -1;
 	case SWITCH:
 		return get_switch_address(get_argument(0), stack_peek(0).i);
@@ -313,7 +313,7 @@ static int32_t dbg_next_address(bool into, int *call_index)
 	case SJUMP: {
 		if (!into)
 			break;
-		// XXX: can't determine RETURN address of scenario call (VM_RETURN)
+		// XXX：算不出场景调用（VM_RETURN）的返回地址
 		return -1;
 		/*
 		int fno = heap[stack_peek(0).i].page->index;
@@ -385,11 +385,11 @@ static int32_t dbg_next_address(bool into, int *call_index)
 	case DG_CALL: {
 		if (!into)
 			return get_argument(1);
-		// XXX: can't determine RETURN address of delegate call (VM_RETURN)
+		// XXX：算不出委托调用（VM_RETURN）的返回地址
 		return -1;
 	}
 	default:
-		// XXX: catch any unhandled control-flow instructions
+		// XXX：捕获所有未处理的控制流指令
 		if (instructions[current].ip_inc == 0)
 			return -1;
 		break;
@@ -429,7 +429,7 @@ bool dbg_set_finish_breakpoint(void)
 		return false;
 
 	int32_t address = call_stack[call_stack_ptr-1].return_address;
-	// XXX: VM_RETURN
+	// XXX：VM_RETURN
 	if (address < 0)
 		return false;
 	dbg_set_step_breakpoint(address, call_stack_ptr - 1);
@@ -502,12 +502,12 @@ static struct parse_object *dbg_parse_expression(const char *expr, unsigned *nr_
 	struct parse_object *objects = NULL;
 	unsigned nr_objects = 0;
 
-	// split on '.' character
+	// 按 '.' 切分
 	int start = 0;
 	for (int i = 0; ; i++) {
 		if (expr[i] && expr[i] != '.')
 			continue;
-		// FIXME: allow leading and trailing whitespace
+		// FIXME：允许前后空白
 		struct string *name = make_string(expr+start, i - start);
 		objects = xrealloc_array(objects, nr_objects, nr_objects+1, sizeof(struct parse_object));
 		objects[nr_objects++] = (struct parse_object) {
@@ -519,34 +519,34 @@ static struct parse_object *dbg_parse_expression(const char *expr, unsigned *nr_
 			break;
 	}
 
-	// parse array subscripts
+	// 解析数组下标
 	for (unsigned i = 0; i < nr_objects; i++) {
 		struct string *s = objects[i].ident;
-		// catch ".."
+		// 处理 ".."
 		if (!s->size) {
 			DBG_ERROR("Empty variable name");
 			goto error;
 		}
 
-		// get location of subscript
+		// 找下标的位置
 		char *p = strchr(s->text, '[');
 		if (!p)
 			continue;
 
-		// catch text following subscript
+		// 处理下标后面的文本
 		if (s->text[s->size - 1] != ']') {
 			DBG_ERROR("Text after array subscript: '%s'", s->text);
 			goto error;
 		}
 
-		// get subscript
+		// 取下标的数值
 		unsigned p_i = p - s->text;
 		struct string *subscript = make_string(p+1, s->size - (p_i + 2));
 		struct ain_type subscript_type;
 		union vm_value value = dbg_eval_string(subscript->text, &subscript_type);
 		free_string(subscript);
 
-		// check subscript
+		// 检查下标
 		if (subscript_type.data != AIN_INT) {
 			DBG_ERROR("Array subscript is not an integer");
 			goto error;
@@ -682,14 +682,14 @@ static union vm_value dbg_eval_member(struct parse_object *object, union vm_valu
 		goto error;
 	}
 
-	// get struct page
+	// 取结构体页
 	struct page *page = heap_get_page(value.i);
 	assert(page && page->type == STRUCT_PAGE);
 	assert(page->index >= 0 && page->index < ain->nr_structures);
 	assert(page->index == type->struc);
 	struct ain_struct *struc = &ain->structures[page->index];
 
-	// get index of member
+	// 取成员下标
 	int index = -1;
 	for (int i = 0; i < struc->nr_members; i++) {
 		if (!strcmp(struc->members[i].name, object->ident->text)) {
@@ -738,7 +738,7 @@ error:
 
 union vm_value dbg_eval_string(const char *str, struct ain_type *type_out)
 {
-	// parse string
+	// 解析字符串
 	unsigned nr_objects;
 	struct parse_object *objects = dbg_parse_expression(str, &nr_objects);
 	if (!objects) {
@@ -746,7 +746,7 @@ union vm_value dbg_eval_string(const char *str, struct ain_type *type_out)
 		return (union vm_value) { .i = 0 };
 	}
 
-	// evaluate parsed expression
+	// 求值解析出来的表达式
 	union vm_value value = dbg_eval_expression(objects, nr_objects, type_out);
 	free_parse_objects(objects, nr_objects);
 	return value;
@@ -811,7 +811,7 @@ static struct string *dbg_array_to_string(struct ain_type *type, union vm_value 
 	if (!page || page->nr_vars == 0) {
 		return cstr_to_string("[]");
 	}
-	// get member type
+	// 取成员类型
 	struct ain_type t;
 	t.data = variable_type(page, 0, &t.struc, &t.rank);
 	t.array_type = NULL;
@@ -884,7 +884,7 @@ static struct string *_dbg_variable_to_string(
 		return _dbg_value_to_string(type, page->values[slot], recursive, indent);
 	}
 
-	// get referenced value
+	// 取被引用的值
 	int pageno = page->values[slot].i;
 	int varno  = page->values[slot + 1].i;
 	if (pageno < 0) {
@@ -899,12 +899,12 @@ struct string *dbg_variable_to_string(struct ain_type *type, struct page *page, 
 	return _dbg_variable_to_string(type, page, slot, recursive, 0);
 }
 
-// the maximum number of instructions preceeding the instruction pointer to be displayed
+// 指令指针之前最多显示多少条指令
 #define DASM_REWIND 16
-// the number of instructions following the instruction pointer to be displayed
+// 指令指针之后显示多少条指令
 #define DASM_FWD 8
 
-// Rewind to DASM_REWIND instructions before the current instruction pointer.
+// 回退到当前指令指针之前的 DASM_REWIND 条指令。
 static bool dbg_init_dasm(struct dasm *dasm)
 {
 	if (call_stack_ptr < 1)
@@ -940,7 +940,7 @@ error:
 
 static void dbg_print_string(const char *str)
 {
-	// TODO: escape
+	// TODO：转义
 	printf("\"%s\"", display_sjis0(str));
 }
 
@@ -1139,7 +1139,7 @@ void dbg_print_vm_state(void)
 
 	int dasm_i = 0;
 	while (!stack_print_finished(stack_i) || !dasm_print_finished(&dasm, dasm_i)) {
-		// print stack line
+		// 打印栈那一行
 		if (stack_i < stack_ptr) {
 			printf(" [%02d]: 0x%08x  ", stack_i, stack[stack_i].i);
 			stack_i++;
@@ -1147,12 +1147,12 @@ void dbg_print_vm_state(void)
 			printf("                   ");
 		}
 
-		// print disassembly line
+		// 打印反汇编那一行
 		if (!dasm_print_finished(&dasm, dasm_i)) {
 			if (dasm_addr(&dasm) >= instr_ptr)
 				dasm_i++;
 			dbg_print_instruction(&dasm);
-			// XXX: stop printing at ENDFUNC
+			// XXX：遇到 ENDFUNC 就停止打印
 			if (dasm_instruction(&dasm)->opcode == ENDFUNC) {
 				dasm.addr = dasm.ain->code_size;
 			}

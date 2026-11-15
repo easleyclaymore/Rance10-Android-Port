@@ -10,7 +10,7 @@
  * 如果没有，见 <http://gnu.org/licenses/>。
  */
 
-// enable private VM interface
+// 启用虚拟机私有接口
 #define VM_PRIVATE
 
 #include <assert.h>
@@ -31,7 +31,7 @@
 #include "xsystem4.h"
 
 /*
- * Save/load VM images as JSON.
+ * 把虚拟机镜像存/读成 JSON。
  */
 
 static const char * const page_type_strtab[] = {
@@ -251,15 +251,15 @@ static void *heap_item_to_rsave(int i)
 	}
 	struct page *page = heap[i].page;
 	if (!page) {
-		// Empty array.
+		// 空数组。
 		struct rsave_heap_array *o = xcalloc(1, sizeof(struct rsave_heap_array));
 		o->tag = RSAVE_ARRAY;
 		o->ref = heap[i].ref;
 		o->seq = heap[i].seq;
 		o->rank_minus_1 = -1;
 
-		// FIXME: System40.exe populates them but we don't have the type
-		// information of the array here.
+		// FIXME：System40.exe 会填它们，但我们这里
+		// 拿不到数组的类型信息。
 		o->data_type = 0;
 		o->struct_type.name = strdup("");
 
@@ -330,8 +330,8 @@ static void save_call_stack_to_rsave(struct rsave *rs)
 
 static void save_stack_to_rsave(struct rsave *rs)
 {
-	// For compatibility with the AliceSoft's implementation, exclude two values
-	// (the SYS_RESUME_SAVE arguments) at the top of the stack.
+	// 为了和 AliceSoft 的实现兼容，把栈顶的两个值
+	// （SYS_RESUME_SAVE 的实参）排除在外。
 	rs->stack_size = stack_ptr - 2;
 
 	rs->stack = xcalloc(rs->stack_size, sizeof(int32_t));
@@ -355,8 +355,8 @@ static struct rsave *make_rsave(const char *key)
 	if (ain->nr_delegates > 0) {
 		save->version = 9;
 	} else {
-		// FIXME: This is not always correct. Pastel Chime Continue is AIN v4
-		//        but uses RSM v7.
+		// FIXME：这不总是对。Pastel Chime Continue 是 AIN v4
+		//        但用的是 RSM v7。
 		save->version = ain->version <= 4 ? 6 : 7;
 	}
 	save->key = strdup(key);
@@ -466,12 +466,12 @@ static void load_json_page(int slot, cJSON *json)
 		rank = _rank->valueint;
 	}
 
-	// allocate page
+	// 分配页
 	struct page *page = alloc_page(page_type, subtype->valueint, cJSON_GetArraySize(values));
 	page->array.struct_type = struct_type;
 	page->array.rank = rank;
 
-	// init page variables
+	// 初始化页里的变量
 	int i = 0;
 	cJSON *item;
 	cJSON_ArrayForEach(item, values) {
@@ -492,7 +492,7 @@ static void load_json_string(int slot, cJSON *json)
 
 static void delete_heap(void)
 {
-	// free heap
+	// 释放堆
 	for (size_t i = 0; i < heap_size; i++) {
 		if (!heap[i].ref)
 			continue;
@@ -515,10 +515,10 @@ static void delete_heap(void)
 	}
 }
 
-// Allocate a specific heap slot
-// XXX: This only works while heap_free_stack[i]=i
-//      After calling delete_heap, this can be called for INCREASING indices.
-//      Out-of-order allocations would break the above assumption!
+// 分配指定的堆槽
+// XXX：只有在 heap_free_stack[i]=i 时才成立
+//      调用 delete_heap 之后，就可能要为递增的下标调它。
+//      乱序分配会打破上面的假设！
 static void alloc_heap_slot(int slot)
 {
 	if ((size_t)slot >= heap_size) {
@@ -596,7 +596,7 @@ static void load_rsave_frame(int slot, struct rsave_heap_frame *f)
 		page->local.struct_ptr = f->struct_ptr;
 	}
 
-	// type check
+	// 类型检查
 	if (nr_vars < f->nr_types) {
 		invalid_save_data("call frame has too many variables");
 	}
@@ -609,7 +609,7 @@ static void load_rsave_frame(int slot, struct rsave_heap_frame *f)
 	}
 
 	for (int i = 0; i < f->nr_slots; i++) {
-		// TODO: update function pointers using rsave->func_names
+		// TODO：用 rsave->func_names 更新函数指针
 		page->values[i].i = f->slots[i];
 	}
 	alloc_heap_slot(slot);
@@ -656,7 +656,7 @@ static void load_rsave_struct(int slot, struct rsave_heap_struct *s)
 	int struct_index = resolve_struct_symbol(&s->struct_type);
 	struct page *page = alloc_page(STRUCT_PAGE, struct_index, s->nr_slots);
 
-	// type check
+	// 类型检查
 	struct ain_struct *as = &ain->structures[struct_index];
 	if (as->nr_members < s->nr_types) {
 		invalid_save_data("Struct %s has too many members", as->name);
@@ -671,7 +671,7 @@ static void load_rsave_struct(int slot, struct rsave_heap_struct *s)
 	}
 
 	for (int i = 0; i < s->nr_slots; i++) {
-		// TODO: update function pointers using rsave->func_names
+		// TODO：用 rsave->func_names 更新函数指针
 		page->values[i].i = s->slots[i];
 	}
 
@@ -755,15 +755,15 @@ static void load_rsave_call_stack(struct rsave *save)
 				.page_slot      = save->call_frames[i].local_ptr,
 				.struct_page    = save->call_frames[i].struct_ptr,
 			};
-			// Calculate return address from the function address and offset
-			// to make it robust to ain changes.
+			// 用函数地址加偏移算出返回地址，
+			// 这样对 ain 改动更稳。
 			return_address = ain->functions[fno].address + rr->local_addr;
 		}
 		if (++rr == save->return_records + save->nr_return_records)
 			rr = &save->ip;
 	}
-	// RSM records instruction pointer after the CALLSYS instruction, but
-	// xsystem4 expects the address of the CALLSYS instruction, so -6.
+	// RSM 记录的是 CALLSYS 指令之后的指令指针，而
+	// xsystem4 期望的是 CALLSYS 指令本身的地址，所以 -6。
 	instr_ptr = return_address - 6;
 }
 
@@ -776,7 +776,7 @@ static void load_json_stack(cJSON *json)
 		type_check(cJSON_Number, item);
 		stack_push_value(vm_int(item->valueint));
 	}
-	// Pop the arguments of SYS_RESUME_SAVE.
+	// 弹出 SYS_RESUME_SAVE 的实参。
 	//heap_unref(stack_pop().i);
 	//heap_unref(stack_pop().i);
 	stack_pop();
@@ -851,13 +851,13 @@ static enum savefile_error load_rsave_image(const char *key, const char *path)
 
 void vm_load_image(const char *key, const char *path)
 {
-	// First, try to read as a rsave.
+	// 先试着当 rsave 读。
 	enum savefile_error error = load_rsave_image(key, path);
 	switch (error) {
 	case SAVEFILE_SUCCESS:
 		return;
 	case SAVEFILE_INVALID_SIGNATURE:
-		// If not a System4 resume save file, read as a json.
+		// 如果不是 System4 存档，就按 json 读。
 		load_json_image(key, path);
 		return;
 	default:
@@ -882,7 +882,7 @@ static struct page *load_json_image_comments(const char *key, const char *path, 
 		//return alloc_array(1, &dims, AIN_ARRAY_STRING, 0, false);
 	}
 
-	// read comments from JSON array into VM array
+	// 把 JSON 数组里的注释读进 VM 数组
 	union vm_value dims = { .i = cJSON_GetArraySize(comments) };
 	struct page *array = alloc_array(1, &dims, AIN_ARRAY_STRING, 0, false);
 	for (int i = 0; i < dims.i; i++) {
@@ -932,7 +932,7 @@ static struct page *load_rsave_image_comments(const char *key, const char *path,
 
 struct page *vm_load_image_comments(const char *key, const char *path, int *success)
 {
-	// First, try to read as a rsave.
+	// 先试着当 rsave 读。
 	enum savefile_error error;
 	struct page *page = load_rsave_image_comments(key, path, &error);
 	if (error == SAVEFILE_SUCCESS) {
@@ -941,7 +941,7 @@ struct page *vm_load_image_comments(const char *key, const char *path, int *succ
 	}
 
 	if (error == SAVEFILE_INVALID_SIGNATURE) {
-		// If not a System4 resume save file, read as a json.
+		// 如果不是 System4 存档，就按 json 读。
 		return load_json_image_comments(key, path, success);
 	}
 	*success = 0;
@@ -967,7 +967,7 @@ static int write_rsave_image_comments(const char *key, const char *path, struct 
 		return 0;
 	}
 
-	// Comments were added in RSM v7, so if the save is older, upgrade it.
+	// 注释是 RSM v7 才加的，所以存档更老就升级它。
 	if (save->version <= 6) {
 		save->version = 7;
 	}
@@ -1005,13 +1005,13 @@ static int write_json_image_comments(const char *key, const char *path, struct p
 {
 	cJSON *save = read_json_image(key, path);
 	if (!save) {
-		// create blank save
+		// 建一个空存档
 		save = cJSON_CreateObject();
 		cJSON_AddStringToObject(save, "key", key);
 	}
 	cJSON_DeleteItemFromObject(save, "comments");
 
-	// TODO: check that comments is an array of strings
+	// TODO：检查 comments 是字符串数组
 	cJSON *array = cJSON_CreateArray();
 	for (int i = 0; i < comments->nr_vars; i++) {
 		cJSON *s = cJSON_CreateString(heap_get_string(comments->values[i].i)->text);
