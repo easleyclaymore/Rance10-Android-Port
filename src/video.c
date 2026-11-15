@@ -39,10 +39,10 @@ static const GLchar glsl_preamble[] =
 #endif
 
 /*
- * Transform from the window coordinate system -> clip-space.
+ * 从窗口坐标系变换到裁剪空间。
  *
- * Window CS:  x= 0..w, y= 0..h (+y down)
- * clip-space: x=-1..1, y=-1..1 (+y up)
+ * 窗口坐标系：x= 0..w，y= 0..h（+y 向下）
+ * 裁剪空间：  x=-1..1，y=-1..1（+y 向上）
  *
  * +-                 -+
  * | 2/w   0    0   -1 |
@@ -184,8 +184,8 @@ static void set_window_title(void)
 static bool gfx_initialized = false;
 
 /*
- * Reduce window size if the display resolution is smaller than the game
- * resolution.
+ * 显示器分辨率比游戏分辨率小时，
+ * 就缩小窗口尺寸。
  */
 static void init_window_size(void)
 {
@@ -340,7 +340,7 @@ void gfx_update_screen_scale(void)
 	SDL_GL_GetDrawableSize(sdl.window, &display_w, &display_h);
 
 	if (display_w * sdl.h == display_h * sdl.w) {
-		// The aspect ratios are the same, just scale appropriately.
+		// 宽高比一样，按比例缩放即可。
 		sdl.viewport.x = 0;
 		sdl.viewport.y = 0;
 		sdl.viewport.w = display_w;
@@ -428,8 +428,8 @@ static void gfx_update_frame_rate_counter(void)
 
 void gfx_swap(void)
 {
-	/* [D112] First-frame probe: XSYS4_SWAP_LOG=1 logs the first swaps so a
-	 * launcher can freeze the process right after the first presented frame. */
+	/* [D112] 首帧探针：XSYS4_SWAP_LOG=1 会记录前几次交换，
+	 * 这样启动器可以在第一帧呈现之后立刻冻结进程。 */
 	if (getenv("XSYS4_SWAP_LOG")) {
 		static int n = 0;
 		if (n < 5)
@@ -493,7 +493,7 @@ void gfx_reset_view(void)
 }
 
 /*
- * Set up mandatory shader arguments.
+ * 设置必需的着色器参数。
  */
 void gfx_prepare_job(struct gfx_render_job *job)
 {
@@ -511,7 +511,7 @@ void gfx_prepare_job(struct gfx_render_job *job)
 }
 
 /*
- * Execute a render job set up previously with gfx_prepare_job.
+ * 执行之前用 gfx_prepare_job 建好的渲染任务。
  */
 void gfx_run_job(struct gfx_render_job *job)
 {
@@ -586,7 +586,7 @@ void gfx_render_quadrilateral(struct texture *t, struct gfx_vertex vertices[4])
 		return;
 	}
 
-	// Normalize the texture coordinates to [0, 1]
+	// 把纹理坐标归一化到 [0, 1]
 	struct gfx_vertex buf[4];
 	memcpy(buf, vertices, sizeof(struct gfx_vertex) * 4);
 	for (int i = 0; i < 4; i++) {
@@ -609,9 +609,9 @@ void gfx_render_quadrilateral(struct texture *t, struct gfx_vertex vertices[4])
 	gfx_render(&job);
 }
 
-/* [MEM] Lifetime counters for [mem] (XSYS4_MEM_STAT): how many GL textures we
- * ever created and how many pixels we ever uploaded. A rising texture count
- * with a flat live-object count means a leak outside the VM heap. */
+/* [MEM] [mem]（XSYS4_MEM_STAT）的生命周期计数：我们一共建过多少
+ * GL 纹理、上传过多少像素。纹理数在涨而活对象数不变，
+ * 就说明泄漏发生在 VM 堆之外。 */
 size_t gfx_texture_count = 0;
 size_t gfx_texture_pixels = 0;
 
@@ -750,9 +750,9 @@ void gfx_reset_framebuffer(GLenum target, GLuint fbo)
 {
 	glBindFramebuffer(target, main_surface_fb);
 	glDeleteFramebuffers(1, &fbo);
-	/* [L3] main_surface_fb is VIEW-sized (config.view_width/height), not
-	 * window-sized. Restoring the viewport to sdl.w/h left viewport != FBO
-	 * whenever the window was not exactly 1920x1080 (e.g. 1440x900). */
+	/* [L3] main_surface_fb 是按 VIEW 尺寸（config.view_width/height）建的，
+	 * 不是按窗口尺寸。把视口恢复成 sdl.w/h 会让 viewport != FBO，
+	 * 只要窗口不是正好 1920x1080（例如 1440x900）就会出问题。 */
 	glViewport(0, 0, config.view_width, config.view_height);
 }
 

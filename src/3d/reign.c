@@ -70,8 +70,8 @@ static void unload_instance(struct RE_instance *instance)
 		free_string(instance->name);
 		instance->name = NULL;
 	}
-	// A billboard's motion holds frame animation state that the game can set
-	// before loading the instance data, so it must survive unloads.
+	// 公告板的 motion 里存着帧动画状态，游戏可能在装载实例
+	// 数据之前就设好它，所以它必须能跨卸载保留。
 	if (instance->motion && instance->type != RE_ITYPE_BILLBOARD) {
 		motion_free(instance->motion);
 		instance->motion = NULL;
@@ -81,7 +81,7 @@ static void unload_instance(struct RE_instance *instance)
 		instance->next_motion = NULL;
 	}
 	if (instance->model) {
-		// No need to free, model is owned by plugin->model_cache.
+		// 不用释放，模型归 plugin->model_cache 所有。
 		instance->model = NULL;
 	}
 	if (instance->effect) {
@@ -98,7 +98,7 @@ static void unload_instance(struct RE_instance *instance)
 		instance->bone_transforms = NULL;
 	}
 	if (instance->billboard_frames) {
-		// No need to free the textures, they are owned by the renderer.
+		// 纹理也不用释放，归渲染器所有。
 		free(instance->billboard_frames);
 		instance->billboard_frames = NULL;
 		instance->nr_billboard_frames = 0;
@@ -192,7 +192,7 @@ static void update_bones(struct RE_instance *inst)
 	vec3 aabb[2];
 	glm_aabb_invalidate(aabb);
 
-	// Update inst->bone_transforms.
+	// 更新 inst->bone_transforms。
 	for (int i = 0; i < inst->model->nr_bones; i++) {
 		struct mot_frame mf;
 		calc_motion_frame(inst->motion, i, &mf);
@@ -222,7 +222,7 @@ static void update_bones(struct RE_instance *inst)
 	glBufferSubData(GL_UNIFORM_BUFFER, 0, inst->model->nr_bones * sizeof(mat3x4), inst->bone_transforms);
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-	// Update inst->bounding_sphere.
+	// 更新 inst->bounding_sphere。
 	vec3 center;
 	glm_aabb_center(aabb, center);
 	if (inst->local_transform_needs_update)
@@ -371,8 +371,8 @@ bool RE_build_model(struct RE_plugin *plugin, int elapsed_ms)
 		inst->texture_animation_index = inst->motion ? inst->motion->texture_index : 0;
 	}
 
-	// Update particle effects in a second pass, because it uses the results of
-	// update_bones().
+	// 粒子效果放在第二遍更新，因为它要用 update_bones() 的结果。
+	// （第一遍先算骨骼。）
 	for (int i = 0; i < plugin->nr_instances; i++) {
 		struct RE_instance *inst = plugin->instances[i];
 		if (!inst || inst->type != RE_ITYPE_PARTICLE_EFFECT)
@@ -412,9 +412,9 @@ bool RE_set_projection(struct RE_plugin *plugin, float width, float height, floa
 	float aspect = width / height;
 	glm_perspective(glm_rad(deg), aspect, near, far, plugin->proj_transform);
 
-	// Adjust the X and Y scaling factor, because ReignEngine calculates the
-	// projection matrix based on the horizontal FOV while glm_perspective takes
-	// the vertical FOV.
+	// 要调整 X/Y 缩放系数，因为 ReignEngine 是按水平 FOV
+	// 算投影矩阵的，而 glm_perspective 收的是垂直 FOV。
+	// 两者换算差一个宽高比。
 	plugin->proj_transform[0][0] *= aspect;
 	plugin->proj_transform[1][1] *= aspect;
 	return true;
@@ -518,8 +518,8 @@ bool RE_instance_data_exists(struct RE_instance *instance, const char *name)
 	return exists;
 }
 
-// Loads the frame images of a billboard instance. They are stored in the
-// archive as "<name>\<basename>.png", "<name>\<basename>[1].png", ...
+// 装载公告板实例的帧图像。它们在压缩包里存成
+// "<name>\<basename>.png"、"<name>\<basename>[1].png"……
 static bool load_billboard_frames(struct RE_instance *instance, const char *name)
 {
 	const char *basename = strrchr(name, '\\');
@@ -680,8 +680,8 @@ bool RE_instance_set_mesh_show(struct RE_instance *instance, const char *mesh_na
 	return false;
 }
 
-// Converts from the (top-left, top-right, bottom-left, bottom-right) order used
-// by the API to the vertex order of the billboard mesh.
+// 把 API 用的（左上、右上、左下、右下）顺序
+// 转成公告板网格的顶点顺序。
 static const int billboard_vertex_index[4] = {0, 2, 1, 3};
 
 bool RE_instance_set_vertex_pos(struct RE_instance *instance, int index, float x, float y, float z)
@@ -743,7 +743,7 @@ float RE_instance_calc_height(struct RE_instance *instance, float x, float z)
 	if (RE_renderer_detect_height(instance->height_detector, x, z, &y))
 		return y;
 
-	// Return the average of 4 neighbors.
+	// 返回四个邻居的平均值。
 	int cnt = 0;
 	float total = 0.0f;
 	if (RE_renderer_detect_height(instance->height_detector, x - 0.5f, z, &y)) { cnt++; total += y; }

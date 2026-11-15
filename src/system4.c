@@ -69,8 +69,8 @@ struct config config = {
 	.font_paths = { NULL, NULL },
 };
 
-// SaveFolder from System40.ini. It is converted to a path in config.save_dir
-// only after .xsys4rc files are read, since they may change the encoding.
+// System40.ini 里的 SaveFolder。只有在读完 .xsys4rc 之后
+// 才把它转成 config.save_dir 里的路径，因为那些文件可能改编码。
 static char *ini_save_folder = NULL;
 
 static struct string *ini_string(struct ini_entry *entry)
@@ -108,7 +108,7 @@ static void read_mixer_channels(struct ini_entry *entry)
 			config.mixer_volumes[i] = 0;
 		} else if (entry->value.list[i].type == INI_STRING) {
 			config.mixer_channels[i] = strdup(entry->value.list[i].s->text);
-			// XXX: assumes default_volume was already initialized
+			// XXX：假定 default_volume 已经初始化过了
 			config.mixer_volumes[i] = config.default_volume;
 		} else if (entry->value.list[i].type == INI_LIST) {
 			if (entry->value.list[i].list_size != 2)
@@ -239,13 +239,13 @@ static void read_user_config(void)
 {
 	char *path;
 
-	// global config
+	// 全局配置
 	path = xmalloc(PATH_MAX);
 	snprintf(path, PATH_MAX-1, "%s/.xsys4rc", config.home_dir);
 	read_user_config_file(path, NULL);
 	free(path);
 
-	// game-specific config
+	// 游戏相关的配置
 	path = gamedir_path(".xsys4rc");
 	read_user_config_file(path, config.game_dir);
 	free(path);
@@ -277,7 +277,7 @@ static char *get_xsystem4_home(void)
 		return home;
 	}
 
-	// If all else fails, use the current directory
+	// 全都不行就用当前目录
 	return realpath_utf8(".");
 }
 
@@ -457,7 +457,7 @@ static void ain_audit(FILE *f, struct ain *ain)
 					ain->libraries[lib].name, ain->libraries[lib].functions[fun].name);
 			}
 		}
-		// TODO: audit library calls
+		// TODO：审查各库的调用
 		addr += instruction_width(opcode);
 	}
 	fflush(f);
@@ -691,8 +691,8 @@ int main(int argc, char *argv[])
 
 	read_user_config();
 
-	// NOTE: some command line options are handled here so that they
-	//       will override settings from .xsys4rc files
+	// 注意：有些命令行选项在这里处理，这样它们
+	//       会覆盖 .xsys4rc 里的设置
 	if (encoding && !set_encoding(encoding))
 		WARNING("Invalid value for --encoding option: \"%s\"", encoding);
 	if (font_mincho)
