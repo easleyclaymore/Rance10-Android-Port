@@ -183,8 +183,8 @@ static void apply_rance6_hacks(struct ain *ain)
 // 兰斯IX
 // --------
 // T_PartsNo 这个类的实现极其低效，
-// 用 UI 时（例如打开道具界面）会有明显的性能问题。
-// the items screen).
+// 用 UI 时会有明显的性能问题（例如装载
+// 道具界面时）。
 // 我们重写这个类来提速。
 static void apply_rance9_hacks(struct ain *ain)
 {
