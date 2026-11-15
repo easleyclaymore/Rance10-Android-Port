@@ -419,6 +419,45 @@ static void parts_render_user_component(struct parts *parts)
 	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ZERO);
 }
 
+/* [D224] 同帧 CG 绘制日志。每次绘制只写内存（无 I/O、不改帧率），
+ * 仅在 XSYS4_SHOT_DIR + Alt+S 的那一刻由 PE_DebugCGRenderLog() 打印。
+ * 用来回答 H037：黑屏帧里 parts_render_cg() 到底有没有被调用、调用时
+ * alpha / multiply_color / scale 是什么。since_last=0 表示两次截图之间
+ * 完全没有 CG 绘制（scene_render 没跑或 sprite_list 空），是本轮关键判据。 */
+#define CGLOG_N 12
+struct cglog_entry {
+	int no;
+	unsigned tex;
+	int alpha, mul[3], add[3], w, h, tex_w, tex_h, pos_x, pos_y;
+	float scale_x, scale_y;
+};
+static struct cglog_entry cglog[CGLOG_N];
+static unsigned cglog_seq, cglog_at_dump;
+
+static bool cglog_enabled(void)
+{
+	static int v = -1;
+	if (v < 0)
+		v = getenv("XSYS4_SHOT_PARTS_DUMP") ? 1 : 0;
+	return v != 0;
+}
+
+void PE_DebugCGRenderLog(const char *tag)
+{
+	unsigned n = cglog_seq;
+	NOTICE("[cglog] %s total=%u since_last=%u", tag, n, n - cglog_at_dump);
+	cglog_at_dump = n;
+	int lim = CGLOG_N < (int)n ? CGLOG_N : (int)n;
+	for (int i = 0; i < lim; i++) {
+		struct cglog_entry *e = &cglog[(n - 1 - i) % CGLOG_N];
+		NOTICE("[cglog]  -%d no=%d tex=%u a=%d mul=(%d,%d,%d) add=(%d,%d,%d) "
+		       "scale=(%.2f,%.2f) %dx%d texwh=%dx%d pos=(%d,%d)",
+		       i, e->no, e->tex, e->alpha, e->mul[0], e->mul[1], e->mul[2],
+		       e->add[0], e->add[1], e->add[2], e->scale_x, e->scale_y,
+		       e->w, e->h, e->tex_w, e->tex_h, e->pos_x, e->pos_y);
+	}
+}
+
 static void parts_render_cg(struct parts *parts, struct parts_common *common){
 	set_draw_filter_blend_func(parts->draw_filter);
 
@@ -468,6 +507,25 @@ static void parts_render_cg(struct parts *parts, struct parts_common *common){
 	parts_render_texture(&common->texture, mw_transform, &r, parts->global.alpha / 255.0,
 			add_color, multiply_color, parts->draw_filter,
 			parts->global.alpha_clipper_parts_no);
+
+	/* [D224] 记录这次绘制的实际输入（只写内存、默认关闭，不打印）。 */
+	if (cglog_enabled()) {
+		struct cglog_entry *e = &cglog[cglog_seq % CGLOG_N];
+		e->no = parts->no;
+		e->tex = common->texture.handle;
+		e->alpha = parts->global.alpha;
+		e->mul[0] = parts->global.multiply_color.r;
+		e->mul[1] = parts->global.multiply_color.g;
+		e->mul[2] = parts->global.multiply_color.b;
+		e->add[0] = parts->global.add_color.r;
+		e->add[1] = parts->global.add_color.g;
+		e->add[2] = parts->global.add_color.b;
+		e->w = common->w; e->h = common->h;
+		e->tex_w = common->texture.w; e->tex_h = common->texture.h;
+		e->scale_x = parts->global.scale.x; e->scale_y = parts->global.scale.y;
+		e->pos_x = parts->global.pos.x; e->pos_y = parts->global.pos.y;
+		cglog_seq++;
+	}
 
 	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ZERO);
 }

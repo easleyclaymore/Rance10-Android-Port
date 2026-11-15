@@ -60,9 +60,9 @@
 | 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:341` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
 | 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:312` | 输入命中的候选部件表与点击状态 |
 | 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:1178` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
-| 呈现与输入 | `XSYS4_PARTS_DUMP_MAX` | `src/parts/parts.c:3025` | — |
-| 呈现与输入 | `XSYS4_PARTS_DUMP_MIN` | `src/parts/parts.c:2992` | [诊断] 只 dump 部件号 >= 此值的部件；部件表按插入序遍历，地图号段会吃光 PARTS_DUMP_MAX 名额，设 900000300 才能看到动态号段 |
-| 呈现与输入 | `XSYS4_PARTS_NO_BASE` | `src/parts/parts.c:2855` | — |
+| 呈现与输入 | `XSYS4_PARTS_DUMP_MAX` | `src/parts/parts.c:3035` | — |
+| 呈现与输入 | `XSYS4_PARTS_DUMP_MIN` | `src/parts/parts.c:3002` | [诊断] 只 dump 部件号 >= 此值的部件；部件表按插入序遍历，地图号段会吃光 PARTS_DUMP_MAX 名额，设 900000300 才能看到动态号段 |
+| 呈现与输入 | `XSYS4_PARTS_NO_BASE` | `src/parts/parts.c:2865` | — |
 | 呈现与输入 | `XSYS4_UPD_DBG` | `src/parts/parts.c:1474` | PE_Update 的每帧诊断 |
 | 自动化后门 | `XSYS4_AUTO_CARD_CLICK` | `src/vm.c:1132` | [后门] 编队卡片视图初始化完成后直调 SceneParty@OnClickCard(idx)；值=卡片索引 |
 | 自动化后门 | `XSYS4_AUTO_CARD_CLICK_DELAY` | `src/vm.c:1135` | [后门] 最后一次 InitCardView 之后再等多久点卡（毫秒，默认 1500） |
@@ -114,7 +114,7 @@
 | 其它 | `XSYS4_MSGF_FIX` | `src/hacks.c:332` | [D204] AIN v12 无 MSGF 段时按函数名把 msgf 解析到 "message"/3（Rance10: fno 6100）；默认开启，=0 关闭做 A/B |
 | 其它 | `XSYS4_MSGQ_DBG` | `src/parts/message.c:167` | 〔摘〕对其它值走 member1[delegate_index]。分派打空炮时必须先知道走的哪条。 |
 | 其它 | `XSYS4_MSGWIN_DBG` | `src/hll/PartsEngine.c:50` | [诊断] 打印消息窗口配置族 setter 的触达与实参（Active/Text/CGName/FlatName/TextArea/OriginPosMode/Space/Speed），每个函数限 20 条；用来判定「空桩是不是真被调用」 |
-| 其它 | `XSYS4_MSGWIN_FRAME_DBG` | `src/parts/render.c:944` | [诊断] 打印消息窗口底板 CG（1920x300~500）是否进入 parts_render 及其 origin_offset / 准入字段；用来区分「没到渲染」与「画了看不见」 |
+| 其它 | `XSYS4_MSGWIN_FRAME_DBG` | `src/parts/render.c:1002` | [诊断] 打印消息窗口底板 CG（1920x300~500）是否进入 parts_render 及其 origin_offset / 准入字段；用来区分「没到渲染」与「画了看不见」 |
 | 其它 | `XSYS4_MSGWIN_FULL` | `src/parts/activity.c:829` | [D217 已转正] EX 消息窗口组件补齐 39px 字体/字色/字距/行距，并用独立 CG 部件装载 种类別情报 的 底板ＣＧ名；默认生效，=0 回退做 A/B |
 | 其它 | `XSYS4_MSG_DBG` | `src/parts/message.c:49` | 〔摘〕只打非悬停消息，否则前 60 条全被 MOUSE_ON 占满，看不到点击。 |
 | 其它 | `XSYS4_MSG_NO_SENTINEL` | `src/parts/message.c:163` | 〔摘〕busy loop that froze SceneStack@WaitFrame. |
@@ -123,7 +123,7 @@
 | 其它 | `XSYS4_NODE_DIGIT` | `src/vm.c:2237` | [D209 诊断后门] 把 QuestMapParamAccessor 的 KeyBase 末尾全角编号末位改成 0-9（００１→００２），仅在 23486 事件链生效；默认关，用于验证战斗链，不是正常游戏路径 |
 | 其它 | `XSYS4_NO_AUDIO` | `src/audio_mixer.c:705` | 关闭音频输出 |
 | 其它 | `XSYS4_NO_AUTO_MOTION` | `src/parts/motion.c:106` | =1 关闭「首次加 motion 自动开表」（D186），用于 motion 自动启动的 A/B |
-| 其它 | `XSYS4_NO_CP_ALPHA_FIX` | `src/parts/parts.c:2211` | =1 关闭「合成类部件 alpha=0 提升为 255」（卡片立绘 A/B 回退开关） |
+| 其它 | `XSYS4_NO_CP_ALPHA_FIX` | `src/parts/parts.c:2219` | =1 关闭「合成类部件 alpha=0 提升为 255」（卡片立绘 A/B 回退开关）。[D224 收窄] 提升现在只作用于 >=8x8 的真实合成纹理，2x2 全屏淡出遮罩不再被误抬 |
 | 其它 | `XSYS4_NO_PUMP` | `src/vm.c:4692` | 事件泵空转诊断 |
 | 其它 | `XSYS4_NULLMETHOD_FIX` | `src/vm.c:1196` | — |
 | 其它 | `XSYS4_NULLREF_DBG` | `src/vm.c:292` | 〔摘〕Pop a reference off the stack, returning the address of the referen… |
@@ -142,8 +142,8 @@
 | 其它 | `XSYS4_RELEASE_RECURSIVE` | `src/parts/parts.c:2090` | [D219 已转正] PE_ReleaseParts 递归释放整棵部件子树（原 parts_release 只把子部件摘链不释放，对话框关掉后文字层残留，H025/[LAYER-LEAK]）；默认生效，=0 回退做 A/B |
 | 其它 | `XSYS4_RSS_LIMIT` | `src/vm.c:2298` | 进程 RSS 上限，超了报警 |
 | 其它 | `XSYS4_SAVE_GROUP_ANY` | `src/savedata.c:740` | — |
-| 其它 | `XSYS4_SHOT_DIR` | `src/screenshot.c:180` | [诊断] 指定目录后按 Alt+S 让引擎用 glReadPixels 直接 dump GL main surface 为 shot_NNN.png，绕过 zenity 文件框与 X11 合成；GL 直绘下 x11grab/import 只能拿到全黑 framebuffer，画面判据以此为准（GUIDE 1.13） |
-| 其它 | `XSYS4_SHOT_PARTS_DUMP` | `src/screenshot.c:186` | [诊断] 配合 XSYS4_SHOT_DIR：每次引擎自截图时打一次部件快照（layer_show / cover / 每部件 vis），与 PNG 同帧；按截图时刻触发而非全程探针，避免拖慢帧率改变剧情时序；需配 XSYS4_PARTS_DUMP_MIN=900000300 / MAX=1000 |
+| 其它 | `XSYS4_SHOT_DIR` | `src/screenshot.c:182` | [诊断] 指定目录后按 Alt+S 让引擎用 glReadPixels 直接 dump GL main surface 为 shot_NNN.png，绕过 zenity 文件框与 X11 合成；GL 直绘下 x11grab/import 只能拿到全黑 framebuffer，画面判据以此为准（GUIDE 1.13） |
+| 其它 | `XSYS4_SHOT_PARTS_DUMP` | `src/screenshot.c:188` | [诊断] 配合 XSYS4_SHOT_DIR：每次引擎自截图时打一次部件快照（layer_show / cover / 每部件 vis）+ 同帧 CG 绘制日志（最近 12 次调用的 alpha / multiply_color / scale / 纹理尺寸、以及两次截图之间的绘制次数）；按截图时刻触发而非全程探针，避免拖慢帧率改变剧情时序；需配 XSYS4_PARTS_DUMP_MIN=900000300 / MAX=1000 |
 | 其它 | `XSYS4_SLOT_ID` | `src/heap.c:254` | 打印稳定槽 ID，便于跨日志对照同一对象 |
 | 其它 | `XSYS4_SP_BALANCE` | `src/vm.c:1869` | 每次函数返回校验栈平衡（失败即报） |
 | 其它 | `XSYS4_SP_TRACE` | `src/vm.c:2463` | 环形缓冲记录栈指针变化，抓"玄学栈漂移" |
