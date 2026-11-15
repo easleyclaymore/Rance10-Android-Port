@@ -94,6 +94,9 @@ def needs_translation(line):
     # 被注释掉的宏调用 / 全大写函数调用（// HLL_EXPORT(Foo, Bar),）
     if re.match(r'^[A-Z][A-Z0-9_]*\s*\(', body):
         return False
+    # 注释里的结构体定义（ChrLoader / vmMapLoader 的格式说明）也是代码。
+    if re.match(r'^struct\s+\w+\s*\{', body) or body.startswith('};'):
+        return False
     if body.endswith(',') and '(' in body:
         return False
     return True

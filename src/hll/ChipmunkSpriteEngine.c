@@ -52,7 +52,7 @@ static int ChipmunkSpriteEngine_SP_SetCG(int sp_no, struct string *cg_name)
 	return sprite_set_cg_by_name(sp, cg_name->text);
 }
 
-// XXX: Rance Quest
+// XXX：《兰斯 任务》
 static int ChipmunkSpriteEngine_SP_SetCG_by_string_id(int sp_no, struct string *cg_no)
 {
 	struct sact_sprite *sp = sact_get_sprite(sp_no);
@@ -65,7 +65,7 @@ static int ChipmunkSpriteEngine_CG_IsExist(struct string *cg_name)
 	return asset_exists_by_name(ASSET_CG, cg_name->text, NULL);
 }
 
-// XXX: Rance Quest
+// XXX：《兰斯 任务》
 static int ChipmunkSpriteEngine_CG_IsExist_by_string_id(struct string *cg_no)
 {
 	return asset_exists(ASSET_CG, atoi(cg_no->text));
@@ -92,7 +92,7 @@ static int ChipmunkSpriteEngine_CG_GetMetrics(struct string *cg_name, struct pag
 	return 1;
 }
 
-// XXX: Rance Quest
+// XXX：《兰斯 任务》
 static int ChipmunkSpriteEngine_CG_GetMetrics_by_string_id(struct string *cg_no, struct page **page)
 {
 	struct cg_metrics metrics;
@@ -427,7 +427,7 @@ static struct ain_hll_function *get_fun(int libno, const char *name)
 	return fno >= 0 ? &ain->libraries[libno].functions[fno] : NULL;
 }
 
-// Daiteikoku and Shaman's Sanctuary have different interface than later versions
+// 《大帝国》和《Shaman's Sanctuary》的接口和后继版本不一样
 static void ChipmunkSpriteEngine_PreLink(void)
 {
 	struct ain_hll_function *fun;
@@ -447,7 +447,7 @@ static void ChipmunkSpriteEngine_PreLink(void)
 		static_library_replace(&lib_ChipmunkSpriteEngine, "SP_SetCG", sact_SP_SetCG);
 	}
 
-	// TODO: SP_SetCutCG
+	// TODO：SP_SetCutCG
 
 	fun = get_fun(libno, "CG_IsExist");
 	if (fun && game_rance8) {
@@ -465,5 +465,5 @@ static void ChipmunkSpriteEngine_PreLink(void)
 		static_library_replace(&lib_ChipmunkSpriteEngine, "CG_GetMetrics", sact_CG_GetMetrics);
 	}
 
-	// TODO: CG_GetFormat
+	// TODO：CG_GetFormat
 }

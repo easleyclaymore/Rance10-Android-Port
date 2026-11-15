@@ -72,7 +72,7 @@ static bool inflate_stream_read(void *dst, size_t size, struct inflate_stream *s
 }
 
 /*
- * Rea archive structure:
+ * Rea 压缩包的结构：
  *
  * struct rea_file {
  *     char     signature[4];      // "R8HF"
@@ -85,7 +85,7 @@ static bool inflate_stream_read(void *dst, size_t size, struct inflate_stream *s
  *     uint8_t  mdcd[mdcd_length];
  * };
  *
- * `mdlf` is an array of rea_entry struct compressed in the zlib format.
+ * `mdlf` 是一个 rea_entry 结构数组，按 zlib 格式压缩。
  *
  * struct rea_entry {
  *     uint32_t name_len;
@@ -94,8 +94,8 @@ static bool inflate_stream_read(void *dst, size_t size, struct inflate_stream *s
  *     uint32_t length;
  * };
  *
- * The contents of an entry are compressed in the zlib format and stored
- * in the location specified by (`offset`, `length`) in the `mdcd` array.
+ * 条目的内容按 zlib 压缩，存放在
+ * `mdcd` 数组里 (offset, length) 指定的位置。
  */
 
 #define REA_ENTRY_NAME_MAX 255

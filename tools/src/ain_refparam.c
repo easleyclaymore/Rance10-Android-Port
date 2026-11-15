@@ -1,13 +1,13 @@
-/* ain_refparam.c - census of AIN_REF_HLL_PARAM (t75) CALLHLL call sites.
+/* ain_refparam.c —— AIN_REF_HLL_PARAM（t75）CALLHLL 调用点的普查。
  *
- * Static evidence for D31: how the compiler consumes a generic ref-param
- * result, grouped by the CALLHLL third immediate (call-site value type).
+ * 给 D31 的静态证据：编译器怎么消费泛型 ref 形参的
+ * 结果，按 CALLHLL 第三个立即数（调用点的值类型）分组。
  *
- * Build (from xsystem4 repo root):
+ * 构建（在 xsystem4 仓库根目录）：
  *   gcc -O1 -I subprojects/libsys4/include tools/ain_refparam.c \
  *       build/subprojects/libsys4/libsys4.a -o build/ain_refparam \
  *       -lm -lz -ldeflate -lpthread
- * Usage:
+ * 用法：
  *   build/ain_refparam <file.ain> [samples_per_tag]
  */
 #include <stdio.h>

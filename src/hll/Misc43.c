@@ -1,5 +1,5 @@
-/* InstallInfo / Sys43VM / TextFile / TextSurfaceManager
- * System 4.3 companion libraries for Rance X bring-up.
+/* InstallInfo / Sys43VM / TextFile / TextSurfaceManager（系统 4.3 配套库）
+ * 兰斯10 启动所需的 System 4.3 配套库。
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,7 +11,7 @@
 #include "vm.h"
 #include "vm/page.h"
 
-/* ---------------- InstallInfo ---------------- */
+/* ---------------- InstallInfo（安装信息） ---------------- */
 
 static bool InstallInfo_IsInstalledGame(struct string *name)
 {
@@ -27,7 +27,7 @@ HLL_LIBRARY(InstallInfo,
 	HLL_EXPORT(IsInstalledGame, InstallInfo_IsInstalledGame),
 	HLL_EXPORT(GetInstallMediaType, InstallInfo_GetInstallMediaType));
 
-/* ---------------- Sys43VM ---------------- */
+/* ---------------- Sys43VM（系统 4.3 虚拟机） -------------------------------- */
 
 static bool Sys43VM_GetFunctionNameList(struct page **out)
 {
@@ -77,7 +77,7 @@ HLL_LIBRARY(Sys43VM,
 	HLL_EXPORT(GetActualNumofPage, Sys43VM_GetActualNumofPage),
 	HLL_EXPORT(GetActualMemorySize, Sys43VM_GetActualMemorySize));
 
-/* ---------------- TextFile ---------------- */
+/* ---------------- TextFile（文本文件） ------------------------------------------ */
 
 static FILE *tf_fp = NULL;
 
@@ -138,7 +138,7 @@ HLL_LIBRARY(TextFile,
 	HLL_EXPORT(Write, TextFile_Write),
 	HLL_EXPORT(ReadAll, TextFile_ReadAll));
 
-/* ---------------- TextSurfaceManager ---------------- */
+/* ---------------- TextSurfaceManager（文本表面管理） ---------------------------- */
 
 static bool TextSurfaceManager_GetFontWidth(struct string *font, int *out, int a, int b,
 					    int c, int d, int e, float f1, float f2,

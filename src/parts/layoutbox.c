@@ -155,8 +155,8 @@ static void parts_get_layout_size(struct parts *parts, int *w, int *h)
 {
 	struct parts_state *state = &parts->states[parts->state];
 	if (state->type == PARTS_FLAT && state->flat.flat) {
-		// The layout size of Flat is specified in the header, and this may
-		// differ from the hitbox size.
+		// Flat 的布局尺寸写在文件头里，可能和
+		// 命中盒尺寸不一样。
 		*w = state->flat.flat->hdr.width;
 		*h = state->flat.flat->hdr.height;
 	} else {
@@ -183,7 +183,7 @@ static int align_offset_y(int align, int total_h)
 	}
 }
 
-// Calculates the total size of a horizontal layout box by summing child widths per row.
+// 按行累加子部件宽度，算出水平布局盒的总尺寸。
 static void parts_layout_calc_size_horizontal(struct parts_layout_box *lb, struct parts *parts,
 		int *out_w, int *out_h)
 {
@@ -212,7 +212,7 @@ static void parts_layout_calc_size_horizontal(struct parts_layout_box *lb, struc
 	*out_h = total_h + lb->padding_top + lb->padding_bottom;
 }
 
-// Calculates the total size of a vertical layout box by summing child heights per column.
+// 按列累加子部件高度，算出垂直布局盒的总尺寸。
 static void parts_layout_calc_size_vertical(struct parts_layout_box *lb, struct parts *parts,
 		int *out_w, int *out_h)
 {
@@ -285,7 +285,7 @@ void parts_do_layout(struct parts *parts)
 		int cw = child->margin_left + child_w + child->margin_right;
 		int ch = child->margin_top + child_h + child->margin_bottom;
 
-		// The layout box forces the child's origin_mode to match its own align.
+		// 布局盒会强制子部件的 origin_mode 与自己的对齐方式一致。
 		if (child->origin_mode != align) {
 			child->origin_mode = align;
 			parts_recalculate_hitbox(child);
@@ -307,7 +307,7 @@ void parts_do_layout(struct parts *parts)
 			}
 		}
 
-		// margin offset depends on alignment direction
+		// 边距偏移取决于对齐方向
 		int mx = is_left ? child->margin_left : is_right ? -child->margin_right : 0;
 		int my = is_top ? child->margin_top : is_bottom ? -child->margin_bottom : 0;
 

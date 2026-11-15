@@ -1,15 +1,15 @@
-/* ain_locals.c - compare AIN function nr_vars with the local-page indices
- * actually used by the bytecode.
+/* ain_locals.c —— 对比 AIN 函数的 nr_vars 和字节码实际用到的
+ * 局部页下标。
  *
- * Motivation (D34): debug::detail::CDebugMemorySize@0 declares nr_vars=4 while
- * its body reads/writes local[4..10], corrupting the heap. This tool checks
- * whether that is an isolated case or a systematic v12 slot-width issue.
+ * 动机（D34）：debug::detail::CDebugMemorySize@0 声明 nr_vars=4，但
+ * 它的函数体读写 local[4..10]，把堆写坏了。这个工具用来查
+ * 那是孤例，还是 v12 的槽宽问题成系统存在。
  *
- * Build (from the xsystem4 repo root):
+ * 构建（在 xsystem4 仓库根目录）：
  *   gcc -O1 -I subprojects/libsys4/include tools/ain_locals.c \
  *       build/subprojects/libsys4/libsys4.a -o build/ain_locals \
  *       -lm -lz -ldeflate -lpthread
- * Usage:
+ * 用法：
  *   build/ain_locals <file.ain> [fno_to_detail]
  */
 #include <stdio.h>

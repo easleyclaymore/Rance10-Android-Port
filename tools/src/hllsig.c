@@ -1,14 +1,14 @@
-/* Dump AIN HLL library function signatures in fno order.
+/* 按 fno 顺序转储 AIN HLL 库的函数签名。
  *
- * Build (from the xsystem4 repo root):
+ * 构建（在 xsystem4 仓库根目录）：
  *   gcc -O1 -I subprojects/libsys4/include tools/hllsig.c \
  *       build/subprojects/libsys4/libsys4.a -o /tmp/hllsig \
  *       -lm -lz -ldeflate -lpthread
- * Usage:
+ * 用法：
  *   hllsig <file.ain> <LibraryName> [FunctionName]
  *
- * HLL_LIBRARY tables are indexed by fno, not by name; use this to verify
- * that a table still matches the AIN it is linked against.
+ * HLL_LIBRARY 表是按 fno 索引的，不是按名字；用它来核对
+ * 某张表是否仍然和链接的 AIN 匹配。
  */
 #include <stdio.h>
 #include <stdlib.h>

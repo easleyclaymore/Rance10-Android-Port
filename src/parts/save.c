@@ -89,8 +89,8 @@ static void save_parts_text(struct iarray_writer *w, struct parts_text *text)
 static void load_parts_text(struct iarray_reader *r, struct parts *parts,
 		struct parts_text *text)
 {
-	// FIXME: this won't accurately restore the text state if the text style
-	//        varies per-character
+	// FIXME：如果文本样式是逐字符变化的，这样恢复
+	//        文本状态并不准确
 	text->line_space = iarray_read(r);
 	iarray_read_text_style(r, &text->ts);
 
@@ -246,8 +246,8 @@ static struct string *load_cp_cg_name(struct iarray_reader *r, int version)
 {
 	if (version >= 5)
 		return iarray_read_string(r);
-	// In version 4 and earlier, the CG name was stored as an integer ID.
-	// Convert it to a string name by looking up the asset.
+	// v4 及更早的版本里，CG 名存的是整数 ID。
+	// 这里查资源把它转成字符串名。
 	int cg_no = iarray_read(r);
 	if (cg_no <= 0)
 		return string_ref(&EMPTY_STRING);
@@ -605,7 +605,7 @@ static void save_parts(struct iarray_writer *w, struct parts *parts)
 	iarray_write(w, parts->on_cursor_sound);
 	iarray_write(w, parts->on_click_sound);
 	iarray_write(w, parts->origin_mode);
-	// XXX: no need to save pending parent since we called UpdateComponent first
+	// XXX：不用存 pending parent，因为我们已经先调过 UpdateComponent
 	iarray_write(w, parts->linked_to);
 	iarray_write(w, parts->linked_from);
 	iarray_write(w, parts->draw_filter);
@@ -709,7 +709,7 @@ static void load_numeral_fonts(struct iarray_reader *r)
 
 static bool parts_engine_save(struct page **buffer, bool save_hidden)
 {
-	// get parts into clean state first
+	// 先把部件置成干净状态
 	PE_UpdateComponent(0);
 
 	struct iarray_writer w;

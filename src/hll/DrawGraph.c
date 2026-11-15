@@ -17,7 +17,7 @@
 #include "xsystem4.h"
 #include "system4/string.h"
 
-// Get texture for source sprite
+// 取源精灵的纹理
 static struct texture *STEX(int sp_no)
 {
 	struct sact_sprite *sp = sact_get_sprite(sp_no);
@@ -25,7 +25,7 @@ static struct texture *STEX(int sp_no)
 	return sprite_get_texture(sp);
 }
 
-// Get texture for destination sprite
+// 取目标精灵的纹理
 static struct texture *DTEX(int sp_no)
 {
 	struct sact_sprite *sp = sact_get_sprite(sp_no);
@@ -163,7 +163,7 @@ static void DrawGraph_FillAMap(int dst, int x, int y, int w, int h, int alpha)
 {
 	gfx_fill_amap(DTEX(dst), x, y, w, h, alpha);
 	if (game_rance7_mg) {
-		// Short-term fix for https://github.com/nunuhara/xsystem4/issues/237
+		// 针对 xsystem4 issue #237 的短期修法
 		sprite_text_clear(sact_get_sprite(dst));
 	}
 }
@@ -416,7 +416,7 @@ static void DrawGraph_DrawLineToAMap(int dst, int x0, int y0, int x1, int y1, in
 static bool DrawGraph_GetAlphaColor(int surface, int x, int y, int *a)
 {
 	struct sact_sprite *sp = sact_get_sprite(surface);
-	// NOTE: System40.exe errors here
+	// 注意：System40.exe 在这里会报错
 	if (!sp)
 		VM_ERROR("Invalid sprite index: %d", surface);
 	if (x < 0 || x >= sp->rect.w || y < 0 || y >= sp->rect.h)
@@ -514,7 +514,7 @@ HLL_LIBRARY(DrawGraph,
 	    HLL_EXPORT(CopyStretchBlend, DrawGraph_CopyStretchBlend),
 	    HLL_EXPORT(CopyStretchBlendAMap, DrawGraph_CopyStretchBlendAMap),
 	    HLL_EXPORT(CopyStretchAMap, DrawGraph_CopyStretchAMap),
-	    // NOTE: xsystem4 uses bilinear interpolation by default
+	    // 注意：xsystem4 默认用双线性插值
 	    HLL_EXPORT(CopyStretchInterp, DrawGraph_CopyStretch),
 	    HLL_EXPORT(CopyStretchAMapInterp, DrawGraph_CopyStretchAMap),
 	    HLL_EXPORT(CopyReduce, DrawGraph_CopyStretch),
@@ -576,7 +576,7 @@ HLL_LIBRARY(DrawGraph,
 	    HLL_EXPORT(CopyWithAlphaMap, DrawGraph_CopyWithAlphaMap),
 	    HLL_EXPORT(FillWithAlpha, DrawGraph_FillWithAlpha),
 	    HLL_EXPORT(CopyStretchWithAlphaMap, DrawGraph_CopyStretchWithAlphaMap),
-	    // NOTE: xsystem4 uses bilinear interpolation by default
+	    // 注意：xsystem4 默认用双线性插值
 	    HLL_EXPORT(CopyStretchBilinearWithAlphaMap, DrawGraph_CopyStretchWithAlphaMap),
 	    HLL_EXPORT(CopyGrayscale, DrawGraph_CopyGrayscale)
 	);
