@@ -88,10 +88,10 @@ static int get_group_index(const char *name)
 
 static int32_t add_value_to_gsave(enum ain_data_type type, union vm_value val, struct gsave *save);
 
-/* [L2] "Where am I in the object graph" for write-path diagnostics: the
- * assertion used to fire with only a slot number, which is untraceable
- * once the value came from a nested array/struct. Callers set this right
- * before descending; it is the innermost owner seen so far. */
+/* [L2] 写路径诊断用的「我在对象图的哪个位置」：
+ * 原来断言只带一个槽号，一旦这个值来自嵌套的数组/结构体就查不下去。
+ * 调用方在往下走之前把它设好；
+ * 它记录的是目前见过的最内层属主。 */
 static const char *gsave_ctx = "?";
 static const char *gsave_root = "?";
 static char gsave_ctx_buf[160];
@@ -130,32 +130,32 @@ static int32_t add_value_to_gsave(enum ain_data_type type, union vm_value val, s
 	case AIN_FLOAT:
 		return val.i;
 	case AIN_STRING:
-		/* [L2] -1 is the "unset" value in the gsave value space (it is also
-		 * what variable_initval() puts in a fresh reference slot). Writing
-		 * it as an empty string keeps write and read symmetric: the reader
-		 * maps both back to an empty string. */
+		/* [L2] 在 gsave 的值空间里 -1 就是「未设置」
+		 * （variable_initval() 也会给新建的引用槽填它）。把它写成空字符串
+		 * 可以让写和读保持对称：
+		 * 读回来时两种都映射成空字符串。 */
 		if (val.i < 0)
 			return GSAVE7_EMPTY_STRING;
 		return gsave_add_string(save, heap[val.i].s);
 	case AIN_STRUCT:
 		{
-			/* [L2] A never-initialised struct (array element, optional
-			 * member) is -1; serialise it as "unset" instead of asserting.
-			 * The reader turns any out-of-range record index back into -1
-			 * (see gsave_index_ok), so the round trip is lossless. */
+			/* [L2] 从未初始化过的结构体（数组元素、可选成员）是 -1；
+			 * 把它序列化成「未设置」，而不是断言。
+			 * 读取端会把任何越界的记录下标还原成 -1
+			 * （见 gsave_index_ok），所以往返是无损的。 */
 			if (val.i < 0)
 				return -1;
 			struct page *page = heap_get_page(val.i);
-			/* [L2] A struct-typed variable whose slot is not a STRUCT_PAGE
-			 * means the value was never a struct to begin with (or points
-			 * at a released slot). Say WHICH slot and type instead of
-			 * dying on a bare assert. */
+			/* [L2] 声明成结构体、但槽里不是 STRUCT_PAGE，
+			 * 说明这个值本来就不是结构体（或者指向一个已释放的槽）。
+			 * 这里要报出是哪个槽、什么类型，
+			 * 而不是死在一句光秃秃的断言上。 */
 			if (!page || page->type != STRUCT_PAGE) {
-				/* [L2] A struct-typed slot that does not hold a struct page
-				 * cannot be represented in the save format; record it as
-				 * "unset" (the reader maps -1 back to a null struct) instead
-				 * of aborting the whole save. Bounded warning, not silent --
-				 * the underlying cause is tracked as [ARR-UNSET]. */
+				/* [L2] 声明成结构体、但里面不是结构体页的槽，
+				 * 存档格式没法表示；把它记成「未设置」
+				 * （读取端会把 -1 还原成空结构体），
+				 * 而不是让整次存盘中止。告警有上限，但不是静默 ——
+				 * 根因记在 [ARR-UNSET] 下。 */
 				static int nr_bad;
 				if (nr_bad++ < 5)
 					WARNING("save: struct slot %d holds heap type %d, not a"
@@ -196,8 +196,8 @@ static int32_t add_value_to_gsave(enum ain_data_type type, union vm_value val, s
 			}
 			return gsave_add_record(save, &rec);
 		}
-	/* [L2] AIN_ARRAY_TYPE is a macro over 8 concrete array types; v12's
-	 * generic AIN_ARRAY(79) is NOT included (see add_value_to_gsave). */
+	/* [L2] AIN_ARRAY_TYPE 是 8 个具体数组类型的宏；
+	 * v12 的泛型 AIN_ARRAY(79) 不在里面（见 add_value_to_gsave）。 */
 	case AIN_ARRAY:
 	case AIN_ARRAY_TYPE:
 		{
@@ -218,12 +218,12 @@ static int32_t add_value_to_gsave(enum ain_data_type type, union vm_value val, s
 				struct gsave_array array = { .rank = -1 };
 				return gsave_add_array(save, &array);
 			}
-			/* [L2] A generic array keeps a_type == AIN_ARRAY until the first
-			 * store settles the element kind; array_type() then reports VOID.
-			 * Writing its elements as VOID produces a file the reader can
-			 * never accept (it allocates the array from the saved element
-			 * kind and then compares it against the type it got). "No kind"
-			 * means "cannot represent" -> record it as unset. */
+			/* [L2] 泛型数组在第一次写入定型之前一直是 a_type == AIN_ARRAY；
+			 * 那时 array_type() 报的是 VOID。按 VOID 写元素，产生出来的文件
+			 * 读取端根本没法接受（它会按存档里的元素种类分配数组，
+			 * 再和拿到的类型比对）。
+			 * 「没有种类」就意味着「没法表示」
+			 * -> 记成未设置。 */
 			if (array_type(page->a_type) == AIN_VOID) {
 				static int nr_untyped;
 				if (nr_untyped++ < 3)
@@ -395,8 +395,8 @@ static union vm_value json_to_vm_value(enum ain_data_type type, enum ain_data_ty
 			json_load_page(heap[slot].page, json, false);
 		}
 		return vm_int(slot);
-	/* [L2] AIN_ARRAY_TYPE is a macro over 8 concrete array types; v12's
-	 * generic AIN_ARRAY(79) is NOT included (see add_value_to_gsave). */
+	/* [L2] AIN_ARRAY_TYPE 是 8 个具体数组类型的宏；
+	 * v12 的泛型 AIN_ARRAY(79) 不在里面（见 add_value_to_gsave）。 */
 	case AIN_ARRAY:
 	case AIN_ARRAY_TYPE:
 		slot = heap_alloc_slot(VM_PAGE);
@@ -469,7 +469,7 @@ static int load_globals_from_json(const char *path, const char *keyname, const c
 		VM_ERROR("Attempted to load save data with wrong key: %s", display_sjis0(keyname));
 
 	if (group_name) {
-		// TODO?
+		// TODO？
 	}
 
 	cJSON *globals = cJSON_GetObjectItem(save, "globals");
@@ -522,19 +522,19 @@ static int struct_member_index(struct ain_struct *st, const char *name)
 	return -1;
 }
 
-/* [L2] Table indices come from the save file and must never be trusted.
- * An older writer stored -1 for generic arrays it could not serialise, and
- * any truncated/corrupt file can point outside the table. Both mean "no
- * value", which every caller already knows how to handle for rank == -1.
- * Returns true when `value` is a usable index into `n` entries. */
+/* [L2] 表下标来自存档文件，永远不能信。
+ * 旧的写入端会给它序列化不了的泛型数组存 -1，
+ * 而任何被截断/损坏的文件都可能指向表外。
+ * 两者都表示「没有值」，而每个调用方对 rank == -1 早就知道怎么处理。
+ * `value` 是 `n` 个条目里的可用下标时返回 true。 */
 static bool gsave_index_ok(int32_t value, int32_t n)
 {
 	return value >= 0 && value < n;
 }
 
-/* [L2] Reverse of array_type(): turn a saved element kind back into the
- * concrete array type that alloc_array()/variable_type() expect. Returns
- * AIN_VOID when the element kind cannot be typed (empty generic array). */
+/* [L2] array_type() 的逆操作：把存档里的元素种类还原成
+ * alloc_array()/variable_type() 期望的具体数组类型。
+ * 元素种类无法定型时（空的泛型数组）返回 AIN_VOID。 */
 static enum ain_data_type array_type_of_elem(enum ain_data_type elem)
 {
 	switch (elem) {
@@ -567,10 +567,10 @@ static struct gsave_flat_array *gsave_load_array(struct gsave *save, struct page
 		int struct_type, array_rank;
 		enum ain_data_type data_type = variable_type(page, i, &struct_type, &array_rank);
 		if (flat_array->values[i].type == AIN_VOID) {
-			/* [L2] Files written before the writer learned to skip untyped
-			 * arrays carry VOID-typed values. They cannot be interpreted,
-			 * so leave the element at its "unset" value instead of failing
-			 * the whole load. */
+			/* [L2] 写入端学会跳过无类型数组之前存下的文件，
+			 * 里面带着 VOID 类型的值。这些没法解释，
+			 * 所以让元素保持「未设置」，
+			 * 而不是让整次读档失败。 */
 			static int nr_void;
 			if (nr_void++ < 3)
 				WARNING("save: array element %d has no recorded type;"
@@ -604,8 +604,8 @@ static union vm_value gsave_to_vm_value(struct gsave *save, enum ain_data_type t
 		return vm_int(value);
 	case AIN_STRING:
 		{
-			/* [L2] Same bounds rule as struct/array: a file index outside
-			 * the string table means "empty string", not a trap. */
+			/* [L2] 与结构体/数组同样的边界规则：
+			 * 文件下标落在字符串表外表示「空字符串」，而不是陷阱。 */
 			const struct string *s = &EMPTY_STRING;
 			if (value != GSAVE7_EMPTY_STRING && gsave_index_ok(value, save->nr_strings))
 				s = save->strings[value];
@@ -649,15 +649,15 @@ static union vm_value gsave_to_vm_value(struct gsave *save, enum ain_data_type t
 			}
 			return vm_int(slot);
 		}
-	/* [L2] AIN_ARRAY_TYPE is a macro over 8 concrete array types; v12's
-	 * generic AIN_ARRAY(79) is NOT included (see add_value_to_gsave). */
+	/* [L2] AIN_ARRAY_TYPE 是 8 个具体数组类型的宏；
+	 * v12 的泛型 AIN_ARRAY(79) 不在里面（见 add_value_to_gsave）。 */
 	case AIN_ARRAY:
 	case AIN_ARRAY_TYPE:
 		{
 			int slot = heap_alloc_slot(VM_PAGE);
 			if (!gsave_index_ok(value, save->nr_arrays)) {
-				/* Not a table entry: no data was ever written for this
-				 * variable (old files serialised generic arrays as -1). */
+				/* 不是表里的条目：这个变量从来没写过数据
+				 * （旧文件把泛型数组序列化成了 -1）。 */
 				static int nr_oob;
 				if (nr_oob++ < 3)
 					WARNING("save array index %d out of range (%d arrays);"
@@ -673,17 +673,17 @@ static union vm_value gsave_to_vm_value(struct gsave *save, enum ain_data_type t
 			int rank = array->rank;
 			enum ain_data_type data_type = type;
 			if (type == AIN_ARRAY) {
-				/* [L2] A generic array carries NO element kind in its
-				 * declaration (that is what "array<?>" means), and its
-				 * declared rank is a placeholder: 51 globals in this AIN
-				 * declare rank=1 while the instances are whatever the
-				 * script built. So for generic arrays the saved instance is
-				 * authoritative for both rank and element kind -- trusting
-				 * the declaration produced "array rank mismatch" on every
-				 * generic global at load time.
-				 * The element kind is recoverable from the save itself:
-				 * collect_flat_arrays() stores it per flat array (v7+) and
-				 * per value (v<=5), so it is present in both formats. */
+				/* [L2] 泛型数组的声明里没有元素种类
+				 * （`array<?>` 就是这个意思），而且声明的 rank 只是个占位：
+				 * 这个 AIN 里有 51 个全局变量声明 rank=1，
+				 * 而实例实际是什么样子取决于脚本怎么建。
+				 * 所以对泛型数组，存档里的实例对 rank 和元素种类
+				 * 都是权威 —— 相信声明会让每个泛型全局变量
+				 * 在读档时报「array rank mismatch」。
+				 * 元素种类可以从存档本身还原：
+				 * collect_flat_arrays() 按扁平数组（v7+）和
+				 * 按值（v<=5）都存了它，
+				 * 所以两种格式里都有。 */
 				if (rank < 1 || rank > 8)
 					VM_ERROR("Bad save file: generic array rank out of range");
 				enum ain_data_type elem = AIN_VOID;
@@ -691,8 +691,8 @@ static union vm_value gsave_to_vm_value(struct gsave *save, enum ain_data_type t
 					elem = array->flat_arrays[0].type;
 				data_type = array_type_of_elem(elem);
 				if (data_type == AIN_VOID) {
-					/* Empty generic array: no element to type it from.
-					 * struct_type is the only surviving hint. */
+					/* 空的泛型数组：没有任何元素可以定型。
+					 * struct_type 是唯一还有效的线索。 */
 					data_type = struct_type >= 0 ? AIN_ARRAY_STRUCT : AIN_ARRAY_INT;
 					WARNING("generic array with rank=%d has no elements; "
 						"retyping as %s", rank,
@@ -753,11 +753,11 @@ int load_globals_from_gsave(struct gsave *save, const char *keyname, const char 
 			WARNING("%s: type mismatch", display_sjis0(g->name));
 			return 0;
 		}
-		/* [L2] XSYS4_GSAVE_DBG=1: name the globals whose saved array index
-		 * is out of range BEFORE gsave_to_vm_value() dereferences it. The
-		 * crash site only knows `rank`, not which global owned it.
-		 * AIN_ARRAY_TYPE is a macro (cannot be compared), so classify by
-		 * the printable type name instead. */
+		/* [L2] XSYS4_GSAVE_DBG=1：在 gsave_to_vm_value() 解引用之前，
+		 * 把「存档里的数组下标越界」的全局变量名字打出来。
+		 * 崩溃点只知道 `rank`，不知道是哪个全局变量持有的。
+		 * AIN_ARRAY_TYPE 是宏（没法比较），
+		 * 所以按可打印的类型名分类。 */
 		const char *tname = ain_strtype(ain, type->data, -1);
 		if (tname && strstr(tname, "array") && getenv("XSYS4_GSAVE_DBG")) {
 			int ok = g->value >= 0 && g->value < save->nr_arrays;
@@ -782,7 +782,7 @@ int load_globals(const char *keyname, const char *filename, const char *group_na
 	char *path = savedir_path(filename);
 	int retval;
 
-	// First, try reading as a gsave.
+	// 先试着当 gsave 读。
 	enum savefile_error error;
 	struct gsave *save = gsave_read(path, &error);
 	switch (error) {
@@ -792,7 +792,7 @@ int load_globals(const char *keyname, const char *filename, const char *group_na
 		gsave_free(save);
 		return retval;
 	case SAVEFILE_INVALID_SIGNATURE:
-		// If not a System4 save file, try reading as a json.
+		// 如果不是 System4 存档，再试着当 json 读。
 		retval = load_globals_from_json(path, keyname, group_name, n);
 		free(path);
 		return retval;

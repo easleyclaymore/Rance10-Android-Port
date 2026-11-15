@@ -61,7 +61,7 @@ static inline float mt_next_signed(struct mt19937 *mt)
 	return mt_next(mt) - 0.5f;
 }
 
-// Approximately uniform random unit 3D vector.
+// 近似均匀随机的三维单位向量。
 static void random_unit_vec3(struct mt19937 *mt, vec3 v)
 {
 	v[0] = mt_next_signed(mt);
@@ -133,7 +133,7 @@ static int flat_compute_max_frame(struct flat_timeline *timelines, size_t nr_tim
 	return max_frame;
 }
 
-// Process script timelines for the current frame.
+// 处理当前帧的脚本 timeline。
 static void flat_process_layer_scripts(struct flat_layer_state *state,
 		struct flat_timeline *timelines, size_t nr_timelines)
 {
@@ -143,7 +143,7 @@ static void flat_process_layer_scripts(struct flat_layer_state *state,
 		if (timelines[i].type != FLAT_TIMELINE_SCRIPT)
 			continue;
 
-		// Find last key where frame_index <= current_frame
+		// 找最后一个满足 frame_index <= current_frame 的关键帧
 		int matched = -1;
 		for (size_t j = 0; j < timelines[i].script.count; j++) {
 			if ((int)timelines[i].script.keys[j].frame_index <= state->current_frame)
@@ -152,7 +152,7 @@ static void flat_process_layer_scripts(struct flat_layer_state *state,
 				break;
 		}
 
-		// Only trigger when matched key differs
+		// 只有匹配到的关键帧变了才触发
 		if (state->last_script_keys[i] == matched)
 			continue;
 		state->last_script_keys[i] = matched;
@@ -168,12 +168,12 @@ static void flat_process_layer_scripts(struct flat_layer_state *state,
 	}
 }
 
-// Advance children regardless of this layer's stopped state.
+// 不管本层是否停止，都要推进子层。
 static bool flat_advance_children(struct flat *fl,
 		struct flat_layer_state *state,
 		struct flat_timeline *timelines, size_t nr_timelines);
 
-// Advance a layer by one tick. Returns true if any frame changed.
+// 把一层推进一个 tick。有任何帧变化就返回 true。
 static bool flat_advance_layer(struct flat *fl,
 		struct flat_layer_state *state,
 		struct flat_timeline *timelines, size_t nr_timelines)
@@ -210,7 +210,7 @@ static bool flat_advance_children(struct flat *fl,
 		if (timelines[i].type != FLAT_TIMELINE_GRAPHIC)
 			continue;
 
-		// Destroy child states when the parent frame leaves the active range.
+		// 父帧离开活动范围时，销毁子状态。
 		int local = state->current_frame - timelines[i].begin_frame;
 		if (local < 0 || local >= timelines[i].frame_count) {
 			if (state->children[i]) {
@@ -237,9 +237,9 @@ static bool flat_advance_children(struct flat *fl,
 	return changed;
 }
 
-// Build the CG list for a STOP_MOTION library: frame 0 is the base
-// library named in `sm->library_name`; subsequent frames are numbered
-// variants `${stem}_NN.${ext}`, terminated by the first missing entry.
+// 为 STOP_MOTION 库构造 CG 列表：第 0 帧是
+// `sm->library_name` 指定的基础库；后续帧是编号变体
+// `${stem}_NN.${ext}`，遇到第一个缺失项就停。
 static void build_stop_motion_frames(struct parts_flat *f, int sm_lib_idx)
 {
 	struct flat_stop_motion *sm = &f->flat->libraries[sm_lib_idx].stop_motion;
@@ -334,7 +334,7 @@ bool parts_flat_load(struct parts *parts, struct parts_flat *f, struct string *f
 			f->flat->timelines, f->flat->nr_timelines) - 1;
 	f->root_state = flat_layer_state_new(f->flat->nr_timelines);
 
-	// Load textures for CG libraries.
+	// 装载各 CG 库的纹理。
 	/* [D200] 有些 flat（任务画面／選択肢／红按钮）把图形放在 TALT 段的
 	 * QNT 图集里，LIBL 段声明 0 个库。timeline 的 library_name 找不到库，
 	 * render_flat_item 会直接 return —— 按钮一个像素都画不出来。
@@ -390,9 +390,9 @@ bool parts_flat_load(struct parts *parts, struct parts_flat *f, struct string *f
 					display_sjis0(em->library_name->text), em->pos_track_mode);
 	}
 
-	// TODO: The original engine performs per-frame hit testing against
-	// the flat's visible sprites (with full transform chain), rather than
-	// using a static hitbox. For now, estimate dimensions from CG textures.
+	// TODO：原版引擎是对 flat 的可见精灵做逐帧命中测试
+	// （带完整变换链），而不是
+	// 用静态命中盒。目前先按 CG 纹理估算尺寸。
 	int w = f->flat->hdr.width;
 	int h = f->flat->hdr.height;
 	if (w <= 0 || h <= 0) {
@@ -408,8 +408,8 @@ bool parts_flat_load(struct parts *parts, struct parts_flat *f, struct string *f
 	if (w > 0 && h > 0)
 		parts_set_dims(parts, &f->common, w, h);
 
-	// f->flat contains pointers into dfile->data, but it should be safe to
-	// free now since we've loaded all CG data we need.
+	// f->flat 里有指针指向 dfile->data，但现在释放应该是安全的，
+	// 因为我们需要的 CG 数据都已经读完了。
 	archive_free_data(dfile);
 	return true;
 }
@@ -524,7 +524,7 @@ bool parts_flat_update(struct parts_flat *f, int passed_time)
 	if (!f->flat)
 		return false;
 
-	// Consume pending forward seek (from GoFramePartsFlat).
+	// 消费挂起的前向定位请求（来自 GoFramePartsFlat）。
 	if (f->pending_seek_delta > 0) {
 		for (int i = 0; i < f->pending_seek_delta; i++) {
 			flat_advance_layer(f->flat, f->root_state,
@@ -535,7 +535,7 @@ bool parts_flat_update(struct parts_flat *f, int passed_time)
 		return true;
 	}
 
-	// One advance after load / seek.
+	// 装载 / 定位之后推进一次。
 	if (f->needs_advance) {
 		f->needs_advance = false;
 		bool changed = flat_advance_layer(f->flat, f->root_state,
@@ -562,9 +562,9 @@ bool parts_flat_update(struct parts_flat *f, int passed_time)
 	return any_changed;
 }
 
-// Build a layer matrix from a single key's properties.
-// The sequence is: T(pos) * Rz * Rx * Ry * S(scale) * T(-origin) * Reverse.
-// Components can be selectively enabled; pos is resolved by the caller.
+// 用单个关键帧的属性构造图层矩阵。
+// 顺序是：T(位置) * Rz * Rx * Ry * S(缩放) * T(-原点) * Reverse。
+// 各分量可以单独启用；位置由调用方解析好。
 void parts_flat_build_layer_matrix(const struct flat_key_data_graphic *key,
 		vec2 pos,
 		bool use_rotation, bool use_scale, bool use_origin,
@@ -573,8 +573,8 @@ void parts_flat_build_layer_matrix(const struct flat_key_data_graphic *key,
 {
 	glm_mat4_identity(out);
 	glm_translate(out, (vec3){ pos[0], pos[1], 0 });
-	// The original engine projects 3D-rotated sprites through a proper
-	// perspective, but we use an orthographic approximation for simplicity.
+	// 原版引擎会把 3D 旋转过的精灵做真正的透视投影，
+	// 这里为了简单用正交近似。
 	if (use_rotation) {
 		if (key->angle_z != 0) glm_rotate_z(out, glm_rad(key->angle_z), out);
 		if (key->angle_x != 0) glm_rotate_x(out, glm_rad(-key->angle_x), out);
@@ -592,16 +592,16 @@ void parts_flat_build_layer_matrix(const struct flat_key_data_graphic *key,
 	}
 }
 
-// Build the emitter's particle base matrix from the recorded ancestor key
+// 用记录下来的祖先关键帧构造发射器的粒子基础矩阵。
 // chain.
 //
-// SELECTIVE mode: each ancestor contributes a fresh key with defaults
-// (scale=1, rotation=0, origin=0, reverse=false), overriding only the
-// properties listed in the emitter's inherit_* flags.
+// SELECTIVE 模式：每个祖先贡献一个新的默认关键帧
+// （scale=1、rotation=0、origin=0、reverse=false），只覆盖
+// 发射器 inherit_* 标志里列出的属性。
 //
-// ANCESTOR_CURRENT / ANCESTOR_AT_BIRTH modes: the keys from the entire
-// parent view chain are used as-is. inherit_* flags are ignored; all
-// ancestor properties affect the particle base matrix.
+// ANCESTOR_CURRENT / ANCESTOR_AT_BIRTH 模式：整条
+// 父视图链上的关键帧原样使用，inherit_* 标志被忽略；
+// 所有祖先属性都影响粒子的基础矩阵。
 void parts_flat_build_emitter_base_matrix(const struct flat_emitter *em,
 		const struct flat_key_stack *stack, mat4 out)
 {
@@ -624,8 +624,8 @@ void parts_flat_build_emitter_base_matrix(const struct flat_emitter *em,
 	}
 }
 
-// Returns how many particles should be born on birth_frame, distributing
-// create_count particles evenly across active_frames.
+// 返回 birth_frame 这一帧该出生多少粒子，
+// 把 create_count 个粒子均匀摊到 active_frames 上。
 static int emitter_get_birth_count(int birth_frame, int create_count,
 		int frame_count, int particle_lifetime)
 {
@@ -636,15 +636,15 @@ static int emitter_get_birth_count(int birth_frame, int create_count,
 		return birth_frame == 0 ? 1 : 0;
 
 	if (create_count >= active_frames) {
-		// Dense case: distribute uniformly so each frame gets floor or ceil of
-		// the average rate.
+		// 稠密情况：均匀分配，每帧取平均速率的
+		// floor 或 ceil。
 		float rate = (float)create_count / active_frames;
 		return (int)((birth_frame + 1) * rate) - (int)(birth_frame * rate);
 	}
 
-	// Sparse case: pin one particle to frame 0, then space the remaining
-	// create_count-1 particles evenly from frame 1 to active_frames-1 (so
-	// frame active_frames-1 also always gets one particle).
+	// 稀疏情况：把一个粒子钉在第 0 帧，其余
+	// create_count-1 个均匀铺在帧 1 到 active_frames-1 之间
+	// （这样帧 active_frames-1 也总能分到一个）。
 	if (birth_frame == 0)
 		return 1;
 	float rate = (float)(create_count - 1) / (active_frames - 1);
@@ -674,10 +674,10 @@ static float emitter_gravity_displacement(int age, struct flat_emitter *em, int 
 	return 0.5f * G * t * t;
 }
 
-// Lerp from `begin` to `end` at `t`, with per-endpoint random jitter scaled
-// by begin_rand / end_rand. When `sync` is true, both endpoints share the
-// same jitter draw (but the second draw is still consumed, to keep the RNG
-// sequence stable across the sync flag).
+// 在 `t` 处从 `begin` 插值到 `end`，两端各有按
+// begin_rand / end_rand 缩放的随机抖动。`sync` 为真时两端共用
+// 同一次抖动抽样（但第二次抽样仍然消耗，以保持 RNG
+// 序列在 sync 开关前后一致）。
 static float lerp_with_jitter(struct mt19937 *mt,
 		float begin, float begin_rand, float end, float end_rand,
 		bool sync, float t)
@@ -742,9 +742,9 @@ static void emitter_calc_create_position(struct flat_emitter *em,
 	glm_vec2_scale(out, dist, out);
 }
 
-// 3D rejection sampling:
-// Picks a random unit vector c with dot(v, c) > cos(rand * angle/2), i.e.
-// constrained to within `rand * angle/2` of the input direction.
+// 3D 拒绝采样：
+// 随机取一个单位向量 c，使 dot(v, c) > cos(rand * angle/2)，
+// 也就是把方向限制在输入方向 `rand * angle/2` 的锥内。
 static void randomize_direction_within_cone(vec3 v, float angle_deg, struct mt19937 *mt)
 {
 	glm_vec3_normalize(v);
@@ -781,9 +781,9 @@ static void emitter_calc_direction(struct flat_emitter *em,
 		dir[2] = 0;
 		break;
 	case EMITTER_DIRECTION_DISK: {
-		// direction_x/y/z is the normal of the emission disk. Pick a
-		// random unit vector on that disk; randomize_direction_within_cone
-		// below thickens it into a band of half-width direction_angle/2.
+		// direction_x/y/z 是发射圆盘的法线。在圆盘上取一个
+		// 随机单位向量；下面的 randomize_direction_within_cone
+		// 再把它加厚成半宽 direction_angle/2 的一条带。
 		vec3 normal = { em->direction_x, em->direction_y, em->direction_z };
 		if (glm_vec3_norm2(normal) < 1e-12f)
 			glm_vec3_copy((vec3){ 0, 0, 1 }, normal);
@@ -798,9 +798,9 @@ static void emitter_calc_direction(struct flat_emitter *em,
 		break;
 	}
 	randomize_direction_within_cone(dir, em->direction_angle, mt);
-	// Project to 2D by dropping Z without renormalizing in 2D, so
-	// directions tilted out of the XY plane translate to slower
-	// on-screen motion.
+	// 投影到 2D 时直接丢掉 Z、不在 2D 里重新归一，
+	// 这样斜出 XY 平面的方向
+	// 在屏幕上就显得慢一些。
 	glm_vec3_normalize(dir);
 	out[0] = dir[0];
 	out[1] = dir[1];
@@ -835,8 +835,8 @@ static void emitter_calc_trajectory(int age, struct flat_emitter *em,
 	glm_vec2_scale(dir, displacement, out);
 }
 
-// Resolve the per-frame emitter layer properties (pos, alpha, colors, reverse
-// flags, draw_filter) into `out`, applying the emitter's inherit_* flags.
+// 把每帧的发射器图层属性（位置、alpha、颜色、reverse 标志、
+// draw_filter）解析进 `out`，并应用发射器的 inherit_* 开关。
 void parts_flat_emitter_resolve_layer(
 		const struct flat_emitter *em,
 		const struct flat_key_data_graphic *key,
@@ -868,12 +868,12 @@ void parts_flat_emitter_resolve_layer(
 	}
 	int draw_filter = (connected || em->inherit_draw_filter) ? key->draw_filter
 			: PARTS_DRAW_FILTER_NORMAL;
-	// Emitter's own draw_filter overrides the inherited one.
+	// 发射器自己的 draw_filter 覆盖继承来的那个。
 	out->draw_filter = em->draw_filter != PARTS_DRAW_FILTER_NORMAL
 			? em->draw_filter : draw_filter;
 }
 
-// Compute the alignment origin offset (1-9 phone keypad layout).
+// 计算对齐原点偏移（1-9 手机键盘布局）。
 void parts_flat_align_offset(int align, int w, int h, vec2 out)
 {
 	if (align < 1 || align > 9) {
@@ -886,7 +886,7 @@ void parts_flat_align_offset(int align, int w, int h, vec2 out)
 	out[1] = -(float)h * row / 2.0f;
 }
 
-// Compute the alignment origin offset for the emitter's particle_align.
+// 计算发射器 particle_align 对应的对齐原点偏移。
 bool parts_flat_emitter_get_align_offset(struct parts_flat *f, int emitter_lib_idx, vec2 out)
 {
 	struct flat_emitter *em = &f->flat->libraries[emitter_lib_idx].emitter;
@@ -914,11 +914,11 @@ bool parts_flat_emitter_get_align_offset(struct parts_flat *f, int emitter_lib_i
 	return true;
 }
 
-// Enumerate the particles spawned on `birth_frame` for this emitter, computing
-// each particle's pose at the given `age` (in frames since its birth) and
-// invoking `fn` with the result. The RNG is seeded from the emitter's
-// rand_seed and birth_frame, so the same birth_frame always yields the same
-// particles regardless of `age`.
+// 枚举这个发射器在 `birth_frame` 出生的粒子，算出每个粒子
+// 在给定 `age`（出生后经过的帧数）时的姿态，并把结果交给 `fn`。
+// RNG 用发射器的 rand_seed 和 birth_frame 播种，
+// 所以同一个 birth_frame 无论 `age` 多少
+// 都产出同一批粒子。
 void parts_flat_foreach_emitter_particle(struct parts_flat *f, int emitter_lib_idx,
 		const struct flat_key_data_graphic *keys,
 		int birth_frame, int age, int frame_count,
@@ -936,7 +936,7 @@ void parts_flat_foreach_emitter_particle(struct parts_flat *f, int emitter_lib_i
 	if (fade_alpha <= 0.f)
 		return;
 
-	// Resolve the particle CG.
+	// 解析粒子的 CG。
 	int lib_idx = parts_flat_find_library(fl, em->library_name->text);
 	if (lib_idx < 0)
 		return;
@@ -946,9 +946,9 @@ void parts_flat_foreach_emitter_particle(struct parts_flat *f, int emitter_lib_i
 			return;
 	}
 
-	// Parent velocity at birth_frame (only consumed when direction_type
-	// is PARENT or PARENT_REVERSE). Backward difference at frame > 0,
-	// forward difference at frame 0, zero otherwise.
+	// birth_frame 时父部件的速度（只在 direction_type 是
+	// PARENT 或 PARENT_REVERSE 时使用）。帧 > 0 用后向差分，
+	// 帧 0 用前向差分，其他情况为 0。
 	vec2 parent_vel = { 0, 0 };
 	if (em->direction_type == EMITTER_DIRECTION_PARENT
 			|| em->direction_type == EMITTER_DIRECTION_PARENT_REVERSE) {
@@ -1030,7 +1030,7 @@ bool PE_SetPartsFlat(int parts_no, struct string *filename, int state)
 	return false;
 }
 
-/* AIN PartsEngine: bool SetPartsFlatThread(int Number, string FileName, int State).
+/* AIN PartsEngine：bool SetPartsFlatThread(int Number, string FileName, int State)。
  *
  * 原版是"后台线程去读 flat，调用方轮询 IsPartsFlatEnd"的异步入口。我们
  * 的 flat 加载本来就是一次读完的同步实现，所以直接复用同步路径并回报
@@ -1045,12 +1045,12 @@ bool PE_SetPartsFlatThread(int parts_no, struct string *filename, int state)
 	return PE_SetPartsFlat(parts_no, filename, state);
 }
 
-/* AIN PartsEngine f[733]: string GetPartsFlatName(int parts_no, int state).
+/* AIN PartsEngine f[733]：string GetPartsFlatName(int parts_no, int state)。
  *
- * The name last given to PE_SetPartsFlat() for that state. Rance10 reads it
- * back to decide whether a state already carries artwork before replacing it
- * (scene transitions call SetFlat for every state and compare the result), so
- * a missing state must answer with the empty string rather than fail. */
+ * 上一次给该状态的 PE_SetPartsFlat() 传的名字。兰斯10 会读回它，
+ * 在替换之前判断这个状态是不是已经带了美术资源
+ * （场景切换会对每个状态调 SetFlat 并比较结果），
+ * 所以不存在的状态必须回空串，而不是报错。 */
 struct string *PE_GetPartsFlatName(int parts_no, int state)
 {
 	if (!parts_state_valid(--state))
@@ -1114,7 +1114,7 @@ bool PE_StepPartsFlatFinalFrame(int parts_no, int state)
 	if (!f->flat || !f->root_state)
 		return false;
 
-	// Directly set to end frame.
+	// 直接跳到结束帧。
 	f->root_state->current_frame = f->end_frame;
 	f->root_state->stopped = false;
 	f->root_state->suppress_advance = true;
@@ -1211,14 +1211,14 @@ bool PE_GoFramePartsFlat(int parts_no, int frame_no, int state)
 
 	int current = f->root_state->current_frame;
 	if (frame_no < current) {
-		// Backward seek: directly set current_frame.
+		// 向后定位：直接设置 current_frame。
 		f->root_state->current_frame = min(max(0, frame_no), f->end_frame);
 		f->root_state->stopped = false;
 		f->root_state->suppress_advance = true;
 		f->pending_seek_delta = 0;
 		f->needs_advance = true;
 	} else {
-		// Forward seek: defer to next update.
+		// 向前定位：留到下一次更新再做。
 		f->pending_seek_delta = frame_no - current;
 	}
 	f->elapsed = 0;
