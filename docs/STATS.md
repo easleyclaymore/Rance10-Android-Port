@@ -13,8 +13,8 @@
 | HLL 已实现 | 3284 | `HLL_EXPORT(` + `HLL_EXPORT_N(` 行首计数 | `src/hll/*.c` |
 | HLL 缺口 | 1194 | `HLL_TODO_EXPORT(` 行首计数 | `src/hll/*.c` |
 | HLL 源码覆盖率 | 73.3% (4478 个导出) | 已实现 /（已实现 + 缺口） | 计算 |
-| 假设台账 | 30（待验 6 / 成立 9 / 证伪 15） | 表格行首 `H<编号>` 去重，按 section 归类 | `docs/HYPOTHESES.md` |
-| 根因编号 | 46 | `D<2-3 位>` 去重 | README + TECH_DEBT + HYPOTHESES |
+| 假设台账 | 31（待验 7 / 成立 9 / 证伪 15） | 表格行首 `H<编号>` 去重，按 section 归类 | `docs/HYPOTHESES.md` |
+| 根因编号 | 47 | `D<2-3 位>` 去重 | README + TECH_DEBT + HYPOTHESES |
 | 未结技术债 | 24 | 表格行首 `` `[标签]` `` 去重 | `TECH_DEBT.md` |
 | 影响面清单 | 12 | 表格行首 `I<编号>` | `docs/IMPACT.md` |
 | 子模块补丁 | 2 | `patches/*.patch` | `patches/` |
@@ -29,7 +29,7 @@
 | 文档 | 行数 |
 |---|---|
 | `TECH_DEBT.md` | 126 |
-| `docs/HYPOTHESES.md` | 89 |
+| `docs/HYPOTHESES.md` | 90 |
 | `docs/IMPACT.md` | 38 |
 | `docs/SWITCHES.md` | 162 |
 | `docs/PROJECT-MANAGEMENT.md` | 503 |
