@@ -1,8 +1,10 @@
 # 官方手册索引与验收判据
 
-> **权威源**：`Rance10_Port/game/Manual/`（原 HTML + `img/`，官方中文说明书，**有版权、不入库**）。
-> 本文件只是索引与判据，不复述正文。全文检索用生成物 `game/Manual/MANUAL.md`
-> （`tools/gen-manual.py` 生成，同样不入库）。
+> **权威源**：`Rance10_Port/game/Manual/`（原 HTML + `img/`，官方中文说明书）。
+> 全文与图片已由 `tools/gen-manual.py` 生成到 **[`MANUAL/`](MANUAL/README.md)**
+> （`README.md` + `img/`，**入库、脚本维护、禁止手改**），可脱离原目录独立查阅。
+> 本文件只是索引与判据，不复述正文。
+> **版权**：官方手册与图片归 AliceSoft，仅作本项目内部查验 / 界面对照，请勿再分发。
 >
 > **本文件不写「当前是否已验证」** —— 状态唯一源是工作区根 `README.md` / `TECH_DEBT.md`。
 > 验收表只写「怎么验」，不写「验到哪一步」，避免变成第二份会过期的状态副本。
@@ -16,12 +18,15 @@
 | 参考手册 | `r01.html`–`r14.html` | 逐界面说明：基本操作、启动、MENU、收藏、LOAD、事件剧情、回合开场、准备作战、任务、部队编制、战斗开始、战斗、餐券、设置 | `rm*.jpg/gif`（16 张） |
 | 其它 | `staff.html`、`pub.html` | 开发人员、版权 | — |
 
-官方手册为 UTF-8；文件与图片数量**不写死**（官方资料虽不变，但手写数字会腐化）：
-以 `ls game/Manual/`、`tools/gen-manual.py` 的 `PAGES` 与生成脚本输出为准。
-生成物 `MANUAL.md` 保留章节 / 表格 / 图片相对链接，剥掉导航菜单。
+官方手册为 UTF-8；文件与图片数量**不写死**（手写数字会腐化）：
+以 `tools/gen-manual.py` 的 `PAGES`、`image_state()` 与脚本输出为准。
+生成物 `MANUAL/README.md` 保留章节 / 表格 / 图片相对链接，剥掉导航菜单；
+`MANUAL/img/` 是随附图片副本（脚本按 md5 同步，与权威源逐字节一致）。
 所有 `r*.html` 都配一张界面基准图。
 
 ## 图片陷阱（纯文本转换拿不到，必须回看原图）
+
+> 下表 `img/…` 路径均相对 [`MANUAL/`](MANUAL/README.md)（图片副本随 md 一起入库）。
 
 | 图 | 承载的关键信息 |
 |---|---|
@@ -54,10 +59,10 @@
 ## 用法
 
 ```sh
-tools/gen-manual.py             # 重新生成 game/Manual/MANUAL.md
-tools/gen-manual.py --check     # 源 HTML 变化后校验生成物
-grep -n "战斗计算公式" ../game/Manual/MANUAL.md
+tools/gen-manual.py             # 重新生成 docs/MANUAL/README.md + 同步 img/
+tools/gen-manual.py --check     # 校验 md 与图片是否与权威源一致（已接入门禁）
+grep -n "战斗计算公式" docs/MANUAL/README.md
 ```
 
-生成物与权威源同目录，图片用相对链接，本地 Markdown 阅读器打开即可看到图。
+生成物自带图片副本（`docs/MANUAL/img/`），GitHub / 本地 Markdown 阅读器直接可见。
 原 HTML / 图片保持只读，不要按转换结果反向修改官方资料。

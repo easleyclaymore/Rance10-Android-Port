@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
-"""把官方手册 game/Manual/*.html 转成一份可检索的 Markdown。
+"""把官方手册 game/Manual/ 全文 + 图片同步到仓库内 docs/MANUAL/。
 
-权威源是原 HTML + img/（官方中文说明书，有版权、不入库）；本脚本只做机械转换，
-**不做 OCR**。生成物 game/Manual/MANUAL.md 与原文同目录，也不入库，仅供本地检索。
+权威源仍是原 HTML + img/（Rance10_Port/game/Manual/，官方中文说明书）；
+本脚本做机械转换（**不做 OCR**），并把图片复制到 docs/MANUAL/img/，
+使单个 Markdown 能脱离原目录独立显示图片。生成物入库、由脚本维护，禁止手改。
 
 用法：
-    tools/gen-manual.py            # 生成 MANUAL.md
-    tools/gen-manual.py --check    # 源变了就提示重跑，返回非 0
+    tools/gen-manual.py            # 生成 docs/MANUAL/README.md + img/
+    tools/gen-manual.py --check    # md 与图片是否与权威源一致，否则返回非 0
 
-为什么不能把转出来的 md 当成「完整手册」：手册里相当一部分关键信息只在图片里
-（r01 的整张按键表是 img/rm01.gif，各界面基准是 rm*.jpg / pm*.jpg）。本脚本只
-保留图片相对链接，图内文字没有提取 —— 需要精确信息时回看原图，
-清单见 docs/MANUAL-INDEX.md。
+版权：官方手册与图片版权归 AliceSoft 所有，此处仅作本项目内部查验与对照，
+请勿再分发。原 HTML / 图片保持只读，不要按转换结果反向修改。
+
+注意：相当一部分关键信息只在图片里（r01 的整张按键表是 img/rm01.gif，
+各界面基准是 rm*.jpg / pm*.jpg）。图内文字没有提取 —— 清单见
+docs/MANUAL-INDEX.md 的「图片陷阱」。
 """
+import hashlib
 import os
 import re
+import shutil
 import sys
 from html.parser import HTMLParser
 
@@ -22,7 +27,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 PORT = os.path.dirname(REPO)
 MANUAL = os.path.join(PORT, "game", "Manual")
-OUT = os.path.join(MANUAL, "MANUAL.md")
+SRC_IMG = os.path.join(MANUAL, "img")
+DOCS_MANUAL = os.path.join(REPO, "docs", "MANUAL")
+DOCS_IMG = os.path.join(DOCS_MANUAL, "img")
+OUT = os.path.join(DOCS_MANUAL, "README.md")
 
 # 章节顺序取自 index.html 的导航，固定下来，避免目录随文件系统排序漂移。
 PAGES = [
@@ -58,17 +66,18 @@ PAGES = [
     ("pub.html", "版权"),
 ]
 
-HEADER = """# 兰斯10 官方游戏指南（本地生成物）
+HEADER = """# 兰斯10 官方游戏指南（生成物）
 
-> **由 `tools/gen-manual.py` 从 `game/Manual/*.html` 机械转换，不要手改。**
+> **由 `tools/gen-manual.py` 从 `Rance10_Port/game/Manual/*.html` 机械转换，禁止手改。**
 >
-> - **权威源 = 原 HTML + `img/`**（官方中文说明书，有版权，**不入库**）。
->   本文件只是派生索引，不随 git 提交；原文有歧义时一律回看 HTML / 原图。
-> - **图片内文字未 OCR**：完整按键表（`img/rm01.gif`）、各界面基准图
->   （`img/rm*.jpg`、`img/pm*.jpg`）只保留相对链接，必须回看原图。
->   清单见 `docs/MANUAL-INDEX.md` 的「图片陷阱」。
+> - **权威源 = 原 HTML + 原图**（`Rance10_Port/game/Manual/`，官方中文说明书）。
+>   本目录是派生副本，图片随附在 `img/`；原文有歧义时回看权威源。
+> - **版权归 AliceSoft**：仅作本项目内部查验 / 界面对照，请勿再分发。
+> - **图内文字未 OCR**：完整按键表（`img/rm01.gif`）、各界面基准
+>   （`img/rm*.jpg`、`img/pm*.jpg`）需直接看图；清单见
+>   [`../MANUAL-INDEX.md`](../MANUAL-INDEX.md) 的「图片陷阱」。
 > - 重跑 `tools/gen-manual.py`；校验 `tools/gen-manual.py --check`。
-> - 编码 UTF-8；导航菜单已剥离，章节 / 表格 / 图片链接保留。
+> - 编码 UTF-8；导航菜单已剥离，章节 / 表格 / 图片相对链接保留。
 
 ## 目录
 
@@ -171,7 +180,7 @@ def body_of(src):
 def build():
     parts = [HEADER]
     for fn, title in PAGES:
-        parts.append("- [%s](%s)\n" % (title, fn))
+        parts.append("- %s\n" % title)
     for fn, title in PAGES:
         path = os.path.join(MANUAL, fn)
         if not os.path.exists(path):
@@ -185,25 +194,57 @@ def build():
     return "".join(parts)
 
 
+def image_state(root):
+    """返回 {文件名: md5}，用于校验图片副本与权威源逐字节一致。"""
+    if not os.path.isdir(root):
+        return {}
+    out = {}
+    for name in sorted(os.listdir(root)):
+        path = os.path.join(root, name)
+        if os.path.isfile(path):
+            with open(path, "rb") as f:
+                out[name] = hashlib.md5(f.read()).hexdigest()
+    return out
+
+
+def sync_images():
+    os.makedirs(DOCS_IMG, exist_ok=True)
+    src = image_state(SRC_IMG)
+    for name in src:
+        shutil.copy2(os.path.join(SRC_IMG, name), os.path.join(DOCS_IMG, name))
+    return src
+
+
 def main():
     if not os.path.isdir(MANUAL):
-        print("gen-manual: SKIP (官方手册目录不可用，单独 clone 本仓库时正常)")
+        # 单独 clone 时权威源不在；生成物已在仓库里，跳过，不阻塞门禁。
+        print("gen-manual: SKIP (权威源目录不可用，单独 clone 时正常)")
         return 0
     text = build()
     if "--check" in sys.argv:
+        ok = True
         if not os.path.exists(OUT):
-            print("gen-manual: SKIP (生成物尚未生成；本地派生文件，不阻塞门禁)")
-            return 0
-        with open(OUT, encoding="utf-8") as f:
-            cur = f.read()
-        if cur != text:
-            print("STALE  game/Manual/MANUAL.md 与源 HTML 不符 —— 跑 tools/gen-manual.py")
-            return 1
-        print("gen-manual: PASS (%d 页, %d 字符)" % (len(PAGES), len(text)))
-        return 0
+            print("STALE  docs/MANUAL/README.md 不存在 —— 跑 tools/gen-manual.py")
+            ok = False
+        else:
+            with open(OUT, encoding="utf-8") as f:
+                if f.read() != text:
+                    print("STALE  docs/MANUAL/README.md 与源 HTML 不符 —— 跑 tools/gen-manual.py")
+                    ok = False
+        src, dst = image_state(SRC_IMG), image_state(DOCS_IMG)
+        if src != dst:
+            print("STALE  docs/MANUAL/img/ 与源图片不符（源 %d 张 / 副本 %d 张）—— 跑 tools/gen-manual.py"
+                  % (len(src), len(dst)))
+            ok = False
+        print("gen-manual: %s (%d 页, %d 字符, %d 张图)"
+              % ("PASS" if ok else "FAIL", len(PAGES), len(text), len(src)))
+        return 0 if ok else 1
+    os.makedirs(DOCS_MANUAL, exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:
         f.write(text)
+    imgs = sync_images()
     print("wrote %s (%d 页, %d 字符)" % (OUT, len(PAGES), len(text)))
+    print("synced %s (%d 张图)" % (DOCS_IMG, len(imgs)))
     return 0
 
 
