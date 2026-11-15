@@ -37,6 +37,8 @@ int gfx_save_texture(Texture *t, const char *path, enum cg_type);
  * 声明，避免把 parts_internal.h 的依赖链拖进来；全程探针会拖慢帧率、改变
  * 剧情快进时序（D222 教训），这里按截图时刻触发就不会。 */
 void PE_DebugDumpParts(const char *tag);
+/* [D224] 同帧 CG 绘制日志（src/parts/render.c），与部件快照一起打印。 */
+void PE_DebugCGRenderLog(const char *tag);
 
 #ifdef _WIN32
 #include <windows.h>
@@ -183,8 +185,10 @@ void screenshot_save(void)
 		char path[PATH_MAX];
 		if (!mkdir_p(shot_dir)) {
 			snprintf(path, sizeof(path), "%s/shot_%03d.png", shot_dir, ++seq);
-			if (getenv("XSYS4_SHOT_PARTS_DUMP"))
+			if (getenv("XSYS4_SHOT_PARTS_DUMP")) {
 				PE_DebugDumpParts("shot-engine");
+				PE_DebugCGRenderLog("shot-engine");
+			}
 			gfx_save_texture(gfx_main_surface(), path, ALCG_PNG);
 			NOTICE("[shot-engine] %s", path);
 		} else {

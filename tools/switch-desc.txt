@@ -95,7 +95,7 @@ XSYS4_CONSTRUCT_DBG	打印部件合成操作：PartsFunc(case 162)、776 批量�
 XSYS4_CONSTRUCT_776	=0 把 AddPartsConstructionProcess(776) 退回空桩，用于卡片合成 A/B
 XSYS4_NO_AUTO_MOTION	=1 关闭「首次加 motion 自动开表」（D186），用于 motion 自动启动的 A/B
 XSYS4_ALPHA_DBG	打印 SetComponentAlpha 与 AddMotionAlpha 的 parts/alpha 序列（查部件为何全透明）
-XSYS4_NO_CP_ALPHA_FIX	=1 关闭「合成类部件 alpha=0 提升为 255」（卡片立绘 A/B 回退开关）
+XSYS4_NO_CP_ALPHA_FIX	=1 关闭「合成类部件 alpha=0 提升为 255」（卡片立绘 A/B 回退开关）。[D224 收窄] 提升现在只作用于 >=8x8 的真实合成纹理，2x2 全屏淡出遮罩不再被误抬
 # 注意：XSYS4_CP_DBG 是 D116 的结构体深拷贝探针（vm.c），不复用于合成
 XSYS4_DBG_EIP	打印 SetEnableInputProcess 的每次调用与参数（实测 242 次里 238 次 enable=0）
 XSYS4_HLL_REFDBG	[诊断] 引用型 HLL 返回：打印反解 (page_slot,index) 是否成功；默认只打失败项
@@ -117,4 +117,4 @@ XSYS4_MSGWIN_FULL	[D217 已转正] EX 消息窗口组件补齐 39px 字体/字�
 XSYS4_MSGWIN_FRAME_DBG	[诊断] 打印消息窗口底板 CG（1920x300~500）是否进入 parts_render 及其 origin_offset / 准入字段；用来区分「没到渲染」与「画了看不见」
 XSYS4_RELEASE_RECURSIVE	[D219 已转正] PE_ReleaseParts 递归释放整棵部件子树（原 parts_release 只把子部件摘链不释放，对话框关掉后文字层残留，H025/[LAYER-LEAK]）；默认生效，=0 回退做 A/B
 XSYS4_SHOT_DIR	[诊断] 指定目录后按 Alt+S 让引擎用 glReadPixels 直接 dump GL main surface 为 shot_NNN.png，绕过 zenity 文件框与 X11 合成；GL 直绘下 x11grab/import 只能拿到全黑 framebuffer，画面判据以此为准（GUIDE 1.13）
-XSYS4_SHOT_PARTS_DUMP	[诊断] 配合 XSYS4_SHOT_DIR：每次引擎自截图时打一次部件快照（layer_show / cover / 每部件 vis），与 PNG 同帧；按截图时刻触发而非全程探针，避免拖慢帧率改变剧情时序；需配 XSYS4_PARTS_DUMP_MIN=900000300 / MAX=1000
+XSYS4_SHOT_PARTS_DUMP	[诊断] 配合 XSYS4_SHOT_DIR：每次引擎自截图时打一次部件快照（layer_show / cover / 每部件 vis）+ 同帧 CG 绘制日志（最近 12 次调用的 alpha / multiply_color / scale / 纹理尺寸、以及两次截图之间的绘制次数）；按截图时刻触发而非全程探针，避免拖慢帧率改变剧情时序；需配 XSYS4_PARTS_DUMP_MIN=900000300 / MAX=1000

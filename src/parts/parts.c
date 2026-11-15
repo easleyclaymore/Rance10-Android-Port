@@ -2205,15 +2205,25 @@ void PE_SetAlpha(int parts_no, int alpha)
 	 * （`/tmp/cproc_0.png` 是一张完整卡片），部件 `a=0` 永远不可见。
 	 *
 	 * 「移除卡片」走的是别的路径（`RemoveCardFromFormations`，不再设 0），
-	 * 因此把 0 提升为 255 不影响隐藏逻辑。`XSYS4_NO_CP_ALPHA_FIX=1` 回退。 */
+	 * 因此把 0 提升为 255 不影响隐藏逻辑。`XSYS4_NO_CP_ALPHA_FIX=1` 回退。
+	 *
+	 * [D224] 但这个提升**不能无条件做**：Rance10 的 VS 演出收尾有一个
+	 * 同为 `PARTS_CONSTRUCTION_PROCESS` 的全屏淡出遮罩（`no=900000613`，
+	 * 2x2 单色纹理 × `scale=(960,540)` 铺满 1920x1080、z=INT_MAX、
+	 * 最后绘制）。AIN 在淡入结束时把它设 `alpha=0` 隐藏，无条件提升把
+	 * 它抬回 255 → 遮罩永久不透明、战斗 UI 被整片盖住（H037：引擎自截图
+	 * 10579B 全黑；`XSYS4_NO_CP_ALPHA_FIX=1` 回退后 1207952B 有画面）。
+	 * 卡片合成纹理不会是 2x2，故只排除单色小纹理，卡片行为不变。 */
 	static int cp_alpha_fix = -1;
 	if (cp_alpha_fix < 0) {
 		const char *e = getenv("XSYS4_NO_CP_ALPHA_FIX");
 		cp_alpha_fix = (e && *e == '1') ? 0 : 1;
 	}
+	struct parts_common *cp_common = &p->states[p->state].common;
 	if (cp_alpha_fix && alpha <= 0 &&
 	    p->states[p->state].type == PARTS_CONSTRUCTION_PROCESS &&
-	    p->states[p->state].common.texture.handle) {
+	    cp_common->w >= 8 && cp_common->h >= 8 &&
+	    cp_common->texture.handle) {
 		if (getenv("XSYS4_ALPHA_DBG"))
 			NOTICE("[alpha] keep 255 on construction-process parts=%d",
 			       parts_no);
