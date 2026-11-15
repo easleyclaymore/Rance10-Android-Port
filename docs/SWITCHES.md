@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **146** 个开关，其中 **25** 个没有就近注释。
+共 **147** 个开关，其中 **25** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -142,6 +142,7 @@
 | 其它 | `XSYS4_RELEASE_RECURSIVE` | `src/parts/parts.c:2090` | [D219 已转正] PE_ReleaseParts 递归释放整棵部件子树（原 parts_release 只把子部件摘链不释放，对话框关掉后文字层残留，H025/[LAYER-LEAK]）；默认生效，=0 回退做 A/B |
 | 其它 | `XSYS4_RSS_LIMIT` | `src/vm.c:2298` | 进程 RSS 上限，超了报警 |
 | 其它 | `XSYS4_SAVE_GROUP_ANY` | `src/savedata.c:740` | — |
+| 其它 | `XSYS4_SHOT_DIR` | `src/screenshot.c:174` | [诊断] 指定目录后按 Alt+S 让引擎用 glReadPixels 直接 dump GL main surface 为 shot_NNN.png，绕过 zenity 文件框与 X11 合成；GL 直绘下 x11grab/import 只能拿到全黑 framebuffer，画面判据以此为准（GUIDE 1.13） |
 | 其它 | `XSYS4_SLOT_ID` | `src/heap.c:254` | 打印稳定槽 ID，便于跨日志对照同一对象 |
 | 其它 | `XSYS4_SP_BALANCE` | `src/vm.c:1869` | 每次函数返回校验栈平衡（失败即报） |
 | 其它 | `XSYS4_SP_TRACE` | `src/vm.c:2463` | 环形缓冲记录栈指针变化，抓"玄学栈漂移" |

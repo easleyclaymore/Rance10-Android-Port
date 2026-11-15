@@ -99,6 +99,44 @@ def scan_scripts(files):
                     found.append((rel, n, 'hardcoded Android path', line.strip()[:100]))
     return found
 
+# [D222] libsys4 是上游 submodule、无推送权限，关键修复只能以
+# patches/*.patch 入库（README 构建段写明 apply 步骤）。忘了 apply 时编译
+# 照样通过，但 AJP CG 尺寸 / gsave v8 / 泛型 ARRAY 会静默失效，症状极隐蔽。
+# 这里逐段核对补丁的新增行是否真的落在子模块工作树里；单独 clone 时 SKIP。
+def check_libsys4_patches():
+    import glob
+    pdir = os.path.join(ROOT, 'patches')
+    sub = os.path.join(ROOT, 'subprojects', 'libsys4')
+    if not (os.path.isdir(pdir) and os.path.isdir(sub)):
+        return None
+    problems, verified = [], 0
+    for pp in sorted(glob.glob(os.path.join(pdir, '*.patch'))):
+        segs, target, adds = [], None, []
+        for line in open(pp, encoding='utf-8', errors='replace'):
+            if line.startswith('+++ b/'):
+                if target and adds:
+                    segs.append((target, adds))
+                target, adds = line[6:].strip(), []
+            elif line.startswith('+') and not line.startswith('+++'):
+                adds.append(line[1:].rstrip('\n'))
+        if target and adds:
+            segs.append((target, adds))
+        for tgt, lines in segs:
+            fp = os.path.join(sub, tgt)
+            if not os.path.exists(fp):
+                problems.append('%s: missing %s' % (os.path.basename(pp), tgt))
+                continue
+            content = open(fp, encoding='utf-8', errors='replace').read()
+            missing = [a.strip() for a in lines
+                       if a.strip() and a.strip() not in content]
+            if missing:
+                problems.append('%s -> %s: %d added line(s) not applied, e.g. %r'
+                                % (os.path.basename(pp), tgt, len(missing),
+                                   missing[0][:70]))
+            else:
+                verified += 1
+    return problems, verified
+
 core_hits, core_n = scan(CORE)
 ad_hits, ad_n = scan(ADAPTER)
 script_hits = scan_scripts(SCRIPTS)
@@ -119,7 +157,15 @@ for f, n, why, text in script_hits:
     print('  SCRIPT %s:%d %s | %s' % (f, n, why, text))
 print('Core degradation markers: %d (frozen baseline %d)' % (deg, DEGRADATION_BASELINE))
 print('Core diagnostic switches: %d (all must stay default-off)' % diag)
-fail = bool(core_hits) or bool(script_hits)
+_patch_res = check_libsys4_patches()
+if _patch_res is None:
+    print('libsys4 patches: SKIP (submodule/patches not present in this checkout)')
+else:
+    _prob, _ver = _patch_res
+    print('libsys4 patches: %d file-segment(s) verified, %d problem(s)' % (_ver, len(_prob)))
+    for p in _prob:
+        print('  PATCH ' + p)
+fail = bool(core_hits) or bool(script_hits) or bool(_patch_res and _patch_res[0])
 # [D208] 文档数字腐化检查（《工程管理》§6 ⑪）：手写数字与生成结果不符即失败。
 # 单独克隆 xsystem4 时脚本自己会 SKIP，不会阻塞外部使用者。
 import subprocess
