@@ -26,19 +26,19 @@
 #include "iarray.h"
 
 /*
- * NOTE: This is not a library on it's own, but rather part of
- *       StoatSpriteEngine/ChipmunkSpriteEngine.
+ * 注意：这个库不是独立的库，而是
+ *       StoatSpriteEngine/ChipmunkSpriteEngine 的一部分。
  */
 
 struct charsprite {
 	struct sact_sprite sp;
-	// NOTE: even though we only render a single character, we need to store an
-	//       arbitrary string because CharSprite_GetChar returns it.
+	// 注意：虽然我们只渲染单个字符，也需要存下完整的
+	//       字符串，因为 CharSprite_GetChar 会把它返回去。
 	struct string *ch;
 	struct text_style ts;
-	// NOTE: this is needed because we have to hide all sprites after loading
-	//       regardless of their original visibility. When Rebuild is called,
-	//       this value is used to correctly set the visibility.
+	// 注意：这是必需的：装载之后我们必须把所有精灵都藏起来，
+	//       不管它们原来的可见性如何。调用 Rebuild 时，
+	//       就用这个值把可见性正确设回去。
 	bool show;
 };
 
@@ -51,8 +51,8 @@ struct charsprite_manager {
 
 static struct charsprite_manager chars = {0};
 
-// XXX: after CharSpriteManager_Load, CharSpriteManager_Rebuild must be called to
-//      make the loaded data visible. It is stored here until then.
+// XXX：调完 CharSpriteManager_Load 之后必须调 CharSpriteManager_Rebuild，
+//      装载的数据才会真正可见。在那之前先存在这里。
 static struct charsprite_manager load_chars = {0};
 static bool loaded = false;
 
@@ -164,8 +164,8 @@ static void charsprite_render(struct charsprite *cs)
 	char ch[3];
 	extract_sjis_char(cs->ch->text, ch);
 
-	// XXX: this is handled here and not in gfx_render_text because of the
-	//      width calculation below
+	// XXX：这里处理、而不是在 gfx_render_text 里处理，是因为
+	//      下面要做宽度计算
 	if (ch[0] == '}' && game_rance02_mg) {
 		ch[0] = 0x81;
 		ch[1] = 0x5c;
@@ -188,7 +188,7 @@ void CharSpriteManager_Rebuild(void)
 	charsprite_manager_free(&chars);
 	chars = load_chars;
 
-	// reset visibility
+	// 重置可见性
 	for (unsigned i = 0; i < chars.size; i++) {
 		if (!chars.sprites[i])
 			continue;
@@ -207,19 +207,19 @@ bool CharSpriteManager_Save(struct page **iarray)
 	// 'M'
 	// 0x0
 	// 0x0
-	// 0x1  <- nr handles (NOT necessary the length of the following list)
-	// 0x1  <- ???
-	// 0x67 <- 'C' (char text)
+	// 0x1  <- 句柄数（不一定是后面列表的长度）
+	// 0x1  <- ？？？
+	// 0x67 <- 'C'（字符文本）
 	// 0    <- '\0'
-	// 0    <- m_nType
-	// 64   <- m_nSize
+	// 0    <- m_nType（类型）
+	// 64   <- m_nSize（字号）
 	// ...
 	// 0   <- x
 	// 0   <- y
 	// 0   <- z
-	// 255 <- alpha rate
-	// 1   <- show
-	// 2000 <- handle + 2000
+	// 255 <- alpha 值
+	// 1   <- 是否显示
+	// 2000 <- 句柄 + 2000
 
 	struct iarray_writer w;
 	iarray_init_writer(&w, "CSM");
@@ -253,12 +253,12 @@ bool CharSpriteManager_Save(struct page **iarray)
 		iarray_write(&w, sprite_get_show(&s->sp));
 		iarray_write(&w, 2000 + i);
 
-		// NOTE: Allocated but uninitialized handles are saved with a
-		//       handle of -1. These persist even after loading and
+		// 注意：已分配但没初始化的句柄，存盘时句柄值是 -1。
+		//       这些即使读档后也还在，而且
 		//       re-saving.
-		//       I've haven't implemented this as there's no way to know
-		//       the original handle number after loading anyways. Seems
-		//       like a memory leak in the original implementation.
+		//       我没有实现这一点，因为读档之后本来也没法知道
+		//       原来的句柄号。
+		//       看起来原版实现这里就漏了内存。
 	}
 
 	if (*iarray) {
@@ -289,9 +289,9 @@ bool CharSpriteManager_Load(struct page **data)
 	csm.size = nr_handles;
 	csm.sprites = xcalloc(nr_handles, sizeof(struct charsprite*));
 
-	// load handles
+	// 装载句柄
 	while (!iarray_end(&r)) {
-		// character data
+		// 字符数据
 		struct charsprite *cs = xcalloc(1, sizeof(struct charsprite));
 		iarray_read(&r); // ???
 		cs->ch = iarray_read_string(&r);
@@ -313,7 +313,7 @@ bool CharSpriteManager_Load(struct page **data)
 		cs->ts.font_spacing = 0.0f;
 		cs->ts.font_size = NULL;
 
-		// sprite data
+		// 精灵数据
 		int x = iarray_read(&r);
 		int y = iarray_read(&r);
 		sprite_set_show(&cs->sp, false);
@@ -322,7 +322,7 @@ bool CharSpriteManager_Load(struct page **data)
 		sprite_set_blend_rate(&cs->sp, iarray_read(&r));
 		cs->show = iarray_read(&r);
 
-		// insert charsprite into array
+		// 把 charsprite 插进数组
 		int handle = iarray_read(&r) - 2000;
 		if (handle < 0 || (unsigned)handle >= csm.size || csm.sprites[handle]) {
 			sprite_free(&cs->sp);
@@ -335,7 +335,7 @@ bool CharSpriteManager_Load(struct page **data)
 			goto error;
 	}
 
-	// initialize free list
+	// 初始化空闲链表
 	csm.free = xcalloc(csm.size, sizeof(int));
 	for (unsigned i = 0; i < csm.size; i++) {
 		if (!csm.sprites[i])

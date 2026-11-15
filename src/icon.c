@@ -53,7 +53,7 @@ struct dos_header {
 	uint32_t lfanew;
 };
 
-// COFF header
+// COFF 头
 struct coff_header {
 	uint16_t machine;
 	uint16_t number_of_sections;
@@ -69,7 +69,7 @@ struct data_directory {
 	uint32_t size;
 };
 
-// PE optional header
+// PE 可选头
 struct optional_header {
 	uint16_t magic;
 	uint8_t major_linker_version;
@@ -110,7 +110,7 @@ struct pe_header {
 	struct optional_header opt;
 };
 
-// header describing section in executable image
+// 可执行映像里描述一个节（section）的头
 struct section_header {
 	uint8_t name[SECTION_NAME_SIZE];
 	union {
@@ -127,7 +127,7 @@ struct section_header {
 	uint32_t characteristics;
 };
 
-// resource directory table
+// 资源目录表
 struct res_dir_table {
 	uint32_t characteristics;
 	uint32_t time_date_stamp;
@@ -137,13 +137,13 @@ struct res_dir_table {
 	uint16_t number_of_id_entries;
 };
 
-// entry in resource directory table
+// 资源目录表里的一项
 struct res_dir_entry {
 	uint32_t id;
 	uint32_t off;
 };
 
-// leaf data of resource directory table
+// 资源目录表的叶子数据
 struct res_data_entry {
 	uint32_t offset_to_data;
 	uint32_t size;
@@ -151,14 +151,14 @@ struct res_data_entry {
 	uint32_t resource_handle;
 };
 
-// group_cursor resource data (table header)
+// group_cursor 资源数据（表头）
 struct cursor_dir {
 	uint16_t reserved;
 	uint16_t type;
 	uint16_t count;
 };
 
-// entry in group_cursor table
+// group_cursor 表里的一项
 struct cursor_dir_entry {
 	uint16_t width;
 	uint16_t height;
@@ -168,14 +168,14 @@ struct cursor_dir_entry {
 	uint16_t res_id;
 };
 
-// group_icon resource data (table header)
+// group_icon 资源数据（表头）
 struct icon_dir {
 	uint16_t reserved;
 	uint16_t type;
 	uint16_t count;
 };
 
-// entry in group_icon table
+// group_icon 表里的一项
 struct icon_dir_entry {
 	uint8_t width;
 	uint8_t height;
@@ -206,7 +206,7 @@ struct color_map {
 	struct { uint8_t b, g, r, u; } colors[256];
 };
 
-// cursor resource data
+// 光标资源数据
 struct cursor_data {
 	uint16_t hotspot_x;
 	uint16_t hotspot_y;
@@ -214,7 +214,7 @@ struct cursor_data {
 	struct color_map colors;
 };
 
-// icon resource data
+// 图标资源数据
 struct icon_data {
 	struct bitmap_info bm_info;
 	struct color_map colors;
@@ -237,7 +237,7 @@ struct vma {
 	bool initialized;
 };
 
-// TODO: use this abstraction for memory reads on executable image
+// TODO：读可执行映像内存时也用这套抽象
 struct vmm {
 	struct vma *vmas;
 	unsigned nr_vmas;
@@ -442,7 +442,7 @@ static struct cg *load_bmp_8bpp(struct bitmap_info *bm_info, struct color_map *c
 	unsigned w = bm_info->width;
 	unsigned h = bm_info->height / 2;
 
-	// expand mask
+	// 展开掩码
 	uint8_t *mask = xmalloc(w * h);
 	for (int row = 0; row < h; row++) {
 		uint8_t *dst = mask + row * w;
@@ -456,7 +456,7 @@ static struct cg *load_bmp_8bpp(struct bitmap_info *bm_info, struct color_map *c
 		}
 	}
 
-	// convert pixels/mask to RGBA CG
+	// 把像素/掩码转成 RGBA 的 CG
 	struct cg *cg = cg_alloc_direct(w, h);
 	for (unsigned row = 0; row < h; row++) {
 		uint8_t *dst = cg->pixels + row * w * 4;
@@ -481,7 +481,7 @@ static struct cg *load_bmp_4bpp(struct bitmap_info *bm_info, struct color_map *c
 	unsigned w = bm_info->width;
 	unsigned h = bm_info->height / 2;
 
-	// expand mask
+	// 展开掩码
 	uint8_t *mask = xmalloc(w * h);
 	for (int row = 0; row < h; row++) {
 		uint8_t *dst = mask + row * w;
@@ -495,7 +495,7 @@ static struct cg *load_bmp_4bpp(struct bitmap_info *bm_info, struct color_map *c
 		}
 	}
 
-	// convert pixels/mask to RGBA CG
+	// 把像素/掩码转成 RGBA 的 CG
 	struct cg *cg = cg_alloc_direct(w, h);
 	for (unsigned row = 0; row < h; row++) {
 		uint8_t *dst = cg->pixels + row * w * 4;
@@ -633,7 +633,7 @@ void read_icons(struct buffer *b, struct resource *root)
 		if (res_id < 0)
 			continue;
 
-		// get the corresponding icon resource
+		// 取对应的图标资源
 		struct resource *icon_res = NULL;
 		for (unsigned j = 0; j < icon->nr_children; j++) {
 			struct resource *child = &icon->children[j];
@@ -671,34 +671,34 @@ bool _icon_init(const char *exe_path)
 		return false;
 	}
 
-	// expect DOS header
+	// 期望看到 DOS 头
 	if (!buffer_expect_string(&buf, "MZ", 2))
 		goto error;
 	if (buffer_remaining(&buf) < sizeof(struct dos_header))
 		goto error;
 
-	// seek to PE header
+	// 定位到 PE 头
 	buffer_skip(&buf, offsetof(struct dos_header, lfanew));
 	buffer_seek(&buf, buffer_read_int32(&buf));
 	if (!buffer_expect_string(&buf, "PE\0\0", 4))
 		goto error;
 
-	// read relevant data from PE header
+	// 从 PE 头里读需要的数据
 	uint32_t res_virt_addr;
 	uint32_t res_virt_size;
 	uint16_t nr_vmas;
 	if (!read_pe_header(&buf, &res_virt_addr, &res_virt_size, &vma, &nr_vmas))
 		goto error;
 
-	// calculate size of expanded process image
+	// 算出展开后进程映像的大小
 	size_t vma_size = 0;
 	for (int i = 0; i < nr_vmas; i++) {
 		vma_size = max(vma_size, vma[i].virt_addr + vma[i].size);
 	}
 
-	// load sections into memory at correct offsets
-	// TODO: use an abstraction for virtual memory lookups that doesn't involve
-	//       copying memory
+	// 把各节装载到内存里正确的偏移处
+	// TODO：给虚拟内存查询做一层抽象，避免
+	//       靠拷内存来实现
 	buf.buf = realloc(buf.buf, vma_size);
 	buf.size = vma_size;
 	for (int i = nr_vmas - 1; i >= 0; i--) {
