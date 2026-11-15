@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **139** 个开关，其中 **25** 个没有就近注释。
+共 **140** 个开关，其中 **25** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -51,15 +51,15 @@
 | 容器与内存 | `XSYS4_DG_MISS_FILTER` | `src/vm.c:1535` | 收窄 DG_MISS 输出 |
 | 容器与内存 | `XSYS4_DG_PAGE_DBG` | `src/vm.c:1472` | 委托页生命周期诊断 |
 | 容器与内存 | `XSYS4_MEM_STAT` | `src/vm.c:4723` | 堆内存与 RSS 实时统计 |
-| 呈现与输入 | `XSYS4_ACT_CLICKABLE_ALL` | `src/parts/activity.c:733` | 把所有**活动文件里声明**的部件标为可点（运行时建的 900000xxx 不受影响） |
-| 呈现与输入 | `XSYS4_ACT_DBG` | `src/parts/activity.c:887` | 活动装载与点击派发诊断 |
-| 呈现与输入 | `XSYS4_ACT_DEBUG` | `src/parts/activity.c:1052` | 活动诊断的旧开关 |
+| 呈现与输入 | `XSYS4_ACT_CLICKABLE_ALL` | `src/parts/activity.c:754` | 把所有**活动文件里声明**的部件标为可点（运行时建的 900000xxx 不受影响） |
+| 呈现与输入 | `XSYS4_ACT_DBG` | `src/parts/activity.c:908` | 活动装载与点击派发诊断 |
+| 呈现与输入 | `XSYS4_ACT_DEBUG` | `src/parts/activity.c:1073` | 活动诊断的旧开关 |
 | 呈现与输入 | `XSYS4_ACT_PART_DBG` | `src/parts/parts.c:2107` | 打印活动部件的建造解析（名字/类型/尺寸/表示領域/flat 名）与 300 号段之后的 SetPos/SetZ |
 | 呈现与输入 | `XSYS4_CLICK_RETARGET` | `src/parts/message.c:73` | 点击被遮挡后重定向到下层部件 |
 | 呈现与输入 | `XSYS4_CTRL_DBG` | `src/parts/parts.c:1457` | controller 栈、视觉地板（cover_layer）、hide/remove 事件 |
 | 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:341` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
 | 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:312` | 输入命中的候选部件表与点击状态 |
-| 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:1076` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
+| 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:1097` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
 | 呈现与输入 | `XSYS4_PARTS_DUMP_MAX` | `src/parts/parts.c:2978` | — |
 | 呈现与输入 | `XSYS4_PARTS_NO_BASE` | `src/parts/parts.c:2816` | — |
 | 呈现与输入 | `XSYS4_UPD_DBG` | `src/parts/parts.c:1474` | PE_Update 的每帧诊断 |
@@ -88,9 +88,10 @@
 | 其它 | `XSYS4_ENV_DBG` | `src/vm.c:2821` | — |
 | 其它 | `XSYS4_EX_DBG` | `src/hll/MainEXFile.c:531` | 〔摘〕所有任务都会被判成地图任务、剧情整段跳过——所以必须能看见。 |
 | 其它 | `XSYS4_EX_DUMP` | `src/parts/activity.c:610` | 按部件名 dump 整棵 EX 子树（查「尺寸」「表示領域」写在哪个键上）；值=部件名 |
+| 其它 | `XSYS4_EX_LAYOUT_FREE` | `src/parts/activity.c:692` | [D214 已转正] EX 装载的布局盒/用户组件初值改为 FREE（保留 EX 绝对坐标），避免 VERTICAL 自动重排把子部件推到屏幕外；默认生效，=0 回退做 A/B |
 | 其它 | `XSYS4_FLAT_DBG` | `src/parts/flat.c:924` | 打印 flat 的加载名/hdr 尺寸/库数，以及渲染时的 flat 指针与部件几何（空 flat 会让部件退化成 0x0） |
 | 其它 | `XSYS4_G14_WATCH` | `src/vm.c:2735` | [诊断] 只在 global[14] 的值变化时打印 ip/旧值/新值/栈/调用栈（抓单例被覆写） |
-| 其它 | `XSYS4_GSAVE_DBG` | `src/savedata.c:755` | 〔摘〕the printable type name instead. |
+| 其它 | `XSYS4_GSAVE_DBG` | `src/savedata.c:766` | 〔摘〕the printable type name instead. |
 | 其它 | `XSYS4_HEAP_LIVE_LIMIT` | `src/heap.c:111` | 堆存活槽上限，超了报警 |
 | 其它 | `XSYS4_HLL_ARGDBG` | `src/ffi.c:914` | 打印 HLL 调用的实际参数值（排查"参数顺序/位宽错"时用） |
 | 其它 | `XSYS4_HLL_REFDBG` | `src/ffi.c:861` | [诊断] 引用型 HLL 返回：打印反解 (page_slot,index) 是否成功；默认只打失败项 |
@@ -134,7 +135,7 @@
 | 其它 | `XSYS4_REFREF_DBG` | `src/vm.c:2581` | — |
 | 其它 | `XSYS4_REF_AT` | `src/vm.c:2497` | — |
 | 其它 | `XSYS4_RSS_LIMIT` | `src/vm.c:2298` | 进程 RSS 上限，超了报警 |
-| 其它 | `XSYS4_SAVE_GROUP_ANY` | `src/savedata.c:729` | — |
+| 其它 | `XSYS4_SAVE_GROUP_ANY` | `src/savedata.c:740` | — |
 | 其它 | `XSYS4_SLOT_ID` | `src/heap.c:254` | 打印稳定槽 ID，便于跨日志对照同一对象 |
 | 其它 | `XSYS4_SP_BALANCE` | `src/vm.c:1869` | 每次函数返回校验栈平衡（失败即报） |
 | 其它 | `XSYS4_SP_TRACE` | `src/vm.c:2463` | 环形缓冲记录栈指针变化，抓"玄学栈漂移" |

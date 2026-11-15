@@ -675,6 +675,27 @@ static int build_part(struct activity_part *part, int parent_no)
 		       part->cg_name ? display_sjis0(part->cg_name) : "");
 
 	PE_SetComponentType(part->parts_no, part->type, 1);
+	/* [D214] EX 容器里的子元素全部是**静态绝对坐标**（座標），但
+	 * parts_state_reset() 给 PARTS_LAYOUT_BOX 的默认 layout_type 是
+	 * VERTICAL；parts_do_layout() 因而把子部件按各自高度依次往下堆，
+	 * 整批推到屏幕外。实测回想记录对话框：1920x1080 -> 1080 -> 1306
+	 * (+226) -> 2016 (+710) -> 2056 (+40)，与垂直累加逐项吻合，
+	 * 两个 TextButton 因此永远点不到，SceneStack@Exit 不触发，剧情卡死。
+	 *
+	 * 上游默认 VERTICAL 是给「运行时用 SetLayoutBoxLayoutType 显式声明
+	 * 自动布局」的容器用的；EX 装载的静态容器不该走自动布局。
+	 * 这里只改 EX 装载时的初值，AIN 之后显式调用仍会覆盖，语义不冲突。
+	 * D214 A/B 已验证（按钮从屏幕外 y=2016+ 回到 EX 声明的 (736,880)，
+	 * 标题菜单渲染与命中区一致），默认生效；XSYS4_EX_LAYOUT_FREE=0 回退。 */
+	static int ex_layout_free = -1;
+	if (ex_layout_free < 0) {
+		const char *e = getenv("XSYS4_EX_LAYOUT_FREE");
+		ex_layout_free = e && (!strcmp(e, "0")) ? 0 : 1;
+	}
+	if (ex_layout_free &&
+	    (part->type == ACT_COMP_LAYOUT_BOX || part->type == ACT_COMP_PANEL ||
+	     part->type == ACT_COMP_FORM || part->type == ACT_COMP_USER_COMPONENT))
+		PE_SetLayoutBoxLayoutType(part->parts_no, 0 /* PARTS_LAYOUT_FREE */);
 	/* 用户组件：先给一个真实尺寸，命中矩形才有面积。
 	 * 宽度优先取 参数 里的「幅Ｗ」，其次 表示領域，最后用 196（Rance10 的
 	 * 菜单默认宽度）。高度暂用 40；控件层做出来后再由文字度量决定。 */

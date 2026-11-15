@@ -27,10 +27,11 @@ done
 # [L0] 进地图要重试：标题菜单出画时刻受贴图加载影响，单次点击命中率实测 ~30%，
 # 一次跑测 3 分钟，赌不起。clickunless 只在"还没到目标场景"时点，
 # 进了就不再点（避免多点一下打开别的面板）。
-# [D207] 标题 Chapter1 按钮的真实命中区是 (100,60)，不是 PARTS_DUMP 里的
-# (646,738) 装载快照。旧坐标让基线常年 scene_quest_map=0 / activities=13；
-# 换坐标后基线才真的能进第一章地图。可用 RANCE10_BASE_SEQ 覆盖。
-export RANCE10_LIVE_SEQ="${RANCE10_BASE_SEQ:-wait:2500;clickunless:100,60:SceneQuestMap;until:SceneQuestMap:12000;clickunless:100,60:SceneQuestMap;until:SceneQuestMap:12000;clickunless:100,60:SceneQuestMap;until:SceneQuestMap:12000;clickunless:100,60:SceneQuestMap;until:SceneQuestMap:15000;wait:15000}"
+# [D214] 标题 Chapter1 按钮命中区 = EX 声明的 (646,738)。
+# D207 记的 (100,60) 是布局盒被默认 VERTICAL 重排后堆到左上角的产物，
+# 并非真实坐标；D214 把 EX 布局盒初值改为 FREE 后，按钮回到 EX 坐标，
+# 标题菜单也恢复正确渲染。可用 RANCE10_BASE_SEQ 覆盖。
+export RANCE10_LIVE_SEQ="${RANCE10_BASE_SEQ:-wait:2500;clickunless:646,738:SceneQuestMap;until:SceneQuestMap:12000;clickunless:646,738:SceneQuestMap;until:SceneQuestMap:12000;clickunless:646,738:SceneQuestMap;until:SceneQuestMap:12000;clickunless:646,738:SceneQuestMap;until:SceneQuestMap:15000;wait:15000}"
 # [L0] The save directory is part of the fixture, not ambient state. Each tag
 # gets its own clean dir under logs/savedir/; point RANCE10_BASE_SAVE_DIR at an
 # existing one to verify a write -> read round trip across two runs.
