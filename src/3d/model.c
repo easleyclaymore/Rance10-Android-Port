@@ -112,7 +112,7 @@ static GLuint load_texture(struct archive *aar, const char *path, const char *na
 
 static GLuint *load_texture_list(struct archive *aar, const char *path, const char *name, int *nr_textures_out, bool *has_alpha_out)
 {
-	// Load the base texture (e.g. face.png)
+	// 装载基础纹理（例如 face.png）
 	GLuint tex = load_texture(aar, path, name, has_alpha_out);
 	if (!tex)
 		return NULL;
@@ -120,7 +120,7 @@ static GLuint *load_texture_list(struct archive *aar, const char *path, const ch
 	int nr_textures = 0;
 	textures[nr_textures++] = tex;
 
-	// Try to load additional textures (e.g. face[1].png, face[2].png, etc.)
+	// 尝试装载附加纹理（例如 face[1].png、face[2].png…）
 	const char *ext = strrchr(name, '.');
 	if (ext) {
 		for (;;) {
@@ -157,7 +157,7 @@ static bool init_material(struct material *material, struct pol_material *m, str
 		material->specular_map = load_texture(aar, path, m->textures[SPECULAR_MAP], NULL);
 	if (m->textures[ALPHA_MAP]) {
 		if (has_alpha && !strcmp(m->textures[COLOR_MAP], m->textures[ALPHA_MAP])) {
-			// Do nothing; the alpha channel of the color map is used.
+			// 什么都不做；用颜色贴图的 alpha 通道。
 		} else {
 			material->alpha_map = load_texture(aar, path, m->textures[ALPHA_MAP], NULL);
 		}
@@ -181,8 +181,8 @@ static bool init_material(struct material *material, struct pol_material *m, str
 			material->rim_color[0] = amt_m->fields[AMT_RIM_R];
 			material->rim_color[1] = amt_m->fields[AMT_RIM_G];
 			material->rim_color[2] = amt_m->fields[AMT_RIM_B];
-			// Very small rim_exponent value should not be used for rim
-			// lighting. (e.g. meizi.amt in TT3)
+			// 边缘光指数（rim_exponent）非常小时不应当用于
+			// 边缘光（例如 TT3 里的 meizi.amt）。
 			if (material->rim_exponent < FP16_MIN)
 				material->rim_exponent = 0.0f;
 		}
@@ -255,11 +255,11 @@ static void calc_tangent(struct pol_mesh *m, struct pol_triangle *t, vec4 tangen
 		vec3 s;
 		glm_vec3_copy(sdir, s);
 
-		// Gram-Schmidt orthogonalize.
+		// Gram-Schmidt 正交化。
 		glm_vec3_muladds(t->normals[i], -glm_vec3_dot(t->normals[i], s), s);
 		glm_vec3_normalize(s);
 
-		// Calculate handedness.
+		// 计算手性。
 		vec3 c;
 		glm_vec3_cross(t->normals[i], sdir, c);
 		float w = (glm_vec3_dot(c, tdir) < 0.0) ? -1.0 : 1.0;
@@ -469,7 +469,7 @@ static struct bone *add_bone(struct model *model, struct pol *pol, struct pol_bo
 
 	struct bone *parent = NULL;
 	if (pol_bone->parent >= 0) {
-		// Parent bone must appear before its children in model->bones.
+		// 父骨骼必须排在它的子骨骼之前（在 model->bones 里）。
 		struct pol_bone *pol_parent = pol_find_bone(pol, pol_bone->parent);
 		if (!pol_parent)
 			ERROR("Parent bone of \"%s\" is not found", pol_bone->name);
@@ -499,7 +499,7 @@ struct model *model_load(struct archive *aar, const char *path)
 	const char *basename = strrchr(path, '\\');
 	basename = basename ? basename + 1 : path;
 
-	// Load .POL file
+	// 装载 .POL 文件
 	struct archive_data *pol_file = RE_get_aar_entry(aar, path, basename, ".POL");
 	if (!pol_file) {
 		WARNING("%s\\%s.POL: not found", path, basename);
@@ -513,7 +513,7 @@ struct model *model_load(struct archive *aar, const char *path)
 	}
 	archive_free_data(pol_file);
 
-	// Load .amt file, if any
+	// 装载 .amt 文件（如果有）
 	struct amt *amt = NULL;
 	struct archive_data *amt_file = RE_get_aar_entry(aar, path, basename, ".amt");
 	if (amt_file) {
@@ -526,7 +526,7 @@ struct model *model_load(struct archive *aar, const char *path)
 	struct model *model = xcalloc(1, sizeof(struct model));
 	model->path = strdup(path);
 
-	// Load .opr file, if any
+	// 装载 .opr 文件（如果有）
 	struct archive_data *opr_file = RE_get_aar_entry(aar, path, basename, ".opr");
 	if (opr_file) {
 		opr_load(opr_file->data, opr_file->size, pol);
@@ -567,7 +567,7 @@ struct model *model_load(struct archive *aar, const char *path)
 		for (uint32_t j = 0; j < pol->materials[i].nr_children; j++) {
 			struct pol_material_group *child = &pol->materials[i].children[j];
 			if (child->nr_children >= 2) {
-				// Group node: texture blending (base + blend)
+				// 组节点：纹理混合（基础 + 混合）
 				init_material(&model->materials[material_offsets[i] + j],
 					      &child->children[0].m, amt, aar, path);
 				if (child->children[1].m.textures[COLOR_MAP]) {
@@ -767,9 +767,9 @@ static struct mot *mot_load(const char *name, struct model *model, struct archiv
 	if (model->nr_bones != (int)mot->nr_bones)
 		ERROR("%s: wrong number of bones. Expected %d but got %d", name, model->nr_bones, mot->nr_bones);
 
-	// Reorder mot->motions so that motion for model->bones[i] can be
-	// accessed by mot->motions[i]. MOT bones are applied to POL bones purely
-	// by array index; bone name and bone id are never used for matching.
+	// 重排 mot->motions，使 model->bones[i] 对应的 motion
+	// 能从 mot->motions[i] 取到。MOT 骨骼套到 POL 骨骼上纯靠
+	// 数组下标；骨骼名和骨骼 id 从不参与匹配。
 	struct mot_bone **reordered = xmalloc(mot->nr_bones * sizeof(struct mot_bone *));
 	for (uint32_t i = 0; i < mot->nr_bones; i++) {
 		reordered[model->bones_by_pol_index[i]->index] = mot->motions[i];
@@ -777,7 +777,7 @@ static struct mot *mot_load(const char *name, struct model *model, struct archiv
 	memcpy(mot->motions, reordered, mot->nr_bones * sizeof(struct mot_bone *));
 	free(reordered);
 
-	// Load optional sidecar file.
+	// 装载可选的旁挂文件。
 	if (re_plugin_version <= RE_TAPIR_PLUGIN) {
 		struct archive_data *txa_file = RE_get_aar_entry(aar, model->path, name, ".txa");
 		if (txa_file) {
