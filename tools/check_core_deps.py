@@ -41,6 +41,7 @@ SCRIPTS = [
     'tools/build/build.sh', 'tools/build/build-xsys.sh',
     'tools/env/dep.sh', 'tools/env/inst-deps.sh',
     'tools/lib/common.sh', 'tools/xsys4',
+    'tools/wip-snapshot.sh', 'tools/gen-doc-numbers.py', 'tools/gen-switches.py',
 ]
 # /tmp is fine for screenshot/log scratch files in test tooling, but a
 # hardcoded Android absolute path is not: platform detection must go through
@@ -118,6 +119,17 @@ for f, n, why, text in script_hits:
 print('Core degradation markers: %d (frozen baseline %d)' % (deg, DEGRADATION_BASELINE))
 print('Core diagnostic switches: %d (all must stay default-off)' % diag)
 fail = bool(core_hits) or bool(script_hits)
+# [D208] 文档数字腐化检查（《工程管理》§6 ⑪）：手写数字与生成结果不符即失败。
+# 单独克隆 xsystem4 时脚本自己会 SKIP，不会阻塞外部使用者。
+import subprocess
+_doc = subprocess.run([sys.executable, os.path.join(HERE, 'gen-doc-numbers.py'), '--check'],
+                      cwd=ROOT, capture_output=True, text=True)
+_doc_out = _doc.stdout.strip().splitlines()
+print('Doc numbers  : %s' % (_doc_out[-1] if _doc_out else 'no output'))
+if _doc.returncode != 0:
+    for line in _doc_out:
+        print('  DOC ' + line)
+    fail = True
 if deg > DEGRADATION_BASELINE:
     print('  CORE new HACK-POC markers: +%d' % (deg - DEGRADATION_BASELINE))
     fail = True
