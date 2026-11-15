@@ -11,12 +11,12 @@
  */
 
 /*
- * D89: the Activity subsystem used to be a block of hand written stubs in
- * hll/PartsEngine.c (f[22..52]), so ReadActivityFile() always returned 0,
- * the parts table stayed empty and nothing was ever rendered.
+ * D89：活动子系统以前是 hll/PartsEngine.c 里一堆手写的空桩
+ * （f[22..52]），所以 ReadActivityFile() 永远返回 0，
+ * 部件表一直是空的，画面什么都没画。
  *
- * The file format is System4 EX (see libsys4/src/ex.c: ex_read()). One
- * activity file holds a tree:
+ * 文件格式是 System4 EX（见 libsys4/src/ex.c: ex_read()）。一个
+ * 活动文件装的是这样一棵树：
  *
  *   アクティビティ
  *     └─ ルートパーツ            (49 children = 47 field leaves + 2 sub-nodes)
@@ -24,14 +24,14 @@
  *          ├─ 种类別情报          (type discriminator + type specific fields)
  *          └─ 子パーツ            (one node per child part, recursive)
  *
- * Strings inside the file are GBK (this is the Chinese release), and they must
- * stay GBK in memory: the AIN compares its own GBK constants against them, e.g.
- * GetActivityPartsNumber(name, "ルートパーツ"). Field *names* are therefore
- * converted to UTF-8 only for matching, never for storage.
+ * 文件里的字符串是 GBK（这是中文版），而且必须在内存里保持 GBK：
+ * AIN 会拿自己的 GBK 常量跟它们比较，例如
+ * GetActivityPartsNumber(name, ルートパーツ)。所以字段名只在
+ * 做匹配时才转成 UTF-8，存储时永远不转。
  *
- * The activity parts are materialized here, in C, because the AIN never does
- * it: the whole game script only calls Parts_SetPartsCG three times, which is
- * far too few to build a parts tree. ReadActivityFile must parse, build and
+ * 活动里的部件在这里（C 侧）实体化，因为 AIN 从不干这件事：
+ * 整个游戏脚本只调了三次 Parts_SetPartsCG，
+ * 远不足以搭出一棵部件树。ReadActivityFile 必须解析、构建并注册。
  * register.
  */
 
@@ -53,17 +53,17 @@
 
 #define ACT_DEBUG(...) do { if (activity_debug) NOTICE(__VA_ARGS__); } while (0)
 
-/* Component type numbers accepted by PE_SetComponentType() / returned by
- * PE_GetComponentType().
+/* PE_SetComponentType() 接受、PE_GetComponentType() 返回的
+ * 组件类型号。
  *
- * These are Rance10's own numbers, recovered from the game's
- * activityeditor::detail::CBatchRenameStack@GetPartsTypeName switch (AIN
- * switch #31), which maps every type number to its display name. They are
- * NOT the upstream xsystem4 numbering: Rance10 shifted most CG/gauge/flat
- * slots by a few values, so reusing the upstream constants silently made
- * every Activity component the wrong class (e.g. buttons came back as
- * CG type 11, which Activity@CreateComponent turns into a SpinBox, and
- * Activity@GetButton's ICAST then failed). */
+ * 这些是兰斯10 自己的编号，从游戏的
+ * activityeditor::detail::CBatchRenameStack@GetPartsTypeName 那个 switch
+ * （AIN switch #31）还原出来的，它把每个类型号映射到显示名。
+ * 它们不是上游 xsystem4 的编号：兰斯10 把大多数 CG/gauge/flat
+ * 槽位挪了几个值，所以沿用上游常量会让每个 Activity 组件都
+ * 悄悄变成错误的类（例如按钮回来时是 CG 类型 11，
+ * Activity@CreateComponent 会把它变成 SpinBox，
+ * 随后 Activity@GetButton 的 ICAST 就失败）。 */
 enum act_component {
 	ACT_COMP_BUTTON          = 0,
 	ACT_COMP_CHECKBOX        = 1,
@@ -92,9 +92,9 @@ enum act_component {
 	ACT_COMP_FLAT            = 26,
 	ACT_COMP_3DLAYER         = 27,
 	ACT_COMP_MOVIE           = 28,
-	/* EX-only: the editor's generic base part, whose real type lives in
-	 * its 一般状態 child. Resolved during parsing, never passed to the
-	 * engine. */
+	/* 仅 EX：编辑器的通用基础部件，它的真实类型存放在
+	 * 一般状態 子节点里。解析阶段就解析掉，
+	 * 从不传给引擎。 */
 	ACT_COMP_LOW_LEVEL       = -2,
 };
 
@@ -124,9 +124,9 @@ struct activity_part {
 	/* 种类別情报 / 一般状态 */
 	char *cg_name;         /* GBK bytes, empty when none */
 	int deform;
-	/* [D119] Button / flat parts carry フラット名 + 尺寸 instead of a CG
-	 * name (see exdump of NetworkConfirmation.pactex). Without these the
-	 * parts stay 0x0, hitbox 0x0, and buttons can never be clicked. */
+	/* [D119] 按钮/flat 部件带的是 フラット名 + 尺寸，而不是 CG 名
+	 * （见 NetworkConfirmation.pactex 的 exdump）。没有这些，
+	 * 部件尺寸就是 0x0、命中盒 0x0，按钮永远点不到。 */
 	char *flat_name;       /* GBK bytes, NULL when absent */
 	int w, h;              /* explicit 尺寸, 0 when absent */
 	/* [D217] 消息窗口组件的 种类別情报（EX 原文见 MessageWindow01.pactex） */
@@ -135,10 +135,10 @@ struct activity_part {
 	int font_color[3];     /* 字体色 = (255,255,255) */
 	int char_space, line_space; /* 文字间距 = -2 / 行间距 = 7 */
 
-	/* 用户组件 (component type 15): the EX payload is
+	/* 用户组件（component type 15）：EX 负载是
 	 *   数据 = ['オブジェクト名', 'TextButton', '参数', '标题,从头开始']
-	 * i.e. an engine built-in widget plus its comma-separated parameters.
-	 * Rance10's title menu is entirely made of these. */
+	 * 也就是引擎的一个内建控件加上它逗号分隔的参数。
+	 * 兰斯10 的标题菜单完全由它们构成。 */
 	char *uc_object;       /* GBK bytes: 'TextButton', ... */
 	char *uc_params;       /* GBK bytes: '标题,从头开始' */
 	/* [D122] EX 的 数据 是 [键,值,键,值,...]。此前只抽取了
@@ -195,10 +195,10 @@ static char *dup_text(struct string *s)
 
 static struct ex_tree *get_child(struct ex_tree *t, const char *utf8_name);
 
-/* Look up one key in a 用户组件 payload list
- * (数据 = ['オブジェクト名','TextButton','参数','...']), returning its value as
- * GBK bytes. `key` is UTF-8 in source and converted to the encoding used by the
- * EX file. */
+/* 在「用户组件」的负载列表里查一个键
+ * （数据 = ['オブジェクト名','TextButton','参数','...']），把它的值当作
+ * GBK 字节返回。`key` 在源码里是 UTF-8，会转成
+ * EX 文件用的编码。 */
 static char *uc_param(struct ex_tree *type_info, const char *key)
 {
 	struct ex_tree *c = get_child(type_info, "数据");
@@ -336,7 +336,7 @@ static char *get_string(struct ex_tree *t, const char *name)
 	return dup_text(c->leaf.value.s);
 }
 
-/* list<int|float> field -> int array */
+/* list<int|float> 字段 -> int 数组 */
 static bool get_int_list(struct ex_tree *t, const char *name, int *out, int n)
 {
 	struct ex_tree *c = get_child(t, name);
@@ -369,14 +369,14 @@ static bool get_float_list(struct ex_tree *t, const char *name, float *out, int 
 	return true;
 }
 
-/* Map a パーツ类型 name from the EX file to a Rance10 component type number.
- * Returns -1 when the name is not recognised. */
+/* 把 EX 文件里的 パーツ类型 名映射成兰斯10 的组件类型号。
+ * 名字不认识时返回 -1。 */
 static int component_type_from_name(const char *type_name)
 {
 	if (!type_name)
 		return -1;
-	/* EX strings are stored in the game's native encoding (GBK for this
-	 * build); convert once so the comparisons below use UTF-8 literals. */
+	/* EX 字符串存的是游戏的原生编码（这个版本是 GBK）；
+	 * 这里转一次，好让下面的比较能用 UTF-8 字面量。 */
 	char *u = sjis2utf(type_name, strlen(type_name));
 	if (!u)
 		return -1;
@@ -570,12 +570,12 @@ static void parse_part_fields(struct ex_tree *node, struct activity_part *part)
 		part->cg_name = strdup("");
 }
 
-/* XSYS4_USERCOMP_DBG: dump the EX subtree of a user-component part.
- * Rance10's title menu (Menu / Chapter1 / Load / Enquite / Yakata / CardList)
- * is entirely made of 用户组件 (component type 15). Activity@CreateComponent's
- * switch has no case 15, so the engine is supposed to instantiate a child
- * activity named somewhere in this subtree -- and we currently map type 15 to
- * PARTS_CG, which draws nothing because no texture is ever set. */
+/* XSYS4_USERCOMP_DBG：把用户组件部件的 EX 子树整个转储出来。
+ * 兰斯10 的标题菜单（Menu / Chapter1 / Load / Enquite / Yakata / CardList）
+ * 完全由用户组件构成（组件类型 15）。Activity@CreateComponent 的
+ * switch 里没有 case 15，所以引擎本应实例化这棵子树里
+ * 某处指定的一个子活动 —— 而我们现在把类型 15 映射成
+ * PARTS_CG，它一个像素也不画，因为从来没设纹理。 */
 static void dump_ex_tree(struct ex_tree *t, int depth)
 {
 	if (!t || depth > 4)
@@ -667,9 +667,9 @@ static void flatten_parts(struct activity_part *part, struct activity_part **fla
 		flatten_parts(part->children[i], flat, n);
 }
 
-/* Load flat artwork for one state. Returns false when the archive has no such
- * asset (a normal condition: the EX group names and the archive layout differ
- * per part kind). */
+/* 给某个状态装载 flat 美术资源。压缩包里没有这个资源时返回 false
+ * （这是正常情况：EX 的组名和压缩包布局
+ * 按部件种类而不同）。 */
 static bool set_part_flat(int parts_no, const char *name, int state)
 {
 	struct string *s = cstr_to_string(name);
@@ -679,7 +679,7 @@ static bool set_part_flat(int parts_no, const char *name, int state)
 }
 
 /* ------------------------------------------------------------------ */
-/* building the engine parts tree                                     */
+/* 构建引擎部件树                                                     */
 /* ------------------------------------------------------------------ */
 
 static int build_part(struct activity_part *part, int parent_no)
@@ -801,7 +801,7 @@ static int build_part(struct activity_part *part, int parent_no)
 		PE_SetPassCursor(part->parts_no, true);
 
 	if (part->type == ACT_COMP_LAYOUT_BOX) {
-		/* the layout box owns its children's placement */
+		/* 布局盒自己决定子部件的位置 */
 	}
 
 	if (part->cg_name && *part->cg_name && part->type == ACT_COMP_CG) {
@@ -857,22 +857,22 @@ static int build_part(struct activity_part *part, int parent_no)
 		}
 	}
 
-	/* [D119] flat/button parts load their artwork from the FLAT archive.
-	 * PE_SetPartsFlat() sets the part dimensions (parts_set_dims), which in
-	 * turn builds a non-empty hitbox; that is what makes the OK/Cancel
-	 * buttons reachable by mouse input. */
-	/* Flat artwork. A widget part (button, checkbox, ...) stores a *flat
+	/* [D119] flat/按钮部件从 FLAT 压缩包装载美术资源。
+	 * PE_SetPartsFlat() 会设部件尺寸（parts_set_dims），
+	 * 从而建出一个非空的命中盒；
+	 * 这正是 OK/Cancel 按钮能被鼠标点到的原因。 */
+	/* flat 美术资源。控件类部件（button、checkbox…）存的是「flat 组」名
 	 * group* name (e.g. "共通素材\シス／按钮／幅４７６"); the archive holds
-	 * one asset per visual state, joined with the fullwidth solidus:
+	 * 每个视觉状态一个资源，用全角斜杠连接：
 	 * "<group>／一般", "<group>／オン", "<group>／DOWN", ... Plain picture
-	 * parts store a full name instead, so try the exact name first and only
+	 * 部件存的则是完整名，所以先按原名试，
 	 * then the 一般 variant. */
 	if (part->flat_name && *part->flat_name) {
 		char *variant = NULL;
 		bool flat_ok = set_part_flat(part->parts_no, part->flat_name, 1);
 		if (!flat_ok) {
-			/* Both the separator and the state name are written in the
-			 * game's own encoding. */
+			/* 分隔符和状态名都用的是
+			 * 游戏自己的编码。 */
 			char *sep = utf2sjis("／", strlen("／"));
 			char *suffix = utf2sjis("一般", strlen("一般"));
 			if (sep && suffix) {
@@ -926,7 +926,7 @@ static int build_part(struct activity_part *part, int parent_no)
 }
 
 /* ------------------------------------------------------------------ */
-/* public API                                                         */
+/* 对外 API                                                           */
 /* ------------------------------------------------------------------ */
 
 static struct activity *find_activity(const char *name)
@@ -1061,9 +1061,9 @@ int activity_part_cg_name_at(struct activity *act, int index, const char **out)
 }
 
 /*
- * Read an activity file from the PACT archive and build the parts tree.
- * `name` is the activity name the AIN will use afterwards, `file` the archive
- * entry name (both without extension in practice).
+ * 从 PACT 压缩包读一个活动文件并构建部件树。
+ * `name` 是 AIN 之后要用的活动名，`file` 是压缩包里的条目名
+ * （实际两者都不带扩展名）。
  */
 bool activity_read(struct string *name, struct string *file)
 {
@@ -1097,8 +1097,8 @@ bool activity_read(struct string *name, struct string *file)
 	if (!act->name[0])
 		act->name = strdup(file->text);
 
-	/* Metadata blocks are positional-ish but the set varies (4/5/6 blocks),
-	 * so walk them by type instead of by index. */
+	/* 元数据块大致按位置排，但块数会变（4/5/6 块），
+	 * 所以按类型遍历，而不是按下标。 */
 	int nr_ints = 0, nr_strs = 0;
 	for (uint32_t i = 1; i < ex->nr_blocks; i++) {
 		struct ex_value *v = &ex->blocks[i].val;
@@ -1133,7 +1133,7 @@ bool activity_read(struct string *name, struct string *file)
 
 	ex_free(ex);
 
-	/* replace a previous load of the same name */
+	/* 替换同名的上一次装载 */
 	struct activity *old = find_activity(act->name);
 	if (old) {
 		activity_release(act->name);
@@ -1197,7 +1197,7 @@ bool activity_add_parts(struct string *name, struct string *parts_name, int part
 	struct activity *act = find_activity(name ? name->text : NULL);
 	if (!act || !parts_name)
 		return false;
-	/* already registered (e.g. it came from the file) */
+	/* 已经注册过了（例如它来自文件） */
 	for (int i = 0; i < act->nr_parts; i++) {
 		if (act->flat[i]->name && !strcmp(act->flat[i]->name, parts_name->text))
 			return true;
