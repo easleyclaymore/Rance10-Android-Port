@@ -1,4 +1,4 @@
-/* Core-side PAL state and injected data directory. No OS headers here. */
+/* Core 侧的 PAL 状态与注入的数据目录。这里不含任何 OS 头文件。 */
 #include <stdlib.h>
 #include <string.h>
 
@@ -17,12 +17,12 @@ void pal_set(const Platform *platform)
 	active_platform = platform;
 }
 
-/* Data directory resolution order:
+/* 数据目录的解析顺序：
  *   1. explicit injection (xsys4_set_data_dir)
  *   2. XSYS4_DATA_DIR environment variable
  *   3. build-time default injected by meson
  *   4. portable relative fallback
- * The process owns the injected string; the getter never returns NULL.
+ * 注入的字符串由进程拥有；getter 永远不会返回 NULL。
  */
 static char *injected_data_dir;
 

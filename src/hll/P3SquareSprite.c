@@ -43,15 +43,15 @@ static bool P3SquareSprite_Copy(int dest_handle, int src_handle, int size, struc
 	int index = 0;
 	for (int y = -size; y <= size; ++y) {
 		for (int x = -size; x <= size; ++x) {
-			// Check if we should draw this tile
+			// 判断这个瓦片要不要画
 			if (matrix->values[index++].i == 0)
 				continue;
 
-			// Isometric coordinate conversion
+			// 等距坐标转换
 			int screen_pos_x = canvas_center_x + (x - y - 1) * half_w;
 			int screen_pos_y = canvas_center_y + (x + y - 1) * half_h;
 
-			// Draw the sprite
+			// 画精灵
 			gfx_copy_use_amap_border(dest_tex, screen_pos_x, screen_pos_y, src_tex, 0, 0, tile_w, tile_h, 1);
 			gfx_copy_amap_max(dest_tex, screen_pos_x, screen_pos_y, src_tex, 0, 0, tile_w, tile_h);
 		}

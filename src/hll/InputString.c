@@ -83,9 +83,9 @@ static void handle_input(const char *text)
 	has_editing_text = false;
 }
 
-// TODO: This function has to draw the text at the given coordinates/size/weight.
-//       Need some kind of interface for creating textures that are always rendered
-//       on top of the scene. Should ideally be independent of SACT.
+// TODO：这个函数得在给定坐标/字号/字重下把文字画出来。
+//       需要一种「总是画在场景最上层」的纹理创建接口。
+//       理想情况下不依赖 SACT。
 static void handle_editing(const char *text, int start, int length)
 {
 	has_editing_text = *text != '\0';

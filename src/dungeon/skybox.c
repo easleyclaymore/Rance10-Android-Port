@@ -33,7 +33,7 @@ struct skybox {
 struct skybox *skybox_create(enum draw_dungeon_version version, struct dtx *dtx)
 {
 	if (version == DRAW_DUNGEON_2 || version == DRAW_FIELD) {
-		// Skybox is not used in these games.
+		// 这些游戏不用天空盒。
 		return NULL;
 	};
 
@@ -41,7 +41,7 @@ struct skybox *skybox_create(enum draw_dungeon_version version, struct dtx *dtx)
 	gfx_load_shader(&s->shader, "shaders/dungeon_skybox.v.glsl", "shaders/dungeon_skybox.f.glsl");
 	s->proj_transform = glGetUniformLocation(s->shader.program, "proj_transform");
 
-	// Set up a vertex array.
+	// 建立顶点数组。
 	const GLfloat vertices[] = {
 		-1.0,  1.0, -1.0,
 		-1.0, -1.0, -1.0,
@@ -73,7 +73,7 @@ struct skybox *skybox_create(enum draw_dungeon_version version, struct dtx *dtx)
 	glBindVertexArray(0);
 	s->nr_indices = sizeof(indices) / sizeof(GLushort);
 
-	// Set up a cubemap texture.
+	// 建立立方体贴图。
 	glGenTextures(1, &s->texture);
 	glBindTexture(GL_TEXTURE_CUBE_MAP, s->texture);
 	const GLenum targets[6] = {

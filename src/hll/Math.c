@@ -192,7 +192,7 @@ static bool Math_BezierCurve(struct page **x_array, struct page **y_array, int n
 		coeffs[i][1] = (*y_array)->values[i].i;
 	}
 
-	// De Casteljau's algorithm.
+	// De Casteljau 算法。
 	for (; num > 1; num--) {
 		for (int i = 0; i < num - 1; i++)
 			glm_vec2_lerp(coeffs[i], coeffs[i + 1], t, coeffs[i]);
@@ -204,8 +204,8 @@ static bool Math_BezierCurve(struct page **x_array, struct page **y_array, int n
 	return true;
 }
 
-/* AIN Math f[37]: int Clamp(int v, int lo, int hi). The float overload
- * (f[38]) shares this symbol; only the integer form is implemented. */
+/* AIN Math f[37]：int Clamp(int v, int lo, int hi)。float 重载
+ * （f[38]）共用这个符号；这里只实现整数形式。 */
 static int Math_Clamp(int v, int lo, int hi)
 {
 	if (v < lo)

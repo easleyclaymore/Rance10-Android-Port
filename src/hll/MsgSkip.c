@@ -68,9 +68,9 @@ static int MsgSkip_Init(struct string *name)
 	nr_flags = ain->nr_messages;
 	flags = xcalloc((nr_flags + 7) / 8, 1);
 
-	// Most games have system.GetSaveFolderName() prepended to `name`, but some
-	// games pass a constant string "SaveData\\MsgSkip.asd". If you pass it to
-	// savedir_path() as it is, "SaveData/" will be duplicated, so remove it.
+	// 多数游戏会在 `name` 前面带上 system.GetSaveFolderName()，但有些
+	// 游戏传的是固定字符串 "SaveData\\MsgSkip.asd"。原样交给
+	// savedir_path() 会把 "SaveData/" 重复一次，所以去掉它。
 	if (!strncmp(name->text, "SaveData\\", 9)) {
 		save_path = savedir_path(name->text + 9);
 	} else {
@@ -81,7 +81,7 @@ static int MsgSkip_Init(struct string *name)
 	uint8_t *data = file_read(save_path, &data_size);
 	if (data) {
 		if (data_size == (size_t)ain->nr_messages) {
-			// Migrate from the old format.
+			// 从旧格式迁移。
 			for (int i = 0; i < data_size; i++) {
 				if (data[i])
 					flags[i >> 3] |= 0x80 >> (i & 7);
@@ -198,7 +198,7 @@ static void vmMsgSkip_Close(possibly_unused int handle)
 static int vmMsgSkip_Query(possibly_unused int handle, int msgnum)
 {
 	int r = MsgSkip_GetFlag(msgnum);
-	// vmMsgSkip does not have an explicit set function.
+	// vmMsgSkip 没有显式的设置函数。
 	MsgSkip_SetFlag(msgnum);
 	return state && r;
 }

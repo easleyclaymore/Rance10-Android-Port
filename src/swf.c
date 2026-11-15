@@ -279,7 +279,7 @@ static struct swf_tag_define_bits_lossless *parse_define_bits_lossless(struct bu
 		ERROR("DefineBitsLossless: broken bitmap data");
 
 	uint8_t alpha_const = type == TAG_DEFINE_BITS_LOSSLESS ? 0xff : 0;
-	// (A)RGB -> RGBA
+	// (A)RGB 转 RGBA
 	for (unsigned long i = 0; i < len; i += 4) {
 		uint8_t alpha = pixels[i] | alpha_const;
 		pixels[i + 0] = pixels[i + 1];
@@ -647,7 +647,7 @@ struct swf *aff_load(uint8_t *data, size_t size)
 		return NULL;
 	}
 
-	// AFF -> SWF
+	// AFF 转成 SWF
 	size -= 16;
 	uint8_t *buf = xmalloc(size);
 	memcpy(buf, data + 16, size);

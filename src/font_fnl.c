@@ -109,7 +109,7 @@ static struct fnl_bitmap_glyph *fnl_get_bitmap_glyph(struct fnl_bitmap_size *bit
 	out->advance = glyph->width;
 	out->pixels = xcalloc(glyph_w, glyph_h);
 
-	// expand 1-bit bitmap to 8-bit
+	// 把 1 位位图扩成 8 位
 	for (unsigned row = 0; row < glyph_h; row++) {
 		uint8_t *dst = out->pixels + ((glyph_h - 1) - row) * glyph_w;
 		for (unsigned col = 0; col < glyph->width; col++) {
@@ -143,8 +143,8 @@ static bool fnl_font_get_glyph(struct font_size *_size, struct glyph *glyph, uin
 	const unsigned off_x = GLYPH_BORDER_SIZE;
 	const unsigned off_y = GLYPH_BORDER_SIZE;
 
-	// Sample each pixel in size->denominator`-sized blocks and compute the average.
-	// TODO: no need to sample every pixel; 4 should be fine?
+	// 按 size->denominator 大小的块采样每个像素求平均。
+	// TODO：不必每个像素都采样，4 个应该够？
 	uint8_t *pixels = xcalloc(1, width * height);
 	unsigned *acc = xcalloc(block_width * block_height, sizeof(unsigned));
 	for (unsigned i = 0; i < block_width * block_height; i++) {
@@ -201,7 +201,7 @@ struct font *fnl_font_load(struct fnl *lib, unsigned index)
 	struct fnl_font *lib_font = &lib->fonts[index];
 	struct font_fnl *font = xcalloc(1, sizeof(struct font_fnl));
 
-	// initialize bitmap sizes
+	// 初始化位图尺寸
 	font->nr_bitmap_sizes = lib_font->nr_faces;
 	font->bitmap_sizes = xcalloc(font->nr_bitmap_sizes, sizeof(struct fnl_bitmap_size));
 	for (unsigned i = 0; i < font->nr_bitmap_sizes; i++) {
@@ -211,7 +211,7 @@ struct font *fnl_font_load(struct fnl *lib, unsigned index)
 		bitsize->glyphs = xcalloc(bitsize->nr_glyphs, sizeof(struct fnl_bitmap_glyph*));
 	}
 
-	// initialize render sizes (downscaled)
+	// 初始化渲染尺寸（缩小后的）
 	font->nr_sizes = font->nr_bitmap_sizes * 12;
 	font->sizes = xcalloc(font->nr_sizes, sizeof(struct fnl_font_size));
 	for (unsigned i = 0; i < font->nr_bitmap_sizes; i++) {

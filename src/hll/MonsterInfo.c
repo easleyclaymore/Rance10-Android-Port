@@ -86,7 +86,7 @@ static bool parse_monster_info(char *text)
 	struct motion *current_motion = NULL;
 
 	for (;;) {
-		// Skip whitespaces and comments
+		// 跳过空白和注释
 		for (;;) {
 			while (isspace(*text))
 				text++;
@@ -126,7 +126,7 @@ static bool parse_monster_info(char *text)
 				return false;
 			}
 		} else if (!current_motion) {
-			// Monster context
+			// 怪物上下文
 			float f, x, y, z;
 			if (!*text) {
 				WARNING("unexpected EOF");
@@ -164,7 +164,7 @@ static bool parse_monster_info(char *text)
 				return false;
 			}
 		} else {
-			// Motion context
+			// 动作上下文
 			int begin, end;
 			if (!*text) {
 				WARNING("unexpected EOF");
@@ -175,7 +175,7 @@ static bool parse_monster_info(char *text)
 				current_motion->name = utf2sjis(string_buf, 0);
 			} else if (MATCH("データ = " QUOTED_STRING, string_buf)) {
 				current_motion->data_name = utf2sjis(string_buf, 0);
-// XXX: sscanf doesn't match this string on Windows for some reason...
+// XXX：Windows 上 sscanf 因为某种原因匹配不了这个字符串……
 #define LOOP_STR "タイプ\x09\x09= ループ"
 			} else if (!strncmp(text, LOOP_STR, sizeof(LOOP_STR)-1)) {
 				text += sizeof(LOOP_STR)-1;
@@ -219,7 +219,7 @@ static bool MonsterInfo_Load(struct string *filename)
 		return false;
 	}
 
-	// We could parse the SJIS text directly, but convert it to UTF-8 for code
+	// 本来可以直接解析 SJIS 文本，但为了代码里统一 UTF-8，先转一下
 	// clarity.
 	char *sjis_text = xmalloc(dfile->size + 1);
 	memcpy(sjis_text, dfile->data, dfile->size);

@@ -101,7 +101,7 @@ static void prepare_effect_shader(struct gfx_render_job *job, void *data)
 	struct effect_shader *s = (struct effect_shader*)job->shader;
 	struct effect_data *d = (struct effect_data*)data;
 
-	// set uniforms
+	// 设置 uniform
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, d->old->handle);
 	glUniform1i(s->old, 1);
@@ -306,7 +306,7 @@ int effect_init(enum effect type)
 	}
 
 	if (effect_functions[type]) {
-		// nothing to do
+		// 无事可做
 	}
 	else {
 		struct effect_shader *s = effect_shaders[type];
@@ -318,7 +318,7 @@ int effect_init(enum effect type)
 			type = EFFECT_BLUR_CROSSFADE;
 			s = effect_shaders[type];
 		}
-		// load shader lazily
+		// 惰性装载着色器
 		if (!s->s.program) {
 			load_effect_shader(s);
 		}

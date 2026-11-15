@@ -1006,8 +1006,8 @@ static void GUIEngine_PreLink(void)
 	int libno = ain_get_library(ain, "GUIEngine");
 	assert(libno >= 0);
 
-	// XXX: if PartsEngine exists, don't call PE_Save/PE_Load for GUIEngine
-	//      (e.g. Oyako Rankan)
+	// XXX：如果有 PartsEngine，就不要给 GUIEngine 调 PE_Save/PE_Load
+	//      （例如《Oyako Rankan》）
 	int pe_libno = ain_get_library(ain, "PartsEngine");
 	if (pe_libno >= 0) {
 		if ((fun = get_fun(libno, "Save")))

@@ -55,9 +55,9 @@ static void CommonSystemData_SetFullPathSaveFileName(struct string *filename)
 	NOTICE("SetFullPathSaveFileName(%s)", filename->text);
 }
 
-/* AIN f[0]: bool LoadAtStartup(). _system::detail::Init does
- * CALLHLL 9 0; NOT; IFNZ - returning false took the load-failed branch.
- * The port has no persisted system data, so report success (D64). */
+/* AIN f[0]：bool LoadAtStartup()。_system::detail::Init 里是
+ * CALLHLL 9 0; NOT; IFNZ —— 返回 false 就会走「装载失败」分支。
+ * 这个移植没有持久化的系统数据，所以报成功（D64）。 */
 static bool CommonSystemData_LoadAtStartup(void)
 {
 	return true;

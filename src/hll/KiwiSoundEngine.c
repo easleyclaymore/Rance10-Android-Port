@@ -112,11 +112,11 @@ static int rance9_wav_prepare(int ch, int num)
 
 static void KiwiSoundEngine_PreLink(void);
 
-/* KiwiSoundEngine.GetMixerMute(group, ref bool mute), AIN lib21 f[35].
+/* KiwiSoundEngine.GetMixerMute(group, ref bool mute)，AIN 库21 的 f[35]。
  * [HACK][D119-MIXER] Minimal implementation: audio is never muted by the
- * engine, so report "not muted" and write false to the ref parameter.
- * Refactor: track per-mixer mute state in audio.c and expose a setter too.
- * Registered in TECH_DEBT. */
+ * 引擎里没有逐混音器的静音状态，所以报「没静音」，并把 false 写进
+ * ref 形参。待重构：在 audio.c 里记下每个混音器的静音状态，并补上 setter。
+ * 已登记进技术债。 */
 static bool KiwiSoundEngine_GetMixerMute(int group, bool *mute)
 {
 	(void)group;

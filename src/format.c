@@ -147,10 +147,10 @@ static void append_fmt(struct string **s, struct fmt_spec *spec, union vm_value 
 		string_append_cstr(s, buf, len);
 		break;
 	case FMT_STRING: {
-		/* The value is a string reference, but Rance10 also formats optional
-		 * fields that were never set: a null, freed or non-string slot must
-		 * read as the empty string instead of dereferencing whatever the slot
-		 * holds (heap_get_string() only rejects out-of-range indices). */
+		/* 这个值是个字符串引用，但兰斯10 还会去格式化那些从没设过的
+		 * 可选字段：null、已释放、或者不是字符串的槽都必须
+		 * 读成空字符串，而不是去解引用槽里装的东西
+		 * （heap_get_string() 只拦越界的下标）。 */
 		struct string *val = NULL;
 		if (arg.i > 0 && (size_t)arg.i < heap_size &&
 		    heap[arg.i].type == VM_STRING)

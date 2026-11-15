@@ -46,10 +46,10 @@ static bool CGManager_GetInfo(struct string *cg_name, int *width, int *height, i
 }
 
 /*
- * D103: Rance10.ain imports GetSize/GetWidth/GetHeight (fno 2..4) but neither
- * this fork nor upstream implements them. They are thin wrappers over the CG
- * metrics we already use in GetInfo, so a missing CG yields 0 instead of
- * aborting the VM at call time (VM_ERROR is _Noreturn).
+ * D103：Rance10.ain 导入了 GetSize/GetWidth/GetHeight（fno 2..4），但
+ * 这个分支和上游都没实现。它们只是 GetInfo 里已经在用的那些 CG
+ * 度量的薄包装，所以缺 CG 时返回 0，而不是在调用时中止虚拟机
+ * （VM_ERROR 是 _noreturn）。
  */
 static void CGManager_GetSize(struct string *cg_name, int *width, int *height)
 {
