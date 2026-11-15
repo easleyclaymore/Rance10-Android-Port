@@ -58,12 +58,12 @@ static void parts_init(struct parts *parts)
 	parts->sp.has_pixel = true;
 	parts->sp.has_alpha = true;
 	parts->sp.render = parts_sprite_render;
-	/* [HACK-POC D93] parts are drawn dynamically by parts_sprite_render(), so
-	 * they have no static pixel buffer -- but scene_sprite_dirty() only calls
-	 * scene_register_sprite() when has_pixel is set. Without this flag every
-	 * parts sprite stayed out of the scene and scene_render() only cleared the
-	 * screen (black window). Real fix: let the scene accept render-only
-	 * sprites, or set has_pixel in parts_dirty() alongside the dirty flag. */
+	/* [HACK-POC D93] 部件是由 parts_sprite_render() 动态绘制的，
+	 * 所以没有静态像素缓冲 —— 但 scene_sprite_dirty() 只在
+	 * has_pixel 置位时才调 scene_register_sprite()。没有这个标志，
+	 * 每个部件精灵都进不了场景，scene_render() 于是只清屏（黑窗口）。
+	 * 真正的修法：让场景接受「只渲染型」精灵，
+	 * 或者在 parts_dirty() 里置 has_pixel 时一并置脏标志。 */
 	parts->sp.has_pixel = true;
 	parts->sp.to_json = parts_sprite_to_json;
 	parts->local = PARTS_PARAMS_INITIALIZER(1);
@@ -106,7 +106,7 @@ static int parts_get_sprite_z(struct parts *parts)
 {
 	if (!parts_multi_controller)
 		return parts->global.z;
-	// The system overlay controller sorts above any in-stack controller.
+	// 系统覆盖层的控制器排在栈内所有控制器之上。
 	return parts->controller_no;
 }
 
@@ -146,7 +146,7 @@ static void parts_list_remove(struct parts *parts)
 
 void parts_list_resort(struct parts *parts)
 {
-	// TODO: this could be optimized
+	// TODO：这里可以优化
 	parts_list_remove(parts);
 	parts_list_insert(parts);
 }
@@ -311,7 +311,7 @@ static void parts_state_free(struct parts_state *state)
 		parts_flat_free(&state->flat);
 		break;
 	case PARTS_MOVIE:
-		// The texture is owned by the SACT sprite.
+		// 纹理的所有权归 SACT 精灵。
 		state->common.texture.handle = 0;
 		if (state->movie.sprite_no >= 0)
 			sact_SP_Delete(state->movie.sprite_no);
@@ -504,10 +504,10 @@ static Point calculate_offset(int mode, int w, int h)
 }
 
 /*
- * Should be called when:
- *   - position (parts->pos) changes
- *   - width or height changes
- *   - origin mode changes
+ * 应当在下列情况调用：
+ *   - 位置（parts->pos）变化时
+ *   - 宽度或高度变化时
+ *   - 原点模式变化时
  */
 static void parts_common_recalculate_hitbox(struct parts *parts, struct parts_common *common)
 {
@@ -931,14 +931,14 @@ void parts_numeral_font_init(struct parts_numeral_font *font)
 
 static int parts_load_numeral_font_separate(int cg_no)
 {
-	// find existing font
+	// 找已有的字体
 	for (int i = 0; i < parts_nr_numeral_fonts; i++) {
 		if (parts_numeral_fonts[i].type == PARTS_NUMERAL_FONT_SEPARATE
 				&& parts_numeral_fonts[i].cg_no == cg_no)
 			return i;
 	}
 
-	// load new font
+	// 加载新字体
 	int font_no = parts_nr_numeral_fonts++;
 	parts_numeral_fonts = xrealloc_array(parts_numeral_fonts, font_no, font_no + 1,
 			sizeof(struct parts_numeral_font));
@@ -951,7 +951,7 @@ static int parts_load_numeral_font_separate(int cg_no)
 
 static int parts_load_numeral_font_separate_string(struct string *cg_name)
 {
-	// convert name to CG indices
+	// 把名字转成 CG 下标
 	int indices[12];
 	for (int i = 0; i < 12; i++) {
 		struct string *name = string_format(cg_name, (union vm_value){.i = i}, STRFMT_INT);
@@ -962,7 +962,7 @@ static int parts_load_numeral_font_separate_string(struct string *cg_name)
 		free_string(name);
 	}
 
-	// find existing font
+	// 找已有的字体
 	for (int i = 0; i < parts_nr_numeral_fonts; i++) {
 		struct parts_numeral_font *font = &parts_numeral_fonts[i];
 		if (font->type != PARTS_NUMERAL_FONT_SEPARATE2)
@@ -979,7 +979,7 @@ static int parts_load_numeral_font_separate_string(struct string *cg_name)
 		return i;
 	}
 
-	// load new font
+	// 加载新字体
 	int font_no = parts_nr_numeral_fonts++;
 	parts_numeral_fonts = xrealloc_array(parts_numeral_fonts, font_no, font_no + 1,
 			sizeof(struct parts_numeral_font));
@@ -993,7 +993,7 @@ static int parts_load_numeral_font_separate_string(struct string *cg_name)
 
 static int parts_load_numeral_font_combined(int cg_no, int w[12])
 {
-	// find existing font
+	// 找已有的字体
 	for (int i = 0; i < parts_nr_numeral_fonts; i++) {
 		struct parts_numeral_font *font = &parts_numeral_fonts[i];
 		if (font->type != PARTS_NUMERAL_FONT_COMBINED || font->cg_no != cg_no)
@@ -1005,7 +1005,7 @@ static int parts_load_numeral_font_combined(int cg_no, int w[12])
 		return i;
 	}
 
-	// load new font
+	// 加载新字体
 	int font_no = parts_nr_numeral_fonts++;
 	parts_numeral_fonts = xrealloc_array(parts_numeral_fonts, font_no, font_no + 1,
 			sizeof(struct parts_numeral_font));
@@ -1019,7 +1019,7 @@ static int parts_load_numeral_font_combined(int cg_no, int w[12])
 
 static bool parts_numeral_update(struct parts *parts, struct parts_numeral *num)
 {
-	// XXX: don't generate texture if number hasn't been set yet
+	// XXX：号码还没设过时不要生成纹理
 	if (!num->have_num || num->font_no < 0)
 		return true;
 	int_least64_t n = num->num;
@@ -1027,7 +1027,7 @@ static bool parts_numeral_update(struct parts *parts, struct parts_numeral *num)
 	if (negative)
 		n *= -1;
 
-	// extract digits
+	// 拆出各位数字
 	int digits;
 	uint8_t d[32];
 	for (digits = 0; n; digits++) {
@@ -1035,7 +1035,7 @@ static bool parts_numeral_update(struct parts *parts, struct parts_numeral *num)
 		n /= 10;
 	}
 
-	// encode number as texture indices
+	// 把数字编码成纹理下标
 	int nr_chars = 0;
 	uint8_t chars[32];
 	if (negative) {
@@ -1054,7 +1054,7 @@ static bool parts_numeral_update(struct parts *parts, struct parts_numeral *num)
 
 	struct parts_numeral_font *font = &parts_numeral_fonts[num->font_no];
 
-	// determine output dimensions
+	// 算出输出尺寸
 	int w = 0, h = 0;
 	for (int i = nr_chars-1; i >= 0; i--) {
 		if (!font->cg[chars[i]].handle)
@@ -1064,7 +1064,7 @@ static bool parts_numeral_update(struct parts *parts, struct parts_numeral *num)
 	}
 	w += (nr_chars-1) * num->space;
 
-	// copy chars to texture
+	// 把字符拷进纹理
 	gfx_delete_texture(&num->common.texture);
 	gfx_init_texture_rgba(&num->common.texture, w, h, (SDL_Color){0, 0, 0, 255});
 
@@ -1231,7 +1231,7 @@ void parts_release(int parts_no)
 		free(parts->uc_data[i]);
 	free(parts->uc_data);
 
-	// break parent/child relationships
+	// 断开父子关系
 	while (!TAILQ_EMPTY(&parts->children)) {
 		struct parts *child = TAILQ_FIRST(&parts->children);
 		TAILQ_REMOVE(&parts->children, child, child_list_entry);
@@ -1284,7 +1284,7 @@ bool PE_Init(void)
 {
 	if (parts_engine_initialized)
 		return true;
-	// XXX: Oyako Rankan doesn't call ChipmunkSpriteEngine.Init
+	// XXX：《Oyako Rankan》不调用 ChipmunkSpriteEngine.Init
 	sact_init(16, CHIPMUNK_SPRITE_ENGINE);
 	parts_table = ht_create(1024);
 	parts_render_init();
@@ -1357,18 +1357,18 @@ static void parts_update_component(struct parts *parts)
 
 void PE_UpdateComponent(possibly_unused int passed_time)
 {
-	// After loading a save, the game script may compute a negative time delta
-	// because it stores an absolute system.GetTime() value in the save data,
-	// which is meaningless across process restarts.
+	// 读档之后，游戏脚本可能算出一个负的时间增量：
+	// 因为它在存档里存的是绝对的 system.GetTime() 值，
+	// 而那个值跨进程重启是没有意义的。
 	if (passed_time < 0)
 		passed_time = 0;
 	while (!TAILQ_EMPTY(&dirty_list)) {
-		// pop parts object from dirty list
+		// 从脏表里弹出部件对象
 		struct parts *parts = TAILQ_FIRST(&dirty_list);
 		TAILQ_REMOVE(&dirty_list, parts, dirty_list_entry);
 		parts->dirty = false;
 
-		// update parent
+		// 更新父部件
 		struct parts *parent;
 		if (parts->pending_parent >= 0 && (parent = parts_try_get(parts->pending_parent))) {
 			if (parts->parent) {
@@ -1377,19 +1377,19 @@ void PE_UpdateComponent(possibly_unused int passed_time)
 			parts->parent = parent;
 			TAILQ_INSERT_TAIL(&parent->children, parts, child_list_entry);
 
-			// if parent is layout box, mark it dirty so that it can re-layout its children
+			// 父部件若是布局盒，就把它标脏，好让它重排子部件
 			if (parent->states[0].type == PARTS_LAYOUT_BOX)
 				parts_component_dirty(parent);
 		}
-		// TODO: should the child be orphaned if it already has a parent and an invalid
-		//       parent no is given?
+		// TODO：如果子部件已经有父部件、却给了一个非法的父号码，
+		//       应该把它变成孤儿吗？
 		parts->pending_parent = -1;
 
-		// don't do anything here if parent is dirty
+		// 父部件是脏的，这里就什么也不做
 		if (parts_has_dirty_parent(parts))
 			continue;
 
-		// update child params
+		// 更新子部件参数
 		parts_update_component(parts);
 	}
 }
@@ -1518,13 +1518,13 @@ void PE_Update(int passed_time, bool message_window_show)
 	parts_render_update();
 }
 
-/* Advance the per-parts animation clocks (flat / animation / flash) by
- * `passed_time` ms.
+/* 把每个部件的动画时钟（flat / animation / flash）推进
+ * `passed_time` 毫秒。
  *
- * This is deliberately *only* the clock: PE_Update() also re-runs
- * PE_UpdateComponent() and parts_render_update(), which invalidate the sprites
- * the scene renderer has already prepared. Callers that merely need "time has
- * passed" (the VM frame pump, see vm_frame_pump) use this. */
+ * 注意这里只推时钟：PE_Update() 还会重跑
+ * PE_UpdateComponent() 和 parts_render_update()，
+ * 而那会让场景渲染器已经准备好的精灵失效。
+ * 只需要「时间在走」的调用方（VM 帧泵，见 vm_frame_pump）用这个。 */
 void parts_advance_animation(int passed_time)
 {
 	/* [D128] 图层遮挡的判定跟着这里重算：AIN 在 WaitForClick 里自旋时根本
@@ -1574,7 +1574,7 @@ bool PE_SetPartsCG(int parts_no, struct string *cg_name, int sprite_deform, int 
 	return parts_cg_set(parts, cg, cg_name);
 }
 
-/* AIN PartsEngine: bool SetPartsCGThread(int Number, string CGName, int State).
+/* AIN PartsEngine：bool SetPartsCGThread(int Number, string CGName, int State)。
  *
  * 异步设定 CG 的入口。参数比同步版少一个 sprite_deform：原版异步路径只
  * 按名字换图，形变沿用部件当前值。我们不做后台线程（见
@@ -1590,7 +1590,7 @@ bool PE_SetPartsCGThread(int parts_no, struct string *cg_name, int state)
 	return PE_SetPartsCG(parts_no, cg_name, p ? p->sprite_deform : 0, state);
 }
 
-/* AIN PartsEngine: bool IsThreadLoading(int Number, int State).
+/* AIN PartsEngine：bool IsThreadLoading(int Number, int State)。
  *
  * 所有 *Thread 导出我们都同步做完再返回（见上面两处注释），所以"还在
  * 后台加载"永远为假。返回 false 让调用方的轮询循环第一轮就退出。 */
@@ -1616,7 +1616,7 @@ bool PE_SetPartsCG_by_index(int parts_no, int cg_no, int sprite_deform, int stat
 	return parts_cg_set_by_index(parts, cg, cg_no);
 }
 
-// XXX: Rance Quest
+// XXX：《兰斯 任务》（Rance Quest）
 bool PE_SetPartsCG_by_string_index(int parts_no, struct string *cg_name,
 		int sprite_deform, int state)
 {
@@ -2019,7 +2019,7 @@ bool PE_SetNumeralNumber(int parts_no, int n, int state)
 	return parts_numeral_set_number(parts, numeral, n);
 }
 
-/* AIN PartsEngine: int GetNumeralNumber(int Number, int State).
+/* AIN PartsEngine：int GetNumeralNumber(int Number, int State)。
  *
  * 读回 SetNumeralNumber 设进去的值。只读，不改状态：状态还不是 numeral
  * 时返回 0，而不是像 parts_get_numeral 那样顺手把该状态重建成 numeral
@@ -2150,13 +2150,13 @@ void PE_ReleaseAllParts(void)
 
 void PE_ReleaseAllPartsWithoutSystem(void)
 {
-	// FIXME: what's the difference?
+	// FIXME：这两者有什么区别？
 	parts_release_all();
 }
 
 void PE_ReleaseAllWithoutSystem(struct page **erase_number_list)
 {
-	// Release all parts not belonging to the system overlay controller
+	// 释放所有不属于系统覆盖层控制器的部件
 	struct parts *parts = TAILQ_FIRST(&parts_list);
 	while (parts) {
 		struct parts *next = TAILQ_NEXT(parts, parts_list_entry);
@@ -2168,7 +2168,7 @@ void PE_ReleaseAllWithoutSystem(struct page **erase_number_list)
 		parts = next;
 	}
 
-	// Drop all normal controllers and add a fresh default one.
+	// 丢掉所有普通控制器，再加一个新的默认控制器。
 	ctrl_stack.nr_controllers = 0;
 	PE_AddController(-1);
 }
@@ -2439,13 +2439,13 @@ int PE_GetParentPartsNumber(int parts_no)
 	return -1;
 }
 
-/* --- D89: explicit child tree -------------------------------------------
- * The AIN addresses the parts tree through PartsEngine f[165..172]
- * (IsExistChild / ClearChild / AddChild / InsertChild / RemoveChild /
- * NumofChild / GetChildIndex / GetChild). The activity loader already sets
- * parents with PE_SetParentPartsNumber, but AIN asks about the tree
- * immediately, so these operate on the live TAILQ instead of waiting for the
- * dirty-list pass. */
+/* --- D89：显式的子树 -----------------------------------------------
+ * AIN 通过 PartsEngine f[165..172] 访问部件树
+ * （IsExistChild / ClearChild / AddChild / InsertChild / RemoveChild /
+ * NumofChild / GetChildIndex / GetChild）。活动装载器已经用
+ * PE_SetParentPartsNumber 设过父部件，但 AIN 会立刻来问树结构，
+ * 所以这些函数直接操作活的 TAILQ，
+ * 而不是等脏表那一轮。 */
 
 static void parts_detach(struct parts *child)
 {
@@ -2656,9 +2656,9 @@ bool PE_save_thumbnail(struct string *filename, int reduction_factor)
 	int w = src->w / reduction_factor;
 	int h = src->h / reduction_factor;
 
-	// Downscale by repeatedly halving until we are within a factor of two of
-	// the target size, then do the final stretch. This avoids the aliasing
-	// that a single bilinear minification would otherwise produce.
+	// 反复折半缩小，直到距离目标尺寸在两倍以内，
+	// 再做最后一次拉伸。这样能避免
+	// 单次双线性缩小产生的走样。
 	Texture tmp, *cur = src;
 	bool have_tmp = false;
 	while (cur->w / 2 > w && cur->h / 2 > h) {
@@ -2699,14 +2699,14 @@ int PE_GetInputState(int parts_no)
 	return parts_get(parts_no)->state + 1;
 }
 
-/* Rance10 component type numbers -> engine drawing type.
+/* 兰斯10 的组件类型号 -> 引擎的绘制类型。
  *
- * The numbers are the ones the game itself uses (recovered from
- * activityeditor::detail::CBatchRenameStack@GetPartsTypeName, AIN switch #31).
- * They differ from the upstream xsystem4 numbering; see the matching enum in
- * activity.c. Widget-like components (button, checkbox, textbox, ...) are drawn
- * from a flat image, containers become layout boxes, and the remaining slots
- * map onto the dedicated engine renderers. */
+ * 这些号是游戏自己用的（从
+ * activityeditor::detail::CBatchRenameStack@GetPartsTypeName 的 AIN switch #31 还原），
+ * 和上游 xsystem4 的编号不一样；对应关系见 activity.c 里的枚举。
+ * 控件类组件（button、checkbox、textbox…）从一张 flat 图绘制，
+ * 容器变成布局盒，其余槽位
+ * 映射到各自的引擎渲染器。 */
 static enum parts_type component_type_to_parts_type(int type)
 {
 	switch (type) {
@@ -2728,13 +2728,13 @@ static enum parts_type component_type_to_parts_type(int type)
 	case 14: /* フォームグ分组 */
 		return PARTS_LAYOUT_BOX;
 	case 15: /* 用户组件 UserComponent */
-		/* The widget itself draws nothing: its content comes from the
-		 * built-in control named in its EX payload
+		/* 控件本身不画任何东西：它的内容来自 EX 负载里
+		 * 指定的内建控件
 		 * (数据 = ['オブジェクト名','TextButton','参数','...']).
-		 * Treating it as PARTS_CG made it a texture-less CG with size 0,
-		 * which is why Rance10's title menu (8 of its 13 parts are user
-		 * components) is invisible. It is a container until the control
-		 * layer exists. */
+		 * 把它当成 PARTS_CG 会得到一个没有纹理、尺寸为 0 的 CG，
+		 * 这就是为什么兰斯10 的标题菜单（13 个部件里有 8 个是
+		 * 用户组件）看不见。在控件层存在之前，
+		 * 它就是个容器。 */
 		return PARTS_LAYOUT_BOX;
 	case 17: /* ＣＧ */
 		return PARTS_CG;
@@ -2788,9 +2788,9 @@ int PE_GetComponentType(int parts_no, int state)
 	if (!parts)
 		return -1;
 
-	/* Round-trip whatever the game set on this state. States created
-	 * implicitly (e.g. by PE_SetPartsCG) have no component type of their
-	 * own, so derive a sane one from the drawing type. */
+	/* 这个状态上游戏设过什么，就原样存回去。隐式创建的状态
+	 * （例如 PE_SetPartsCG 建的）没有自己的组件类型，
+	 * 所以从绘制类型反推一个合理的值。 */
 	if (parts->states[state].component_type >= 0)
 		return parts->states[state].component_type;
 	switch (parts->states[state].type) {
@@ -2813,12 +2813,12 @@ int PE_GetComponentType(int parts_no, int state)
 	return -1;
 }
 
-/* Give a part a size (and therefore a hitbox) without changing its state type.
+/* 给部件一个尺寸（也就是命中盒），但不改它的状态类型。
  *
- * PE_SetPartsRectangleDetectionSize() resets the state to PARTS_RECT_DETECTION,
- * which would throw away whatever the part already holds. User components need
- * a hitbox while keeping their own state (they are LAYOUT_BOX containers whose
- * content is drawn by the control layer). */
+ * PE_SetPartsRectangleDetectionSize() 会把状态重置成 PARTS_RECT_DETECTION，
+ * 那会把部件已有的东西全丢掉。用户组件需要在保住自己状态的
+ * 同时拥有命中盒（它们是 LAYOUT_BOX 容器，
+ * 内容由控件层绘制）。 */
 bool PE_SetPartsSize(int parts_no, int w, int h, int state)
 {
 	if (!parts_state_valid(--state))
@@ -2903,7 +2903,7 @@ int PE_GetFreeNumber(void)
 	while (PE_IsExist(first_free)) {
 		first_free++;
 	}
-	// XXX: the ID is incremented even if the parts is not created
+	// XXX：即使部件没创建成功，这个 ID 也会自增
 	return first_free++;
 }
 
@@ -2918,7 +2918,7 @@ static void ctrl_stack_init(void)
 	/* [D128] 图层默认可见。 */
 	for (int i = 0; i < PARTS_CONTROLLER_STACK_MAX; i++)
 		ctrl_stack.show[i] = true;
-	// Add initial default controller
+	// 加上初始的默认控制器
 	PE_AddController(-1);
 }
 
@@ -2945,12 +2945,12 @@ int PE_get_controller_index(int id)
 	return -1;
 }
 
-// Adds a new controller to the stack and makes it active. The `index`
-// parameter specifies the position in the stack at which to insert the new
-// controller; -1 means "insert directly after the currently active
-// controller". In practice the game only ever passes -1, and the active
-// controller is always the top of the stack at that point, so this
-// degenerates to a simple push.
+// 往栈上加一个新控制器并激活它。`index` 参数指定
+// 新控制器插在栈里的位置；-1 表示「插在当前活动控制器
+// 之后」。实际游戏里只会传 -1，
+// 而那一刻活动控制器总是栈顶，
+// 所以这里退化成
+// 一次简单的入栈。
 /* [D128] 场景切换后旧图层仍在画面上：需要知道"谁挂在哪个 controller 上"，
  * 因为渲染顺序是 (controller_no, global.z)，旧场景只要挂在低位 controller
  * 上就永远画在新场景下面，而 RemoveController 又带不走它。
@@ -3121,17 +3121,17 @@ int PE_AddController(int index)
 	return ctrl_stack.id[no];
 }
 
-// Removes the controller at position `index` from the stack, releases all
-// parts belonging to it, and returns their parts numbers in
-// `erase_number_list`. `index == -1` means "remove the currently active
-// controller". In practice the game only ever passes -1, and the active
-// controller is always the top of the stack at that point, so this
-// degenerates to a simple pop.
+// 从栈上移除位置 `index` 处的控制器，释放属于它的所有
+// 部件，并把它们的部件号写进 `erase_number_list`。
+// `index == -1` 表示「移除当前活动控制器」。
+// 实际游戏里只会传 -1，
+// 而那一刻活动控制器总是栈顶，
+// 所以这里退化成一次简单的出栈。
 void PE_RemoveController(struct page **erase_number_list, int index)
 {
-	/* index == -1 means "active controller"; Rance10 also passes an
-	 * explicit controller number (e.g. 0) from SceneStack@EraseLayer.
-	 * Accept both; the parts collection below is keyed by ctrl_no. (D50) */
+	/* index == -1 表示「活动控制器」；兰斯10 也会从
+	 * SceneStack@EraseLayer 传一个明确的控制器号（例如 0）。
+	 * 两者都接受；下面的部件收集是按 ctrl_no 索引的。（D50） */
 	int nr = ctrl_stack.nr_controllers;
 	if (nr == 0)
 		return;
@@ -3151,7 +3151,7 @@ void PE_RemoveController(struct page **erase_number_list, int index)
 		}
 	}
 
-	// Collect and release parts belonging to this controller
+	// 收集并释放属于这个控制器的部件
 	int released = 0;
 	if (getenv("XSYS4_CTRL_DBG"))
 		PE_DebugControllerHistogram("remove-pre");
@@ -3283,8 +3283,8 @@ bool PE_init_parts_movie(int parts_no, int width, int height, int bg_r, int bg_g
 	struct sact_sprite *sp = sact_create_sprite(sp_no, width, height, bg_r, bg_g, bg_b, 255);
 	if (!sp)
 		return false;
-	// The movie frames are composited by the parts engine via parts_render(),
-	// so hide the bound sprite from the scene to avoid double-drawing.
+	// 动画帧由部件引擎通过 parts_render() 合成，
+	// 所以把绑定的精灵从场景里藏起来，避免画两遍。
 	sprite_set_show(sp, false);
 
 	struct texture *tex = sprite_get_texture(sp);
@@ -3328,8 +3328,8 @@ bool parts_3dlayer_create_plugin(struct parts_3dlayer *l)
 		ReignEngine_ReleasePlugin(handle);
 		return false;
 	}
-	// The 3D content is composited by the parts engine via parts_render(), so
-	// hide the bound sprite from the scene to avoid double-drawing.
+	// 3D 内容由部件引擎通过 parts_render() 合成，所以
+	// 把绑定的精灵从场景里藏起来，避免画两遍。
 	sprite_set_show(sp, false);
 
 	l->plugin = handle;
