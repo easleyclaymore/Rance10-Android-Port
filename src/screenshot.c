@@ -32,6 +32,12 @@ typedef struct texture Texture;
 Texture *gfx_main_surface(void);
 int gfx_save_texture(Texture *t, const char *path, enum cg_type);
 
+/* [D223] 联合取证：XSYS4_SHOT_PARTS_DUMP=1 时，在引擎自截图那一刻打**一次**
+ * 部件快照（layer_show / cover / 每部件 vis），与 PNG 严格同帧。只在调用点
+ * 声明，避免把 parts_internal.h 的依赖链拖进来；全程探针会拖慢帧率、改变
+ * 剧情快进时序（D222 教训），这里按截图时刻触发就不会。 */
+void PE_DebugDumpParts(const char *tag);
+
 #ifdef _WIN32
 #include <windows.h>
 
@@ -177,6 +183,8 @@ void screenshot_save(void)
 		char path[PATH_MAX];
 		if (!mkdir_p(shot_dir)) {
 			snprintf(path, sizeof(path), "%s/shot_%03d.png", shot_dir, ++seq);
+			if (getenv("XSYS4_SHOT_PARTS_DUMP"))
+				PE_DebugDumpParts("shot-engine");
 			gfx_save_texture(gfx_main_surface(), path, ALCG_PNG);
 			NOTICE("[shot-engine] %s", path);
 		} else {
