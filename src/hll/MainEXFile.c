@@ -693,6 +693,30 @@ static bool MainEXFile_GetEXNameList(struct string *tree_path, struct page **out
 	(void)flags;
 	return ex_tree_name_list(tree_path, out, true);
 }
+
+/* Rance10 v12 扩展：MainEXFile.Save / Load 把 EX 表的运行期改写序列化进
+ * image 数组，供战斗前后快照（gamesave::detail::存档実行 fno 5590 /
+ * 读档 fno 5591；调用方 Save 前已 Array.Free(ExImage)）。
+ *
+ * 本引擎的 ex 树由 ex_read_file() 一次性加载且只读，不存在运行期改写，
+ * 所以「没有改写」就是完整状态：Save 不写 image、Load 不读 image，
+ * 两者都报告成功，调用方才会继续（调用点都是 `if (!ret) 报错`）。
+ * 判据：未实现时第一章战斗在 BattleSceneSetNormal@Process 的
+ * SnapShotSaveManager::Save 处中止。
+ *
+ * 前提：若将来支持 EX 改写（如 QuestMapParamAccessor@SetExOverride），
+ * 必须在这里补真正的序列化，否则读档会静默丢失改写。 */
+static bool MainEXFile_Save(struct page **image)
+{
+	(void)image;
+	return true;
+}
+
+static bool MainEXFile_Load(struct page **image)
+{
+	(void)image;
+	return true;
+}
 static bool MainEXFile_GetEXName(struct string *tree_path, int index, struct string **ex_name)
 {
 	struct ex_value *v = ex_get(ex, tree_path->text);
@@ -1062,7 +1086,9 @@ HLL_LIBRARY(MainEXFile,
 	    HLL_EXPORT(GetNodeName, MainEXFile_GetNodeName),
 	    HLL_EXPORT(GetNodeNameList, MainEXFile_GetNodeNameList),
 	    HLL_EXPORT(GetEXNameList, MainEXFile_GetEXNameList),
-	    HLL_EXPORT(GetEXName, MainEXFile_GetEXName));
+	    HLL_EXPORT(GetEXName, MainEXFile_GetEXName),
+	    HLL_EXPORT(Save, MainEXFile_Save),
+	    HLL_EXPORT(Load, MainEXFile_Load));
 
 static void MainEXFile_PreLink(void)
 {

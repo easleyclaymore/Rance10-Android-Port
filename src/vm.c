@@ -2226,6 +2226,50 @@ static void echo_message(int i)
 
 static enum opcode execute_instruction(enum opcode opcode)
 {
+	/* [D209 诊断后门] XSYS4_NODE_DIGIT=<0-9>：把 QuestMapParamAccessor 的
+	 * KeyBase 末尾全角编号末位改掉（００１ → ００２）。只回答一个窄问题：
+	 * 「KeyBase 是不是战斗唯一卡点」。必须放在主循环里：方法调用的 this 是在
+	 * function_call() 返回之后才写进 local page，入口钩子里读不到。
+	 * 全角数字低位字节连续，按原编码推导，不猜 GBK/SJIS；默认关。 */
+	{
+		static int nd_init, nd_digit, nd_logged;
+		if (!nd_init) {
+			const char *e = getenv("XSYS4_NODE_DIGIT");
+			nd_digit = e ? atoi(e) : -1;
+			nd_init = 1;
+		}
+		if (nd_digit >= 0 && nd_digit <= 9 && call_stack_ptr > 0) {
+			struct function_call *cf = &call_stack[call_stack_ptr - 1];
+			/* 只在 RunAdvAndBattleEvent(23486) 这条链上改：地图装载 /
+			 * PreBattleAutoSave 也调 28578，早改会让 ００２ 节点缺字段，
+			 * 实测 core 在 savedata.c:213 add_value_to_gsave 断言。 */
+			int on_event_chain = 0;
+			for (int k = call_stack_ptr - 2; k >= 0 && k >= call_stack_ptr - 10; k--)
+				if (call_stack[k].fno == 23486) { on_event_chain = 1; break; }
+			if (on_event_chain && cf->fno == 28578 && cf->struct_page > 0 &&
+			    (size_t)cf->struct_page < heap_size &&
+			    heap[cf->struct_page].page) {
+				struct page *tp = heap[cf->struct_page].page;
+				if (tp->nr_vars >= 1) {
+					int ks = tp->values[0].i;
+					struct string *s = (ks > 0 && (size_t)ks < heap_size &&
+						heap[ks].type == VM_STRING) ? heap[ks].s : NULL;
+					if (s && s->text) {
+						size_t n = strlen(s->text);
+						unsigned char *t = (unsigned char *)s->text;
+						/* 末尾须是 3 个同高字节的全角数字，否则不动，避免改坏别的 key。 */
+						if (n >= 6 && t[n-6] == t[n-2] && t[n-4] == t[n-2]) {
+							t[n-1] = (unsigned char)(t[n-5] + nd_digit);
+							if (!nd_logged) {
+								nd_logged = 1;
+								NOTICE("[nodekey] KeyBase last digit -> %d", nd_digit);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 	/* XSYS4_TRACE=start:end (hex): runtime instruction trace with stack top */
 	static uint32_t ts = 0, te = 0;
 	static int trace_ready = 0;
