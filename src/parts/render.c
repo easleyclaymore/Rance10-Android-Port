@@ -84,7 +84,7 @@ static void parts_render_texture(struct texture *texture, mat4 mw_transform, Rec
 	if (clipper) {
 		struct parts_common *c_common = &clipper->states[clipper->state].common;
 
-		// Calculate the inverse of the clipper's world matrix.
+		// 计算裁剪器世界矩阵的逆矩阵。
 		mat4 clip_mw = GLM_MAT4_IDENTITY_INIT;
 		glm_translate(clip_mw, (vec3) { clipper->global.pos.x, clipper->global.pos.y, 0 });
 		glm_rotate_z(clip_mw, glm_rad(clipper->local.rotation.z), clip_mw);
@@ -459,7 +459,7 @@ static void parts_render_cg(struct parts *parts, struct parts_common *common){
 
 	mat4 mw_transform = GLM_MAT4_IDENTITY_INIT;
 	glm_translate(mw_transform, (vec3) { parts->global.pos.x, parts->global.pos.y, 0 });
-	// FIXME: need perspective for 3D rotate
+	// FIXME：3D 旋转需要真正的透视投影
 	//glm_rotate_x(mw_transform, parts->rotation.x, mw_transform);
 	//glm_rotate_y(mw_transform, parts->rotation.y, mw_transform);
 	glm_rotate_z(mw_transform, glm_rad(parts->local.rotation.z), mw_transform);
@@ -467,19 +467,19 @@ static void parts_render_cg(struct parts *parts, struct parts_common *common){
 	glm_translate(mw_transform, (vec3){ common->origin_offset.x, common->origin_offset.y, 0 });
 
 	switch (parts->sprite_deform) {
-	// Flip horizontally
+	// 水平翻转
 	case 1:
 		glm_translate(mw_transform, (vec3){ common->w, 0.0f, 0.0f });
 		glm_scale(mw_transform, (vec3){ -common->w, common->h, 1.0f });
 		break;
-	// Flip vertically
+	// 垂直翻转
 	case 2:
 		glm_translate(mw_transform, (vec3){ 0.0f, common->h, 0.0f });
 		glm_scale(mw_transform, (vec3){ common->w, -common->h, 1.0f });
 		break;
 	default:
 		WARNING("Invalid sprite_deform: %d", parts->sprite_deform);
-	// No deform
+	// 不做形变
 	case 0:
 		glm_scale(mw_transform, (vec3){ common->w, common->h, 1.0 });
 		break;
@@ -558,8 +558,8 @@ static void render_emitter_particle_cb(const struct flat_emitter_particle *p,
 	glm_scale(m, (vec3){ p->scale[0], p->scale[1], 1.0f });
 	glm_translate(m, (vec3){ d->align[0], d->align[1], 0 });
 
-	// Bring particle into screen space, then kill the Z-output row so
-	// clip_z stays at the near plane.
+	// 先把粒子换到屏幕空间，再把输出的 Z 行清零，
+	// 让 clip_z 永远停在近平面。
 	glm_mat4_mul(d->transform, m, m);
 	m[0][2] = m[1][2] = m[2][2] = m[3][2] = 0.0f;
 	glm_scale(m, (vec3){ tex->w, tex->h, 1.0f });
@@ -590,12 +590,12 @@ static void render_flat_emitter(struct parts *parts, struct parts_flat *f,
 	int active_frames = max(1, frame_count - em->particle_lifetime + 1);
 	float parts_alpha = parts->global.alpha / 255.0f;
 
-	// TODO: key_stack reflects the current render frame, but each particle
-	// should see the ancestor keyframes at its birth frame instead.
-	// Currently all particles of this emitter share the same ancestor pose,
-	// which is noticeable only on `猿玉／取得済みマーク.flat` in Rance 9.
-	// Fixing this requires per-emitter state in parts_flat_update to record
-	// ancestor keys at each birth frame; base would then depend on birth_frame.
+	// TODO：key_stack 反映的是当前渲染帧，但每个粒子
+	// 应该看到的是它出生那一帧的祖先关键帧。
+	// 现在这个发射器的所有粒子共用同一份祖先姿态，
+	// 只有在兰斯9 的 猿玉／取得済みマーク.flat 上才看得出来。
+	// 要修的话，得在 parts_flat_update 里按发射器记录
+	// 每个出生帧的祖先关键帧；base 随之要按 birth_frame 算。
 	mat4 base;
 	parts_flat_build_emitter_base_matrix(em, key_stack, base);
 
@@ -604,8 +604,8 @@ static void render_flat_emitter(struct parts *parts, struct parts_flat *f,
 	for (int birth_frame = min_birth; birth_frame <= max_birth; birth_frame++) {
 		int age = local - birth_frame;
 
-		// Use the birth frame's key transform so particles stay at their
-		// birth position while the emitter moves.
+		// 用出生帧的关键帧变换，让粒子在发射器移动时
+		// 保持在自己的出生位置上。
 		struct flat_key_data_graphic *birth_key = &keys[birth_frame];
 		float layer_alpha = parent_alpha * birth_key->alpha / 255.0f;
 
@@ -613,8 +613,8 @@ static void render_flat_emitter(struct parts *parts, struct parts_flat *f,
 		parts_flat_emitter_resolve_layer(em, birth_key,
 				parts_alpha, layer_alpha, &eff);
 
-		// Build per-birth-frame layer matrix from birth_key and the emitter's
-		// inherit_* flags.
+		// 用 birth_key 和发射器的 inherit_* 开关，
+		// 构造「按出生帧」的图层矩阵。
 		mat4 layer_m;
 		parts_flat_build_layer_matrix(birth_key, eff.pos,
 				eff.use_rotation, eff.use_scale, eff.use_origin,
@@ -672,13 +672,13 @@ static void render_flat_cg(struct parts *parts, Texture *tex,
 
 	mat4 render_m;
 	glm_mat4_copy(ctx->matrix, render_m);
-	// Kill the Z-output row to pin clip_z at the near plane, avoiding
-	// near/far clipping of 3D-rotated sprites.
+	// 把输出的 Z 行清零，让 clip_z 钉在近平面，
+	// 避免 3D 旋转过的精灵被近/远平面裁掉。
 	render_m[0][2] = render_m[1][2] = render_m[2][2] = render_m[3][2] = 0.0f;
 	glm_translate(render_m, (vec3){ align[0], align[1], 0.0f });
-	// area_x/area_y select a sub-rectangle of the texture atlas, but
-	// should not shift the on-screen position. This translation cancels
-	// the offset that the sub-rect's top-left would otherwise introduce.
+	// area_x/area_y 只选纹理图集里的子矩形，
+	// 不应该改变屏幕上的位置。这次平移正好抵消
+	// 子矩形左上角本来会引入的偏移。
 	glm_translate(render_m, (vec3){ -(float)key->area_x, -(float)key->area_y, 0.0f });
 	glm_scale(render_m, (vec3){ tex->w, tex->h, 1.0f });
 
@@ -771,10 +771,10 @@ static void render_flat_item(struct parts *parts, struct parts_flat *f,
 		break;
 	}
 	case FLAT_LIB_EMITTER:
-		// cannot happen, handled above
+		// 不可能发生，上面已经处理
 		break;
 	case FLAT_LIB_MEMORY:
-		// not implemented
+		// 尚未实现
 		break;
 	}
 }
@@ -785,7 +785,7 @@ static void render_flat_layer(struct parts *parts, struct parts_flat *f,
 		struct flat_draw_ctx *ctx, mat4 root,
 		struct flat_key_stack *key_stack)
 {
-	// reverse order for correct z-ordering
+	// 倒序排，才能得到正确的 z 序
 	for (size_t i = nr_timelines; i-- > 0;) {
 		struct flat_timeline *tl = &timelines[i];
 		if (tl->type != FLAT_TIMELINE_GRAPHIC)
@@ -794,12 +794,12 @@ static void render_flat_layer(struct parts *parts, struct parts_flat *f,
 		if (local < 0 || local >= tl->frame_count)
 			continue;
 
-		/* flat v15 stores a *list* of graphic keys per frame
-		 * (one per SWF layer); earlier versions store exactly one key per
-		 * frame in `count`/`keys`. Rance10's UI is v15+, so only handling
-		 * the flat array left every flat part -- the whole network
-		 * confirmation dialog and the title screen -- with an empty key
-		 * list and therefore unpainted. */
+		/* flat v15 每帧存的是图形关键帧的列表
+		 * （每个 SWF 图层一个）；更早的版本每帧只存一个关键帧，
+		 * 放在 `count`/`keys` 里。兰斯10 的 UI 是 v15+，
+		 * 所以只处理扁平数组会让每个 flat 部件 —— 整个网络
+		 * 确认对话框和标题画面 —— 拿到空的关键帧列表，
+		 * 于是什么都不画。 */
 		if (tl->graphic.frames) {
 			struct flat_key_frame_graphic *fr = &tl->graphic.frames[local];
 			for (uint32_t k = 0; k < fr->count; k++)
@@ -879,8 +879,8 @@ static void parts_render_3dlayer(struct parts *parts, struct parts_3dlayer *l)
 	struct texture *tex = sprite_get_texture(sp);
 	if (!tex->handle)
 		return;
-	// The bound sprite's texture is recreated by RE_set_viewport, so
-	// refresh the parts_common's view of it each frame.
+	// 绑定精灵的纹理由 RE_set_viewport 重建，
+	// 所以每帧都要刷新 parts_common 里那份视图。
 	l->common.texture = *tex;
 	l->common.w = tex->w;
 	l->common.h = tex->h;
@@ -961,7 +961,7 @@ static void parts_render_flash(struct parts *parts, struct parts_flash *f)
 			WARNING("character %d is not defined", obj->character_id);
 			continue;
 		}
-		// set blend mode
+		// 设置混合模式
 		switch (obj->blend_mode) {
 		case PARTS_FLASH_BLEND_MULTIPLY:
 			glBlendFuncSeparate(GL_DST_COLOR, GL_ZERO, GL_ZERO, GL_ONE);
@@ -975,7 +975,7 @@ static void parts_render_flash(struct parts *parts, struct parts_flash *f)
 		default:
 			break;
 		}
-		// render object
+		// 渲染对象
 		switch (tag->type) {
 		case TAG_DEFINE_SHAPE:
 			parts_render_flash_shape(parts, f, obj, (struct swf_tag_define_shape*)tag);
@@ -1107,11 +1107,11 @@ static bool pe_dirty = false;
 
 void parts_render_update(void)
 {
-	/* [HACK-POC D92] Mark every parts sprite dirty on each update instead of
-	 * only when pe_dirty is set. parts_engine_dirty() has very few call sites,
-	 * so the scene was rendered exactly once (at startup, with an empty sprite
-	 * list) and gfx_swap() never presented parts again -- the window stayed
-	 * black. Real fix: make every parts mutation call parts_engine_dirty(). */
+	/* [HACK-POC D92] 每次更新都把每个部件精灵标脏，而不是
+	 * 只在 pe_dirty 置位时标。parts_engine_dirty() 的调用点极少，
+	 * 于是场景只渲染了那一次（启动时，精灵列表还是空的），
+	 * gfx_swap() 再没呈现过部件 —— 窗口一直是黑的。
+	 * 真正的修法：让每一处部件改动都去调 parts_engine_dirty()。 */
 	struct parts *p;
 	PARTS_LIST_FOREACH(p) {
 		scene_sprite_dirty(&p->sp);

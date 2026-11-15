@@ -24,7 +24,7 @@
 
 #define BONE_TRANSFORMS_BINDING 0
 
-// TODO: Respect RE_plugin.shadow_map_resolution_level
+// TODO：遵守 RE_plugin.shadow_map_resolution_level
 #define SHADOW_WIDTH 512
 #define SHADOW_HEIGHT 512
 
@@ -76,8 +76,8 @@ static GLuint load_shader(const char *vertex_shader_path, const char *fragment_s
 	glAttachShader(program, vertex_shader);
 	glAttachShader(program, fragment_shader);
 
-	// Bind vertex attributes to fixed locations, so that common VAO can be used
-	// by multiple programs.
+	// 把顶点属性绑到固定位置上，这样多个着色器程序
+	// 可以共用同一个 VAO。
 	glBindAttribLocation(program, VATTR_POS, "vertex_pos");
 	glBindAttribLocation(program, VATTR_NORMAL, "vertex_normal");
 	glBindAttribLocation(program, VATTR_UV, "vertex_uv");
@@ -403,7 +403,7 @@ void RE_calc_view_matrix(struct RE_camera *camera, vec3 up, mat4 out)
 	if (up) {
 		glm_vec3_copy(up, up_v);  // Use the provided up vector.
 	} else {
-		// Derive the camera's up by rotating world-Y with the same orientation.
+		// 世界 Y 轴按同一朝向旋转，就得到相机的 up 向量。
 		glm_mat4_mulv3(rot, GLM_YUP, 0.0, up_v);
 	}
 	glm_look(pos, front, up_v, out);
@@ -431,7 +431,7 @@ static void render_model(struct RE_instance *inst, struct RE_renderer *r, enum d
 	if (!inst->model)
 		return;
 
-	// NOTE: next_motion's .mpr is not sampled.
+	// 注意：next_motion 的 .mpr 没有被采样。
 	const struct mpr *mpr = (inst->motion && inst->motion->mot) ? inst->motion->mot->mpr : NULL;
 	float frame = inst->motion ? inst->motion->current_frame : 0.f;
 	struct mpr_modulation obj_mod;
@@ -672,7 +672,7 @@ static void render_billboard(struct RE_instance *inst, struct RE_renderer *r, ma
 	glm_mat4_ins3(rot, local_transform);
 	glm_scale(local_transform, inst->scale);
 	mat3 normal_transform;
-	// This should be safe because billboards do not have non-uniform scaling.
+	// 这么做是安全的，因为公告板没有非等比缩放。
 	glm_mat4_pick3(local_transform, normal_transform);
 
 	glUniform3fv(r->instance_ambient, 1, inst->ambient);
@@ -860,8 +860,8 @@ static void render_s3de_polygon_particles(struct RE_renderer *r, struct RE_insta
 
 	glUniform1i(r->diffuse_type,
 		lighting_disabled(inst->plugin) ? DIFFUSE_EMISSIVE : DIFFUSE_NORMAL);
-	// The .3de blend_type is ignored for polygon objects. Per-mesh additive
-	// blend modes are not yet handled.
+	// .3de 的 blend_type 对多边形对象被忽略。逐网格的加法
+	// 混合模式还没处理。
 	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
 
 	for (int i = 0; i < obj->particle_count; i++) {
@@ -907,7 +907,7 @@ static void render_s3de_polygon_particles(struct RE_renderer *r, struct RE_insta
 	}
 }
 
-// Sort entry for per-object ordering.
+// 逐对象排序用的排序项。
 struct s3de_obj_sort_key {
 	float key;
 	int idx;
@@ -919,7 +919,7 @@ static int cmp_s3de_obj(const void *lhs, const void *rhs)
 	const struct s3de_obj_sort_key *r = rhs;
 	if (l->key != r->key)
 		return (l->key > r->key) - (l->key < r->key);
-	// Fall back to declaration order to keep the sort stable.
+	// 退回声明顺序，保证排序稳定。
 	return (l->idx > r->idx) - (l->idx < r->idx);
 }
 
@@ -944,10 +944,10 @@ static void render_s3de_effect(struct RE_instance *inst, struct RE_renderer *r, 
 
 	struct s3de *s = inst->s3de_effect->s3de;
 
-	// Sort objects by their emitter's world-space distance to the camera.
-	// The transparent phase draws back-to-front, the opaque phase draws
-	// front-to-back. Particles inside one object are not sorted; they stay
-	// in spawn order.
+	// 按发射器的世界坐标到相机距离给对象排序。
+	// 透明阶段从后往前画，不透明阶段
+	// 从前往后画。一个对象内部的粒子不参与排序，
+	// 它们保持生成顺序。
 	float *camera_pos = inst->plugin->camera.override_active
 		? inst->plugin->camera.override_pos : inst->plugin->camera.pos;
 	float key_sign = phase == DRAW_OPAQUE ? 1.0f : -1.0f;
@@ -978,7 +978,7 @@ static void render_s3de_effect(struct RE_instance *inst, struct RE_renderer *r, 
 
 		switch (obj->type) {
 		case S3DE_OBJ_BILLBOARD:
-			// Billboards are transparent-phase only.
+			// 公告板只出现在透明阶段。
 			if (phase == DRAW_TRANSPARENT)
 				render_s3de_billboard_particles(r, inst, obj, st, camera_rot, frame);
 			break;
@@ -997,7 +997,7 @@ static void render_s3de_effect(struct RE_instance *inst, struct RE_renderer *r, 
 
 static void render_particle_effect(struct RE_instance *inst, struct RE_renderer *r, enum draw_phase phase)
 {
-	// NOTE: inst->draw flag has no effect for particle effects.
+	// 注意：inst->draw 标志对粒子效果无效。
 	if (!inst->effect || phase == DRAW_OPAQUE)
 		return;
 
@@ -1060,7 +1060,7 @@ static void render_instance(struct RE_instance *inst, struct RE_renderer *r, mat
 
 static void merge_spheres(vec4 s1, vec4 s2, vec4 dest)
 {
-	// glm_sphere_merge() doesn't make the smallest possible sphere, so do it manually.
+	// glm_sphere_merge() 造出来的球不是最小球，所以这里手算。
 	float distance = glm_vec3_distance(s1, s2);
 	float r1 = s1[3];
 	float r2 = s2[3];
@@ -1080,7 +1080,7 @@ static void merge_spheres(vec4 s1, vec4 s2, vec4 dest)
 
 static bool calc_shadow_light_transform(struct RE_plugin *plugin, mat4 dest)
 {
-	// Compute a bounding sphere of shadow casters.
+	// 计算所有投影阴影的物体的包围球。
 	vec4 bounding_sphere = {};
 	for (int i = 0; i < plugin->nr_instances; i++) {
 		struct RE_instance *inst = plugin->instances[i];
@@ -1096,7 +1096,7 @@ static bool calc_shadow_light_transform(struct RE_plugin *plugin, mat4 dest)
 	if (radius <= 0.0f)
 		return false;
 
-	// Create a orthographic frustum that contains the bounding sphere.
+	// 建一个包含该包围球的正交视锥。
 	mat4 view_matrix;
 	glm_look_anyup(bounding_sphere, plugin->shadow_map_light_dir, view_matrix);
 	mat4 proj_matrix;
@@ -1108,7 +1108,7 @@ static bool calc_shadow_light_transform(struct RE_plugin *plugin, mat4 dest)
 static void render_shadow_map(struct RE_plugin *plugin, mat4 light_space_transform)
 {
 	if (!calc_shadow_light_transform(plugin, light_space_transform)) {
-		// No shadow casters, but proceed anyway to clear the shadow texture.
+		// 没有投影阴影的物体，但仍然要走一遍以清空阴影纹理。
 		glm_mat4_identity(light_space_transform);
 	}
 
@@ -1126,7 +1126,7 @@ static void render_shadow_map(struct RE_plugin *plugin, mat4 light_space_transfo
 
 	glEnable(GL_DEPTH_TEST);
 
-	// Render the shadow casters.
+	// 渲染投影阴影的物体。
 	for (int i = 0; i < plugin->nr_instances; i++) {
 		struct RE_instance *inst = plugin->instances[i];
 		if (!inst || !inst->draw || !inst->make_shadow || !inst->model)
@@ -1165,8 +1165,8 @@ static void render_outlines(struct RE_plugin *plugin, mat4 view_transform)
 	glUniformMatrix4fv(or->view_transform, 1, GL_FALSE, view_transform[0]);
 	glUniformMatrix4fv(or->proj_transform, 1, GL_FALSE, plugin->proj_transform[0]);
 
-	// SealEngine ignores the per-mesh edge parameters from .opr and uses
-	// a single plugin-wide edge length and color.
+	// SealEngine 忽略 .opr 里逐网格的描边参数，改用
+	// 插件级统一的描边长度和颜色。
 	bool seal_edge = re_plugin_version >= RE_SEAL_PLUGIN;
 	if (seal_edge) {
 		glUniform3fv(or->outline_color, 1, plugin->edge_color);
@@ -1247,9 +1247,9 @@ static void setup_hemisphere_light(struct RE_plugin *plugin)
 	glUniform3fv(r->hemi_sky_color, 1, &lp[SEAL_LP_HEMI_SKY_COLOR]);
 	glUniform3fv(r->hemi_mid_color, 1, &lp[SEAL_LP_HEMI_MID_COLOR]);
 	glUniform3fv(r->hemi_ground_color, 1, &lp[SEAL_LP_HEMI_GROUND_COLOR]);
-	// SealEngine's specular uses the hemisphere light vector. hemi_dir points
-	// toward the light, but the shader's specular formula expects the light
-	// propagation direction.
+	// SealEngine 的高光用半球光向量。hemi_dir 指向
+	// 光源，但着色器的高光公式要的是光的
+	// 传播方向。
 	vec3 spec_dir;
 	glm_vec3_negate_to(hemi_dir, spec_dir);
 	glUniform3fv(r->specular_light_dir, 1, spec_dir);
@@ -1372,7 +1372,7 @@ void RE_render(struct sact_sprite *sp)
 	glClearColor(0.f, 0.f, 0.f, 1.f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	// Draw background CGs.
+	// 画背景 CG。
 	glDisable(GL_DEPTH_TEST);
 	for (int i = 0; i < RE_NR_BACK_CGS; i++)
 		render_back_cg(texture, &plugin->back_cg[i], r);
@@ -1384,12 +1384,12 @@ void RE_render(struct sact_sprite *sp)
 	mat4 view_transform;
 	RE_calc_view_matrix(&plugin->camera, NULL, view_transform);
 
-	// Tweak the projection transform so that the rendering result is vertically
-	// flipped. If we render the scene normally, the resulting image will be
-	// bottom-up (the first pixel is at the bottom-left), but we want a top-down
-	// image (the first pixel is at the top-left). This changes the coordinate
-	// system from right-handed to left-handed, we also need to reverse the
-	// winding order.
+	// 调整投影变换，让渲染结果上下翻转。
+	// 正常渲染出来是自下而上的（第一个像素在左下角），
+	// 而我们要的是自上而下的图
+	// （第一个像素在左上角）。
+	// 这会把坐标系从右手系变成左手系，
+	// 所以还得反过来绕序。
 	plugin->proj_transform[1][1] *= -1;
 	glFrontFace(GL_CW);
 
@@ -1419,10 +1419,10 @@ void RE_render(struct sact_sprite *sp)
 	if (re_plugin_version >= RE_SEAL_PLUGIN)
 		setup_tone_mapping(plugin);
 
-	// Sort instances by z-order.
+	// 按 z 序给实例排序。
 	struct RE_instance **sorted_instances = sort_instances(plugin, view_transform);
 
-	// Render opaque instances, from nearest to farthest.
+	// 渲染不透明实例，从近到远。
 	for (int i = plugin->nr_instances - 1; i >= 0; i--) {
 		struct RE_instance *inst = sorted_instances[i];
 		if (!inst)
@@ -1430,7 +1430,7 @@ void RE_render(struct sact_sprite *sp)
 		render_instance(inst, r, view_transform, DRAW_OPAQUE);
 	}
 
-	// Render transparent instances, from farthest to nearest.
+	// 渲染透明实例，从远到近。
 	for (int i = 0; i < plugin->nr_instances; i++) {
 		struct RE_instance *inst = sorted_instances[i];
 		if (!inst)
@@ -1438,7 +1438,7 @@ void RE_render(struct sact_sprite *sp)
 		render_instance(inst, r, view_transform, DRAW_TRANSPARENT);
 	}
 
-	// Render outlines.
+	// 渲染描边。
 	render_outlines(plugin, view_transform);
 
 	free(sorted_instances);
@@ -1463,12 +1463,12 @@ struct height_detector *RE_renderer_create_height_detector(struct RE_renderer *r
 	struct height_detector *hd = xcalloc(1, sizeof(struct height_detector));
 	vec3 aabb[2];
 	memcpy(aabb, model->aabb, sizeof(aabb));
-	// Add some Y padding.
+	// 加一点 Y 方向的留白。
 	aabb[0][1] -= 1.0;
 	aabb[1][1] += 1.0;
 	memcpy(hd->aabb, aabb, sizeof(aabb));
 
-	// Set up an orthographic projection matrix looking down the instance from
+	// 建一个正交投影矩阵，从正上方往下看这个实例。
 	// right above.
 	mat4 view_matrix, proj_matrix;
 	glm_mat4_identity(view_matrix);
@@ -1480,8 +1480,8 @@ struct height_detector *RE_renderer_create_height_detector(struct RE_renderer *r
 	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &orig_fbo);
 	glGetIntegerv(GL_VIEWPORT, orig_viewport);
 
-	// Since OpenGL ES does not allow reading from depth textures, create a
-	// color texture and render depth values into it.
+	// OpenGL ES 不允许读深度纹理，所以建一张
+	// 颜色纹理，把深度值渲染进去。
 	GLuint color_texture;
 	glGenTextures(1, &color_texture);
 	glBindTexture(GL_TEXTURE_2D, color_texture);
@@ -1500,7 +1500,7 @@ struct height_detector *RE_renderer_create_height_detector(struct RE_renderer *r
 	glUniformMatrix4fv(r->shadow.view_transform, 1, GL_FALSE, proj_matrix[0]);
 	glUniform1i(r->shadow.has_bones, GL_FALSE);
 
-	// Bone transforms are not used, but we still need to bind a UBO.
+	// 不用骨骼变换，但仍然要绑一个 UBO。
 	GLuint bone_transforms_ubo;
 	glGenBuffers(1, &bone_transforms_ubo);
 	glBindBuffer(GL_UNIFORM_BUFFER, bone_transforms_ubo);
@@ -1510,7 +1510,7 @@ struct height_detector *RE_renderer_create_height_detector(struct RE_renderer *r
 
 	glEnable(GL_DEPTH_TEST);
 
-	// Render the model.
+	// 渲染模型。
 	for (int i = 0; i < model->nr_meshes; i++) {
 		struct mesh *mesh = &model->meshes[i];
 		glBindVertexArray(mesh->vao);

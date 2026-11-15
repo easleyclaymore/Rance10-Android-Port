@@ -20,22 +20,22 @@
 #include "parts_internal.h"
 #include "vm.h"
 
-// true between calls to BeginClick and EndClick
+// BeginClick 与 EndClick 之间为真
 bool parts_began_click = false;
 
-// the mouse position at last update
+// 上次更新时的鼠标位置
 static Point parts_prev_pos = {0};
-// true when the left mouse button was down last update
+// 上次更新时左键是否已经按下
 static bool prev_clicking = false;
-// the last (fully) clicked parts number
+// 最近一次（完整）点击到的部件号
 static int clicked_parts = 0;
-// the current (partially) clicked parts number
+// 本次（部分）点击到的部件号
 static int click_down_parts = 0;
 
 /* [D119 probe] CPartsFunctionSet@CallFunctionMouseClick dispatches on the
- * third message variable (KeyCode): 1 -> this[7], 2 -> this[8], 4 -> this[9].
- * xsystem4 passes VK_LBUTTON (1); Rance10's AIN may expect 4 for left click.
- * XSYS4_KEYCODE_PROBE=N overrides it for a controlled A/B test. */
+ * 第三个消息变量（KeyCode）：1 -> this[7]，2 -> this[8]，4 -> this[9]。
+ * xsystem4 传的是 VK_LBUTTON（1）；兰斯10 的 AIN 可能期望左键是 4。
+ * XSYS4_KEYCODE_PROBE=N 可以覆盖它，做受控 A/B。 */
 static int click_keycode(void)
 {
 	static int k = -1;
@@ -46,7 +46,7 @@ static int click_keycode(void)
 	return k;
 }
 
-// drag state
+// 拖拽状态
 static struct parts *drag_parts = NULL;
 static bool is_dragging = false;
 static Point drag_initial_pos;
@@ -154,7 +154,7 @@ void parts_input_reset_drag(struct parts *parts)
 static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clicking,
 		int passed_time, bool *hover_consumed, bool *click_consumed)
 {
-	// Always use DEFAULT state hitbox regardless of the current display state.
+	// 不管当前显示状态是什么，命中盒一律用 DEFAULT 状态。
 	/* [D128] 隐藏的图层不参与命中（否则旧场景的按钮还挡在新场景前面）。 */
 	bool is_hovered = parts_is_visible(parts)
 		&& parts_hittest(parts, PARTS_STATE_DEFAULT, cur_pos)
@@ -163,7 +163,7 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	bool was_hovered = parts->is_hovered;
 	parts->is_hovered = is_hovered;
 
-	// !pass_cursor parts consume the cursor for parts behind them
+	// !pass_cursor 的部件会替它下面的部件吃掉光标
 	if (is_hovered && !parts->pass_cursor)
 		*hover_consumed = true;
 
@@ -183,12 +183,12 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	}
 
 	if (is_hovered) {
-		// MOUSE_ON message fires every frame while hovering
+		// 悬停时 MOUSE_ON 消息每帧都发
 		parts_msg_push(parts, PARTS_MSG_MOUSE_ON,
 				"iii", cur_pos.x, cur_pos.y, parts->hover_time);
 		parts->hover_time += passed_time;
 
-		// MOUSE_MOVE message fires when cursor moves while hovering
+		// 悬停时鼠标一动就发 MOUSE_MOVE 消息
 		if (cur_pos.x != parts_prev_pos.x || cur_pos.y != parts_prev_pos.y) {
 			parts_msg_push(parts, PARTS_MSG_MOUSE_MOVE, "ii", cur_pos.x, cur_pos.y);
 		}
@@ -207,7 +207,7 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 		return;
 	}
 
-	// click down: first eligible part captures the click
+	// 按下：第一个有资格的部件捕获这次点击
 	if (cur_clicking && !prev_clicking) {
 		click_down_parts = parts->no;
 		*click_consumed = true;
@@ -216,11 +216,11 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 		drag_initial_pos = parts->local.pos;
 		drag_start_cursor = cur_pos;
 
-		// KEY_TRIGGER message fires on press transition
+		// 按下状态切换时发 KEY_TRIGGER 消息
 		parts_msg_push(parts, PARTS_MSG_KEY_TRIGGER, "i", VK_LBUTTON);
 	}
 
-	// KEY_DOWN message fires every frame while held (not first frame)
+	// 按住期间 KEY_DOWN 消息每帧都发（首帧除外）
 	if (prev_clicking && cur_clicking && click_down_parts == parts->no) {
 		parts_msg_push(parts, PARTS_MSG_KEY_DOWN, "i", VK_LBUTTON);
 	}
@@ -234,26 +234,26 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 		parts_set_state(parts, PARTS_STATE_HOVERED);
 	}
 
-	/* [D113] GetClickNumber() reports the parts that captured this click,
-	 * independent of Parts_SetClickable. clickable only gates the CLICK/KEY_UP
-	 * messages (button callbacks). xsystem4 tied both to clickable, which
-	 * makes scenes whose parts are all 点击許可=0 -- e.g. Rance10's
-	 * "click anywhere to continue" start screen -- impossible to leave:
-	 * parts::detail::WaitForClick polls GetClickNumber() > 0 forever.
-	 * click_down_parts is only set for click_eligible parts above, so this
-	 * still respects pass_cursor / front-to-back consumption. */
+	/* [D113] GetClickNumber() 报告的是这次点击捕获到的部件，
+	 * 与 Parts_SetClickable 无关。clickable 只门控 CLICK/KEY_UP
+	 * 消息（按钮回调）。xsystem4 把两者都绑在 clickable 上，
+	 * 结果那些所有部件都是 点击許可=0 的场景 —— 例如兰斯10 的
+	 * 「点击任意处继续」开始画面 —— 再也离不开了：
+	 * parts::detail::WaitForClick 会一直轮询 GetClickNumber() > 0。
+	 * 上面只对 click_eligible 的部件设 click_down_parts，
+	 * 所以这里仍然遵守 pass_cursor / 从前到后的消费顺序。 */
 	if (prev_clicking && !cur_clicking && click_down_parts == parts->no) {
 		clicked_parts = parts->no;
-		/* [D114] Queue the CLICK/KEY_UP messages for every captured click,
-		 * not just for clickable parts.  The AIN side registers
-		 * "whole screen" mouse delegates (AFL_Parts_AddWholeMouseLClickEvent)
-		 * on the parts message manager; SceneStack@Join uses one of them to
-		 * call SceneStack@Exit, which is the only writer of IsFinish.
-		 * Rance10's start screen has 点击許可=0 on all three parts ("click
-		 * anywhere to continue"), so gating the message on clickable left
-		 * IsFinish=0 forever: WaitForClick kept exiting on GetClickNumber,
-		 * Join immediately re-entered 効果設定待ち, and Scenes::RunTitle
-		 * never started.  clickable still controls the button sound. */
+		/* [D114] 每一次捕获到的点击都要排 CLICK/KEY_UP 消息，
+		 * 不只是可点击的部件。AIN 那边在部件消息管理器上注册了
+		 * 「整屏」鼠标委托（AFL_Parts_AddWholeMouseLClickEvent）；
+		 * SceneStack@Join 用其中一个去调 SceneStack@Exit，
+		 * 而那是 IsFinish 唯一的写入者。
+		 * 兰斯10 的开始画面三个部件都是 点击許可=0，
+		 * 用 clickable 门控消息就让 IsFinish 永远为 0：
+		 * WaitForClick 一直在 GetClickNumber 上退出，
+		 * Join 立刻又进等待，Scenes::RunTitle 于是从没真正开始。
+		 * clickable 仍控制按钮音效。 */
 		if (parts->clickable)
 			audio_play_sound(parts->on_click_sound);
 		/* [D115] 用 PARTS_MSG_MOUSE_CLICK（=5）发出去，AIN 的
@@ -301,9 +301,9 @@ void PE_UpdateInputState(int passed_time)
 	bool cur_clicking = key_is_down(VK_LBUTTON) || pulse;
 	mouse_get_pos(&cur_pos.x, &cur_pos.y);
 
-	/* [D113] input probe: XSYS4_INPUT_DBG=1 prints the first frames of every
-	 * update so a lost click can be attributed to coordinates, hitbox,
-	 * began_click, or the clickable flag. */
+	/* [D113] 输入探针：XSYS4_INPUT_DBG=1 会打印每次更新的
+	 * 前若干帧，这样丢掉的点击才能归因到坐标、命中盒、
+	 * began_click 还是 clickable 标志。 */
 	static int dbg_n;
 	int dbg = getenv("XSYS4_INPUT_DBG") &&
 		(dbg_n < 40 || dbg_n % 60 == 0 || cur_clicking || prev_clicking || clicked_parts);
@@ -349,7 +349,7 @@ void PE_UpdateInputState(int passed_time)
 			       parts->uc_object ? parts->uc_object : "-");
 		}
 	}
-	// Highest z first: the sorted list is front-to-back.
+	// z 最高的排前面：排序后的列表是从前到后。
 	for (int si = 0; si < sorted_nr; si++) {
 		parts = sorted[si];
 		parts_update_mouse(parts, cur_pos, cur_clicking, passed_time,
@@ -369,7 +369,7 @@ void PE_UpdateInputState(int passed_time)
 		parts_msg_push(NULL, PARTS_MSG_KEY_UP, "i", VK_RBUTTON);
 	}
 
-	// Drag movement processing
+	// 处理拖拽移动
 	if (drag_parts && cur_clicking) {
 		bool cursor_moved = (cur_pos.x != parts_prev_pos.x ||
 				cur_pos.y != parts_prev_pos.y);
@@ -387,7 +387,7 @@ void PE_UpdateInputState(int passed_time)
 			is_dragging = true;
 		}
 
-		// Drop target tracking
+		// 跟踪放置目标
 		if (cursor_moved && is_dragging) {
 			struct parts *new_drop = NULL;
 			PARTS_LIST_FOREACH_REVERSE(parts) {
@@ -416,7 +416,7 @@ void PE_UpdateInputState(int passed_time)
 		}
 	}
 
-	// Release handling
+	// 处理释放
 	if (prev_clicking && !cur_clicking) {
 		if (is_dragging && drag_parts && drag_parts->draggable) {
 			parts_msg_push(drag_parts, PARTS_MSG_DRAG_END, "");
@@ -429,7 +429,7 @@ void PE_UpdateInputState(int passed_time)
 		drag_state_reset();
 
 		if (!click_down_parts) {
-			// TODO: play misclick sound
+			// TODO：播一下点空的音效
 		}
 		click_down_parts = 0;
 	}
