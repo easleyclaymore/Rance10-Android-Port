@@ -79,6 +79,32 @@ key:Shift_L;wait:1000;click:650,683;wait:8000"
 采样不到，40 次点击只有 9 次产生 `[inp] EndInput`。已改为 `sleep 0.2`
 （≈3 帧）。判据始终是「有几次 `EndInput`」，不是「我点了多少次」。
 
+## 渲染后端：默认 Xvfb 是软件，硬件要显式开
+
+`run-headless.sh` 默认起独立 Xvfb，而 **Xvfb 没有 DRI3/GLX 硬件**，于是 Mesa
+回落到 `llvmpipe`。`run-live.sh` 早年还额外写死了
+`LIBGL_ALWAYS_SOFTWARE=1` + `GALLIUM_DRIVER=llvmpipe`（D249 已改为默认不设，
+`XSYS4_FORCE_SOFTWARE_GL=1` 可回退）。
+
+实测对照（`XSYS4_GL_DBG=1` 打印 `[gl] vendor/renderer`）：
+
+| 跑测方式 | renderer | fps |
+|---|---|---|
+| 默认（Xvfb） | `llvmpipe (LLVM 23.1.4, 256 bits)` | **13.5** |
+| `XSYS4_REAL_DISPLAY=1` + 真实桌面 | `Mesa Intel(R) Graphics (ADL-N)` | **99.7** |
+
+```bash
+# 走硬件：复用本机桌面（会弹窗口、xdotool 会动真实鼠标）
+DISPLAY=:1 RANCE10_LIVE_ALLOW_DESKTOP=1 XSYS4_REAL_DISPLAY=1 \
+  XSYS4_GL_DBG=1 XSYS4_FPS_DBG=1 \
+  xsystem4/tools/run/run-headless.sh tag 60 /tmp/tag.png
+```
+
+两道闸必须同时满足：`XSYS4_REAL_DISPLAY=1`（跳 Xvfb）+
+`RANCE10_LIVE_ALLOW_DESKTOP=1`（放行非 `:9x` 的 DISPLAY）。
+**性能类结论（帧率、演出时长、点击命中率）一律注明用的是哪个后端** ——
+13.5 与 99.7 差 7 倍，混着比会得出完全不同的结论。
+
 ```bash
 # 从标题到任务地图，稳健版
 ./tools/xsys4 seq map1 \

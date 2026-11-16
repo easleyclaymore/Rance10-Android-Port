@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **160** 个开关，其中 **30** 个没有就近注释。
+共 **161** 个开关，其中 **30** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -86,8 +86,8 @@
 | 其它 | `XSYS4_CONSTRUCT_DBG` | `src/parts/construction.c:338` | 打印部件合成操作：PartsFunc(case 162)、776 批量入口、Build 的 parts/cmd/CG 名与 op 数 |
 | 其它 | `XSYS4_CP_DBG` | `src/vm.c:512` | 〔摘〕Parts(1114) 的 m_partsNumber 若在拷贝时还是 0，副本就永远是 0。 |
 | 其它 | `XSYS4_DI_FALLBACK` | `src/parts/message.c:83` | 〔摘〕受控实验：显式打开时回退到下标 0。 |
-| 其它 | `XSYS4_DUMP_EVERY` | `src/video.c:447` | 每隔 N 次执行 dump 一次，用于观察循环里的状态漂移 |
-| 其它 | `XSYS4_DUMP_FRAME` | `src/video.c:443` | 指定帧的完整快照（配合 DUMP_AT 的扩展模式） |
+| 其它 | `XSYS4_DUMP_EVERY` | `src/video.c:460` | 每隔 N 次执行 dump 一次，用于观察循环里的状态漂移 |
+| 其它 | `XSYS4_DUMP_FRAME` | `src/video.c:456` | 指定帧的完整快照（配合 DUMP_AT 的扩展模式） |
 | 其它 | `XSYS4_DUMP_TOPS` | `src/vm.c:2414` | 〔摘〕「条件是真是假」，而这类「条件永远为假」正是最难查的一类。 |
 | 其它 | `XSYS4_ENV_DBG` | `src/vm.c:2909` | — |
 | 其它 | `XSYS4_EX_DBG` | `src/hll/MainEXFile.c:527` | 〔摘〕所有任务都会被判成地图任务、剧情整段跳过——所以必须能看见。 |
@@ -100,6 +100,7 @@
 | 其它 | `XSYS4_FLAT_TREE` | `src/parts/flat.c:603` | — |
 | 其它 | `XSYS4_FPS_DBG` | `src/parts/render.c:1115` | [诊断] 每秒打印一次实际渲染帧数。用来区分「演出推进慢」是逻辑卡死还是 llvmpipe 低帧率（D92 全量标脏） |
 | 其它 | `XSYS4_G14_WATCH` | `src/vm.c:2823` | [诊断] 只在 global[14] 的值变化时打印 ip/旧值/新值/栈/调用栈（抓单例被覆写） |
+| 其它 | `XSYS4_GL_DBG` | `src/video.c:267` | [诊断] 启动时打印实际 GL vendor/renderer/version —— 判断有没有用上硬件加速的唯一硬证据（llvmpipe=软件，Mesa Intel=硬件） |
 | 其它 | `XSYS4_GSAVE_DBG` | `src/savedata.c:762` | 〔摘〕所以按可打印的类型名分类。 |
 | 其它 | `XSYS4_HEAP_LIVE_LIMIT` | `src/heap.c:107` | 堆存活槽上限，超了报警 |
 | 其它 | `XSYS4_HLL_ARGDBG` | `src/ffi.c:910` | 打印 HLL 调用的实际参数值（排查"参数顺序/位宽错"时用） |
@@ -167,7 +168,7 @@
 | 其它 | `XSYS4_STUB_BT` | `src/ffi.c:160` | 软桩命中时附带回溯 |
 | 其它 | `XSYS4_STUB_LOG` | `src/ffi.c:102` | 软桩命中清单写到该文件 |
 | 其它 | `XSYS4_SUBST_BT` | `src/ffi.c:638` | 静态库替换（subst）时打印回溯 |
-| 其它 | `XSYS4_SWAP_LOG` | `src/video.c:433` | 〔摘〕这样启动器可以在第一帧呈现之后立刻冻结进程。 |
+| 其它 | `XSYS4_SWAP_LOG` | `src/video.c:446` | 〔摘〕这样启动器可以在第一帧呈现之后立刻冻结进程。 |
 | 其它 | `XSYS4_TEXT_RENDER_DBG` | `src/parts/render.c:155` | =1 列全部非 UC 文字层；=<部件号下限> 只盯该号段（如 900000300），每号最多 3 条并附 show/alpha/vis/mw/mwshow 准入字段；修掉了「全局 80 条被地图吃光」的假阴性 |
 | 其它 | `XSYS4_TITLE_UI_FIX` | `src/parts/render.c:124` | — |
 | 其它 | `XSYS4_TRACE` | `src/vm.c:2354` | — |

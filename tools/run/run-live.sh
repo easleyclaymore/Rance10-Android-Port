@@ -58,8 +58,19 @@ ROOT="$PORT_DIR"
 export XSYS4_DATA_DIR="${XSYS4_DATA_DIR:-$ROOT/xsystem4}"
 export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-x11}"
 export EGL_PLATFORM="${EGL_PLATFORM:-x11}"
-export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
-export GALLIUM_DRIVER="${GALLIUM_DRIVER:-llvmpipe}"
+# [D249] 不再默认强制软件渲染。机器有 Intel UHD（/dev/dri/renderD128），
+# `eglinfo` 实测能拿到 `Mesa Intel(R) Graphics (ADL-N)`；而这里原先写死
+# `LIBGL_ALWAYS_SOFTWARE=1` + `GALLIUM_DRIVER=llvmpipe`，13.5fps 的瓶颈
+# 有一半来自这行。注意 **Xvfb 没有 GLX**（glxinfo 空输出），X11 下 SDL
+# 默认走 GLX，所以必须 `SDL_VIDEO_X11_FORCE_EGL=1` 才会走 EGL 硬件路径。
+# 回退：XSYS4_FORCE_SOFTWARE_GL=1。
+if [ "${XSYS4_FORCE_SOFTWARE_GL:-0}" = "1" ]; then
+    export LIBGL_ALWAYS_SOFTWARE=1
+    export GALLIUM_DRIVER="${GALLIUM_DRIVER:-llvmpipe}"
+else
+    export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-0}"
+    export SDL_VIDEO_X11_FORCE_EGL="${SDL_VIDEO_X11_FORCE_EGL:-1}"
+fi
 
 LOG_DIR="$LOGS_DIR"
 LOG="$LOG_DIR/live_${TAG}.log"
