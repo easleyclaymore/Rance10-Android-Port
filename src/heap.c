@@ -281,6 +281,20 @@ void heap_unref(int slot)
 	 * 形成无限递归（gdb backtrace 已确认）。必须挡掉。 */
 	if (slot <= 0)
 		return;
+	/* [D241] 上界也要挡。`Array.Find(ref array<string>, 谓词)` 的某个元素
+	 * 已经是垃圾值（实测 821768443，与日志 `Invalid string index:
+	 * 821768443 (type=-1)` 同号），拿它当槽号做 `heap[slot].ref` 就是越界读
+	 * → SIGSEGV（core：`heap_unref(slot=821768443) ← execute_instruction
+	 * ← … ← array_predicate_matches ← Array_Find_`）。
+	 * 与 D124/D155 同口径降级：忽略这次 unref 并限流告警，让流程继续走；
+	 * 真正根因（谁把垃圾写进了引用字段）见 TECH_DEBT。 */
+	if (unlikely((size_t)slot >= heap_size)) {
+		static int warned;
+		if (warned++ < 8)
+			WARNING("heap_unref: slot %d 越界（heap_size=%zu），忽略",
+			        slot, (size_t)heap_size);
+		return;
+	}
 	if (getenv("XSYS4_ARR_DBG") && slot == 400)
 		NOTICE("[ARR] slot400 unref type=%d ref=%d page=%p", heap[slot].type, heap[slot].ref, (void*)heap[slot].page);
 	if (slot == 255) {
