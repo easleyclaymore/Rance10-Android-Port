@@ -363,6 +363,17 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 		 * IsFinish，是 start screen 推进到标题场景的另一条入口。 */
 		parts_msg_push(NULL, PARTS_MSG_MOUSE_CLICK_AIN,
 				"iii", cur_pos.x, cur_pos.y, click_keycode());
+		/* [D266 受控实验] 子部件被点时向父链冒泡一份 CLICK。
+		 *
+		 * 起因：`s97` 点战况面板的 `900000819 'ButtonClose'`（有委托 di=1860）
+		 * 时 `EndInput` 只记到 1 次、面板没关。System4 里按钮常由一个图标子部件
+		 * 作图、逻辑挂在**父按钮**上，若原版有向上冒泡而引擎没有，
+		 * 就会出现「点中了、消息发了、什么都没发生」。
+		 * 本开关把同一个 CLICK 再发给直接父部件，验证这条链路。 */
+		if (getenv("XSYS4_CLICK_BUBBLE") && parts->parent) {
+			parts_msg_push(parts->parent, PARTS_MSG_MOUSE_CLICK_AIN,
+					"iii", cur_pos.x, cur_pos.y, click_keycode());
+		}
 	}
 }
 
