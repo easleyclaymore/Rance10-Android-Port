@@ -176,9 +176,22 @@ static bool flat_advance_children(struct flat *fl,
 // 把一层推进一个 tick。有任何帧变化就返回 true。
 static bool flat_advance_layer(struct flat *fl,
 		struct flat_layer_state *state,
-		struct flat_timeline *timelines, size_t nr_timelines)
+		struct flat_timeline *timelines, size_t nr_timelines,
+		int end_frame)
 {
-	int max_end_frame = flat_compute_max_frame(timelines, nr_timelines) - 1;
+	/* [D252] 封顶必须用装载时算好的 `f->end_frame`，不能在这里重新算
+	 * `flat_compute_max_frame()-1`。
+	 *
+	 * 实测 `900000813`（战斗演出，75 帧）走到 `frame=74` 就再也上不去，
+	 * 而 `PE_IsPartsFlatEnd()` 拿的是载入时算的 `f->end_frame = 75`，
+	 * 判据是 `current_frame == f->end_frame` —— **差 1，永远不相等**，
+	 * 于是 AIN 的 `SceneStack@Join` 无限等下去（`[flatend] frame=74 end=75
+	 * -> 0` 65 次）。根因是同一个表达式在装载期与推进期算出了不同的值
+	 * （timelines 在那之间被调整过）。统一成单一来源即可。
+	 * end_frame < 0 时退回旧行为。 */
+	int max_end_frame = end_frame >= 0
+			? end_frame
+			: flat_compute_max_frame(timelines, nr_timelines) - 1;
 	int prev_frame = state->current_frame;
 
 	do {
@@ -230,7 +243,7 @@ static bool flat_advance_children(struct flat *fl,
 		if (!state->children[i])
 			state->children[i] = flat_layer_state_new(lib->timeline.nr_timelines);
 		if (flat_advance_layer(fl, state->children[i],
-				lib->timeline.timelines, lib->timeline.nr_timelines)) {
+				lib->timeline.timelines, lib->timeline.nr_timelines, -1)) {
 			changed = true;
 		}
 	}
@@ -634,7 +647,8 @@ bool parts_flat_update(struct parts_flat *f, int passed_time)
 	if (f->pending_seek_delta > 0) {
 		for (int i = 0; i < f->pending_seek_delta; i++) {
 			flat_advance_layer(f->flat, f->root_state,
-					f->flat->timelines, f->flat->nr_timelines);
+					f->flat->timelines, f->flat->nr_timelines,
+					f->end_frame);
 		}
 		f->pending_seek_delta = 0;
 		f->elapsed = 0;
@@ -645,7 +659,8 @@ bool parts_flat_update(struct parts_flat *f, int passed_time)
 	if (f->needs_advance) {
 		f->needs_advance = false;
 		bool changed = flat_advance_layer(f->flat, f->root_state,
-				f->flat->timelines, f->flat->nr_timelines);
+				f->flat->timelines, f->flat->nr_timelines,
+				f->end_frame);
 		f->elapsed = 0;
 		return changed;
 	}
@@ -661,8 +676,11 @@ bool parts_flat_update(struct parts_flat *f, int passed_time)
 
 	bool any_changed = false;
 	for (int i = 0; i < delta; i++) {
+		/* [D252] 主推进路径也必须用装载时的 end_frame，否则封顶比
+		 * `IsPartsFlatEnd()` 的判据小 1，永远等不到「播完」。 */
 		if (flat_advance_layer(f->flat, f->root_state,
-				f->flat->timelines, f->flat->nr_timelines))
+				f->flat->timelines, f->flat->nr_timelines,
+				f->end_frame))
 			any_changed = true;
 	}
 	return any_changed;
@@ -1187,6 +1205,22 @@ bool PE_IsPartsFlatEnd(int parts_no, int state)
 	bool end = (!f->flat || !f->root_state)
 			? false
 			: f->root_state->current_frame == f->end_frame;
+	/* [D253] flat 停在最后一个脚本 stop 键，也算「这段演完了」。
+	 *
+	 * 实测 `900000813`（战斗演出，end=75）走到 `frame=73` 就再也不动，而
+	 * `IsPartsFlatEnd()` 判 `frame == 75` → 永远 false ⇒ AIN 的
+	 * `SceneStack@Join` 永远等下去（`[flatend] frame=73 end=75 -> 0`）。
+	 * 死锁成因：flat 的 stop 键把帧钉住时，只有 AIN 调 `GoFramePartsFlat`
+	 * 才会继续；可 AIN 恰恰在等 `IsPartsFlatEnd` 变真才往下走 —— 两边对等。
+	 * 原版显然把「停在最后一段 stop 键」视作播完（否则原版也卡）。
+	 * 开关隔离，默认不动既有语义。 */
+	/* 注意有两个 stopped：`parts_flat.stopped`（部件级，`PE_StopPartsFlat`
+	 * 置真，会让 `parts_flat_update` 提前 return）和 `root_state->stopped`
+	 * （脚本 stop 键）。**表现上都是「不再推进」**，所以两者都要算。 */
+	if (!end && getenv("XSYS4_FLATEND_STOP_IS_END") &&
+	    (f->stopped || f->root_state->stopped) &&
+	    f->root_state->jump_target == -1)
+		end = true;
 	/* [D234] XSYS4_FLATEND_DBG=1：谁在问「这个 flat 播完了吗」，答案是什么。
 	 * 回合切换的等待完全押在这个返回值上，前 40 次足够看清对象。 */
 	static int dbg = -1, n, last_no = -1;
@@ -1194,7 +1228,17 @@ bool PE_IsPartsFlatEnd(int parts_no, int state)
 		dbg = getenv("XSYS4_FLATEND_DBG") ? 1 : 0;
 	/* [D234] 只打「还没播完」的查询：已结束的内层循环会把日志刷满，
 	 * 而排障要的恰恰是「还有谁没结束」。 */
-	if (dbg && !end && n++ < 60) {
+	/* [D252] 上限 60 太紧：战斗的演出 flat 有 75 帧，60 条正好在 frame=66
+	 * 耗尽，于是「它到底播完没有」永远看不到（s58）。提到 400。 */
+	/* 号段会复用（同一天里 900000813 在不同跑测里可以是完全不同的部件），
+	 * 所以按「帧数」过滤更可靠：只关心长演出（end >= N）。 */
+	const char *fe_only = getenv("XSYS4_FLATEND_ONLY");
+	if (fe_only && *fe_only && atoi(fe_only) != parts_no)
+		return end;
+	const char *fe_min = getenv("XSYS4_FLATEND_MIN_END");
+	if (fe_min && *fe_min && f->end_frame < atoi(fe_min))
+		return end;
+	if (dbg && !end && n++ < 400) {
 		NOTICE("[flatend] no=%d st=%d frame=%d end=%d loaded=%d -> %d",
 		       parts_no, state,
 		       f->root_state ? f->root_state->current_frame : -1,

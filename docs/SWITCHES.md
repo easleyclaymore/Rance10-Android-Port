@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **163** 个开关，其中 **30** 个没有就近注释。
+共 **166** 个开关，其中 **31** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -96,10 +96,13 @@
 | 其它 | `XSYS4_EX_LAYOUT_BY_CONFIG` | `src/parts/activity.c:835` | [诊断] 真布局盒（EX 声明 `レイアウトボックス`）按 `配置` 字段重排（0=FREE/1=纵向/2=横向），而不是 D214 的一律 FREE。用于解决 LargeSkillButton/CardApView 这类「子部件座标全在 (0,0)」的容器底板不显示 |
 | 其它 | `XSYS4_EX_LAYOUT_FREE` | `src/parts/activity.c:825` | [D214 已转正] EX 装载的布局盒/用户组件初值改为 FREE（保留 EX 绝对坐标），避免 VERTICAL 自动重排把子部件推到屏幕外；默认生效，=0 回退做 A/B |
 | 其它 | `XSYS4_EX_RATIO_POS` | `src/parts/activity.c:898` | [D216 已转正] EX「座標を率として認識する=1」的 座標 按视图宽高换算成像素；消息窗口 (0,1) 由此变成 (0,1080)，正文才从屏幕外进画面；默认生效，=0 回退做 A/B |
-| 其它 | `XSYS4_FLATEND_DBG` | `src/parts/flat.c:1194` | — |
-| 其它 | `XSYS4_FLAT_DBG` | `src/parts/flat.c:1124` | 打印 flat 的加载名/hdr 尺寸/库数，以及渲染时的 flat 指针与部件几何（空 flat 会让部件退化成 0x0） |
+| 其它 | `XSYS4_FLATEND_DBG` | `src/parts/flat.c:1228` | — |
+| 其它 | `XSYS4_FLATEND_MIN_END` | `src/parts/flat.c:1238` | — |
+| 其它 | `XSYS4_FLATEND_ONLY` | `src/parts/flat.c:1235` | 〔摘〕所以按「帧数」过滤更可靠：只关心长演出（end >= N）。 |
+| 其它 | `XSYS4_FLATEND_STOP_IS_END` | `src/parts/flat.c:1220` | 〔摘〕（脚本 stop 键）。**表现上都是「不再推进」**，所以两者都要算。 |
+| 其它 | `XSYS4_FLAT_DBG` | `src/parts/flat.c:1142` | 打印 flat 的加载名/hdr 尺寸/库数，以及渲染时的 flat 指针与部件几何（空 flat 会让部件退化成 0x0） |
 | 其它 | `XSYS4_FLAT_FRAME_DBG` | `src/parts/parts.c:1152` | [诊断] 轻量 flat 帧探针：打印 no/ctrl/frame/root_state.stopped/fps/passed_time。值=1 打全部，值=部件号只跟一个。用来区分「帧没推进」是 parts_flat.stopped、root_state.stopped（脚本 stop 键）还是 passed_time 为 0 |
-| 其它 | `XSYS4_FLAT_TREE` | `src/parts/flat.c:603` | — |
+| 其它 | `XSYS4_FLAT_TREE` | `src/parts/flat.c:616` | — |
 | 其它 | `XSYS4_FPS_DBG` | `src/parts/render.c:1115` | [诊断] 每秒打印一次实际渲染帧数。用来区分「演出推进慢」是逻辑卡死还是 llvmpipe 低帧率（D92 全量标脏） |
 | 其它 | `XSYS4_G14_WATCH` | `src/vm.c:2823` | [诊断] 只在 global[14] 的值变化时打印 ip/旧值/新值/栈/调用栈（抓单例被覆写） |
 | 其它 | `XSYS4_GL_DBG` | `src/video.c:267` | [诊断] 启动时打印实际 GL vendor/renderer/version —— 判断有没有用上硬件加速的唯一硬证据（llvmpipe=软件，Mesa Intel=硬件） |
