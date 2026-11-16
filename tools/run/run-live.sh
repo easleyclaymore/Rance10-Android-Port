@@ -236,7 +236,10 @@ click() { # click <view_x> <view_y> <button>
         echo "--- live xsystem4 windows: $(xwininfo -root -children 2>/dev/null | awk '/"xsystem4"/{print $1}' | tr '\n' ' ')" >&2
     fi
     xdotool mousedown "$3" >/dev/null 2>&1 || true
-    sleep 0.12
+    # [D245] 0.12s 在 llvmpipe 下只有约 1.5 帧（实测 13.5fps → 74ms/帧），
+    # 按下态落在帧边界上时整帧采样不到，40 次点击只有 9 次产生 EndInput。
+    # 拉到 0.2s（≈3 帧）保证至少两次 UpdateInput 能看到按下态。
+    sleep 0.2
     xdotool mouseup "$3" >/dev/null 2>&1 || true
 }
 
