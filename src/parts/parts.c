@@ -1143,7 +1143,7 @@ static void parts_update_loop(struct parts *parts, int passed_time)
 		break;
 	case PARTS_FLAT: {
 		struct parts_flat *pf = &parts->states[parts->state].flat;
-		dirty = parts_flat_update(pf, passed_time);
+		dirty = parts_flat_update(pf, passed_time, parts->no);
 		/* [D243] flat 帧探针。PARTS_DUMP 一次打全场几百行、把帧率拖到
 		 * 听不见，所以单独给一条只打帧号的轻量通路：
 		 *   XSYS4_FLAT_FRAME_DBG=1      所有 flat

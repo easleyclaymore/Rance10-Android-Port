@@ -654,7 +654,7 @@ int parts_flat_max_paint_alpha(struct parts_flat *f);
 
 /* [D231] XSYS4_FLAT_TREE=<部件号>：转储该 flat 的时间线树（诊断用）。 */
 void parts_flat_dump_tree(int parts_no, struct parts_flat *f);
-bool parts_flat_update(struct parts_flat *f, int passed_time);
+bool parts_flat_update(struct parts_flat *f, int passed_time, int parts_no);
 int parts_flat_find_library(struct flat *fl, const char *name);
 int parts_flat_stop_motion_get_cg_lib(struct parts_flat *f, int sm_lib_idx, int local);
 
