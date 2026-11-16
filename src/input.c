@@ -11,6 +11,7 @@
  */
 
 #include <stdbool.h>
+#include <string.h>
 #include <time.h>
 #include <SDL.h>
 #include "system4.h"
@@ -40,6 +41,80 @@ bool mouse_consume_press_pulse(void)
 	bool p = mouse_press_pulse;
 	mouse_press_pulse = false;
 	return p;
+}
+
+/* [D233] 每个键的一次性「按下脉冲」。
+ *
+ * xdotool 的 click / rclick / key 都在**同一帧**里完成 press+release：
+ * 事件泵把两个事件一起吃进来，`key_state[code]` 立刻回到 false，而 AIN
+ * 只有在自己的指令流里轮询 `Key_IsDown()` 才能看到按键 —— 于是永远读到 0。
+ * 兰斯10 的回合切换用 `CASClick`（右键）/ `SpaceKeyClick`（空格）轮询，
+ * 结果就是画面停在 Round 演出上、怎么点都不走。
+ *
+ * 这里给每个键留一个一次性脉冲，只由 AIN 侧的 `sact_Key_IsDown()` 消费：
+ * 读到一次 true 之后清掉，等价于「这次按下至少被观察到一帧」。 */
+static bool key_press_pulse[VK_NR_KEYCODES];
+
+/* [D233] 合成点击「先被看见、再抬起」。
+ *
+ * xdotool 的 `click`/`rclick`/`key` 把 press 与 release 塞进**同一次事件泵**，
+ * 于是 `key_state` 在同一帧里 true→false，AIN 下次轮询时已经是抬起状态。
+ * 兰斯10 的 `CASClick` 是边沿检测（按下记一帧，**抬起那一帧**才返回 true），
+ * 一次都看不见就永远等不到 —— 回合切换就卡在 Round 演出上。
+ *
+ * 光延长按住时间不够：AIN 的等待循环每轮要做一次 view 更新，实测轮询率
+ * 只有 4 次/秒，60ms 的窗口大概率被跳过。所以改成状态机：
+ *   按下 → 保持 down，直到某一处 `key_is_down()` 真的读到 true；
+ *   抬起 → 若还没被读到过就挂起，等读到之后再抬。
+ * 这样每个合成点击保证被观测到「一次按下 + 一次抬起」，与轮询快慢无关。
+ * 兜底 300ms：若这段时间根本没人读键盘（过场 CG 之类），强制抬起，
+ * 不让键状态卡住。
+ */
+#define KEY_RELEASE_FALLBACK_MS 300
+static bool key_seen_down[VK_NR_KEYCODES];
+static bool key_release_pending[VK_NR_KEYCODES];
+static uint32_t key_press_tick[VK_NR_KEYCODES];
+
+static void key_note_press(int code)
+{
+	if (code < 0 || code >= VK_NR_KEYCODES)
+		return;
+	key_state[code] = true;
+	key_seen_down[code] = false;
+	key_release_pending[code] = false;
+	key_press_tick[code] = SDL_GetTicks();
+}
+
+static void key_note_release(int code)
+{
+	if (code < 0 || code >= VK_NR_KEYCODES)
+		return;
+	if (key_seen_down[code])
+		key_state[code] = false;
+	else
+		key_release_pending[code] = true;
+}
+
+static void key_flush_pending(void)
+{
+	uint32_t now = SDL_GetTicks();
+	for (int i = 0; i < VK_NR_KEYCODES; i++) {
+		if (!key_release_pending[i])
+			continue;
+		if (key_seen_down[i] ||
+		    now - key_press_tick[i] >= KEY_RELEASE_FALLBACK_MS) {
+			key_state[i] = false;
+			key_release_pending[i] = false;
+		}
+	}
+}
+
+bool key_consume_press_pulse(int code)
+{
+	if (code < 0 || code >= VK_NR_KEYCODES || !key_press_pulse[code])
+		return false;
+	key_press_pulse[code] = false;
+	return true;
 }
 
 /* [D191] 右键释放脉冲，语义同上面的左键脉冲。 */
@@ -229,11 +304,17 @@ bool key_is_down(enum sact_keycode code)
 	if (code < 0 || code >= VK_NR_KEYCODES) {
 		return false;
 	}
+	if (key_state[code])
+		key_seen_down[code] = true;   // [D233] 记下「这次按下被读到了」
 	return key_state[code];
 }
 
 void key_clear_flag(bool no_ctrl)
 {
+	/* 清键状态时把未消费的按下脉冲一起丢掉：否则上一轮遗留的脉冲
+	 * 会在之后的某次轮询里冒出一个幽灵按键（D233）。 */
+	memset(key_press_pulse, 0, sizeof(key_press_pulse));
+	memset(key_release_pending, 0, sizeof(key_release_pending));
 	for (int i = 0; i < VK_NR_KEYCODES; i++) {
 		if (no_ctrl && i == VK_CONTROL)
 			continue;
@@ -283,9 +364,14 @@ static void key_event(SDL_KeyboardEvent *e, bool pressed)
 {
 	enum sact_keycode code = sdl_to_sact_key(e->keysym.scancode, e->keysym.mod);
 	if (code) {
-		key_state[code] = pressed;
-		if (pressed && key_handler)
-			key_handler(code);
+		if (pressed) {
+			key_note_press(code);
+			key_press_pulse[code] = true;
+			if (key_handler)
+				key_handler(code);
+		} else {
+			key_note_release(code);
+		}
 	}
 }
 
@@ -298,8 +384,14 @@ static void mouse_event(SDL_MouseButtonEvent *e)
 	 * 只读 key_state 会漏掉，必须留一个脉冲给帧泵消费。 */
 	if (code == VK_RBUTTON && e->state == SDL_RELEASED)
 		mouse_rclick_pulse = true;
-	if (code)
-		key_state[code] = e->state == SDL_PRESSED;
+	if (code) {
+		if (e->state == SDL_PRESSED) {
+			key_note_press(code);
+			key_press_pulse[code] = true;
+		} else {
+			key_note_release(code);
+		}
+	}
 #ifdef DEBUGGER_ENABLED
 	if (e->button == SDL_BUTTON_MIDDLE && e->state == SDL_PRESSED
 			&& (dbg_start_in_debugger || dbg_dap))
@@ -313,10 +405,13 @@ static void synthetic_mouse_event(SDL_MouseButtonEvent *e)
 		mouse_press_pulse = true;
 		// 视口之外的触摸当作右键。
 		SDL_Point p = { .x = e->x, .y = e->y };
-		if (SDL_PointInRect(&p, &sdl.viewport))
-			key_state[VK_LBUTTON] = true;
-		else
-			key_state[VK_RBUTTON] = true;
+		if (SDL_PointInRect(&p, &sdl.viewport)) {
+			key_note_press(VK_LBUTTON);
+			key_press_pulse[VK_LBUTTON] = true;
+		} else {
+			key_note_press(VK_RBUTTON);
+			key_press_pulse[VK_RBUTTON] = true;
+		}
 	} else {
 		key_state[VK_LBUTTON] = false;
 		key_state[VK_RBUTTON] = false;
@@ -660,6 +755,7 @@ void handle_window_events(void)
 
 void handle_events(void)
 {
+	key_flush_pending();
 	fire_deferred_events();
 
 	SDL_Event e;

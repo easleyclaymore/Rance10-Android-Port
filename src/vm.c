@@ -130,6 +130,40 @@ union vm_value local_get(int varno)
  * 的 6 号变量）；如果一个槽从头到尾没人写，那就表现为一片安静 —— 而这
  * 本身也就是答案。 */
 /* [MEM] XSYS4_HLL_TRACE=<lib>,<fno>：见 CALLHLL 分支的说明。 */
+/* [D234] XSYS4_HLL_HIST=<库号>：每秒打印一次该库各函数的调用次数。
+ *
+ * 「卡在某个界面」时最需要知道的不是某一帧的栈，而是**这一秒里游戏在轮询
+ * 什么**：是 GetClickNumber 一直问不到，还是在等某个动画帧号，还是在问
+ * 某个 IsFinished。单个探针只能证明某一次调用，直方图能排出权重。 */
+#define HLL_HIST_MAX 2048
+static int hll_hist_lib = -2;
+static unsigned hll_hist_cnt[HLL_HIST_MAX];
+static time_t hll_hist_last;
+
+static void hll_hist_note(int lib, int fno)
+{
+	if (hll_hist_lib == -2) {
+		const char *e = getenv("XSYS4_HLL_HIST");
+		hll_hist_lib = e && *e ? atoi(e) : -1;
+	}
+	if (hll_hist_lib < 0 || lib != hll_hist_lib)
+		return;
+	if (fno >= 0 && fno < HLL_HIST_MAX)
+		hll_hist_cnt[fno]++;
+	time_t now = time(NULL);
+	if (now == hll_hist_last)
+		return;
+	hll_hist_last = now;
+	char buf[480];
+	int n = 0;
+	for (int i = 0; i < HLL_HIST_MAX && n < (int)sizeof(buf) - 40; i++) {
+		if (hll_hist_cnt[i])
+			n += snprintf(buf + n, sizeof(buf) - n, " %d:%u", i, hll_hist_cnt[i]);
+	}
+	NOTICE("[hllhist] lib=%d%s", lib, n ? buf : " （空）");
+	memset(hll_hist_cnt, 0, sizeof(hll_hist_cnt));
+}
+
 static bool hll_trace_enabled(int lib, int fno)
 {
 	static int wlib = -2, wfno = -1, n;
@@ -3122,6 +3156,7 @@ static enum opcode execute_instruction(enum opcode opcode)
 		 * （无类型时是 -1）。把它交给 FFI 层，
 		 * 这样 AIN_REF_HLL_PARAM 之类的结果才能按类型实例化。 */
 		int tag = ain->version >= 11 ? get_argument(2) : -1;
+		hll_hist_note(get_argument(0), get_argument(1));
 		/* [MEM] XSYS4_HLL_TRACE=<lib>,<fno>：打印某 HLL 调用的栈顶实参
 		 * （整数原样，页引用给出它的 nr_vars/a_type）。用于回答"这个调用
 		 * 每次拿到的容器是不是在变长"——Numof 的返回值一路涨，说明循环
