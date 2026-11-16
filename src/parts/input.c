@@ -176,6 +176,13 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	 * 判据成对改才有意义。 */
 	if (getenv("XSYS4_CLICK_PASS"))
 		hover_blocking = parts->pass_cursor;
+	/* [D262] `XSYS4_CLICK_SKIP_FLAT` 也必须同步到这里。
+	 * `s89` 开了它却仍然 `EndInput=0`：因为 705 的 `pc=0` 照样先把
+	 * `hover_consumed` 置真，技能面板 340 连 `is_hovered` 都拿不到，
+	 * 直接 return —— 和 `s85` 完全同型的坑，第三次踩。 */
+	if (getenv("XSYS4_CLICK_SKIP_FLAT") &&
+	    parts->states[parts->state].type == PARTS_FLAT)
+		hover_blocking = false;
 	if (is_hovered && hover_blocking)
 		*hover_consumed = true;
 
