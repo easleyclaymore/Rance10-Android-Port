@@ -211,6 +211,21 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	 * 本开关只在跑测里开，用来验证「705 截胡」这一条；默认关闭不动既有路径。 */
 	if (getenv("XSYS4_CLICK_SKIP_NONCLICKABLE") && !parts->clickable)
 		click_eligible = false;
+	/* [D251] flat 不参与点击捕获。
+	 *
+	 * 战斗里 `BattleInfoView.Flat`(900000705) 是 `フラット名 = 战斗开始/…/背景`
+	 * 的全屏演出/背景图：ctrl=2、hb 覆盖整屏、`gz=1<<30+1125`、`pass=0`，
+	 * 于是点 (1845,818)（「防御 1Ap」按钮）命中的永远是它（`s47` 候选表），
+	 * 而它自己没有委托 → CLICK 消息打空炮 → 战斗停在第一回合。
+	 *
+	 * 不能按 `clickable` 过滤（`s48` 实测：Rance10 所有可点部件 clickable
+	 * 都是 0，过滤后 `EndInput` 直接变 0），也不该按 `pass_cursor` 反转
+	 * （按钮是 1、背景是 0，反了会把按钮也滤掉）。**按组件类型**最干净：
+	 * flat 在原版里是"平面图形/演出层"，真正的按钮是 `按钮`(0) 或 CG。
+	 * 开关隔离，默认沿用旧行为。 */
+	if (getenv("XSYS4_CLICK_SKIP_FLAT") &&
+	    parts->states[parts->state].type == PARTS_FLAT)
+		click_eligible = false;
 	if (!click_eligible || *click_consumed) {
 		if (!was_hovered)
 			audio_play_sound(parts->on_cursor_sound);

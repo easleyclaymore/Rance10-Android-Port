@@ -134,6 +134,13 @@ struct activity_part {
 	int font_size;         /* 字体尺寸 = 39（此前退化成默认 16px） */
 	int font_color[3];     /* 字体色 = (255,255,255) */
 	int char_space, line_space; /* 文字间距 = -2 / 行间距 = 7 */
+	/* [D250] 布局盒的 `配置`（0=FREE / 1=纵向 / 2=横向，与
+	 * enum parts_layout_type 同值域）。EX 原文见 LargeSkillButton.pactex：
+	 * 活动根是 `レイアウトボックス`、`配置 = 1`，而它的 5 个子部件
+	 * （Button/SkillIcon/SkillName/Desc/ApBase）座标**全是 (0,0,1)** ——
+	 * 完全靠布局盒重排。D214 为修回想对话框把 LAYOUT_BOX 一律设 FREE，
+	 * 于是这 5 个部件全叠在原点，画面上只剩文字没有底板。 */
+	int layout_arrangement;
 
 	/* [D238] 数字 / 计量部件（EX 原文见 HpBarPlayer.pactex）。
 	 * 类型识别修好后这些负载仍没读，于是 PARTS_NUMERAL/HGAUGE 有类型
@@ -639,6 +646,8 @@ static void parse_part_fields(struct ex_tree *node, struct activity_part *part)
 			part->flat_name = get_string(src, "フラット名");
 		if (!part->flat_name)
 			part->flat_name = get_string(type_info, "フラット名");
+		if (!get_int(src, "配置", &part->layout_arrangement))
+			get_int(type_info, "配置", &part->layout_arrangement);
 		int dims[2] = { 0, 0 };
 		if (get_int_list(type_info, "尺寸", dims, 2) ||
 		    get_int_list(src, "尺寸", dims, 2)) {
@@ -816,10 +825,26 @@ static int build_part(struct activity_part *part, int parent_no)
 		const char *e = getenv("XSYS4_EX_LAYOUT_FREE");
 		ex_layout_free = e && (!strcmp(e, "0")) ? 0 : 1;
 	}
-	if (ex_layout_free &&
-	    (part->type == ACT_COMP_LAYOUT_BOX || part->type == ACT_COMP_PANEL ||
-	     part->type == ACT_COMP_FORM || part->type == ACT_COMP_USER_COMPONENT))
-		PE_SetLayoutBoxLayoutType(part->parts_no, 0 /* PARTS_LAYOUT_FREE */);
+	/* [D250] 真布局盒（EX 明确声明 `レイアウトボックス`）要按 `配置` 重排：
+	 * LargeSkillButton / CardApView 这类容器的子部件座标全在 (0,0)，
+	 * 不重排就全叠在原点。而 PANEL / FORM / 用户组件 是被
+	 * PE_SetComponentType 误映射成布局盒的静态容器（D214 的病灶），
+	 * 它们必须保持 FREE。开关隔离，默认沿用 D214 的旧行为。 */
+	static int ex_layout_by_cfg = -1;
+	if (ex_layout_by_cfg < 0) {
+		const char *e = getenv("XSYS4_EX_LAYOUT_BY_CONFIG");
+		ex_layout_by_cfg = e && *e && *e != '0';
+	}
+	if (ex_layout_free) {
+		if (part->type == ACT_COMP_LAYOUT_BOX && ex_layout_by_cfg &&
+		    part->layout_arrangement >= 0 && part->layout_arrangement <= 2)
+			PE_SetLayoutBoxLayoutType(part->parts_no, part->layout_arrangement);
+		else if (part->type == ACT_COMP_LAYOUT_BOX ||
+			 part->type == ACT_COMP_PANEL ||
+			 part->type == ACT_COMP_FORM ||
+			 part->type == ACT_COMP_USER_COMPONENT)
+			PE_SetLayoutBoxLayoutType(part->parts_no, 0 /* PARTS_LAYOUT_FREE */);
+	}
 	/* 用户组件：先给一个真实尺寸，命中矩形才有面积。
 	 * 宽度优先取 参数 里的「幅Ｗ」，其次 表示領域，最后用 196（Rance10 的
 	 * 菜单默认宽度）。高度暂用 40；控件层做出来后再由文字度量决定。 */
