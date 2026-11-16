@@ -1792,7 +1792,16 @@ bool vm_iface_pair(int iface_no, int ref_slot, int *obj, int *offset)
 }
 
 /* [D227] 按值传参且**拥有堆引用**的类型。`AIN_REF_TYPE` 是宏（多 case），
- * 不能放进表达式；它那类参数由 function_call() 自己 heap_ref，见调用点。 */
+ * 不能放进表达式；它那类参数由 function_call() 自己 heap_ref，见调用点。
+ *
+ * [D240] 上面那句对 REF 类**不成立**：`vm_call_hll_closure()` 末尾是直接
+ * `vm_call(fno, -1)`，根本没经过 `function_call()`。被调帧销毁时照样会
+ * unref 局部页里的引用，所以 REF 类也必须在这里补一份 —— 否则
+ * `Array.Find(ref array<T>, 谓词)` 的元素在谓词返回后变成悬空槽
+ * （core：`heap_unref ← execute_instruction ← … ← array_predicate_matches`，
+ * 崩溃前日志有 `Invalid string index: 821768443 (type=-1)`）。
+ * 只列「拥有堆对象」的 REF：AIN_REF_INT/FLOAT/BOOL/LONG_INT/ENUM 是值，
+ * `args[i].i` 是字面值，补 ref 会误伤。 */
 static bool hll_arg_owns_ref(enum ain_data_type type)
 {
 	switch (type) {
@@ -1800,6 +1809,12 @@ static bool hll_arg_owns_ref(enum ain_data_type type)
 	case AIN_STRUCT:
 	case AIN_DELEGATE:
 	case AIN_ARRAY_TYPE:
+		return true;
+	case AIN_REF_STRING:
+	case AIN_REF_STRUCT:
+	case AIN_REF_DELEGATE:
+	case AIN_REF_ARRAY:
+	case AIN_REF_ARRAY_TYPE:
 		return true;
 	default:
 		return false;
