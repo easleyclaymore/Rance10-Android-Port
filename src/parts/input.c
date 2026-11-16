@@ -164,7 +164,15 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	parts->is_hovered = is_hovered;
 
 	// !pass_cursor 的部件会替它下面的部件吃掉光标
-	if (is_hovered && !parts->pass_cursor)
+	/* [D261 受控实验 C-2] hover 消费必须与 click_eligible 用**同一判据**。
+	 * 只改 `click_eligible` 而不同时改这里，等于白改：`s85` 的
+	 * `XSYS4_CLICK_ONLY_CLICKABLE` 仍然 `EndInput=0`，因为背景 705(pc=0)
+	 * 在 z 最高处先把 `hover_consumed` 置真，后面 700/701 连
+	 * `is_hovered` 都拿不到，直接 `return` 掉 —— 根本走不到捕获那段。 */
+	bool hover_blocking = !parts->pass_cursor;
+	if (getenv("XSYS4_CLICK_ONLY_CLICKABLE"))
+		hover_blocking = parts->clickable;
+	if (is_hovered && hover_blocking)
 		*hover_consumed = true;
 
 	if (parts->linked_from >= 0 && is_hovered != was_hovered) {
@@ -243,6 +251,15 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	 * 若本开关下 `EndInput` 有值且点到 900000109，方向即成立。 */
 	if (getenv("XSYS4_CLICK_PASS"))
 		click_eligible = parts->pass_cursor;
+	/* [D261 受控实验 C] 只认 `点击許可`（ck=1）。
+	 * `s84` 的全部候选表给出关键事实：战斗 UI 里 **`900000700`/`900000701`**
+	 * 是 `hb=1920x1080`、`clickable=1`、`gz=1<<30` 的整屏点击层 ——
+	 * 它们就是 AIN 用来接「整屏/任意处点击」的接收器。
+	 * 而默认的 `clickable || !pass_cursor` 让背景 flat `900000705`(pc=0)
+	 * 因为 z 略高而抢在前面，链路就断在"背景吃掉点击、它又没有委托"。
+	 * 本开关把捕获条件收敛成 `clickable` 一条。 */
+	if (getenv("XSYS4_CLICK_ONLY_CLICKABLE"))
+		click_eligible = parts->clickable;
 	if (!click_eligible || *click_consumed) {
 		if (!was_hovered)
 			audio_play_sound(parts->on_cursor_sound);
