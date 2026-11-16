@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **157** 个开关，其中 **30** 个没有就近注释。
+共 **158** 个开关，其中 **30** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -96,6 +96,7 @@
 | 其它 | `XSYS4_FLAT_DBG` | `src/parts/flat.c:1124` | 打印 flat 的加载名/hdr 尺寸/库数，以及渲染时的 flat 指针与部件几何（空 flat 会让部件退化成 0x0） |
 | 其它 | `XSYS4_FLAT_FRAME_DBG` | `src/parts/parts.c:1152` | [诊断] 轻量 flat 帧探针：打印 no/ctrl/frame/root_state.stopped/fps/passed_time。值=1 打全部，值=部件号只跟一个。用来区分「帧没推进」是 parts_flat.stopped、root_state.stopped（脚本 stop 键）还是 passed_time 为 0 |
 | 其它 | `XSYS4_FLAT_TREE` | `src/parts/flat.c:603` | — |
+| 其它 | `XSYS4_FPS_DBG` | `src/parts/render.c:1115` | [诊断] 每秒打印一次实际渲染帧数。用来区分「演出推进慢」是逻辑卡死还是 llvmpipe 低帧率（D92 全量标脏） |
 | 其它 | `XSYS4_G14_WATCH` | `src/vm.c:2823` | [诊断] 只在 global[14] 的值变化时打印 ip/旧值/新值/栈/调用栈（抓单例被覆写） |
 | 其它 | `XSYS4_GSAVE_DBG` | `src/savedata.c:762` | 〔摘〕所以按可打印的类型名分类。 |
 | 其它 | `XSYS4_HEAP_LIVE_LIMIT` | `src/heap.c:107` | 堆存活槽上限，超了报警 |
@@ -121,7 +122,7 @@
 | 其它 | `XSYS4_MSGF_FIX` | `src/hacks.c:328` | [D204] AIN v12 无 MSGF 段时按函数名把 msgf 解析到 "message"/3（Rance10: fno 6100）；默认开启，=0 关闭做 A/B |
 | 其它 | `XSYS4_MSGQ_DBG` | `src/parts/message.c:163` | 〔摘〕对其它值走 member1[delegate_index]。分派打空炮时必须先知道走的哪条。 |
 | 其它 | `XSYS4_MSGWIN_DBG` | `src/hll/PartsEngine.c:46` | [诊断] 打印消息窗口配置族 setter 的触达与实参（Active/Text/CGName/FlatName/TextArea/OriginPosMode/Space/Speed），每个函数限 20 条；用来判定「空桩是不是真被调用」 |
-| 其它 | `XSYS4_MSGWIN_FRAME_DBG` | `src/parts/render.c:998` | [诊断] 打印消息窗口底板 CG（1920x300~500）是否进入 parts_render 及其 origin_offset / 准入字段；用来区分「没到渲染」与「画了看不见」 |
+| 其它 | `XSYS4_MSGWIN_FRAME_DBG` | `src/parts/render.c:999` | [诊断] 打印消息窗口底板 CG（1920x300~500）是否进入 parts_render 及其 origin_offset / 准入字段；用来区分「没到渲染」与「画了看不见」 |
 | 其它 | `XSYS4_MSGWIN_FULL` | `src/parts/activity.c:979` | [D217 已转正] EX 消息窗口组件补齐 39px 字体/字色/字距/行距，并用独立 CG 部件装载 种类別情报 的 底板ＣＧ名；默认生效，=0 回退做 A/B |
 | 其它 | `XSYS4_MSG_DBG` | `src/parts/message.c:45` | 〔摘〕只打非悬停消息，否则前 60 条全被 MOUSE_ON 占满，看不到点击。 |
 | 其它 | `XSYS4_MSG_NO_SENTINEL` | `src/parts/message.c:159` | 〔摘〕这就是那个把 SceneStack@WaitFrame 卡死的忙循环。 |
@@ -165,8 +166,8 @@
 | 其它 | `XSYS4_STUB_LOG` | `src/ffi.c:102` | 软桩命中清单写到该文件 |
 | 其它 | `XSYS4_SUBST_BT` | `src/ffi.c:638` | 静态库替换（subst）时打印回溯 |
 | 其它 | `XSYS4_SWAP_LOG` | `src/video.c:433` | 〔摘〕这样启动器可以在第一帧呈现之后立刻冻结进程。 |
-| 其它 | `XSYS4_TEXT_RENDER_DBG` | `src/parts/render.c:154` | =1 列全部非 UC 文字层；=<部件号下限> 只盯该号段（如 900000300），每号最多 3 条并附 show/alpha/vis/mw/mwshow 准入字段；修掉了「全局 80 条被地图吃光」的假阴性 |
-| 其它 | `XSYS4_TITLE_UI_FIX` | `src/parts/render.c:123` | — |
+| 其它 | `XSYS4_TEXT_RENDER_DBG` | `src/parts/render.c:155` | =1 列全部非 UC 文字层；=<部件号下限> 只盯该号段（如 900000300），每号最多 3 条并附 show/alpha/vis/mw/mwshow 准入字段；修掉了「全局 80 条被地图吃光」的假阴性 |
+| 其它 | `XSYS4_TITLE_UI_FIX` | `src/parts/render.c:124` | — |
 | 其它 | `XSYS4_TRACE` | `src/vm.c:2354` | — |
 | 其它 | `XSYS4_UC_RENDER_DBG` | `src/text.c:274` | 用户组件（TextButton 等）渲染诊断 |
 | 其它 | `XSYS4_USERCOMP_DBG` | `src/parts/activity.c:723` | — |

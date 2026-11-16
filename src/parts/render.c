@@ -12,6 +12,7 @@
 
 #include <limits.h>
 #include <math.h>
+#include <time.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <cglm/cglm.h>
@@ -1107,6 +1108,22 @@ static bool pe_dirty = false;
 
 void parts_render_update(void)
 {
+	/* [D244] 帧率探针。D92 的 hack（每帧把全场部件标脏）在 llvmpipe 下
+	 * 只有 3~8 fps，而战斗演出 / instantTimer / flat 推进全按墙钟走，
+	 * 低帧率会把「点 15 次才到 AP 球」这类现象误判成逻辑卡死。
+	 * 先量化再决定要不要动渲染路径。 */
+	if (getenv("XSYS4_FPS_DBG")) {
+		static unsigned long long n;
+		static time_t last;
+		time_t now = time(NULL);
+		if (now != last) {
+			if (last)
+				NOTICE("[fps] %llu", n);
+			last = now;
+			n = 0;
+		}
+		n++;
+	}
 	/* [HACK-POC D92] 每次更新都把每个部件精灵标脏，而不是
 	 * 只在 pe_dirty 置位时标。parts_engine_dirty() 的调用点极少，
 	 * 于是场景只渲染了那一次（启动时，精灵列表还是空的），
