@@ -8,8 +8,8 @@
 
 | 指标 | 值 | 口径 | 来源 |
 |---|---|---|---|
-| 诊断开关 | 163 | `getenv("XSYS4_*")` 去重，与 `gen-switches.py` 同口径 | `src/**/*.c,*.h` |
-| 未标注开关 | 30 | 无人工说明且无就近注释 | `docs/SWITCHES.md` |
+| 诊断开关 | 166 | `getenv("XSYS4_*")` 去重，与 `gen-switches.py` 同口径 | `src/**/*.c,*.h` |
+| 未标注开关 | 31 | 无人工说明且无就近注释 | `docs/SWITCHES.md` |
 | HLL 已实现 | 3284 | `HLL_EXPORT(` + `HLL_EXPORT_N(` 行首计数 | `src/hll/*.c` |
 | HLL 缺口 | 1194 | `HLL_TODO_EXPORT(` 行首计数 | `src/hll/*.c` |
 | HLL 源码覆盖率 | 73.3% (4478 个导出) | 已实现 /（已实现 + 缺口） | 计算 |
@@ -31,7 +31,7 @@
 | `TECH_DEBT.md` | 142 |
 | `docs/HYPOTHESES.md` | 107 |
 | `docs/IMPACT.md` | 58 |
-| `docs/SWITCHES.md` | 180 |
+| `docs/SWITCHES.md` | 183 |
 | `docs/PROJECT-MANAGEMENT.md` | 503 |
 
 ## 3. 已知腐化数字（历史，勿再引用）
