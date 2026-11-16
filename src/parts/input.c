@@ -200,6 +200,17 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	}
 
 	bool click_eligible = parts->clickable || !parts->pass_cursor;
+	/* [D247] 实验开关：`clickable=0` 的部件不参与点击捕获。
+	 *
+	 * 现状是 D113 放宽成 `clickable || !pass_cursor` —— 起因是 Rance10 的
+	 * 「点击任意处继续」画面三个部件全是 `点击許可=0`，不放宽 `WaitForClick`
+	 * 永远出不来。代价是**全屏背景 flat 也会捕获点击**：战斗里
+	 * `BattleInfoView.Flat`(900000705) `pass=0`、hb 覆盖整屏、`gz=1<<30+1125`
+	 * 排第一，于是点技能按钮 (1845,818) 命中的是 705（`s47` 实测），
+	 * 而 705 自己没有委托 → CLICK 消息打空炮 → 技能发不出去。
+	 * 本开关只在跑测里开，用来验证「705 截胡」这一条；默认关闭不动既有路径。 */
+	if (getenv("XSYS4_CLICK_SKIP_NONCLICKABLE") && !parts->clickable)
+		click_eligible = false;
 	if (!click_eligible || *click_consumed) {
 		if (!was_hovered)
 			audio_play_sound(parts->on_cursor_sound);

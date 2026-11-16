@@ -2077,11 +2077,27 @@ static void PE_Noop_SetRectangleDetectionPoint(int a0, int a1, int a2, int a3, i
 	(void)a9;
 }
 
-/* AIN SetShowForBackScene：void SetShowForBackScene。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetShowForBackScene(int a0, int a1)
+/* AIN SetShowForBackScene(int parts_no, bool show)。
+ *
+ * [D248] 不再是纯空桩：Rance10 战斗里全屏背景 `BattleInfoView.Flat`
+ * (900000705) 的 EX 是 `点击許可=0 光标选中透過=0`，而需要接收点击的
+ * 技能按钮是 `点击許可=0 光标选中透過=1` —— **两者 clickable 都是 0**，
+ * 唯一区别是透过位。705 按 ctrl=2 + `gz=1<<30+1125` 排第一，于是点
+ * (1845,818)（「防御 1Ap」按钮）命中的是 705（`s47` 实测），消息打空炮，
+ * 战斗停在第一回合。`XSYS4_CLICK_SKIP_NONCLICKABLE=1` 过滤掉 clickable=0
+ * 之后 `EndInput` 直接变 0（`s48`）—— 说明**不能**用 clickable 区分，
+ * 也说明这个「按场景隐藏背景层」的 setter 就是 AIN 本来要用的手段。
+ *
+ * 默认仍走空桩（保持既有已验收路径不变），`XSYS4_BACKSCENE_SHOW=1` 才生效，
+ * 便于 A/B。 */
+static void PE_SetShowForBackScene(int a0, int a1)
 {
-	(void)a0;
-	(void)a1;
+	if (!getenv("XSYS4_BACKSCENE_SHOW"))
+		return;
+	static int n;
+	if (n++ < 200)
+		NOTICE("[backscene] no=%d show=%d", a0, a1);
+	PE_SetShow(a0, a1);
 }
 
 /* AIN SetSpinBoxBGColor：void SetSpinBoxBGColor。[HACK-POC D85] 空实现（setter 占位）。 */
@@ -3358,7 +3374,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetPanelColor, PE_Noop_SetPanelColor),
 	    HLL_EXPORT(SetPanelSize, PE_Noop_SetPanelSize),
 	    HLL_EXPORT(SetRectangleDetectionPoint, PE_Noop_SetRectangleDetectionPoint),
-	    HLL_EXPORT(SetShowForBackScene, PE_Noop_SetShowForBackScene),
+	    HLL_EXPORT(SetShowForBackScene, PE_SetShowForBackScene),
 	    HLL_EXPORT(SetSpinBoxBGColor, PE_Noop_SetSpinBoxBGColor),
 	    HLL_EXPORT(SetSpinBoxCGName, PE_Noop_SetSpinBoxCGName),
 	    HLL_EXPORT(SetSpinBoxCharSpace, PE_Noop_SetSpinBoxCharSpace),
