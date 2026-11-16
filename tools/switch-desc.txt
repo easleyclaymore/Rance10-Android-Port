@@ -104,6 +104,8 @@ XSYS4_HLL_REFDBG_FILTER	[诊断] 配合 REFDBG，额外打印函数名含该子�
 XSYS4_G14_WATCH	[诊断] 只在 global[14] 的值变化时打印 ip/旧值/新值/栈/调用栈（抓单例被覆写）
 XSYS4_ARR_MULTIDIM	Array.Alloc 构造多维内层数组；默认开启，=0 回退旧行为做 A/B
 XSYS4_FLAT_DBG	打印 flat 的加载名/hdr 尺寸/库数，以及渲染时的 flat 指针与部件几何（空 flat 会让部件退化成 0x0）
+XSYS4_BACKSCENE_SHOW	[诊断] 让 `SetShowForBackScene(no,show)` 真正生效（默认空桩）。战斗里全屏背景 flat 705 挡住技能按钮点击，这个 setter 是 AIN 本来要用来按场景隐藏背景的手段；开它可验证 `[backscene] no= show=` 的实参
+XSYS4_CLICK_SKIP_NONCLICKABLE	[诊断] 跑测专用：`clickable=0` 的部件不参与点击捕获（回到 D113 之前的行为）。用来验证「全屏背景 flat 705 截胡技能按钮点击」这一条；默认关，开始画面这类「点击任意处继续」的场景开了会卡住
 XSYS4_FPS_DBG	[诊断] 每秒打印一次实际渲染帧数。用来区分「演出推进慢」是逻辑卡死还是 llvmpipe 低帧率（D92 全量标脏）
 XSYS4_FLAT_FRAME_DBG	[诊断] 轻量 flat 帧探针：打印 no/ctrl/frame/root_state.stopped/fps/passed_time。值=1 打全部，值=部件号只跟一个。用来区分「帧没推进」是 parts_flat.stopped、root_state.stopped（脚本 stop 键）还是 passed_time 为 0
 XSYS4_AUTO_MAP_ROUTE	[后门] 地图稳定后直调 SceneQuestMap@StartMoveRoute(23606)，毫秒=延迟
