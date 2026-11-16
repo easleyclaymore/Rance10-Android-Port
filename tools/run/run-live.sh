@@ -220,10 +220,14 @@ click() { # click <view_x> <view_y> <button>
             printf "%d %d", gx+ox+x*s, gy+oy+y*s
         }')"
     if [ -n "$curwid" ]; then
-        xdotool windowfocus --sync "$curwid" >/dev/null 2>&1 || true
-        xdotool windowraise "$curwid" >/dev/null 2>&1 || true
+        # [D246] 无 WM 时 `windowfocus --sync` 可能永久阻塞：s41/s42 的
+        # `click:1845,818` 一次都没执行，日志里 `pos=(1845` 出现 0 次，
+        # 而进程还活着、日志还在涨 —— 脚本卡在这一行直到跑测超时。
+        # engineshot 分支早就加了 timeout，这里同样必须有。
+        timeout -k 1 2 xdotool windowfocus --sync "$curwid" >/dev/null 2>&1 || true
+        timeout -k 1 2 xdotool windowraise "$curwid" >/dev/null 2>&1 || true
     fi
-    xdotool mousemove "$wx" "$wy" >/dev/null 2>&1 || true
+    timeout -k 1 2 xdotool mousemove "$wx" "$wy" >/dev/null 2>&1 || true
     if [ -n "${XSYS4_CLICK_DBG:-}" ]; then
         echo "CLICK view=$1,$2 win=$wx,$wy btn=$3 geom=${gx},${gy},${gw}x${gh} wid=$curwid boot_wid=$WID ptr=$(xdotool getmouselocation 2>/dev/null | tr '\n' ' ')" >&2
         # [D178] 注意重定向顺序：`2>/dev/null >&2` 会让 stdout 也进 /dev/null
@@ -370,7 +374,8 @@ if [ -n "${RANCE10_LIVE_SEQ:-}" ]; then
                 ;;
             # key:<X11 keysym>，例如 key:Return / key:Escape
             key)
-                [ -n "$WID" ] && xdotool windowfocus --sync "$WID" >/dev/null 2>&1 || true
+                # [D246] 同 click：无 WM 时 --sync 可能永久阻塞，必须带 timeout。
+                [ -n "$WID" ] && timeout -k 1 2 xdotool windowfocus --sync "$WID" >/dev/null 2>&1 || true
                 xdotool key --clearmodifiers "$arg" >/dev/null 2>&1 || true
                 sleep 1.2
                 ;;
@@ -389,7 +394,7 @@ if [ -n "${RANCE10_LIVE_SEQ:-}" ]; then
             # 「不论是否已读，强制快进」，AIN 用 key_is_down(VK_CONTROL)
             # 检测，短促的 key: 无效，必须成对使用。
             keydown|keyup)
-                [ -n "$WID" ] && xdotool windowfocus --sync "$WID" >/dev/null 2>&1 || true
+                [ -n "$WID" ] && timeout -k 1 2 xdotool windowfocus --sync "$WID" >/dev/null 2>&1 || true
                 xdotool "$act" "$arg" >/dev/null 2>&1 || true
                 sleep "$CLICK_SLEEP"
                 ;;
