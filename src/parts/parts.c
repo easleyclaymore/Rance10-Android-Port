@@ -3141,8 +3141,13 @@ int PE_AddController(int index)
 	 * SceneStack.LayerPartsNumber，之后与 GetActiveLayer() 比较。 */
 	ctrl_stack.id[no] = ctrl_stack.next_id++;
 	ctrl_stack.active = no;
-	if (getenv("XSYS4_CTRL_DBG"))
+	if (getenv("XSYS4_CTRL_DBG")) {
+		/* [D268] 把「栈下标 ↔ 稳定 id」成对打出来。之前只有直方图，
+		 * 看不出 AIN 手里记的 id 到底对应哪个下标 —— 而本轮的根因正是
+		 * 「建部件时的 active」和「AIN 后来 Erase 的 id」不是同一个层。 */
+		NOTICE("[ctrl] add idx=%d id=%d", no, ctrl_stack.id[no]);
 		PE_DebugControllerHistogram("add-controller");
+	}
 	return ctrl_stack.id[no];
 }
 
@@ -3228,8 +3233,11 @@ void PE_set_active_controller(int controller_no)
 		? PARTS_CONTROLLER_SYSTEM_OVERLAY
 		: PE_get_controller_index(controller_no);
 	if (idx == PARTS_CONTROLLER_SYSTEM_OVERLAY ||
-			(idx >= 0 && idx < ctrl_stack.nr_controllers))
+			(idx >= 0 && idx < ctrl_stack.nr_controllers)) {
+		if (getenv("XSYS4_CTRL_DBG"))
+			NOTICE("[ctrl] setactive id=%d -> idx=%d", controller_no, idx);
 		ctrl_stack.active = idx;
+	}
 	else if (getenv("XSYS4_CTRL_DBG"))
 		/* 场景重建后 AIN 可能拿旧 ID 来 SetActiveLayer；这是正常的迟到
 		 * 事件，不该 VM_ERROR(_Noreturn) 直接杀进程。 */
