@@ -69,7 +69,8 @@ XSYS4_CTRL_DBG	controller 栈、视觉地板（cover_layer）、hide/remove 事�
 XSYS4_ACT_DBG	活动装载与点击派发诊断
 XSYS4_ACT_DEBUG	活动诊断的旧开关
 XSYS4_ACT_CLICKABLE_ALL	把所有**活动文件里声明**的部件标为可点（运行时建的 900000xxx 不受影响）
-XSYS4_INPUT_DBG	输入命中的候选部件表与点击状态
+XSYS4_PART_TYPE_DBG	未识别的部件类型：打印 种类別情报 的全部子键名（定位「真实类型藏在哪个子节点」）
+XSYS4_INPUT_DBG	输入命中的候选部件表与点击状态（每 60 帧一条心跳，非沉默）
 XSYS4_CLICK_RETARGET	点击被遮挡后重定向到下层部件
 XSYS4_UPD_DBG	PE_Update 的每帧诊断
 XSYS4_PE_DBG	PartsEngine 调用诊断

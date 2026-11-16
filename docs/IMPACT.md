@@ -46,6 +46,7 @@
 | `I023` | D233 `input.c` 的「先被看见再抬起」：合成按键的 press 保持到被 `key_is_down` 读到，release 挂起直到读过再抬（兜底 300ms）；`sact_Key_IsDown` 另有一次脉冲兜底 | 所有轮询 `Key_IsDown` 的 AIN 代码（`CASClick` 的右键/空格等待、`DALKDemo`、`InputDevice`）；左键的 `cur_clicking` 也因此能稳定跨一帧 | 默认基线 `d233` 与 `d224` 逐项一致；`XSYS4_KEY_DBG` 下 `IsDown(2)=1` / `IsDown(32)=1` 由 0 次变为可观测；Ctrl 长按快进不受影响（真实按住时 `seen_down` 立即置位，释放即刻生效） | `git revert`（回到同帧 press+release 被吞） | 通过 |
 | `I024` | D236 帧泵触发从「每 4096 条指令」改为按墙钟（每 64 条检查，闸门仍是 16ms）| 所有纯 AIN 等待循环（`WaitForClick` / `WaitFrame`）里的动画时钟、motion 时钟、输入泵| 默认基线 `d237` 与 `d224` 逐项一致；同配方 900001059 播完时间 40s+ → 1–2s| `XSYS4_PUMP_MASK=0xFFF` 可退回旧行为 | 通过 |
 | `I025` | D237 `PE_IsPartsFlatEnd()` 在 flat 未装载时返回 false（原为 true）| 所有用「flat 播完了吗」做等待条件的调用方（`SceneFlat@OnUpdate`、`Parts@IsMotionFlat`）| 默认基线 `d237` 与 `d224` 逐项一致；契约修正本身**未**消除 1200 次 Exit（flat 确实播完了），但去掉了「一创建就退出」这一类错误 | `git revert`（回到未装载=已结束） | 通过（契约修正） |
+| `I026` | D238 三处纯诊断修正：① `parts/input.c` `[inp]` 计数器改每帧自增（限流探针不再永久静音）；② `activity.c` 未识别部件类型时打出类型串 + 新增 `XSYS4_PART_TYPE_DBG` 打 `种类別情报` 子键名；③ `XSYS4_INPUT_DBG` 心跳条件不变 | 只影响日志，**不改变任何渲染/输入判定**。②是"数字/计量部件"这条债的入口：靠它才读出 `数字パーツ` / `横向计量パーツ` 两个真实类型名 | 默认零开关基线 `d238` 与 `d224` 逐项一致（`rc=0 / activities=36 / errors=0 / core_dump=0 / double_free=0 / quest_map=1 / save_files=8 / log_lines=720`）；`XSYS4_INPUT_DBG` 下从"前 40 帧后永久沉默"变成每 60 帧一条心跳 | `git revert`（只是日志） | 通过 |
 
 > 判据：每个「必重跑闭环」都要有当次实测数字或日志 tag；`待验` 条目收工前必须结掉。
 > 全部数字以 `docs/STATS.md`（`tools/gen-doc-numbers.py` 生成）为准，禁止手写。
