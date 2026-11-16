@@ -226,6 +226,15 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	if (getenv("XSYS4_CLICK_SKIP_FLAT") &&
 	    parts->states[parts->state].type == PARTS_FLAT)
 		click_eligible = false;
+	/* [D261 受控实验] `click_eligible` 只看 `!pass_cursor` 对兰斯10 是反的：
+	 * 战斗技能按钮的 `光标选中透過` 恰好都是 1、背景 flat 是 0，于是
+	 * 所有按钮都被排除在点击捕获之外（`s77`/`s78`：点技能区永远只得到
+	 * `clicked=900000705` 背景）。本开关按**组件类型**重定：flat 不参与，
+	 * 其余一律参与。只用于验证，确认后要换成有依据的判据。 */
+	if (getenv("XSYS4_CLICK_ANY")) {
+		click_eligible =
+			parts->states[parts->state].type != PARTS_FLAT;
+	}
 	if (!click_eligible || *click_consumed) {
 		if (!was_hovered)
 			audio_play_sound(parts->on_cursor_sound);
