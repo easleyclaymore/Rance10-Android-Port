@@ -2393,6 +2393,17 @@ static enum opcode execute_instruction(enum opcode opcode)
 		dumped++;
 		NOTICE("[dump] ip=0x%08zx sp=%d heap_size=%zu hit=%d", instr_ptr, stack_ptr,
 		       heap_size, dumped);
+		/* [D235] XSYS4_DUMP_TOPS=1：连栈顶 4 个值一起打。
+		 * 断在分支指令上时，栈顶就是那条分支的判据 —— 光有 sp 看不出
+		 * 「条件是真是假」，而这类「条件永远为假」正是最难查的一类。 */
+		if (getenv("XSYS4_DUMP_TOPS")) {
+			char tops[160];
+			int n = 0;
+			for (int i = 0; i < 4 && i < (int)stack_ptr; i++)
+				n += snprintf(tops + n, sizeof(tops) - n, " %d",
+					      stack_peek(i).i);
+			NOTICE("[dump] tops=%s", tops);
+		}
 		if (call_stack_ptr > 0) {
 			struct function_call *cf = &call_stack[call_stack_ptr - 1];
 			struct ain_function *fn = &ain->functions[cf->fno];
@@ -4758,6 +4769,19 @@ static bool vm_frame_pump_enabled(void)
 	return vm_frame_pump_on;
 }
 
+/* [D236] 帧泵的指令间隔掩码：默认每 64 条指令检查一次时钟。 */
+static unsigned long long vm_pump_mask = 0;
+
+static unsigned long long pump_mask(void)
+{
+	if (!vm_pump_mask) {
+		const char *e = getenv("XSYS4_PUMP_MASK");
+		unsigned long long m = e && *e ? strtoull(e, NULL, 0) : 0x3F;
+		vm_pump_mask = m ? m : 0x3F;
+	}
+	return vm_pump_mask;
+}
+
 void vm_frame_pump(void)
 {
 	/* 动画时钟也必须在这里驱动。当 AIN 在
@@ -5036,9 +5060,19 @@ static void vm_execute(void)
 		 *
 		 * 有些界面（parts::detail::WaitForClick）在 AIN 层自旋等输入，永远
 		 * 回不到 sact_Update()；那条路上既没有 handle_events() 也没有
-		 * scene_render()，于是画面停在旧帧、点击也读不到。这里每 4096 条
-		 * 指令泵一次事件并提交一帧，让纯 AIN 的等待循环也能被驱动。 */
-		if (unlikely((_insn & 0xFFF) == 0) && vm_frame_pump_enabled())
+		 * scene_render()，于是画面停在旧帧、点击也读不到。这里定期泵一次
+		 * 事件并提交一帧，让纯 AIN 的等待循环也能被驱动。
+		 *
+		 * [D236] 触发间隔必须按**墙钟**而不是指令数来定。原先写死「每 4096
+		 * 条指令」，可是 `WaitForClick` 这种循环每轮只有几百条指令、还要做
+		 * 一次完整的 view 更新与合成，实测 4 轮/秒 —— 4 秒才凑够一次帧泵。
+		 * 于是 `parts_flat_update()` 收到的 passed_time 是 AIN 自己算的 50ms，
+		 * 一秒只推进 4×50ms：一张 76 帧、60fps 的回合演出要跑 40 秒以上，
+		 * 场景等 `Parts.IsMotionFlat` 变假等到天荒地老（H044）。
+		 * 现在每 64 条指令检查一次时钟，真正的闸门是 vm_frame_pump() 里的
+		 * 16ms；指令密集的路径行为不变（16ms 闸门照旧），指令稀疏的等待
+		 * 循环则能拿到应有的帧率。XSYS4_PUMP_MASK 可覆盖间隔做 A/B。 */
+		if (unlikely((_insn & pump_mask()) == 0) && vm_frame_pump_enabled())
 			vm_frame_pump();
 		if (((_insn & 0xFFFF) == 0) && getenv("XSYS4_STACK_SAMPLE")) {
 			time_t now = time(NULL);
