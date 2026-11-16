@@ -183,6 +183,13 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	if (getenv("XSYS4_CLICK_SKIP_FLAT") &&
 	    parts->states[parts->state].type == PARTS_FLAT)
 		hover_blocking = false;
+	/* 同上：SKIP_FULLSCREEN 必须同步到 hover，否则 705/701/700 的 pc=0
+	 * 照样先吃掉光标，按钮 397 连 is_hovered 都拿不到（第四次同型坑）。 */
+	if (getenv("XSYS4_CLICK_SKIP_FULLSCREEN")) {
+		Rectangle fb = parts_hitbox_at(parts, PARTS_STATE_DEFAULT);
+		if (fb.w >= gfx_view_width() && fb.h >= gfx_view_height())
+			hover_blocking = false;
+	}
 	if (is_hovered && hover_blocking)
 		*hover_consumed = true;
 
@@ -271,6 +278,20 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	 * 本开关把捕获条件收敛成 `clickable` 一条。 */
 	if (getenv("XSYS4_CLICK_ONLY_CLICKABLE"))
 		click_eligible = parts->clickable;
+	/* [D264 受控实验] 跳过「铺满整个视图」的部件。
+	 *
+	 * 依据：`s91` 的 `[actbuild]` 把真按钮的身份挖出来了 ——
+	 * `900000397 'ButtonDeffence'` `hb=(1749,751,158x211)`、
+	 * `900000395 'ButtonTurnEnd'`、`900000399 'ButtonParty'` …
+	 * 它们 `ck=0 pc=0`（默认判据本来就 eligible），却总被
+	 * `705`(flat) / `701` / `700`（三者 hb 都是 1920x1080、gz≥1<<30）截胡。
+	 * **真正的按钮不会铺满整屏**，而这三个是演出/背景/整屏点击层。
+	 * 本开关把「hb 覆盖整个视图」的部件排除出捕获，验证能否落到 397。 */
+	if (getenv("XSYS4_CLICK_SKIP_FULLSCREEN")) {
+		Rectangle fb = parts_hitbox_at(parts, PARTS_STATE_DEFAULT);
+		if (fb.w >= gfx_view_width() && fb.h >= gfx_view_height())
+			click_eligible = false;
+	}
 	if (!click_eligible || *click_consumed) {
 		if (!was_hovered)
 			audio_play_sound(parts->on_cursor_sound);
