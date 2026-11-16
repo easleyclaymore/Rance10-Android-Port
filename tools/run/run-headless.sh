@@ -38,6 +38,10 @@ _d="$(dirname "$(realpath "$0")")"; while [ ! -f "$_d/lib/common.sh" ] && [ "$_d
 HERE="$TOOLS_DIR"
 
 # 硬约束：切断与本机图形会话的一切联系
+# [D249] 先把真实桌面的 DISPLAY/XAUTHORITY 存下来，再隔离。
+# `XSYS4_REAL_DISPLAY=1` 时用存下来的值走硬件 GL（默认仍隔离）。
+_REAL_DISPLAY="${DISPLAY:-}"
+_REAL_XAUTH="${XAUTHORITY:-}"
 unset DISPLAY WAYLAND_DISPLAY XAUTHORITY
 
 # 从 :90 起找空闲 display，避开 :0/:1 等真实会话以及别人的 Xvfb
@@ -72,6 +76,23 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 RES="${RANCE10_HEADLESS_RES:-1920x1080x24}"
+# [D249] 硬件加速开关：Xvfb 没有 DRI3/GLX 硬件，跑测必然 llvmpipe。
+# 真实桌面（本机 DISPLAY=:1 是 Xwayland + Intel UHD）实测
+#   direct rendering: Yes / renderer: Mesa Intel(R) Graphics (ADL-N)
+# 设 XSYS4_REAL_DISPLAY=1 就跳过 Xvfb、直接用当前 $DISPLAY ——
+# 代价是会在这块真屏上弹窗口、xdotool 也会动真实鼠标。
+if [ "${XSYS4_REAL_DISPLAY:-0}" = "1" ]; then
+    if [ -z "$_REAL_DISPLAY" ]; then
+        echo "XSYS4_REAL_DISPLAY=1 但进入脚本时 DISPLAY 为空" >&2
+        exit 1
+    fi
+    DISPLAY="$_REAL_DISPLAY"
+    [ -n "$_REAL_XAUTH" ] && export XAUTHORITY="$_REAL_XAUTH"
+    echo "REAL DISPLAY=$DISPLAY（跳过 Xvfb，走硬件 GL）"
+    DNUM="${DISPLAY#:}"
+    XPID=""
+    SOCK=""
+else
 Xvfb ":${DNUM}" -screen 0 "$RES" -nolisten tcp -ac -noreset \
     > "/tmp/xvfb_${DNUM}.log" 2>&1 &
 XPID=$!
@@ -90,9 +111,14 @@ if [ ! -S "$SOCK" ]; then
     exit 1
 fi
 
+fi
 export DISPLAY=":${DNUM}"
-echo "HEADLESS DISPLAY=$DISPLAY Xvfb_pid=$XPID RES=$RES"
-echo "本机显示器未参与；日志与截图仍写到 run-live.sh 的既有位置"
+echo "HEADLESS DISPLAY=$DISPLAY Xvfb_pid=${XPID:-none} RES=$RES"
+if [ "${XSYS4_REAL_DISPLAY:-0}" = "1" ]; then
+    echo "!! 正在使用真实显示器（窗口会出现在本机屏幕上）"
+else
+    echo "本机显示器未参与；日志与截图仍写到 run-live.sh 的既有位置"
+fi
 
 # 引擎 core dump 之后 run-live.sh 可能卡在 xdotool --sync / ffmpeg x11grab
 # 的等待上（实测卡了 7 分钟不退）。外层再包一层硬超时，保证 Xvfb 一定

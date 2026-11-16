@@ -260,6 +260,19 @@ int gfx_init(void)
 		ERROR("glewInit failed");
 #endif
 
+	/* [D249] 打实际 GL renderer —— 「有没有用上硬件加速」的唯一硬证据。
+	 * llvmpipe/softpipe = 软件；`Mesa Intel(R) Graphics` = 硬件。
+	 * 之前跑测被脚本写死成 `LIBGL_ALWAYS_SOFTWARE=1` + `GALLIUM_DRIVER=llvmpipe`，
+	 * 13.5fps 的瓶颈有一半在这里，而没有这行日志就看不出来。 */
+	if (getenv("XSYS4_GL_DBG")) {
+		const GLubyte *gv = glGetString(GL_VENDOR);
+		const GLubyte *gr = glGetString(GL_RENDERER);
+		const GLubyte *gs = glGetString(GL_VERSION);
+		NOTICE("[gl] vendor=%s renderer=%s version=%s",
+		       gv ? (const char *)gv : "?", gr ? (const char *)gr : "?",
+		       gs ? (const char *)gs : "?");
+	}
+
 	SDL_GL_SetSwapInterval(wait_vsync ? 1 : 0);
 	gl_initialize();
 	gfx_draw_init();
