@@ -88,10 +88,12 @@ void parts_msg_push(struct parts* parts, int type, const char *fmt, ...)
 	 * `s77`/`s78` 实测点技能按钮只得到 `clicked=900000705`（背景 flat），
 	 * 战斗永远停在 `Round 1/10`。
 	 *
-	 * 回退到下标 0 后 `s80` 实测：活动数 45 → **73**，并出现
-	 * `Game/Battle/EnemyAction/EnemyActionIconBase:1..3`（敌人行动图标），
-	 * 战斗真的推进到了敌方行动阶段。判据是活动数 + EnemyAction 装载，
-	 * 不是截图（截图在过渡帧会是黑底）。
+	 * **2026-11-16 复核：本改动基本是 no-op，`s80` 的「45→73」是跑测波动。**
+	 * `s87` 全量候选表 91447 条里只有 **21 条 `di<0`**（0.02%）—— 说明 AIN
+	 * 确实调了 `Parts_SetDelegateIndex`（战斗部件实测 109=75、118=84、
+	 * 705=689、716=687），委托一直是注册好的。当时把活动数 45→73 当成修复
+	 * 效果，是又一次「拿波动的计数当判据」。代码保留（无害），但不要再据此
+	 * 认为「点击打空炮」已解决 —— 点击链路的真问题在捕获判据与图层顺序。
 	 *
 	 * 保留 `XSYS4_NO_DI_FALLBACK=1` 作为回退闸，供其它场景做 A/B。 */
 	if (msg->delegate_index < 0 && !getenv("XSYS4_NO_DI_FALLBACK"))
