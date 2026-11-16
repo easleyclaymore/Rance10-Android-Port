@@ -205,8 +205,31 @@ static bool flat_advance_layer(struct flat *fl,
 			next_frame = state->current_frame + increment;
 		}
 
+		int prev_cf = state->current_frame;
+		int was_stopped = state->stopped;
 		state->suppress_advance = false;
 		state->current_frame = min(max(0, next_frame), max_end_frame);
+		/* [D258] 逐 tick trace：`delta` 显示每秒推进 124 帧、帧却停在 73/75，
+		 * 只可能是「increment=0」或「被封顶」。三者同时打出来，一次分辨。 */
+		/* 只跟「最长的那一档」：trace 名额会被中等的 flat（cap=60/63）抢光，
+		 * 真正要看的 75 帧演出反而挤不进去（s73 实测 200 条全是 cap=60/63）。 */
+		/* 阈值可配：`XSYS4_FLAT_TICK_DBG=<min_end>`，默认 70（只跟最长那档）。 */
+		static int tick_min = -1;
+		if (tick_min < 0) {
+			const char *e = getenv("XSYS4_FLAT_TICK_DBG");
+			tick_min = (e && *e) ? atoi(e) : 0;
+			if (tick_min == 1) tick_min = 70;
+		}
+		if (tick_min > 0 && end_frame >= tick_min) {
+			static int tn;
+			if (tn++ < 500)
+				NOTICE("[flattick] prev=%d next=%d cf=%d cap=%d inc=%d "
+				       "stop=%d sup=%d jump=%d",
+				       prev_cf, next_frame, state->current_frame,
+				       max_end_frame, next_frame - prev_cf,
+				       was_stopped, (int)state->suppress_advance,
+				       state->jump_target);
+		}
 
 		flat_process_layer_scripts(state, timelines, nr_timelines);
 	} while (state->jump_target != -1);

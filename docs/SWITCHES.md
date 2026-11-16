@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **167** 个开关，其中 **30** 个没有就近注释。
+共 **168** 个开关，其中 **30** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -96,14 +96,15 @@
 | 其它 | `XSYS4_EX_LAYOUT_BY_CONFIG` | `src/parts/activity.c:835` | [诊断] 真布局盒（EX 声明 `レイアウトボックス`）按 `配置` 字段重排（0=FREE/1=纵向/2=横向），而不是 D214 的一律 FREE。用于解决 LargeSkillButton/CardApView 这类「子部件座标全在 (0,0)」的容器底板不显示 |
 | 其它 | `XSYS4_EX_LAYOUT_FREE` | `src/parts/activity.c:825` | [D214 已转正] EX 装载的布局盒/用户组件初值改为 FREE（保留 EX 绝对坐标），避免 VERTICAL 自动重排把子部件推到屏幕外；默认生效，=0 回退做 A/B |
 | 其它 | `XSYS4_EX_RATIO_POS` | `src/parts/activity.c:898` | [D216 已转正] EX「座標を率として認識する=1」的 座標 按视图宽高换算成像素；消息窗口 (0,1) 由此变成 (0,1080)，正文才从屏幕外进画面；默认生效，=0 回退做 A/B |
-| 其它 | `XSYS4_FLATEND_DBG` | `src/parts/flat.c:1271` | — |
-| 其它 | `XSYS4_FLATEND_MIN_END` | `src/parts/flat.c:1281` | [诊断] 只打印 end_frame >= N 的长演出 flat 的未播完查询（推荐用这个，不受号段复用影响） |
-| 其它 | `XSYS4_FLATEND_ONLY` | `src/parts/flat.c:1278` | [诊断] 只跟一个 flat 部件号的 IsPartsFlatEnd 查询。**注意号段会复用**，跨跑测用同一号不可靠，长演出改用 FLATEND_MIN_END |
-| 其它 | `XSYS4_FLATEND_STOP_IS_END` | `src/parts/flat.c:1260` | [诊断] 把「flat 停在 stop 键/被 StopPartsFlat 停住」也算作「这段演完了」。用于验证「AIN 等 IsPartsFlatEnd 而 flat 卡在 73/75」的死锁 |
-| 其它 | `XSYS4_FLAT_DBG` | `src/parts/flat.c:1182` | 打印 flat 的加载名/hdr 尺寸/库数，以及渲染时的 flat 指针与部件几何（空 flat 会让部件退化成 0x0） |
-| 其它 | `XSYS4_FLAT_DELTA_DBG` | `src/parts/flat.c:682` | 〔摘〕pt << 1000 说明被限流（指向①）。 |
+| 其它 | `XSYS4_FLATEND_DBG` | `src/parts/flat.c:1296` | — |
+| 其它 | `XSYS4_FLATEND_MIN_END` | `src/parts/flat.c:1306` | [诊断] 只打印 end_frame >= N 的长演出 flat 的未播完查询（推荐用这个，不受号段复用影响） |
+| 其它 | `XSYS4_FLATEND_ONLY` | `src/parts/flat.c:1303` | [诊断] 只跟一个 flat 部件号的 IsPartsFlatEnd 查询。**注意号段会复用**，跨跑测用同一号不可靠，长演出改用 FLATEND_MIN_END |
+| 其它 | `XSYS4_FLATEND_STOP_IS_END` | `src/parts/flat.c:1285` | [诊断] 把「flat 停在 stop 键/被 StopPartsFlat 停住」也算作「这段演完了」。用于验证「AIN 等 IsPartsFlatEnd 而 flat 卡在 73/75」的死锁 |
+| 其它 | `XSYS4_FLAT_DBG` | `src/parts/flat.c:1207` | 打印 flat 的加载名/hdr 尺寸/库数，以及渲染时的 flat 指针与部件几何（空 flat 会让部件退化成 0x0） |
+| 其它 | `XSYS4_FLAT_DELTA_DBG` | `src/parts/flat.c:705` | 〔摘〕pt << 1000 说明被限流（指向①）。 |
 | 其它 | `XSYS4_FLAT_FRAME_DBG` | `src/parts/parts.c:1152` | [诊断] 轻量 flat 帧探针：打印 no/ctrl/frame/root_state.stopped/fps/passed_time。值=1 打全部，值=部件号只跟一个。用来区分「帧没推进」是 parts_flat.stopped、root_state.stopped（脚本 stop 键）还是 passed_time 为 0 |
-| 其它 | `XSYS4_FLAT_TREE` | `src/parts/flat.c:617` | — |
+| 其它 | `XSYS4_FLAT_TICK_DBG` | `src/parts/flat.c:219` | [诊断] 逐 tick 打印 flat 推进前后（prev/next/cf/cap/inc/stop/sup/jump），值 = 只跟 end_frame >= N 的长演出（默认 70）。用来分辨「帧不涨」是 increment=0（stopped）还是被封顶 |
+| 其它 | `XSYS4_FLAT_TREE` | `src/parts/flat.c:640` | — |
 | 其它 | `XSYS4_FPS_DBG` | `src/parts/render.c:1115` | [诊断] 每秒打印一次实际渲染帧数。用来区分「演出推进慢」是逻辑卡死还是 llvmpipe 低帧率（D92 全量标脏） |
 | 其它 | `XSYS4_G14_WATCH` | `src/vm.c:2823` | [诊断] 只在 global[14] 的值变化时打印 ip/旧值/新值/栈/调用栈（抓单例被覆写） |
 | 其它 | `XSYS4_GL_DBG` | `src/video.c:267` | [诊断] 启动时打印实际 GL vendor/renderer/version —— 判断有没有用上硬件加速的唯一硬证据（llvmpipe=软件，Mesa Intel=硬件） |
