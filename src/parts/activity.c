@@ -135,6 +135,20 @@ struct activity_part {
 	int font_color[3];     /* 字体色 = (255,255,255) */
 	int char_space, line_space; /* 文字间距 = -2 / 行间距 = 7 */
 
+	/* [D238] 数字 / 计量部件（EX 原文见 HpBarPlayer.pactex）。
+	 * 类型识别修好后这些负载仍没读，于是 PARTS_NUMERAL/HGAUGE 有类型
+	 * 没纹理 —— 建部件路径只给 ACT_COMP_CG 装 CG，HP 条和回合数字
+	 * 就一直是空的。
+	 *   数字パーツ：ＣＧ名 + 幅リスト(12，COMBINED 条带) + 数值 +
+	 *              字间距 + コンマ表示 + 桁数
+	 *   横向计量：  ＣＧ名 + 分子/分母(float) */
+	int num_widths[12];    /* 幅リスト = 12 个字形宽度 */
+	int num_value;         /* 数值 */
+	int num_space;         /* 字间距 */
+	int num_show_comma;    /* コンマ表示 */
+	int num_length;        /* 桁数（0 = 按数值自动） */
+	float gauge_num, gauge_denom; /* 分子 / 分母 */
+
 	/* 用户组件（component type 15）：EX 负载是
 	 *   数据 = ['オブジェクト名', 'TextButton', '参数', '标题,从头开始']
 	 * 也就是引擎的一个内建控件加上它逗号分隔的参数。
@@ -367,6 +381,24 @@ static bool get_float_list(struct ex_tree *t, const char *name, float *out, int 
 			out[i] = (float)v->i;
 	}
 	return true;
+}
+
+/* [D238] 计量部件的 分子/分母 是 EX float（100.000000），get_int 只认
+ * EX_INT 会静默失败，需要单独读一个标量。 */
+static bool get_float(struct ex_tree *t, const char *name, float *out)
+{
+	struct ex_tree *c = get_child(t, name);
+	if (!c || !c->is_leaf)
+		return false;
+	if (c->leaf.value.type == EX_FLOAT) {
+		*out = c->leaf.value.f;
+		return true;
+	}
+	if (c->leaf.value.type == EX_INT) {
+		*out = (float)c->leaf.value.i;
+		return true;
+	}
+	return false;
 }
 
 /* 把 EX 文件里的 パーツ类型 名映射成兰斯10 的组件类型号。
@@ -614,6 +646,20 @@ static void parse_part_fields(struct ex_tree *node, struct activity_part *part)
 			part->h = dims[1];
 		}
 		get_int(src, "变形", &part->deform);
+		/* [D238] 数字 / 计量负载都在 一般状態（src）里 */
+		if (part->type == ACT_COMP_NUMERAL) {
+			get_int_list(src, "幅リスト", part->num_widths, 12);
+			get_int(src, "数值", &part->num_value);
+			get_int(src, "字间距", &part->num_space);
+			get_int(src, "コンマ表示", &part->num_show_comma);
+			get_int(src, "桁数", &part->num_length);
+		}
+		if (part->type == ACT_COMP_HGAUGE || part->type == ACT_COMP_VGAUGE) {
+			part->gauge_denom = 100.0f;
+			part->gauge_num = 100.0f;
+			get_float(src, "分母", &part->gauge_denom);
+			get_float(src, "分子", &part->gauge_num);
+		}
 	} else {
 		part->type = ACT_COMP_CG;
 	}
@@ -865,6 +911,58 @@ static int build_part(struct activity_part *part, int parent_no)
 			  PE_GetPartsWidth(part->parts_no, 1),
 			  PE_GetPartsHeight(part->parts_no, 1));
 		free_string(cg);
+	} else if (part->type == ACT_COMP_NUMERAL
+		   && part->cg_name && *part->cg_name) {
+		/* [D238] 数字：EX 给的是 COMBINED 条带（幅リスト 12 个宽度）。
+		 * 不能走 PE_SetNumeralCG —— 那是 SEPARATE 布局，会按名字去找
+		 * 10 张独立数字 CG，一张都找不到。 */
+		/* 顺序要紧：parts_set_dims() 在 SetNumeralLinked... 里按 **当时**
+		 * 的 origin_mode 算 origin_offset。Hp 是 mode=9（右下），
+		 * 先装 CG 再改模式 → 数字被推到屏幕外。 */
+		PE_SetPartsOriginPosMode(part->parts_no, part->origin_mode);
+		struct string *cg = cstr_to_string(part->cg_name);
+		bool ok = PE_SetNumeralLinkedCGNumberWidthWidthList(part->parts_no,
+				cg,
+				part->num_widths[0], part->num_widths[1],
+				part->num_widths[2], part->num_widths[3],
+				part->num_widths[4], part->num_widths[5],
+				part->num_widths[6], part->num_widths[7],
+				part->num_widths[8], part->num_widths[9],
+				part->num_widths[10], part->num_widths[11],
+				1);
+		free_string(cg);
+		PE_SetNumeralNumber(part->parts_no, part->num_value, 1);
+		PE_SetNumeralSpace(part->parts_no, part->num_space, 1);
+		PE_SetNumeralShowComma(part->parts_no, part->num_show_comma, 1);
+		if (part->num_length > 0)
+			PE_SetNumeralLength(part->parts_no, part->num_length, 1);
+		ACT_DEBUG("[act] %s parts_no=%d numeral cg='%s' font=%d value=%d size=%dx%d",
+			  part->name, part->parts_no, part->cg_name, ok,
+			  part->num_value,
+			  PE_GetPartsWidth(part->parts_no, 1),
+			  PE_GetPartsHeight(part->parts_no, 1));
+	} else if ((part->type == ACT_COMP_HGAUGE
+		    || part->type == ACT_COMP_VGAUGE)
+		   && part->cg_name && *part->cg_name) {
+		/* [D238] 计量：CG 是整条底的条带，rate 决定露出多少像素。 */
+		/* 同 numeral：先定原点模式，否则 parts_set_dims() 用 mode=0
+		 * 算的 offset 会让 Gauge(mode=1) 偏到别处。 */
+		PE_SetPartsOriginPosMode(part->parts_no, part->origin_mode);
+		struct string *cg = cstr_to_string(part->cg_name);
+		bool ok;
+		if (part->type == ACT_COMP_HGAUGE) {
+			ok = PE_SetHGaugeCG(part->parts_no, cg, 1);
+			PE_SetHGaugeRate(part->parts_no, part->gauge_num,
+					 part->gauge_denom, 1);
+		} else {
+			ok = PE_SetVGaugeCG(part->parts_no, cg, 1);
+			PE_SetVGaugeRate(part->parts_no, part->gauge_num,
+					 part->gauge_denom, 1);
+		}
+		free_string(cg);
+		ACT_DEBUG("[act] %s parts_no=%d gauge cg='%s' set=%d %.1f/%.1f",
+			  part->name, part->parts_no, part->cg_name, ok,
+			  part->gauge_num, part->gauge_denom);
 	} else {
 		ACT_DEBUG("[act] %s parts_no=%d type=%d (no cg)", part->name,
 			  part->parts_no, part->type);
