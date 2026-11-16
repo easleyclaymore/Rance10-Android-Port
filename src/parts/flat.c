@@ -172,13 +172,14 @@ static void flat_process_layer_scripts(struct flat_layer_state *state,
 // 不管本层是否停止，都要推进子层。
 static bool flat_advance_children(struct flat *fl,
 		struct flat_layer_state *state,
-		struct flat_timeline *timelines, size_t nr_timelines);
+		struct flat_timeline *timelines, size_t nr_timelines,
+		int parts_no);
 
 // 把一层推进一个 tick。有任何帧变化就返回 true。
 static bool flat_advance_layer(struct flat *fl,
 		struct flat_layer_state *state,
 		struct flat_timeline *timelines, size_t nr_timelines,
-		int end_frame)
+		int end_frame, int parts_no)
 {
 	/* [D252] 封顶必须用装载时算好的 `f->end_frame`，不能在这里重新算
 	 * `flat_compute_max_frame()-1`。
@@ -223,24 +224,26 @@ static bool flat_advance_layer(struct flat *fl,
 		if (tick_min > 0 && end_frame >= tick_min) {
 			static int tn;
 			if (tn++ < 500)
-				NOTICE("[flattick] prev=%d next=%d cf=%d cap=%d inc=%d "
-				       "stop=%d sup=%d jump=%d",
-				       prev_cf, next_frame, state->current_frame,
+				NOTICE("[flattick] no=%d prev=%d next=%d cf=%d cap=%d inc=%d "
+				       "stop=%d sup=%d jump=%d tl=%zu",
+				       parts_no, prev_cf, next_frame, state->current_frame,
 				       max_end_frame, next_frame - prev_cf,
 				       was_stopped, (int)state->suppress_advance,
-				       state->jump_target);
+				       state->jump_target, nr_timelines);
 		}
 
 		flat_process_layer_scripts(state, timelines, nr_timelines);
 	} while (state->jump_target != -1);
 
-	bool child_changed = flat_advance_children(fl, state, timelines, nr_timelines);
+	bool child_changed = flat_advance_children(fl, state, timelines, nr_timelines,
+			parts_no);
 	return state->current_frame != prev_frame || child_changed;
 }
 
 static bool flat_advance_children(struct flat *fl,
 		struct flat_layer_state *state,
-		struct flat_timeline *timelines, size_t nr_timelines)
+		struct flat_timeline *timelines, size_t nr_timelines,
+		int parts_no)
 {
 	bool changed = false;
 	for (size_t i = 0; i < nr_timelines; i++) {
@@ -267,7 +270,8 @@ static bool flat_advance_children(struct flat *fl,
 		if (!state->children[i])
 			state->children[i] = flat_layer_state_new(lib->timeline.nr_timelines);
 		if (flat_advance_layer(fl, state->children[i],
-				lib->timeline.timelines, lib->timeline.nr_timelines, -1)) {
+				lib->timeline.timelines, lib->timeline.nr_timelines, -1,
+				parts_no)) {
 			changed = true;
 		}
 	}
@@ -672,7 +676,7 @@ bool parts_flat_update(struct parts_flat *f, int passed_time, int parts_no)
 		for (int i = 0; i < f->pending_seek_delta; i++) {
 			flat_advance_layer(f->flat, f->root_state,
 					f->flat->timelines, f->flat->nr_timelines,
-					f->end_frame);
+					f->end_frame, parts_no);
 		}
 		f->pending_seek_delta = 0;
 		f->elapsed = 0;
@@ -684,7 +688,7 @@ bool parts_flat_update(struct parts_flat *f, int passed_time, int parts_no)
 		f->needs_advance = false;
 		bool changed = flat_advance_layer(f->flat, f->root_state,
 				f->flat->timelines, f->flat->nr_timelines,
-				f->end_frame);
+				f->end_frame, parts_no);
 		f->elapsed = 0;
 		return changed;
 	}
@@ -745,7 +749,7 @@ bool parts_flat_update(struct parts_flat *f, int passed_time, int parts_no)
 		 * `IsPartsFlatEnd()` 的判据小 1，永远等不到「播完」。 */
 		if (flat_advance_layer(f->flat, f->root_state,
 				f->flat->timelines, f->flat->nr_timelines,
-				f->end_frame))
+				f->end_frame, parts_no))
 			any_changed = true;
 	}
 	return any_changed;
