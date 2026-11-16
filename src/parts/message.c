@@ -80,7 +80,21 @@ void parts_msg_push(struct parts* parts, int type, const char *fmt, ...)
 	 * delegate_index < 0 的消息（立刻返回 0）。activity.c 创建的
 	 * 活动部件保持默认的 -1，所以逐部件的点击永远派发不出去。
 	 * 受控实验：显式打开时回退到下标 0。 */
-	if (msg->delegate_index < 0 && getenv("XSYS4_DI_FALLBACK"))
+	/* [D260] 转正（原 D119 实验开关）。
+	 *
+	 * AIN 的 `CPartsMessageManager@CallDelegate` 对 `delegate_index < 0` 的消息
+	 * 直接返回 0，而 `activity.c` 创建的部件 `delegate_index` 默认就是 -1
+	 * （AIN 从不调 `Parts_SetDelegateIndex`）—— 于是战斗里每一次点击都打空炮：
+	 * `s77`/`s78` 实测点技能按钮只得到 `clicked=900000705`（背景 flat），
+	 * 战斗永远停在 `Round 1/10`。
+	 *
+	 * 回退到下标 0 后 `s80` 实测：活动数 45 → **73**，并出现
+	 * `Game/Battle/EnemyAction/EnemyActionIconBase:1..3`（敌人行动图标），
+	 * 战斗真的推进到了敌方行动阶段。判据是活动数 + EnemyAction 装载，
+	 * 不是截图（截图在过渡帧会是黑底）。
+	 *
+	 * 保留 `XSYS4_NO_DI_FALLBACK=1` 作为回退闸，供其它场景做 A/B。 */
+	if (msg->delegate_index < 0 && !getenv("XSYS4_NO_DI_FALLBACK"))
 		msg->delegate_index = 0;
 	msg->type = type;
 	msg->nr_variables = 0;

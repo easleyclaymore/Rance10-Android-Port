@@ -86,7 +86,6 @@
 | 其它 | `XSYS4_CONSTRUCT_776` | `src/hll/PartsEngine.c:502` | =0 把 AddPartsConstructionProcess(776) 退回空桩，用于卡片合成 A/B |
 | 其它 | `XSYS4_CONSTRUCT_DBG` | `src/parts/construction.c:338` | 打印部件合成操作：PartsFunc(case 162)、776 批量入口、Build 的 parts/cmd/CG 名与 op 数 |
 | 其它 | `XSYS4_CP_DBG` | `src/vm.c:512` | 〔摘〕Parts(1114) 的 m_partsNumber 若在拷贝时还是 0，副本就永远是 0。 |
-| 其它 | `XSYS4_DI_FALLBACK` | `src/parts/message.c:83` | 〔摘〕受控实验：显式打开时回退到下标 0。 |
 | 其它 | `XSYS4_DUMP_EVERY` | `src/video.c:460` | 每隔 N 次执行 dump 一次，用于观察循环里的状态漂移 |
 | 其它 | `XSYS4_DUMP_FRAME` | `src/video.c:456` | 指定帧的完整快照（配合 DUMP_AT 的扩展模式） |
 | 其它 | `XSYS4_DUMP_TOPS` | `src/vm.c:2414` | 〔摘〕「条件是真是假」，而这类「条件永远为假」正是最难查的一类。 |
@@ -96,15 +95,15 @@
 | 其它 | `XSYS4_EX_LAYOUT_BY_CONFIG` | `src/parts/activity.c:835` | [诊断] 真布局盒（EX 声明 `レイアウトボックス`）按 `配置` 字段重排（0=FREE/1=纵向/2=横向），而不是 D214 的一律 FREE。用于解决 LargeSkillButton/CardApView 这类「子部件座标全在 (0,0)」的容器底板不显示 |
 | 其它 | `XSYS4_EX_LAYOUT_FREE` | `src/parts/activity.c:825` | [D214 已转正] EX 装载的布局盒/用户组件初值改为 FREE（保留 EX 绝对坐标），避免 VERTICAL 自动重排把子部件推到屏幕外；默认生效，=0 回退做 A/B |
 | 其它 | `XSYS4_EX_RATIO_POS` | `src/parts/activity.c:898` | [D216 已转正] EX「座標を率として認識する=1」的 座標 按视图宽高换算成像素；消息窗口 (0,1) 由此变成 (0,1080)，正文才从屏幕外进画面；默认生效，=0 回退做 A/B |
-| 其它 | `XSYS4_FLATEND_DBG` | `src/parts/flat.c:1296` | — |
-| 其它 | `XSYS4_FLATEND_MIN_END` | `src/parts/flat.c:1306` | [诊断] 只打印 end_frame >= N 的长演出 flat 的未播完查询（推荐用这个，不受号段复用影响） |
-| 其它 | `XSYS4_FLATEND_ONLY` | `src/parts/flat.c:1303` | [诊断] 只跟一个 flat 部件号的 IsPartsFlatEnd 查询。**注意号段会复用**，跨跑测用同一号不可靠，长演出改用 FLATEND_MIN_END |
-| 其它 | `XSYS4_FLATEND_STOP_IS_END` | `src/parts/flat.c:1285` | [诊断] 把「flat 停在 stop 键/被 StopPartsFlat 停住」也算作「这段演完了」。用于验证「AIN 等 IsPartsFlatEnd 而 flat 卡在 73/75」的死锁 |
-| 其它 | `XSYS4_FLAT_DBG` | `src/parts/flat.c:1207` | 打印 flat 的加载名/hdr 尺寸/库数，以及渲染时的 flat 指针与部件几何（空 flat 会让部件退化成 0x0） |
-| 其它 | `XSYS4_FLAT_DELTA_DBG` | `src/parts/flat.c:705` | 〔摘〕pt << 1000 说明被限流（指向①）。 |
+| 其它 | `XSYS4_FLATEND_DBG` | `src/parts/flat.c:1300` | — |
+| 其它 | `XSYS4_FLATEND_MIN_END` | `src/parts/flat.c:1310` | [诊断] 只打印 end_frame >= N 的长演出 flat 的未播完查询（推荐用这个，不受号段复用影响） |
+| 其它 | `XSYS4_FLATEND_ONLY` | `src/parts/flat.c:1307` | [诊断] 只跟一个 flat 部件号的 IsPartsFlatEnd 查询。**注意号段会复用**，跨跑测用同一号不可靠，长演出改用 FLATEND_MIN_END |
+| 其它 | `XSYS4_FLATEND_STOP_IS_END` | `src/parts/flat.c:1289` | [诊断] 把「flat 停在 stop 键/被 StopPartsFlat 停住」也算作「这段演完了」。用于验证「AIN 等 IsPartsFlatEnd 而 flat 卡在 73/75」的死锁 |
+| 其它 | `XSYS4_FLAT_DBG` | `src/parts/flat.c:1211` | 打印 flat 的加载名/hdr 尺寸/库数，以及渲染时的 flat 指针与部件几何（空 flat 会让部件退化成 0x0） |
+| 其它 | `XSYS4_FLAT_DELTA_DBG` | `src/parts/flat.c:709` | 〔摘〕pt << 1000 说明被限流（指向①）。 |
 | 其它 | `XSYS4_FLAT_FRAME_DBG` | `src/parts/parts.c:1152` | [诊断] 轻量 flat 帧探针：打印 no/ctrl/frame/root_state.stopped/fps/passed_time。值=1 打全部，值=部件号只跟一个。用来区分「帧没推进」是 parts_flat.stopped、root_state.stopped（脚本 stop 键）还是 passed_time 为 0 |
-| 其它 | `XSYS4_FLAT_TICK_DBG` | `src/parts/flat.c:219` | [诊断] 逐 tick 打印 flat 推进前后（prev/next/cf/cap/inc/stop/sup/jump），值 = 只跟 end_frame >= N 的长演出（默认 70）。用来分辨「帧不涨」是 increment=0（stopped）还是被封顶 |
-| 其它 | `XSYS4_FLAT_TREE` | `src/parts/flat.c:640` | — |
+| 其它 | `XSYS4_FLAT_TICK_DBG` | `src/parts/flat.c:220` | [诊断] 逐 tick 打印 flat 推进前后（prev/next/cf/cap/inc/stop/sup/jump），值 = 只跟 end_frame >= N 的长演出（默认 70）。用来分辨「帧不涨」是 increment=0（stopped）还是被封顶 |
+| 其它 | `XSYS4_FLAT_TREE` | `src/parts/flat.c:644` | — |
 | 其它 | `XSYS4_FPS_DBG` | `src/parts/render.c:1115` | [诊断] 每秒打印一次实际渲染帧数。用来区分「演出推进慢」是逻辑卡死还是 llvmpipe 低帧率（D92 全量标脏） |
 | 其它 | `XSYS4_G14_WATCH` | `src/vm.c:2823` | [诊断] 只在 global[14] 的值变化时打印 ip/旧值/新值/栈/调用栈（抓单例被覆写） |
 | 其它 | `XSYS4_GL_DBG` | `src/video.c:267` | [诊断] 启动时打印实际 GL vendor/renderer/version —— 判断有没有用上硬件加速的唯一硬证据（llvmpipe=软件，Mesa Intel=硬件） |
@@ -130,18 +129,19 @@
 | 其它 | `XSYS4_MGRBT` | `src/vm.c:2606` | — |
 | 其它 | `XSYS4_MOUSE_DBG` | `src/input.c:385` | [诊断] 打印 SDL 按钮事件（btn / state / clicks / pos / windowID）。用来二分「X 层没把 ButtonPress 交给 SDL」和「SDL 收到了但引擎丢边沿」：同一配方下无 `key:Shift_L` 激活时 `[mouse]` 一条都没有（`s27`），加激活后立即出现并点中 `900000716`（`s26`） |
 | 其它 | `XSYS4_MSGF_FIX` | `src/hacks.c:328` | [D204] AIN v12 无 MSGF 段时按函数名把 msgf 解析到 "message"/3（Rance10: fno 6100）；默认开启，=0 关闭做 A/B |
-| 其它 | `XSYS4_MSGQ_DBG` | `src/parts/message.c:163` | 〔摘〕对其它值走 member1[delegate_index]。分派打空炮时必须先知道走的哪条。 |
+| 其它 | `XSYS4_MSGQ_DBG` | `src/parts/message.c:177` | 〔摘〕对其它值走 member1[delegate_index]。分派打空炮时必须先知道走的哪条。 |
 | 其它 | `XSYS4_MSGWIN_DBG` | `src/hll/PartsEngine.c:46` | [诊断] 打印消息窗口配置族 setter 的触达与实参（Active/Text/CGName/FlatName/TextArea/OriginPosMode/Space/Speed），每个函数限 20 条；用来判定「空桩是不是真被调用」 |
 | 其它 | `XSYS4_MSGWIN_FRAME_DBG` | `src/parts/render.c:999` | [诊断] 打印消息窗口底板 CG（1920x300~500）是否进入 parts_render 及其 origin_offset / 准入字段；用来区分「没到渲染」与「画了看不见」 |
 | 其它 | `XSYS4_MSGWIN_FULL` | `src/parts/activity.c:1004` | [D217 已转正] EX 消息窗口组件补齐 39px 字体/字色/字距/行距，并用独立 CG 部件装载 种类別情报 的 底板ＣＧ名；默认生效，=0 回退做 A/B |
 | 其它 | `XSYS4_MSG_DBG` | `src/parts/message.c:45` | 〔摘〕只打非悬停消息，否则前 60 条全被 MOUSE_ON 占满，看不到点击。 |
-| 其它 | `XSYS4_MSG_NO_SENTINEL` | `src/parts/message.c:159` | 〔摘〕这就是那个把 SceneStack@WaitFrame 卡死的忙循环。 |
-| 其它 | `XSYS4_MSG_POPDBG` | `src/parts/message.c:123` | 〔摘〕这里能看到 type=5 被 pop 而没有对应 dispatch。 |
-| 其它 | `XSYS4_MSG_TRACE` | `src/parts/message.c:138` | — |
+| 其它 | `XSYS4_MSG_NO_SENTINEL` | `src/parts/message.c:173` | 〔摘〕这就是那个把 SceneStack@WaitFrame 卡死的忙循环。 |
+| 其它 | `XSYS4_MSG_POPDBG` | `src/parts/message.c:137` | 〔摘〕这里能看到 type=5 被 pop 而没有对应 dispatch。 |
+| 其它 | `XSYS4_MSG_TRACE` | `src/parts/message.c:152` | — |
 | 其它 | `XSYS4_NODE_DIGIT` | `src/vm.c:2314` | [D209 诊断后门] 把 QuestMapParamAccessor 的 KeyBase 末尾全角编号末位改成 0-9（００１→００２），仅在 23486 事件链生效；默认关，用于验证战斗链，不是正常游戏路径 |
 | 其它 | `XSYS4_NO_AUDIO` | `src/audio_mixer.c:701` | 关闭音频输出 |
 | 其它 | `XSYS4_NO_AUTO_MOTION` | `src/parts/motion.c:102` | =1 关闭「首次加 motion 自动开表」（D186），用于 motion 自动启动的 A/B |
 | 其它 | `XSYS4_NO_CP_ALPHA_FIX` | `src/parts/parts.c:2279` | =1 关闭「合成类部件 alpha=0 提升为 255」（卡片立绘 A/B 回退开关）。[D224 收窄] 提升现在只作用于 >=8x8 的真实合成纹理，2x2 全屏淡出遮罩不再被误抬 |
+| 其它 | `XSYS4_NO_DI_FALLBACK` | `src/parts/message.c:97` | [回退闸] 关闭 D260 的委托下标回退（消息 delegate_index<0 时不再回退到 0）。用于 A/B：开着它战斗会退回「点击打空炮、停 Round 1/10」的旧行为 |
 | 其它 | `XSYS4_NO_PUMP` | `src/vm.c:4781` | 事件泵空转诊断 |
 | 其它 | `XSYS4_NULLMETHOD_FIX` | `src/vm.c:1226` | — |
 | 其它 | `XSYS4_NULLREF_DBG` | `src/vm.c:322` | 〔摘〕从栈上弹出一个引用，返回被引用对象的地址。 |
