@@ -55,6 +55,20 @@ ls /tmp/first_*_wait.png                   # 每一步都会截图
 | `until:SceneParty:20000` | 等到日志出现该字符串 | 默认超时 60 秒；等到后再多等 1.5 秒 |
 | `clickunless:135,576:SceneParty` | **日志里没有该字符串时才点** | 命中率低时的重试链 |
 
+**鼠标点击前必须先用 `key:Shift_L` 激活窗口**（`[D242]`，`s24/s26/s27` 对照实测）。
+Xvfb 没有 WM，`click()` 内部的 `windowfocus` 不够：同配方下 `click:960,540` 的
+`[inp]` 一直是 `clicking=0`，而且 `XSYS4_MOUSE_DBG=1` 的 `[mouse]` 探针
+**一条都没有** —— SDL 根本没收到 `SDL_MOUSEBUTTONDOWN`（不是引擎丢边沿）。
+前面加一步 `key:Shift_L` 后立刻变成
+`clicking=1 → down=900000716 → EndInput (clicked=900000716)`。
+`engineshot` 的 `alt+s` **不能**代替它（带 Alt 修饰，SDL 侧不认）。
+
+```bash
+# 战斗中「点开始 → 点技能」的稳健写法
+RANCE10_LIVE_SEQ="wait:25000;key:Shift_L;wait:1000;click:960,540;wait:6000;\
+key:Shift_L;wait:1000;click:650,683;wait:8000"
+```
+
 `clickunless` 是这套语言里最有用的一步。标题画面的「开始」按钮出画时刻
 受贴图加载影响，固定 `wait` + 单次点击的实测命中率只有约 30%；改成
 "没进就再点一次"能把这个数拉到接近 100%，而一次跑测要两分钟，值得。

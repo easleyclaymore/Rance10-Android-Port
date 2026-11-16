@@ -50,7 +50,7 @@
 | `I027` | D238 两处语义修复（`6c568b7` + `3ac9738`）：① `component_type_from_name()` 精确匹配失败后剥 `パーツ` 后缀重查；② `activity.c` 解析数字/计量负载（`幅リスト/数值/字间距/桁数`、`分子/分母`）并调 `SetNumeralLinkedCG…` / `SetHGaugeCG+Rate` | ① **所有** EX 里以 `パーツ` 结尾的类型名（此前一律回退成 CG——包括地图 HP 视图 `QuestMapHpView`）；② 仅 `ACT_COMP_NUMERAL/HGAUGE/VGAUGE` 三类部件 | 默认零开关基线 `d238` 四数不变；`s13` 引擎自截图 `Round 1 / 10` + 红蓝 HP 条；`check_core_deps.py` PASS（hyp=44 roots=62 debts=25） | `git revert 3ac9738`（渲染）/ `git revert 6c568b7`（类型映射），两者独立 | 通过（`s13`） |
 
 | `I028` | D239 `flat.c` `PE_GoFramePartsFlat()` 向前定位分支补 `root_state->stopped = false` | **所有**用 GoFrame 向前跳帧的 flat（战斗开始演出、任何停过 `is_stop` 的动画）；向后定位原本就清，语义不变 | 默认基线 `d238` 四数；`s20` 战斗开始演出播完、画面进入战斗 UI | `git revert`（回到「delta 被空转、帧不动」） | 未验（`s20/s22` 被崩溃阻断） |
-| `I029` | D241 `heap.c` `heap_unref()` 加上界检查（`slot >= heap_size` 时忽略 + 限流告警） | **所有** unref 路径（引用计数族全量）——热路径加一次整数比较；非法槽从「越界 SIGSEGV」变成「忽略」 | 默认基线 `d238` 四数；`s23` 同 s22 配方不再崩溃 | `git revert`（回到越界崩） | 待验（`s23`）；根因另见 `[BAD-SLOT-REF]` |
+| `I029` | D241 `heap.c` `heap_unref()` 加上界检查（`slot >= heap_size` 时忽略 + 限流告警） | **所有** unref 路径（引用计数族全量）——热路径加一次整数比较；非法槽从「越界 SIGSEGV」变成「忽略」 | 默认基线 `d238` 四数；`s23` 同 s22 配方不再崩溃 | `git revert`（回到越界崩） | 通过（`s26`：越界被忽略 `heap_size=110592`，同配方不再段错误）；根因另见 `[BAD-SLOT-REF]` |
 
 > 判据：每个「必重跑闭环」都要有当次实测数字或日志 tag；`待验` 条目收工前必须结掉。
 > 全部数字以 `docs/STATS.md`（`tools/gen-doc-numbers.py` 生成）为准，禁止手写。

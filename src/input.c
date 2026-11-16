@@ -377,6 +377,15 @@ static void key_event(SDL_KeyboardEvent *e, bool pressed)
 
 static void mouse_event(SDL_MouseButtonEvent *e)
 {
+	/* [D242] 只打按钮事件（mousemove 不走这里，量很小）。
+	 * 目的：二分「X 层没把 ButtonPress 交给 SDL」和「SDL 收到了但引擎
+	 * 边沿丢了」——s24/s26 的 `[inp]` 显示 began=1、候选表命中 716、
+	 * 却始终没有 EndInput；而同一批跑测里 `key:Return` 能产生
+	 * `[key] IsDown(1)=1`，说明 XTEST 与焦点是通的。 */
+	if (getenv("XSYS4_MOUSE_DBG"))
+		NOTICE("[mouse] btn=%d state=%d which=%d clicks=%d pos=(%d,%d) win=%u",
+		       e->button, e->state, (int)e->which, e->clicks,
+		       e->x, e->y, (unsigned)e->windowID);
 	enum sact_keycode code = sdl_to_sact_button(e->button);
 	if (code == VK_LBUTTON && e->state == SDL_PRESSED)
 		mouse_press_pulse = true;
