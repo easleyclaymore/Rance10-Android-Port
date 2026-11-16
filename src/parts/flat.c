@@ -679,9 +679,11 @@ bool parts_flat_update(struct parts_flat *f, int passed_time, int parts_no)
 	 * 每秒打一条：calls=进入次数、pt=累计 passed_time、delta=累计推进帧数、
 	 * frame/end=当前进度。判据：pt ≈ 1000 说明时间正常（指向②），
 	 * pt << 1000 说明被限流（指向①）。 */
-	if (getenv("XSYS4_FLAT_DELTA_DBG")) {
+	if (getenv("XSYS4_FLAT_DELTA_DBG") && f->end_frame >= 40) {
 		/* 按部件号分开统计 —— 全局聚合会把几百个 flat 的调用混在一起，
-		 * 上一版因此得出「每秒推进 208 秒游戏时间」这种没法用的数字。 */
+		 * 上一版因此得出「每秒推进 208 秒游戏时间」这种没法用的数字。
+		 * 只统计 end_frame >= 40 的长演出：8 个 slot 是「先到先得」，
+		 * 早期一堆 2 帧的小 flat 会把它们占满，长演出永远进不来。 */
 		#define FLATD_SLOTS 8
 		static struct { int no; unsigned long long calls, pt, dlt; } slot[FLATD_SLOTS];
 		static time_t last;
@@ -1285,9 +1287,13 @@ bool PE_IsPartsFlatEnd(int parts_no, int state)
 		/* [D256] 补 fps / 两个 stopped / jump_target / max_frame：
 		 * 「停在 74/75」到底是 fps=0 让 update 提前 return、还是 stopped
 		 * 钉住了帧、还是 jump_target 卡住，只有这几个字段能区分。 */
-		NOTICE("[flatend] no=%d st=%d frame=%d end=%d fps=%d "
+		/* [D257] 补 `cur`（部件的当前状态号）。`parts_update_loop()`
+		 * 只推进 `states[parts->state].type == PARTS_FLAT` 的那一个状态；
+		 * 如果 AIN 问的是 state 0 而部件当前停在别的 state，
+		 * 这个 flat 就永远不推进 —— 表现正是「帧涨到一半不动、字段全正常」。 */
+		NOTICE("[flatend] no=%d st=%d cur=%d frame=%d end=%d fps=%d "
 		       "stop=%d/%d jump=%d maxf=%d loaded=%d -> %d",
-		       parts_no, state,
+		       parts_no, state, parts->state,
 		       f->root_state ? f->root_state->current_frame : -1,
 		       f->end_frame,
 		       (int)f->flat->hdr.fps,
