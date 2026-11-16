@@ -457,7 +457,13 @@ static int flat_layer_paint_alpha(struct parts_flat *f, struct flat_layer_state 
 				break;
 			}
 			case FLAT_LIB_TIMELINE:
-				drawable = true;  /* 像素在子 timeline 里，下面递归 */
+				/* [D232] 子时间线的**容器关键帧自己不画像素**：它的
+				 * alpha 只是子层的乘数。把它算成「画出了 255」正是
+				 * D226 误判的根因 —— 战斗回合切换那张 1920x1080 的
+				 * 演出 flat 在最后一帧所有子层都超范围或 alpha=0，
+				 * 一个像素都不画，却被容器关键帧的 a=255 判成不透明
+				 * 地板，于是 cover 把下面所有 UI 全滤掉 = 黑屏。 */
+				drawable = true;
 				break;
 			default:
 				break;
@@ -481,13 +487,15 @@ static int flat_layer_paint_alpha(struct parts_flat *f, struct flat_layer_state 
 			keys = &tl->graphic.keys[local];
 			nr_keys = 1;
 		}
+		bool is_container = lib && lib->type == FLAT_LIB_TIMELINE;
 		for (uint32_t k = 0; k < nr_keys; k++) {
 			int a = keys[k].alpha * parent_alpha / 255;
 			if (keys[k].alpha > 255)
 				a = parent_alpha;
-			if (a > best)
+			/* 容器关键帧只贡献乘数，不贡献像素（D232）。 */
+			if (!is_container && a > best)
 				best = a;
-			if (lib && lib->type == FLAT_LIB_TIMELINE) {
+			if (is_container) {
 				struct flat_layer_state *child = state->children
 						? state->children[i] : NULL;
 				if (child) {
@@ -510,6 +518,104 @@ int parts_flat_max_paint_alpha(struct parts_flat *f)
 		return 0;
 	return flat_layer_paint_alpha(f, f->root_state,
 			f->flat->timelines, f->flat->nr_timelines, 255, 0);
+}
+
+/* [D231] XSYS4_FLAT_TREE=<部件号>：每约 1 秒把该 flat 的时间线树打一遍。
+ *
+ * 用来回答「播完的演出为什么还盖着屏幕」：到底是位置没移走、alpha 没降、
+ * 还是压根没走到该走的 timeline（子层没推进 / begin_frame 算错）。
+ * 只看单帧快照时这些都是同一个「全黑」现象，分不开。 */
+static void flat_dump_layer(struct parts_flat *f, struct flat_layer_state *st,
+		struct flat_timeline *tls, size_t nr, int depth)
+{
+	if (!st || depth > 4)
+		return;
+	char ind[24];
+	int n = depth * 2;
+	if (n > (int)sizeof(ind) - 1)
+		n = (int)sizeof(ind) - 1;
+	memset(ind, ' ', n);
+	ind[n] = '\0';
+	NOTICE("[ftree] %s道 frame=%d stop=%d suppress=%d jump=%d",
+	       ind, st->current_frame, st->stopped, st->suppress_advance, st->jump_target);
+	for (size_t i = 0; i < nr; i++) {
+		struct flat_timeline *tl = &tls[i];
+		const char *kind = tl->type == FLAT_TIMELINE_GRAPHIC ? "图形"
+				: tl->type == FLAT_TIMELINE_SOUND ? "声音"
+				: tl->type == FLAT_TIMELINE_SCRIPT ? "脚本" : "未知";
+		int lib_idx = tl->library_name
+				? parts_flat_find_library(f->flat, tl->library_name->text) : -1;
+		const char *lib_type = "无";
+		if (lib_idx >= 0 && (size_t)lib_idx < f->flat->nr_libraries) {
+			switch (f->flat->libraries[lib_idx].type) {
+			case FLAT_LIB_CG:          lib_type = "CG"; break;
+			case FLAT_LIB_MEMORY:      lib_type = "内存"; break;
+			case FLAT_LIB_TIMELINE:    lib_type = "子时间线"; break;
+			case FLAT_LIB_STOP_MOTION: lib_type = "定格"; break;
+			case FLAT_LIB_EMITTER:     lib_type = "发射器"; break;
+			default:                   lib_type = "?"; break;
+			}
+		}
+		int local = st->current_frame - tl->begin_frame;
+		NOTICE("[ftree] %s  [%zu]%s 库=%s(%s) begin=%d count=%d local=%d",
+		       ind, i, kind, tl->library_name ? tl->library_name->text : "-",
+		       lib_type, tl->begin_frame, tl->frame_count, local);
+		if (tl->type != FLAT_TIMELINE_GRAPHIC || local < 0 || local >= tl->frame_count)
+			continue;
+
+		struct flat_key_data_graphic *keys;
+		uint32_t nr_keys;
+		if (tl->graphic.frames && tl->graphic.frames[local].keys) {
+			keys = tl->graphic.frames[local].keys;
+			nr_keys = tl->graphic.frames[local].count;
+		} else if (local < (int)tl->graphic.count) {
+			keys = &tl->graphic.keys[local];
+			nr_keys = 1;
+		} else {
+			continue;
+		}
+		for (uint32_t k = 0; k < nr_keys && k < 4; k++) {
+			struct flat_key_data_graphic *kg = &keys[k];
+			NOTICE("[ftree] %s    key%u pos=(%.1f,%.1f) scale=(%.3f,%.3f) "
+			       "angle=(%.1f,%.1f,%.1f) a=%d area=(%d,%d %dx%d) filter=%d",
+			       ind, k, kg->pos_x, kg->pos_y, kg->scale_x, kg->scale_y,
+			       kg->angle_x, kg->angle_y, kg->angle_z, kg->alpha,
+			       kg->area_x, kg->area_y, kg->area_width, kg->area_height,
+			       kg->draw_filter);
+		}
+		if (lib_idx >= 0 && (size_t)lib_idx < f->flat->nr_libraries &&
+		    f->flat->libraries[lib_idx].type == FLAT_LIB_TIMELINE) {
+			struct flat_timeline *sub = f->flat->libraries[lib_idx].timeline.timelines;
+			size_t sub_nr = f->flat->libraries[lib_idx].timeline.nr_timelines;
+			struct flat_layer_state *child = st->children ? st->children[i] : NULL;
+			flat_dump_layer(f, child, sub, sub_nr, depth + 1);
+		}
+	}
+}
+
+void parts_flat_dump_tree(int parts_no, struct parts_flat *f)
+{
+	static int want = -2;
+	static int tick;
+	if (!f->flat || !f->root_state)
+		return;
+	if (want == -2) {
+		const char *env = getenv("XSYS4_FLAT_TREE");
+		want = env ? atoi(env) : -1;
+	}
+	if (want < 0 || parts_no != want)
+		return;
+	if (tick++ % 120)
+		return;
+	NOTICE("[ftree] == 部件 %d：%dx%d fps=%d 时间线 %zu 条，子层 %zu；"
+	       "库 %zu（文件声明 %zu）TALT %zu 条，纹理 %zu 张，实画 alpha %d",
+	       parts_no, f->flat->hdr.width, f->flat->hdr.height, f->flat->hdr.fps,
+	       f->flat->nr_timelines, f->root_state->nr_timelines,
+	       f->nr_libraries, f->flat->nr_libraries, f->flat->nr_talt_entries,
+	       ({ size_t _n = 0; for (size_t _i = 0; _i < f->nr_libraries; _i++)
+	           if (f->textures[_i].handle) _n++; _n; }),
+	       parts_flat_max_paint_alpha(f));
+	flat_dump_layer(f, f->root_state, f->flat->timelines, f->flat->nr_timelines, 0);
 }
 
 bool parts_flat_update(struct parts_flat *f, int passed_time)
@@ -1069,9 +1175,23 @@ bool PE_IsPartsFlatEnd(int parts_no, int state)
 
 	struct parts *parts = parts_get(parts_no);
 	struct parts_flat *f = parts_get_flat(parts, state);
-	if (!f->flat || !f->root_state)
-		return true;
-	return f->root_state->current_frame == f->end_frame;
+	bool end = (!f->flat || !f->root_state)
+			? true
+			: f->root_state->current_frame == f->end_frame;
+	/* [D234] XSYS4_FLATEND_DBG=1：谁在问「这个 flat 播完了吗」，答案是什么。
+	 * 回合切换的等待完全押在这个返回值上，前 40 次足够看清对象。 */
+	static int dbg = -1, n, last_no = -1;
+	if (dbg < 0)
+		dbg = getenv("XSYS4_FLATEND_DBG") ? 1 : 0;
+	/* 只在「问的对象变了」或每 300 次心跳时打，否则一个内层循环就能刷满日志。 */
+	if (dbg && (parts_no != last_no || n++ % 300 == 0)) {
+		NOTICE("[flatend] no=%d st=%d frame=%d end=%d loaded=%d -> %d",
+		       parts_no, state,
+		       f->root_state ? f->root_state->current_frame : -1,
+		       f->end_frame, f->flat != NULL, end);
+		last_no = parts_no;
+	}
+	return end;
 }
 
 int PE_GetPartsFlatCurrentFrameNumber(int parts_no, int state)

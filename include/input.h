@@ -139,6 +139,9 @@ bool key_is_down(enum sact_keycode code);
 bool mouse_consume_press_pulse(void);
 /* [D191] 右键释放脉冲（右键在本帧内 press+release 时左键脉冲不会置位）。 */
 bool mouse_consume_rclick_pulse(void);
+
+/* [D233] 该键自上次消费以来是否被按下过（合成点击的边沿，一次性）。 */
+bool key_consume_press_pulse(int code);
 void key_clear_flag(bool no_ctrl);
 bool joy_key_is_down(uint8_t code);
 void joy_clear_flag(void);

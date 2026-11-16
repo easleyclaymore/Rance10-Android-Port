@@ -839,7 +839,20 @@ void sact_Key_ClearFlagNoCtrl(void)
 int sact_Key_IsDown(int keycode)
 {
 	handle_events();
-	return key_is_down(keycode);
+	int r = key_is_down(keycode);
+	/* [D233] 合成点击的按下脉冲：AIN 每帧轮询，只看 key_state 会漏掉
+	 * 同一帧内完成的 press+release。 */
+	if (!r)
+		r = key_consume_press_pulse(keycode) ? 1 : 0;
+	/* [D233] XSYS4_KEY_DBG=1：看 AIN 到底在轮询哪些按键、结果是什么。
+	 * 右键/空格这类「同一帧内 press+release」的合成点击，若只读
+	 * key_state 就永远是 false，游戏会一直等下去。 */
+	static int dbg = -1;
+	if (dbg < 0)
+		dbg = getenv("XSYS4_KEY_DBG") ? 1 : 0;
+	if (dbg)
+		NOTICE("[key] IsDown(%d)=%d", keycode, r);
+	return r;
 }
 
 int sact_CG_IsExist(int cg_no)

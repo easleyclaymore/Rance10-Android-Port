@@ -1143,6 +1143,7 @@ static void parts_update_loop(struct parts *parts, int passed_time)
 		break;
 	case PARTS_FLAT:
 		dirty = parts_flat_update(&parts->states[parts->state].flat, passed_time);
+		parts_flat_dump_tree(parts->no, &parts->states[parts->state].flat);
 		break;
 	default:
 		break;
