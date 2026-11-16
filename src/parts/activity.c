@@ -429,6 +429,31 @@ static int component_type_from_name(const char *type_name)
 			break;
 		}
 	}
+	/* [D238] 同一类型在 EX 里有两种写法：编辑器基础名（"数字" /
+	 * "横向计量"）与带 "パーツ" 后缀的完整名（"数字パーツ" /
+	 * "横向计量パーツ"）。"低レベルパーツ" 的真实类型就存放在
+	 * 一般状態 的 "パーツ类型" 里，而且带后缀 —— 只认短名会解析失败，
+	 * Round / Hp / Gauge 便一起回退成 CG，整条数字条带被画成一张图。
+	 * 后缀是通用写法，统一剥掉再查一次，不必逐个枚举变体。 */
+	if (type < 0) {
+		static const char kSuffix[] = "パーツ";
+		size_t ulen = strlen(u);
+		size_t slen = sizeof kSuffix - 1;
+		if (ulen > slen && !memcmp(u + ulen - slen, kSuffix, slen)) {
+			char base[128];
+			size_t n = ulen - slen;
+			if (n < sizeof base) {
+				memcpy(base, u, n);
+				base[n] = '\0';
+				for (int i = 0; table[i].name; i++) {
+					if (!strcmp(base, table[i].name)) {
+						type = table[i].type;
+						break;
+					}
+				}
+			}
+		}
+	}
 	free(u);
 	return type;
 }
