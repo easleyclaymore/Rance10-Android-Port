@@ -235,6 +235,14 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 		click_eligible =
 			parts->states[parts->state].type != PARTS_FLAT;
 	}
+	/* [D261 受控实验 B] 把 `光标选中透過` 当成**正向**判据。
+	 * D113 注释写「按钮是 1、背景是 0，反了会把按钮也滤掉」，但这句自相矛盾：
+	 * `!pass_cursor` 恰好把按钮(1)全滤掉、只留背景(0)，与它的结论相反。
+	 * 兰斯10 里所有可见按钮 `透過=1`、全屏背景 `透過=0`，若 1 真是"穿透"，
+	 * 游戏根本没法玩 —— 所以更可能 1 = "光标可选中"。
+	 * 若本开关下 `EndInput` 有值且点到 900000109，方向即成立。 */
+	if (getenv("XSYS4_CLICK_PASS"))
+		click_eligible = parts->pass_cursor;
 	if (!click_eligible || *click_consumed) {
 		if (!was_hovered)
 			audio_play_sound(parts->on_cursor_sound);
