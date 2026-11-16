@@ -172,6 +172,10 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	bool hover_blocking = !parts->pass_cursor;
 	if (getenv("XSYS4_CLICK_ONLY_CLICKABLE"))
 		hover_blocking = parts->clickable;
+	/* `s83` 的 CLICK_PASS 之所以 EndInput=0，也是同一处没跟上：
+	 * 判据成对改才有意义。 */
+	if (getenv("XSYS4_CLICK_PASS"))
+		hover_blocking = parts->pass_cursor;
 	if (is_hovered && hover_blocking)
 		*hover_consumed = true;
 
@@ -403,13 +407,13 @@ void PE_UpdateInputState(int passed_time)
 				continue;
 			NOTICE("[inp]   parts=%d pos=(%d,%d) hb=(%d,%d,%d,%d) "
 			       "global=(%d,%d) parent=%d gz=%d click=%d pass=%d show=%d "
-			       "ctrl=%d cover=%d uc=%s",
+			       "ctrl=%d cover=%d di=%d uc=%s",
 			       parts->no, parts->local.pos.x, parts->local.pos.y,
 			       hb.x, hb.y, hb.w, hb.h, gx, gy,
 			       parts->parent ? parts->parent->no : -1,
 			       parts->global.z, parts->clickable, parts->pass_cursor,
 			       parts->global.show, parts->controller_no,
-			       covers ? 1 : 0,
+			       covers ? 1 : 0, parts->delegate_index,
 			       parts->uc_object ? parts->uc_object : "-");
 		}
 	}
