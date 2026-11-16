@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **154** 个开关，其中 **30** 个没有就近注释。
+共 **155** 个开关，其中 **30** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -51,15 +51,15 @@
 | 容器与内存 | `XSYS4_DG_MISS_FILTER` | `src/vm.c:1565` | 收窄 DG_MISS 输出 |
 | 容器与内存 | `XSYS4_DG_PAGE_DBG` | `src/vm.c:1502` | 委托页生命周期诊断 |
 | 容器与内存 | `XSYS4_MEM_STAT` | `src/vm.c:4810` | 堆内存与 RSS 实时统计 |
-| 呈现与输入 | `XSYS4_ACT_CLICKABLE_ALL` | `src/parts/activity.c:796` | 把所有**活动文件里声明**的部件标为可点（运行时建的 900000xxx 不受影响） |
-| 呈现与输入 | `XSYS4_ACT_DBG` | `src/parts/activity.c:989` | 活动装载与点击派发诊断 |
-| 呈现与输入 | `XSYS4_ACT_DEBUG` | `src/parts/activity.c:1154` | 活动诊断的旧开关 |
+| 呈现与输入 | `XSYS4_ACT_CLICKABLE_ALL` | `src/parts/activity.c:823` | 把所有**活动文件里声明**的部件标为可点（运行时建的 900000xxx 不受影响） |
+| 呈现与输入 | `XSYS4_ACT_DBG` | `src/parts/activity.c:1016` | 活动装载与点击派发诊断 |
+| 呈现与输入 | `XSYS4_ACT_DEBUG` | `src/parts/activity.c:1181` | 活动诊断的旧开关 |
 | 呈现与输入 | `XSYS4_ACT_PART_DBG` | `src/parts/parts.c:2182` | 打印活动部件的建造解析（名字/类型/尺寸/表示領域/flat 名）与 300 号段之后的 SetPos/SetZ |
 | 呈现与输入 | `XSYS4_CLICK_RETARGET` | `src/parts/message.c:69` | 点击被遮挡后重定向到下层部件 |
 | 呈现与输入 | `XSYS4_CTRL_DBG` | `src/parts/parts.c:1465` | controller 栈、视觉地板（cover_layer）、hide/remove 事件 |
-| 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:337` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
-| 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:308` | 输入命中的候选部件表与点击状态 |
-| 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:1178` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
+| 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:341` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
+| 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:308` | 输入命中的候选部件表与点击状态（每 60 帧一条心跳，非沉默） |
+| 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:1205` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
 | 呈现与输入 | `XSYS4_PARTS_DUMP_MAX` | `src/parts/parts.c:3091` | — |
 | 呈现与输入 | `XSYS4_PARTS_DUMP_MIN` | `src/parts/parts.c:3038` | [诊断] 只 dump 部件号 >= 此值的部件；部件表按插入序遍历，地图号段会吃光 PARTS_DUMP_MAX 名额，设 900000300 才能看到动态号段 |
 | 呈现与输入 | `XSYS4_PARTS_NO_BASE` | `src/parts/parts.c:2901` | — |
@@ -89,9 +89,9 @@
 | 其它 | `XSYS4_DUMP_TOPS` | `src/vm.c:2399` | 〔摘〕「条件是真是假」，而这类「条件永远为假」正是最难查的一类。 |
 | 其它 | `XSYS4_ENV_DBG` | `src/vm.c:2894` | — |
 | 其它 | `XSYS4_EX_DBG` | `src/hll/MainEXFile.c:527` | 〔摘〕所有任务都会被判成地图任务、剧情整段跳过——所以必须能看见。 |
-| 其它 | `XSYS4_EX_DUMP` | `src/parts/activity.c:636` | 按部件名 dump 整棵 EX 子树（查「尺寸」「表示領域」写在哪个键上）；值=部件名 |
-| 其它 | `XSYS4_EX_LAYOUT_FREE` | `src/parts/activity.c:718` | [D214 已转正] EX 装载的布局盒/用户组件初值改为 FREE（保留 EX 绝对坐标），避免 VERTICAL 自动重排把子部件推到屏幕外；默认生效，=0 回退做 A/B |
-| 其它 | `XSYS4_EX_RATIO_POS` | `src/parts/activity.c:775` | [D216 已转正] EX「座標を率として認識する=1」的 座標 按视图宽高换算成像素；消息窗口 (0,1) 由此变成 (0,1080)，正文才从屏幕外进画面；默认生效，=0 回退做 A/B |
+| 其它 | `XSYS4_EX_DUMP` | `src/parts/activity.c:663` | 按部件名 dump 整棵 EX 子树（查「尺寸」「表示領域」写在哪个键上）；值=部件名 |
+| 其它 | `XSYS4_EX_LAYOUT_FREE` | `src/parts/activity.c:745` | [D214 已转正] EX 装载的布局盒/用户组件初值改为 FREE（保留 EX 绝对坐标），避免 VERTICAL 自动重排把子部件推到屏幕外；默认生效，=0 回退做 A/B |
+| 其它 | `XSYS4_EX_RATIO_POS` | `src/parts/activity.c:802` | [D216 已转正] EX「座標を率として認識する=1」的 座標 按视图宽高换算成像素；消息窗口 (0,1) 由此变成 (0,1080)，正文才从屏幕外进画面；默认生效，=0 回退做 A/B |
 | 其它 | `XSYS4_FLATEND_DBG` | `src/parts/flat.c:1194` | — |
 | 其它 | `XSYS4_FLAT_DBG` | `src/parts/flat.c:1124` | 打印 flat 的加载名/hdr 尺寸/库数，以及渲染时的 flat 指针与部件几何（空 flat 会让部件退化成 0x0） |
 | 其它 | `XSYS4_FLAT_TREE` | `src/parts/flat.c:603` | — |
@@ -120,7 +120,7 @@
 | 其它 | `XSYS4_MSGQ_DBG` | `src/parts/message.c:163` | 〔摘〕对其它值走 member1[delegate_index]。分派打空炮时必须先知道走的哪条。 |
 | 其它 | `XSYS4_MSGWIN_DBG` | `src/hll/PartsEngine.c:46` | [诊断] 打印消息窗口配置族 setter 的触达与实参（Active/Text/CGName/FlatName/TextArea/OriginPosMode/Space/Speed），每个函数限 20 条；用来判定「空桩是不是真被调用」 |
 | 其它 | `XSYS4_MSGWIN_FRAME_DBG` | `src/parts/render.c:998` | [诊断] 打印消息窗口底板 CG（1920x300~500）是否进入 parts_render 及其 origin_offset / 准入字段；用来区分「没到渲染」与「画了看不见」 |
-| 其它 | `XSYS4_MSGWIN_FULL` | `src/parts/activity.c:829` | [D217 已转正] EX 消息窗口组件补齐 39px 字体/字色/字距/行距，并用独立 CG 部件装载 种类別情报 的 底板ＣＧ名；默认生效，=0 回退做 A/B |
+| 其它 | `XSYS4_MSGWIN_FULL` | `src/parts/activity.c:856` | [D217 已转正] EX 消息窗口组件补齐 39px 字体/字色/字距/行距，并用独立 CG 部件装载 种类別情报 的 底板ＣＧ名；默认生效，=0 回退做 A/B |
 | 其它 | `XSYS4_MSG_DBG` | `src/parts/message.c:45` | 〔摘〕只打非悬停消息，否则前 60 条全被 MOUSE_ON 占满，看不到点击。 |
 | 其它 | `XSYS4_MSG_NO_SENTINEL` | `src/parts/message.c:159` | 〔摘〕这就是那个把 SceneStack@WaitFrame 卡死的忙循环。 |
 | 其它 | `XSYS4_MSG_POPDBG` | `src/parts/message.c:123` | 〔摘〕这里能看到 type=5 被 pop 而没有对应 dispatch。 |
@@ -135,6 +135,7 @@
 | 其它 | `XSYS4_NULL_METHOD` | `src/vm.c:1072` | — |
 | 其它 | `XSYS4_NULL_RET` | `src/vm.c:1112` | 〔摘〕XSYS4_NULL_RET=0 可回退，用于定位"到底跳过了哪些调用"。 |
 | 其它 | `XSYS4_OBJ_WATCH` | `src/vm.c:2767` | 监视指定堆槽的读写 |
+| 其它 | `XSYS4_PART_TYPE_DBG` | `src/parts/activity.c:535` | 未识别的部件类型：打印 种类別情报 的全部子键名（定位「真实类型藏在哪个子节点」） |
 | 其它 | `XSYS4_PE_DBG` | `src/hll/PartsEngine.c:36` | PartsEngine 调用诊断 |
 | 其它 | `XSYS4_PHANTOM_REUSE` | `src/vm.c:1305` | 幽灵槽复用诊断 |
 | 其它 | `XSYS4_PRED_BOUND` | `src/hll/Array.c:694` | — |
@@ -166,6 +167,6 @@
 | 其它 | `XSYS4_TITLE_UI_FIX` | `src/parts/render.c:123` | — |
 | 其它 | `XSYS4_TRACE` | `src/vm.c:2339` | — |
 | 其它 | `XSYS4_UC_RENDER_DBG` | `src/text.c:274` | 用户组件（TextButton 等）渲染诊断 |
-| 其它 | `XSYS4_USERCOMP_DBG` | `src/parts/activity.c:625` | — |
+| 其它 | `XSYS4_USERCOMP_DBG` | `src/parts/activity.c:652` | — |
 | 其它 | `XSYS4_WATCH_IFACE` | `src/vm.c:342` | — |
 | 其它 | `XSYS4_XSET_DBG` | `src/vm.c:2958` | — |

@@ -307,8 +307,12 @@ void PE_UpdateInputState(int passed_time)
 	static int dbg_n;
 	int dbg = getenv("XSYS4_INPUT_DBG") &&
 		(dbg_n < 40 || dbg_n % 60 == 0 || cur_clicking || prev_clicking || clicked_parts);
+	/* [D238] 计数器必须**每帧**递增，不能只在打印时递增。
+	 * 原来 `dbg_n++` 写在 if (dbg) 里面：打完前 40 帧后 dbg_n 正好是 40，
+	 * 40 % 60 != 0，于是"每 60 帧一条心跳"永远不成立 —— 探针自己静音，
+	 * 读日志的人会以为"引擎再没跑过输入"。这与债 [PROBE-GATED] 同型。 */
+	dbg_n++;
 	if (dbg) {
-		dbg_n++;
 		NOTICE("[inp] pos=(%d,%d) clicking=%d pulse=%d began=%d prev=%d down=%d",
 		       cur_pos.x, cur_pos.y, cur_clicking, pulse, parts_began_click,
 		       prev_clicking, click_down_parts);

@@ -504,23 +504,50 @@ static void parse_part_fields(struct ex_tree *node, struct activity_part *part)
 	if (type_info) {
 		char *tn = get_string(type_info, "パーツ类型");
 		part->type = component_type_from_name(tn);
-		free(tn);
 
 		/* "低レベルパーツ" (the editor's generic base part) carries its
 		 * real rendering type in the 一般状態 child. */
 		struct ex_tree *state = get_child(type_info, "一般状态");
+		char stcopy[128] = "";
 		if (part->type == ACT_COMP_LOW_LEVEL && state) {
 			char *sn = get_string(state, "パーツ类型");
 			int state_type = component_type_from_name(sn);
+			snprintf(stcopy, sizeof stcopy, "%s",
+				 sn ? display_sjis0(sn) : "(null)");
 			free(sn);
 			if (state_type >= 0)
 				part->type = state_type;
 		}
 		if (part->type < 0) {
-			WARNING("Unknown part type for '%s', treating as CG",
-				display_sjis0(part->name));
+			/* [D238] 类型名要打出来才有下一步：只看部件名
+			 * （'Round' / 'Hp'）猜不出它到底该归哪一类。
+			 * display_sjis0 用同一块静态缓冲，两次调用会互相覆盖，
+			 * 所以先把类型名拷出来。 */
+			char tcopy[128];
+			snprintf(tcopy, sizeof tcopy, "%s",
+				 tn ? display_sjis0(tn) : "(null)");
+			WARNING("Unknown part type '%s' (state='%s') for '%s', treating as CG",
+				tcopy, stcopy, display_sjis0(part->name));
+			/* [D238] XSYS4_PART_TYPE_DBG=1：把 种类別情报 的子键名
+			 * 全打出来。低レベルパーツ（'Number'/'Gauge'/'Hp' 这类
+			 * 数字与计量部件）的真实类型藏在某个子节点里，键名不对
+			 * 就永远解析不出来 —— 只猜名字会一直猜错。 */
+			if (getenv("XSYS4_PART_TYPE_DBG")) {
+				NOTICE("[ptype] '%s' 种类別情报 子键 %u 个%s",
+				       display_sjis0(part->name),
+				       type_info->is_leaf ? 0 : type_info->nr_children,
+				       state ? "（一般状态存在但类型未识别）" : "");
+				for (uint32_t ci = 0;
+				     !type_info->is_leaf && ci < type_info->nr_children;
+				     ci++)
+					NOTICE("[ptype]   子[%u] = '%s'", ci,
+					       display_sjis0(type_info->children[ci].name
+							     ? type_info->children[ci].name->text
+							     : ""));
+			}
 			part->type = ACT_COMP_CG;
 		}
+		free(tn);
 
 		/* 用户组件: 数据 里带 'オブジェクト名'（内置控件名）与 '参数'。 */
 		if (part->type == ACT_COMP_USER_COMPONENT) {
