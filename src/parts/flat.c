@@ -14,6 +14,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <cglm/cglm.h>
 
 #include "system4/mt19937int.h"
@@ -631,7 +632,7 @@ void parts_flat_dump_tree(int parts_no, struct parts_flat *f)
 	flat_dump_layer(f, f->root_state, f->flat->timelines, f->flat->nr_timelines, 0);
 }
 
-bool parts_flat_update(struct parts_flat *f, int passed_time)
+bool parts_flat_update(struct parts_flat *f, int passed_time, int parts_no)
 {
 	/* [D194] `fps <= 0` 只表示「这张 flat 不按时间推进」，**不能**把
 	 * `needs_advance` 的首次初始化一起挡掉。原先这一句在函数最前面，
@@ -670,6 +671,45 @@ bool parts_flat_update(struct parts_flat *f, int passed_time)
 
 	f->elapsed += passed_time;
 	int delta = (int)((int64_t)f->elapsed * f->flat->hdr.fps / 1000);
+	/* [D254] 「墙钟 vs 推进的游戏时间」汇总探针。
+	 *
+	 * 813 差 2 帧到不了末帧，两种可能完全不同：
+	 *   ① `AFL_View_Update` 被限流 ⇒ 一秒墙钟只推进几百 ms 游戏时间；
+	 *   ② timelines 与 end_frame 不一致 ⇒ 时间够了但帧数上限偏低。
+	 * 每秒打一条：calls=进入次数、pt=累计 passed_time、delta=累计推进帧数、
+	 * frame/end=当前进度。判据：pt ≈ 1000 说明时间正常（指向②），
+	 * pt << 1000 说明被限流（指向①）。 */
+	if (getenv("XSYS4_FLAT_DELTA_DBG")) {
+		/* 按部件号分开统计 —— 全局聚合会把几百个 flat 的调用混在一起，
+		 * 上一版因此得出「每秒推进 208 秒游戏时间」这种没法用的数字。 */
+		#define FLATD_SLOTS 8
+		static struct { int no; unsigned long long calls, pt, dlt; } slot[FLATD_SLOTS];
+		static time_t last;
+		int si = -1;
+		for (int k = 0; k < FLATD_SLOTS; k++) {
+			if (slot[k].no == parts_no) { si = k; break; }
+			if (slot[k].no == 0) { slot[k].no = parts_no; si = k; break; }
+		}
+		if (si >= 0) {
+			slot[si].calls++;
+			slot[si].pt += passed_time > 0 ? passed_time : 0;
+			slot[si].dlt += delta > 0 ? delta : 0;
+		}
+		time_t now = time(NULL);
+		if (now != last) {
+			if (last) {
+				for (int k = 0; k < FLATD_SLOTS; k++)
+					if (slot[k].no)
+						NOTICE("[flatd] no=%d calls=%llu pt=%llums delta=%llu",
+						       slot[k].no, slot[k].calls, slot[k].pt, slot[k].dlt);
+				NOTICE("[flatd] --- cur no=%d frame=%d end=%d fps=%d",
+				       parts_no, f->root_state ? f->root_state->current_frame : -1,
+				       f->end_frame, (int)f->flat->hdr.fps);
+			}
+			last = now;
+			memset(slot, 0, sizeof(slot));
+		}
+	}
 	if (!delta)
 		return false;
 	f->elapsed -= (unsigned)((int64_t)delta * 1000 / f->flat->hdr.fps);
@@ -1218,9 +1258,12 @@ bool PE_IsPartsFlatEnd(int parts_no, int state)
 	 * 置真，会让 `parts_flat_update` 提前 return）和 `root_state->stopped`
 	 * （脚本 stop 键）。**表现上都是「不再推进」**，所以两者都要算。 */
 	if (!end && getenv("XSYS4_FLATEND_STOP_IS_END") &&
-	    (f->stopped || f->root_state->stopped) &&
-	    f->root_state->jump_target == -1)
+	    (f->stopped || f->root_state->stopped))
 		end = true;
+	/* [D255] 注意上面**不能**再要求 `jump_target == -1`：jump_target 只在
+	 * `flat_advance_layer()` 里被消费并置 -1，而一旦 flat 停止推进，
+	 * 那个待处理的 jump 就永远留在非 -1 上 —— 加了这条件等于把整个判定
+	 * 永久关死（s65 开了开关也一条都不触发）。 */
 	/* [D234] XSYS4_FLATEND_DBG=1：谁在问「这个 flat 播完了吗」，答案是什么。
 	 * 回合切换的等待完全押在这个返回值上，前 40 次足够看清对象。 */
 	static int dbg = -1, n, last_no = -1;
@@ -1239,10 +1282,20 @@ bool PE_IsPartsFlatEnd(int parts_no, int state)
 	if (fe_min && *fe_min && f->end_frame < atoi(fe_min))
 		return end;
 	if (dbg && !end && n++ < 400) {
-		NOTICE("[flatend] no=%d st=%d frame=%d end=%d loaded=%d -> %d",
+		/* [D256] 补 fps / 两个 stopped / jump_target / max_frame：
+		 * 「停在 74/75」到底是 fps=0 让 update 提前 return、还是 stopped
+		 * 钉住了帧、还是 jump_target 卡住，只有这几个字段能区分。 */
+		NOTICE("[flatend] no=%d st=%d frame=%d end=%d fps=%d "
+		       "stop=%d/%d jump=%d maxf=%d loaded=%d -> %d",
 		       parts_no, state,
 		       f->root_state ? f->root_state->current_frame : -1,
-		       f->end_frame, f->flat != NULL, end);
+		       f->end_frame,
+		       (int)f->flat->hdr.fps,
+		       (int)f->stopped,
+		       f->root_state ? (int)f->root_state->stopped : -1,
+		       f->root_state ? f->root_state->jump_target : -1,
+		       flat_compute_max_frame(f->flat->timelines, f->flat->nr_timelines),
+		       f->flat != NULL, end);
 		last_no = parts_no;
 	}
 	return end;
