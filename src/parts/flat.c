@@ -1349,6 +1349,12 @@ bool PE_GoFramePartsFlat(int parts_no, int frame_no, int state)
 		f->needs_advance = true;
 	} else {
 		// 向前定位：留到下一次更新再做。
+		// [D239] 必须同时清 stopped：flat 停在 op=2 的 stop key 之后
+		// `flat_advance_layer()` 的 increment 是 `(stopped ? 0 : 1)`，
+		// 不清就会把 pending_seek_delta 整个空转掉 —— 帧永远不动。
+		// 症状：战斗开始演出的 flat 固定在 frame=2、end=15，战斗
+		// 永远进不了可操作状态（点哪里都只是被这张全屏 flat 吞掉）。
+		f->root_state->stopped = false;
 		f->pending_seek_delta = frame_no - current;
 	}
 	f->elapsed = 0;
