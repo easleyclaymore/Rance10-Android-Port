@@ -1141,10 +1141,30 @@ static void parts_update_loop(struct parts *parts, int passed_time)
 	case PARTS_FLASH:
 		dirty = parts_flash_update(&parts->states[parts->state].flash, passed_time);
 		break;
-	case PARTS_FLAT:
-		dirty = parts_flat_update(&parts->states[parts->state].flat, passed_time);
-		parts_flat_dump_tree(parts->no, &parts->states[parts->state].flat);
+	case PARTS_FLAT: {
+		struct parts_flat *pf = &parts->states[parts->state].flat;
+		dirty = parts_flat_update(pf, passed_time);
+		/* [D243] flat 帧探针。PARTS_DUMP 一次打全场几百行、把帧率拖到
+		 * 听不见，所以单独给一条只打帧号的轻量通路：
+		 *   XSYS4_FLAT_FRAME_DBG=1      所有 flat
+		 *   XSYS4_FLAT_FRAME_DBG=<no>   只跟这个部件号
+		 * 判据：`frame` 要能自己涨到 `end`；停在 2/15 就是没推进。 */
+		const char *ffd = getenv("XSYS4_FLAT_FRAME_DBG");
+		if (ffd && *ffd && pf->flat && pf->root_state) {
+			int want = atoi(ffd);
+			static unsigned long long tick;
+			if (want <= 1 || want == parts->no) {
+				if ((tick++ % 90) == 0)
+					NOTICE("[flatf] no=%d ctrl=%d frame=%d stopped=%d fps=%d pt=%d",
+					       parts->no, parts->controller_no,
+					       pf->root_state->current_frame,
+					       pf->root_state->stopped,
+					       pf->flat->hdr.fps, passed_time);
+			}
+		}
+		parts_flat_dump_tree(parts->no, pf);
 		break;
+	}
 	default:
 		break;
 	}
@@ -2217,9 +2237,13 @@ void PE_SetShow(int parts_no, bool show)
 	/* 只记"隐藏"：这是场景切换时图层挂起的动作，量少且正是要看的东西。
 	 * 创建期的 show=1 每部件一条，全打会把日志冲掉。 */
 	if (!show && getenv("XSYS4_CTRL_DBG")) {
+		/* [D243] 限流从 200 提到 3000：场景切换阶段本身就能打出 200 条以上，
+		 * 旧上限会在战斗装载前耗尽，导致「战斗部件没 hide」这类结论是假阴性。 */
 		static int n;
-		if (n++ < 200)
+		if (n++ < 3000)
 			NOTICE("[ctrl] hide parts=%d", parts_no);
+		else if (n == 3001)
+			NOTICE("[ctrl] hide parts=... (3000 条上限已到，后续不再打印)");
 	}
 	parts_set_show(parts_get(parts_no), show);
 }

@@ -452,7 +452,18 @@ void PE_UpdateInputState(int passed_time)
 
 void PE_SetPassCursor(int parts_no, bool pass)
 {
-	parts_get(parts_no)->pass_cursor = !!pass;
+	struct parts *p = parts_get(parts_no);
+	if (!p)
+		return;
+	p->pass_cursor = !!pass;
+	/* [D243] 诊断：全屏 flat 播完后到底是「AIN 把它隐藏」还是「AIN 把它设成
+	 * 光标透过」。两者都做不到时点击就会被它整层吞掉。限流只影响打印，
+	 * 不限流时每次装载几十条会把战斗阶段冲掉。 */
+	if (getenv("XSYS4_CTRL_DBG")) {
+		static int n;
+		if (n++ < 600)
+			NOTICE("[ctrl] pass parts=%d v=%d", parts_no, !!pass);
+	}
 }
 
 bool PE_GetPartsPassCursor(int parts_no)
