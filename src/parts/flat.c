@@ -1175,16 +1175,26 @@ bool PE_IsPartsFlatEnd(int parts_no, int state)
 
 	struct parts *parts = parts_get(parts_no);
 	struct parts_flat *f = parts_get_flat(parts, state);
+	/* [D237] 「没装载」不等于「播完了」。
+	 *
+	 * 这个 HLL 的语义是「这个部件的 flat 播放结束了吗」，调用方拿它当
+	 * **等待条件**用（`SceneFlat@OnUpdate`：`if (!IsMotionFlat()) 退出场景`）。
+	 * 原来 flat 还没装载（或没有 root 状态）时返回 true，等于告诉调用方
+	 * 「已经播完了」—— SceneFlat 一创建就退出、外层立刻重建同一个场景，
+	 * 实测每秒 60 次 `SceneStack@Exit`（CALL_TRACE 从 #1 涨到 #1200），
+	 * 画面永远停在同一个瞬间（H044）。
+	 * 没装载 ⇒ 还没开始 ⇒ 还没结束，必须返回 false。 */
 	bool end = (!f->flat || !f->root_state)
-			? true
+			? false
 			: f->root_state->current_frame == f->end_frame;
 	/* [D234] XSYS4_FLATEND_DBG=1：谁在问「这个 flat 播完了吗」，答案是什么。
 	 * 回合切换的等待完全押在这个返回值上，前 40 次足够看清对象。 */
 	static int dbg = -1, n, last_no = -1;
 	if (dbg < 0)
 		dbg = getenv("XSYS4_FLATEND_DBG") ? 1 : 0;
-	/* 只在「问的对象变了」或每 300 次心跳时打，否则一个内层循环就能刷满日志。 */
-	if (dbg && (parts_no != last_no || n++ % 300 == 0)) {
+	/* [D234] 只打「还没播完」的查询：已结束的内层循环会把日志刷满，
+	 * 而排障要的恰恰是「还有谁没结束」。 */
+	if (dbg && !end && n++ < 60) {
 		NOTICE("[flatend] no=%d st=%d frame=%d end=%d loaded=%d -> %d",
 		       parts_no, state,
 		       f->root_state ? f->root_state->current_frame : -1,

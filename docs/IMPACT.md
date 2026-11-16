@@ -44,6 +44,8 @@
 | `I021` | D229 `parts_update_mouse()` 的 `click_eligible` 加「必须真的可见（alpha>0）」 | 所有部件命中：不可点击且透明的部件不再抢点击，理论上让点击穿透到下层 | **证伪回退**：开场回想对话框的「以后再看」按钮是 `ck=0/alpha≈0` 的用户组件，改完点不动；同配方活动数 104→51、卡在 `ReplayMemoDialog`（h44a/h44b），回退后 h44c 恢复 104 | 已整段回退（代码只剩一行原判断） | **已回退（证伪）** |
 | `I022` | D232 `flat_layer_paint_alpha()`：子时间线容器关键帧不再贡献 alpha，只递归子层（`flat.c`） | 所有铺满屏幕的演出 flat 的 cover 判定；`PARTS_FLAT` 专用，`XSYS4_NO_LAYER_COVER=1` 仍整体旁路 | 默认基线 `d233` 与 `d224` 逐项一致（rc=0 / activities=36 / errors=0 / core_dump=0 / double_free=0 / quest_map=1 / save_files=8 / log_lines=720）；同配方四张自截图 10579B → 2157158B | 删判定即回退（回到看名义 alpha，黑屏立刻复现） | 通过（真修） |
 | `I023` | D233 `input.c` 的「先被看见再抬起」：合成按键的 press 保持到被 `key_is_down` 读到，release 挂起直到读过再抬（兜底 300ms）；`sact_Key_IsDown` 另有一次脉冲兜底 | 所有轮询 `Key_IsDown` 的 AIN 代码（`CASClick` 的右键/空格等待、`DALKDemo`、`InputDevice`）；左键的 `cur_clicking` 也因此能稳定跨一帧 | 默认基线 `d233` 与 `d224` 逐项一致；`XSYS4_KEY_DBG` 下 `IsDown(2)=1` / `IsDown(32)=1` 由 0 次变为可观测；Ctrl 长按快进不受影响（真实按住时 `seen_down` 立即置位，释放即刻生效） | `git revert`（回到同帧 press+release 被吞） | 通过 |
+| `I024` | D236 帧泵触发从「每 4096 条指令」改为按墙钟（每 64 条检查，闸门仍是 16ms）| 所有纯 AIN 等待循环（`WaitForClick` / `WaitFrame`）里的动画时钟、motion 时钟、输入泵| 默认基线 `d237` 与 `d224` 逐项一致；同配方 900001059 播完时间 40s+ → 1–2s| `XSYS4_PUMP_MASK=0xFFF` 可退回旧行为 | 通过 |
+| `I025` | D237 `PE_IsPartsFlatEnd()` 在 flat 未装载时返回 false（原为 true）| 所有用「flat 播完了吗」做等待条件的调用方（`SceneFlat@OnUpdate`、`Parts@IsMotionFlat`）| 默认基线 `d237` 与 `d224` 逐项一致；契约修正本身**未**消除 1200 次 Exit（flat 确实播完了），但去掉了「一创建就退出」这一类错误 | `git revert`（回到未装载=已结束） | 通过（契约修正） |
 
 > 判据：每个「必重跑闭环」都要有当次实测数字或日志 tag；`待验` 条目收工前必须结掉。
 > 全部数字以 `docs/STATS.md`（`tools/gen-doc-numbers.py` 生成）为准，禁止手写。
