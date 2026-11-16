@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **171** 个开关，其中 **30** 个没有就近注释。
+共 **173** 个开关，其中 **30** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -51,20 +51,22 @@
 | 容器与内存 | `XSYS4_DG_MISS_FILTER` | `src/vm.c:1565` | 收窄 DG_MISS 输出 |
 | 容器与内存 | `XSYS4_DG_PAGE_DBG` | `src/vm.c:1502` | 委托页生命周期诊断 |
 | 容器与内存 | `XSYS4_MEM_STAT` | `src/vm.c:4825` | 堆内存与 RSS 实时统计 |
+| 呈现与输入 | `XSYS4_ACT_BUILD_DBG` | `src/parts/activity.c:1102` | [诊断] 打印每个 activity 部件的 `no/name/parent/type`（前 3000 条）。用来把运行时部件号对号到 XML 里的名字，例如 `900000397 = ButtonDeffence` |
 | 呈现与输入 | `XSYS4_ACT_CLICKABLE_ALL` | `src/parts/activity.c:919` | 把所有**活动文件里声明**的部件标为可点（运行时建的 900000xxx 不受影响） |
-| 呈现与输入 | `XSYS4_ACT_DBG` | `src/parts/activity.c:1164` | 活动装载与点击派发诊断 |
-| 呈现与输入 | `XSYS4_ACT_DEBUG` | `src/parts/activity.c:1329` | 活动诊断的旧开关 |
+| 呈现与输入 | `XSYS4_ACT_DBG` | `src/parts/activity.c:1177` | 活动装载与点击派发诊断 |
+| 呈现与输入 | `XSYS4_ACT_DEBUG` | `src/parts/activity.c:1342` | 活动诊断的旧开关 |
 | 呈现与输入 | `XSYS4_ACT_PART_DBG` | `src/parts/parts.c:2202` | 打印活动部件的建造解析（名字/类型/尺寸/表示領域/flat 名）与 300 号段之后的 SetPos/SetZ |
-| 呈现与输入 | `XSYS4_CLICK_ANY` | `src/parts/input.c:242` | [诊断/已证否] 点击捕获改为「非 flat 一律可捕获」。实测 EndInput 直接变 0（无效部件先消费点击）——保留仅作反例 |
+| 呈现与输入 | `XSYS4_CLICK_ANY` | `src/parts/input.c:260` | [诊断/已证否] 点击捕获改为「非 flat 一律可捕获」。实测 EndInput 直接变 0（无效部件先消费点击）——保留仅作反例 |
 | 呈现与输入 | `XSYS4_CLICK_ONLY_CLICKABLE` | `src/parts/input.c:173` | [诊断] 点击捕获与 hover 消费都只认「点击許可=1」。这是唯一让 EndInput 恢复正常的判据（点到整屏点击层 700/701） |
-| 呈现与输入 | `XSYS4_CLICK_PASS` | `src/parts/input.c:252` | [诊断/已证否] 把「光标选中透過=1」当正向判据。实测 314(1920x693) 抢在技能按钮前，EndInput 变 0 |
+| 呈现与输入 | `XSYS4_CLICK_PASS` | `src/parts/input.c:177` | [诊断/已证否] 把「光标选中透過=1」当正向判据。实测 314(1920x693) 抢在技能按钮前，EndInput 变 0 |
 | 呈现与输入 | `XSYS4_CLICK_RETARGET` | `src/parts/message.c:69` | 点击被遮挡后重定向到下层部件 |
-| 呈现与输入 | `XSYS4_CLICK_SKIP_FLAT` | `src/parts/input.c:234` | [诊断] flat 类型部件不参与点击捕获。战斗里全屏背景 flat 705 的 hb 覆盖整屏、gz 置顶、pass=0，会把技能按钮的点击全部截胡；flat 在原版是「平面图形/演出层」，按钮是 按钮(0) 或 CG |
-| 呈现与输入 | `XSYS4_CLICK_SKIP_NONCLICKABLE` | `src/parts/input.c:220` | [诊断] 跑测专用：`clickable=0` 的部件不参与点击捕获（回到 D113 之前的行为）。用来验证「全屏背景 flat 705 截胡技能按钮点击」这一条；默认关，开始画面这类「点击任意处继续」的场景开了会卡住 |
+| 呈现与输入 | `XSYS4_CLICK_SKIP_FLAT` | `src/parts/input.c:183` | [诊断] flat 类型部件不参与点击捕获。战斗里全屏背景 flat 705 的 hb 覆盖整屏、gz 置顶、pass=0，会把技能按钮的点击全部截胡；flat 在原版是「平面图形/演出层」，按钮是 按钮(0) 或 CG |
+| 呈现与输入 | `XSYS4_CLICK_SKIP_FULLSCREEN` | `src/parts/input.c:188` | [诊断] 把「hb 覆盖整个视图」的部件排除出点击捕获与 hover 消费。依据：真按钮不会铺满整屏，而演出/背景/整屏点击层会；s93 实测能让点击落到 `ButtonDeffence`(900000397) |
+| 呈现与输入 | `XSYS4_CLICK_SKIP_NONCLICKABLE` | `src/parts/input.c:238` | [诊断] 跑测专用：`clickable=0` 的部件不参与点击捕获（回到 D113 之前的行为）。用来验证「全屏背景 flat 705 截胡技能按钮点击」这一条；默认关，开始画面这类「点击任意处继续」的场景开了会卡住 |
 | 呈现与输入 | `XSYS4_CTRL_DBG` | `src/parts/parts.c:1485` | controller 栈、视觉地板（cover_layer）、hide/remove 事件 |
-| 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:401` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
-| 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:368` | 输入命中的候选部件表与点击状态（每 60 帧一条心跳，非沉默） |
-| 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:1353` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
+| 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:433` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
+| 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:400` | 输入命中的候选部件表与点击状态（每 60 帧一条心跳，非沉默） |
+| 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:1366` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
 | 呈现与输入 | `XSYS4_PARTS_DUMP_MAX` | `src/parts/parts.c:3115` | — |
 | 呈现与输入 | `XSYS4_PARTS_DUMP_MIN` | `src/parts/parts.c:3062` | [诊断] 只 dump 部件号 >= 此值的部件；部件表按插入序遍历，地图号段会吃光 PARTS_DUMP_MAX 名额，设 900000300 才能看到动态号段 |
 | 呈现与输入 | `XSYS4_PARTS_NO_BASE` | `src/parts/parts.c:2925` | — |
@@ -132,19 +134,19 @@
 | 其它 | `XSYS4_MGRBT` | `src/vm.c:2606` | — |
 | 其它 | `XSYS4_MOUSE_DBG` | `src/input.c:385` | [诊断] 打印 SDL 按钮事件（btn / state / clicks / pos / windowID）。用来二分「X 层没把 ButtonPress 交给 SDL」和「SDL 收到了但引擎丢边沿」：同一配方下无 `key:Shift_L` 激活时 `[mouse]` 一条都没有（`s27`），加激活后立即出现并点中 `900000716`（`s26`） |
 | 其它 | `XSYS4_MSGF_FIX` | `src/hacks.c:328` | [D204] AIN v12 无 MSGF 段时按函数名把 msgf 解析到 "message"/3（Rance10: fno 6100）；默认开启，=0 关闭做 A/B |
-| 其它 | `XSYS4_MSGQ_DBG` | `src/parts/message.c:177` | 〔摘〕对其它值走 member1[delegate_index]。分派打空炮时必须先知道走的哪条。 |
+| 其它 | `XSYS4_MSGQ_DBG` | `src/parts/message.c:179` | 〔摘〕对其它值走 member1[delegate_index]。分派打空炮时必须先知道走的哪条。 |
 | 其它 | `XSYS4_MSGWIN_DBG` | `src/hll/PartsEngine.c:46` | [诊断] 打印消息窗口配置族 setter 的触达与实参（Active/Text/CGName/FlatName/TextArea/OriginPosMode/Space/Speed），每个函数限 20 条；用来判定「空桩是不是真被调用」 |
 | 其它 | `XSYS4_MSGWIN_FRAME_DBG` | `src/parts/render.c:999` | [诊断] 打印消息窗口底板 CG（1920x300~500）是否进入 parts_render 及其 origin_offset / 准入字段；用来区分「没到渲染」与「画了看不见」 |
 | 其它 | `XSYS4_MSGWIN_FULL` | `src/parts/activity.c:1004` | [D217 已转正] EX 消息窗口组件补齐 39px 字体/字色/字距/行距，并用独立 CG 部件装载 种类別情报 的 底板ＣＧ名；默认生效，=0 回退做 A/B |
 | 其它 | `XSYS4_MSG_DBG` | `src/parts/message.c:45` | 〔摘〕只打非悬停消息，否则前 60 条全被 MOUSE_ON 占满，看不到点击。 |
-| 其它 | `XSYS4_MSG_NO_SENTINEL` | `src/parts/message.c:173` | 〔摘〕这就是那个把 SceneStack@WaitFrame 卡死的忙循环。 |
-| 其它 | `XSYS4_MSG_POPDBG` | `src/parts/message.c:137` | 〔摘〕这里能看到 type=5 被 pop 而没有对应 dispatch。 |
-| 其它 | `XSYS4_MSG_TRACE` | `src/parts/message.c:152` | — |
+| 其它 | `XSYS4_MSG_NO_SENTINEL` | `src/parts/message.c:175` | 〔摘〕这就是那个把 SceneStack@WaitFrame 卡死的忙循环。 |
+| 其它 | `XSYS4_MSG_POPDBG` | `src/parts/message.c:139` | 〔摘〕这里能看到 type=5 被 pop 而没有对应 dispatch。 |
+| 其它 | `XSYS4_MSG_TRACE` | `src/parts/message.c:154` | — |
 | 其它 | `XSYS4_NODE_DIGIT` | `src/vm.c:2314` | [D209 诊断后门] 把 QuestMapParamAccessor 的 KeyBase 末尾全角编号末位改成 0-9（００１→００２），仅在 23486 事件链生效；默认关，用于验证战斗链，不是正常游戏路径 |
 | 其它 | `XSYS4_NO_AUDIO` | `src/audio_mixer.c:701` | 关闭音频输出 |
 | 其它 | `XSYS4_NO_AUTO_MOTION` | `src/parts/motion.c:102` | =1 关闭「首次加 motion 自动开表」（D186），用于 motion 自动启动的 A/B |
 | 其它 | `XSYS4_NO_CP_ALPHA_FIX` | `src/parts/parts.c:2279` | =1 关闭「合成类部件 alpha=0 提升为 255」（卡片立绘 A/B 回退开关）。[D224 收窄] 提升现在只作用于 >=8x8 的真实合成纹理，2x2 全屏淡出遮罩不再被误抬 |
-| 其它 | `XSYS4_NO_DI_FALLBACK` | `src/parts/message.c:97` | [回退闸] 关闭 D260 的委托下标回退（消息 delegate_index<0 时不再回退到 0）。用于 A/B：开着它战斗会退回「点击打空炮、停 Round 1/10」的旧行为 |
+| 其它 | `XSYS4_NO_DI_FALLBACK` | `src/parts/message.c:99` | [回退闸] 关闭 D260 的委托下标回退（消息 delegate_index<0 时不再回退到 0）。用于 A/B：开着它战斗会退回「点击打空炮、停 Round 1/10」的旧行为 |
 | 其它 | `XSYS4_NO_PUMP` | `src/vm.c:4781` | 事件泵空转诊断 |
 | 其它 | `XSYS4_NULLMETHOD_FIX` | `src/vm.c:1226` | — |
 | 其它 | `XSYS4_NULLREF_DBG` | `src/vm.c:322` | 〔摘〕从栈上弹出一个引用，返回被引用对象的地址。 |

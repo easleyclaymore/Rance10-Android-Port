@@ -1094,6 +1094,19 @@ static int build_part(struct activity_part *part, int parent_no)
 	if (parent_no >= 0)
 		PE_SetParentPartsNumber(part->parts_no, parent_no);
 
+	/* [D263 探针] 把「部件号 → activity 部件名」对号。
+	 * 起因：战斗里技能面板 `900000340` 的父链是 `340 → 392`，与战斗 UI 层
+	 * `704` 不是同一条链，但 `[act]` 日志只在 CG 类型上打 parts_no，
+	 * 无法判断 340 是「当前战斗面板」还是「旧场景残留」。
+	 * 判据：`XSYS4_ACT_BUILD_DBG=1` 时能直接看到 `no=900000340 name='...'`。 */
+	if (getenv("XSYS4_ACT_BUILD_DBG")) {
+		static int bn;
+		if (bn++ < 3000)
+			NOTICE("[actbuild] no=%d name='%s' parent=%d type=%d",
+			       part->parts_no, part->name ? part->name : "(null)",
+			       parent_no, (int)part->type);
+	}
+
 	for (int i = 0; i < part->nr_children; i++)
 		build_part(part->children[i], part->parts_no);
 
