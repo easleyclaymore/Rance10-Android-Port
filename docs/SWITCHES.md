@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **179** 个开关，其中 **30** 个没有就近注释。
+共 **180** 个开关，其中 **30** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -70,9 +70,9 @@
 | 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:444` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
 | 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:411` | 输入命中的候选部件表与点击状态（每 60 帧一条心跳，非沉默） |
 | 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:1575` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
-| 呈现与输入 | `XSYS4_PARTS_DUMP_MAX` | `src/parts/parts.c:3115` | — |
-| 呈现与输入 | `XSYS4_PARTS_DUMP_MIN` | `src/parts/parts.c:3062` | [诊断] 只 dump 部件号 >= 此值的部件；部件表按插入序遍历，地图号段会吃光 PARTS_DUMP_MAX 名额，设 900000300 才能看到动态号段 |
-| 呈现与输入 | `XSYS4_PARTS_NO_BASE` | `src/parts/parts.c:2925` | — |
+| 呈现与输入 | `XSYS4_PARTS_DUMP_MAX` | `src/parts/parts.c:3128` | — |
+| 呈现与输入 | `XSYS4_PARTS_DUMP_MIN` | `src/parts/parts.c:3075` | [诊断] 只 dump 部件号 >= 此值的部件；部件表按插入序遍历，地图号段会吃光 PARTS_DUMP_MAX 名额，设 900000300 才能看到动态号段 |
+| 呈现与输入 | `XSYS4_PARTS_NO_BASE` | `src/parts/parts.c:2938` | — |
 | 呈现与输入 | `XSYS4_UPD_DBG` | `src/parts/parts.c:1530` | PE_Update 的每帧诊断 |
 | 自动化后门 | `XSYS4_AUTO_CARD_CLICK` | `src/vm.c:1162` | [后门] 编队卡片视图初始化完成后直调 SceneParty@OnClickCard(idx)；值=卡片索引 |
 | 自动化后门 | `XSYS4_AUTO_CARD_CLICK_DELAY` | `src/vm.c:1165` | [后门] 最后一次 InitCardView 之后再等多久点卡（毫秒，默认 1500） |
@@ -89,7 +89,8 @@
 | 运行环境 | `XSYS4_DATA_DIR` | `src/pal.c:43` | 数据目录（缺省用编译期默认值） |
 | 运行环境 | `XSYS4_SOFT_STUB` | `src/ffi.c:56` | 未实现的导出用零桩顶替（诊断用：判断"缺实现"还是"走错路"） |
 | 一次性探针 | `XSYS4_DBG_EIP` | `src/hll/PartsEngine.c:590` | 打印 SetEnableInputProcess 的每次调用与参数（实测 242 次里 238 次 enable=0） |
-| 其它 | `XSYS4_ALPHA_DBG` | `src/parts/parts.c:2255` | 打印 SetComponentAlpha 与 AddMotionAlpha 的 parts/alpha 序列（查部件为何全透明） |
+| 其它 | `XSYS4_ALPHA_DBG` | `src/parts/parts.c:2264` | 打印 SetComponentAlpha 与 AddMotionAlpha 的 parts/alpha 序列（查部件为何全透明）。[D277] 现在同时打 `fno~` 提示来源；注意该值只是参考（见下条） |
+| 其它 | `XSYS4_ALPHA_STACK` | `src/parts/parts.c:2267` | [诊断] 配合 ALPHA_DBG，在每次 SetAlpha 时打 AIN 调用栈。定位 alpha 被谁写成 0 必须用它 —— `hll_current_fno()` 返回的是上次 HLL 的值、返回后不复原，实测会打出 `fno=107`(CASConstructionProcess@SetSrcX) 这种完全无关的函数 |
 | 其它 | `XSYS4_BACKSCENE_SHOW` | `src/hll/PartsEngine.c:2095` | [诊断] 让 `SetShowForBackScene(no,show)` 真正生效（默认空桩）。战斗里全屏背景 flat 705 挡住技能按钮点击，这个 setter 是 AIN 本来要用来按场景隐藏背景的手段；开它可验证 `[backscene] no= show=` 的实参 |
 | 其它 | `XSYS4_CONSTRUCT_776` | `src/hll/PartsEngine.c:502` | =0 把 AddPartsConstructionProcess(776) 退回空桩，用于卡片合成 A/B |
 | 其它 | `XSYS4_CONSTRUCT_DBG` | `src/parts/construction.c:338` | 打印部件合成操作：PartsFunc(case 162)、776 批量入口、Build 的 parts/cmd/CG 名与 op 数 |
@@ -150,7 +151,7 @@
 | 其它 | `XSYS4_NODE_DIGIT` | `src/vm.c:2314` | [D209 诊断后门] 把 QuestMapParamAccessor 的 KeyBase 末尾全角编号末位改成 0-9（００１→００２），仅在 23486 事件链生效；默认关，用于验证战斗链，不是正常游戏路径 |
 | 其它 | `XSYS4_NO_AUDIO` | `src/audio_mixer.c:701` | 关闭音频输出 |
 | 其它 | `XSYS4_NO_AUTO_MOTION` | `src/parts/motion.c:102` | =1 关闭「首次加 motion 自动开表」（D186），用于 motion 自动启动的 A/B |
-| 其它 | `XSYS4_NO_CP_ALPHA_FIX` | `src/parts/parts.c:2279` | =1 关闭「合成类部件 alpha=0 提升为 255」（卡片立绘 A/B 回退开关）。[D224 收窄] 提升现在只作用于 >=8x8 的真实合成纹理，2x2 全屏淡出遮罩不再被误抬 |
+| 其它 | `XSYS4_NO_CP_ALPHA_FIX` | `src/parts/parts.c:2292` | =1 关闭「合成类部件 alpha=0 提升为 255」（卡片立绘 A/B 回退开关）。[D224 收窄] 提升现在只作用于 >=8x8 的真实合成纹理，2x2 全屏淡出遮罩不再被误抬 |
 | 其它 | `XSYS4_NO_DI_FALLBACK` | `src/parts/message.c:99` | [回退闸] 关闭 D260 的委托下标回退（消息 delegate_index<0 时不再回退到 0）。用于 A/B：开着它战斗会退回「点击打空炮、停 Round 1/10」的旧行为 |
 | 其它 | `XSYS4_NO_PUMP` | `src/vm.c:4781` | 事件泵空转诊断 |
 | 其它 | `XSYS4_NULLMETHOD_FIX` | `src/vm.c:1226` | — |

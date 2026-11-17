@@ -8,17 +8,17 @@
 
 | 指标 | 值 | 口径 | 来源 |
 |---|---|---|---|
-| 诊断开关 | 179 | `getenv("XSYS4_*")` 去重，与 `gen-switches.py` 同口径 | `src/**/*.c,*.h` |
+| 诊断开关 | 180 | `getenv("XSYS4_*")` 去重，与 `gen-switches.py` 同口径 | `src/**/*.c,*.h` |
 | 未标注开关 | 30 | 无人工说明且无就近注释 | `docs/SWITCHES.md` |
 | HLL 已实现 | 3284 | `HLL_EXPORT(` + `HLL_EXPORT_N(` 行首计数 | `src/hll/*.c` |
 | HLL 缺口 | 1194 | `HLL_TODO_EXPORT(` 行首计数 | `src/hll/*.c` |
 | HLL 源码覆盖率 | 73.3% (4478 个导出) | 已实现 /（已实现 + 缺口） | 计算 |
-| 假设台账 | 53（待验 27 / 成立 9 / 证伪 17） | 表格行首 `H<编号>` 去重，按 section 归类 | `docs/HYPOTHESES.md` |
-| 根因编号 | 77 | `D<2-3 位>` 去重 | README + TECH_DEBT + HYPOTHESES |
-| 未结技术债 | 29 | 表格行首 `` `[标签]` `` 去重 | `TECH_DEBT.md` |
+| 假设台账 | 54（待验 28 / 成立 9 / 证伪 17） | 表格行首 `H<编号>` 去重，按 section 归类 | `docs/HYPOTHESES.md` |
+| 根因编号 | 78 | `D<2-3 位>` 去重 | README + TECH_DEBT + HYPOTHESES |
+| 未结技术债 | 30 | 表格行首 `` `[标签]` `` 去重 | `TECH_DEBT.md` |
 | 影响面清单 | 30 | 表格行首 `I<编号>` | `docs/IMPACT.md` |
 | 子模块补丁 | 2 | `patches/*.patch` | `patches/` |
-| 默认基线 | `d276final`: acts=36 / err=0 / core=0 / quest_map=1 / rc=0 | 最新 `baseline_*.txt` | `logs/` |
+| 默认基线 | `d277`: acts=36 / err=0 / core=0 / quest_map=1 / rc=0 | 最新 `baseline_*.txt` | `logs/` |
 
 > **HLL 口径警告**：本表是**源码宏口径**；`PROJECT-MANAGEMENT.md` 里的
 > 「2,151 / 3,351（64%）」是 **AIN 声明口径**（另一天的快照），两者不可混用。
@@ -28,10 +28,10 @@
 
 | 文档 | 行数 |
 |---|---|
-| `TECH_DEBT.md` | 147 |
-| `docs/HYPOTHESES.md` | 115 |
+| `TECH_DEBT.md` | 148 |
+| `docs/HYPOTHESES.md` | 116 |
 | `docs/IMPACT.md` | 58 |
-| `docs/SWITCHES.md` | 196 |
+| `docs/SWITCHES.md` | 197 |
 | `docs/PROJECT-MANAGEMENT.md` | 503 |
 
 ## 3. 已知腐化数字（历史，勿再引用）
