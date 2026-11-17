@@ -190,6 +190,24 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 		if (fb.w >= gfx_view_width() && fb.h >= gfx_view_height())
 			hover_blocking = false;
 	}
+	/* [D285 受控实验] 完全透明的部件不参与 hover 消费与点击捕获。
+	 *
+	 * 依据：`parts_is_visible()` **不检查 alpha**（只看 `global.show` /
+	 * `ctrl_stack.show[c]` / `c >= parts_cover_layer`）—— 这对渲染是有意的
+	 * （alpha 由绘制时的混合处理），但拿来当输入准入就错了。
+	 *
+	 * `d301` 实测：`Game/Battle/EnemyAction/EnemyActionIconBase:3` 的全屏
+	 * flat `900000705` 是 `a=0`（**完全透明、一个像素不画**）、
+	 * `z=1073742949`（比接收器 700/701 的 `1073741824` **还高**），
+	 * 于是它总在 z 序最前面把点击吞掉——三次点击全部
+	 * `[inp] EndInput (clicked=900000705)`，而真正的整屏接收器 700/701
+	 * （`ck=1`）一次都没拿到。
+	 *
+	 * 这不是「猜一个更好的判据」，而是把一个已知为真的渲染事实（alpha=0
+	 * 等于不可见）补进输入层。开关隔离，默认沿用旧行为。 */
+	if (getenv("XSYS4_CLICK_SKIP_INVISIBLE") && parts->global.alpha <= 0) {
+		hover_blocking = false;
+	}
 	if (is_hovered && hover_blocking)
 		*hover_consumed = true;
 
@@ -292,6 +310,9 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 		if (fb.w >= gfx_view_width() && fb.h >= gfx_view_height())
 			click_eligible = false;
 	}
+	/* [D285 同上] hover 与 click 必须用同一判据（D261/D262 同型坑，已踩四次）。 */
+	if (getenv("XSYS4_CLICK_SKIP_INVISIBLE") && parts->global.alpha <= 0)
+		click_eligible = false;
 	if (!click_eligible || *click_consumed) {
 		if (!was_hovered)
 			audio_play_sound(parts->on_cursor_sound);

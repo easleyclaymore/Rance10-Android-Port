@@ -63,6 +63,8 @@ int main(int argc,char**argv){
 		"  struct:<name>       结构体/接口布局\n"
 		"  memb:<n>            结构体 n 的成员（带类型文本）\n"
 		"  fno:<n>             按函数号打印\n"
+		"  swno:<n>            SWITCH n 的 case 表（值 -> 目标地址）\n"
+		"  swno:<n>:<hex>      同上，并标注目标 0x<hex> 落在哪个 case（查“实际走了哪支”）\n"
 		"  str:<n> / dno:<n>   字符串 / 委托（dno 打签名；dl:<子串> 按名字找委托号）\n"
 		"  callhll             CALLHLL 的 tag 直方图\n",argv[0]);return 1;}
 	int err=0; struct ain*a=ain_open(argv[1],&err);
@@ -182,6 +184,36 @@ int main(int argc,char**argv){
 		printf("-- %d function(s) matching \"%s\"\n",shown,want);
 		return shown?0:1;}
 
+	if(!strncmp(spec,"swno:",5)){
+		/* [D285] SWITCH 的 case 表原本只能靠反汇编周边猜：JMP 表在 .ain 里是
+		 * 独立段，`at:` 看不到。查「m_key=2 到底落到 SetAlpha 还是 default」
+		 * 时没有这个工具就只能硬推。目标是回 0x<hex> 指向的那一支。 */
+		char buf2[128]; snprintf(buf2,sizeof buf2,"%s",spec+5);
+		char*colon=strchr(buf2,':');
+		size_t target=0; if(colon){*colon=0;target=strtoul(colon+1,NULL,16);}
+		int n=atoi(buf2);
+		if(n<0||n>=a->nr_switches){fprintf(stderr,"switch out of range (nr=%d)\n",a->nr_switches);return 1;}
+		struct ain_switch*s=&a->switches[n];
+		const char*ct = s->case_type==AIN_SWITCH_INT?"int"
+		                :(s->case_type==AIN_SWITCH_STRING?"string":"other");
+		printf("SWITCH [%d] type=%s nr_cases=%d default=0x%x\n",n,ct,s->nr_cases,s->default_address);
+		int hit=-1;
+		for(int i=0;i<s->nr_cases;i++){
+			int mark=0;
+			if(target&&(size_t)s->cases[i].address==target){mark=1;hit=i;}
+			printf("  case[%d] value=%-6d -> 0x%x%s",i,s->cases[i].value,s->cases[i].address,mark?"   <== TARGET":"");
+			/* 目标地址上第一个 FUNC 就是被调方法名，省掉一次查表 */
+			for(int f=0;f<a->nr_functions;f++)
+				if((size_t)a->functions[f].address==(size_t)s->cases[i].address&&a->functions[f].name){
+					printf("   [?=%s]",a->functions[f].name);break;}
+			printf("\n");
+		}
+		if(target){
+			if(hit>=0)printf("-- target 0x%zx = case[%d] value=%d\n",target,hit,s->cases[hit].value);
+			else if((size_t)s->default_address==target)printf("-- target 0x%zx = DEFAULT\n",target);
+			else printf("-- target 0x%zx = 未命中任何 case，也不是 default\n",target);
+		}
+		return 0;}
 	if(!strncmp(spec,"lib:",4)){
 		const char*arg=spec+4;
 		char buf[256]; snprintf(buf,sizeof buf,"%s",arg);

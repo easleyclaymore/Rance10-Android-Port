@@ -11,8 +11,8 @@
 | | |
 |---|---|
 | **阶段** | 第一章 **链路 + 画面全验收**（D214–D224）保持不变；真实流程已推进到**战斗第一回合可交互**：标题→开场 ADV→回想对话框→選択肢→战斗→`Round 1/10`→**AP 球展开**。`H044`/`[SELECTION-STALL]`/D238/D239/D270/D271 全部结清 |
-| **最大卡点** | `[BATTLE-UI-BLANK]` **技能按钮底板已出图（D275），剩下的只有点击**。两条因果的处理状态：<br>① **画不出来** —— **已修**（D275）：`libs=0` 的真因是 D200 的 TALT 兜底只认 `QNT` 魔数，而 `战斗画面/シス／战斗／技能按钮／一般` 的 TALT 是 **AJP**，于是零纹理库、`render_flat_item` 直接 return。判定改用 `cg_check_format()` 后该族 `libs` 0→1，画面按钮区非黑像素 +15617。<br>② **点不到** —— **仍在**（z 序）：技能按钮被「开始按钮」`900000716`（ctrl=2、`hb=(823,403,274,274)`，画面中央 VS 图形）按 gz 压住，点 `(960,540)` 每次都被它消费（`[inp] EndInput clicked=900000716`） |
-| **本轮做过的** | ① **D270**（已转正）：`ReleaseActivity` 的 `EraseNumberList` 出参不再丢弃，把委托下标交还 AIN，消掉号复用后的错委托；② **D271**（已转正）：`矩形パーツ` 的四角坐标此前一个字段都没解析，这类部件恒为 `0x0` —— 补上后 `st=11` 的 `0x0` 部件从 **60 个降到 0 个**；③ **D272**（证伪）：加矩形填充**不能**修好底板，因为 flat 本身 `libs=0` ③ **D275**（已转正）：技能按钮 flat 的 `libs=0` 根因是 D200 只认 QNT，AJP 形态零纹理库 —— 改用 `cg_check_format()` 后底板出图 |
+| **最大卡点** | `[HITTEST-ALPHA]` —— 战斗点击被**完全透明的全屏部件**吞掉。`parts_is_visible()` 复用渲染准入（`global.show` / `ctrl_stack.show[c]` / `c >= parts_cover_layer`），**不检查 alpha**；于是 `EnemyActionIconBase:3` 的全屏 flat `900000705`（`a=0`、一个像素不画、`z=1073742949`）永远排在真正的整屏点击接收器 `700/701`（`gz=1073741824`、`ck=1`）之前。`d301` 三次点击全部 `EndInput clicked=900000705`；加 alpha 判据（`XSYS4_CLICK_SKIP_INVISIBLE=1`）后 `d302` 变为 `900000716 / 900000031 / 900000031` —— **截胡消失，链路前进一格**。<br>下一层是 `900000031`（`SceneStartScreen` 的 `Logo`，`ctrl=0`、`hb=1920x1080`、`a=255`）出现在战斗里：要么场景没切干净（`[LAYER-LEAK]` 同族），要么它本来就该在那儿。<br>**已结清**：`[SKILLCARD-ALPHA]` / `[BATTLE-FLAT-CLOCK]` 两条债是**误判** —— D285 用 `DUMP_AT=480fc6` + `SWITCH_DBG=496` 证明 `900000439` 的 motion 一直在跑（`v=0.75→191`、`1.0→255`），`0x4812F6`(default) 从未进入；旧结论源于「按部件号跨活动取数」+「`PE_DebugDumpParts` 打的是全局表」两处误读（见 `H058`） |
+| **本轮做过的** | ① **D284**（已提交）：`Math.Min/Max` 同名同 arity 的 int/float 重载靠**返回类型**绑定，Math 未实现告警 **7 → 0**；② **推翻两条债**：`[SKILLCARD-ALPHA]` / `[BATTLE-FLAT-CLOCK]` 均为误判，探针补 `par=`；③ **新工具**：`ain_at` 加 `swno:<n>[:<hex>]`（查 SWITCH case 表与落点）、`XSYS4_SWITCH_DBG=<no>`（打 SWITCH 实参与目标）、`XSYS4_CLICK_SKIP_INVISIBLE`；④ **修口径腐化**：HLL 计数漏了 `HLL_EXPORT_RT/NRT` 两个宏（3284→**3300**），`gen-doc-numbers.py --check` 当时「自洽通过」但数值是错的；⑤ **SDK 工具纳管**：`hllsig`/`exdump` 进 `TOOLS_DEFAULT`，`rebuild_hll_table.py` 去 `/tmp` 硬编码，顺带修掉它的两个真 bug（表尾找不到、重载被吃掉） |
 | **判据** | 几何用 `XSYS4_PARTS_DUMP` 看 `st=11` 的尺寸分布；点击类一律看 `[inp] EndInput clicked=N` 落在预期部件上（**不看**"我点了几次"）；画面用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S），不要用 X11 抓屏（GL 直绘下会拿到空 framebuffer，见 GUIDE 1.13） |
 
 > **卡点必须挂债标签**：§0「最大卡点」里的 `` `[TAG]` `` 必须**逐字存在**于
@@ -207,7 +207,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **181**（未标注 30）｜ HLL 源码口径 **3300 / 4494（73.4%）** ｜ 假设台账 / 根因编号 / 未结债 **56 / 84 / 30** ｜ 影响面 / 子模块补丁 **30 / 2** ｜ 默认基线 `d285`: `acts=36 / err=0 / core=0 / quest_map=1`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **183**（未标注 30）｜ HLL 源码口径 **3300 / 4494（73.4%）** ｜ 假设台账 / 根因编号 / 未结债 **58 / 91 / 31** ｜ 影响面 / 子模块补丁 **30 / 2** ｜ 默认基线 `d304`: `acts=36 / err=0 / core=0 / quest_map=1`。
 <!-- STATS:END -->
 
 最常用的：

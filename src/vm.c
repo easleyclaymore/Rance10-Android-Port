@@ -3341,7 +3341,31 @@ static enum opcode execute_instruction(enum opcode opcode)
 		break;
 	}
 	case SWITCH: {
-		instr_ptr = get_switch_address(get_argument(0), stack_pop().i);
+		int v = stack_pop().i;
+		uint32_t dst = get_switch_address(get_argument(0), v);
+		/* [D285] `XSYS4_SWITCH_DBG=<no>[,<no>…]`：打印 SWITCH 的实参与落点。
+		 *
+		 * 为什么需要它：`SWITCH 496` 在 `PartsMotionTask@UpdateByKey` 里按
+		 * `m_key` 派发到 `Parts@SetX/SetY/SetAlpha/…`。要知道「某个部件的
+		 * alpha 为什么没被设」，光反汇编 case 表不够 —— 还得知道**实际**
+		 * 弹出的值是几、落到哪一支。以前只能靠猜或临时加 printf。
+		 *
+		 * 默认关闭；按开关号过滤，避免每帧所有 SWITCH 都刷屏。 */
+		static char sw_dbg[64];
+		static int sw_dbg_init;
+		if (!sw_dbg_init) {
+			sw_dbg_init = 1;
+			const char *e = getenv("XSYS4_SWITCH_DBG");
+			if (e)
+				snprintf(sw_dbg, sizeof(sw_dbg), ",%s,", e);
+		}
+		if (sw_dbg[0]) {
+			char pat[24];
+			snprintf(pat, sizeof(pat), ",%d,", get_argument(0));
+			if (strstr(sw_dbg, pat))
+				NOTICE("[switch] no=%d val=%d -> 0x%X", get_argument(0), v, dst);
+		}
+		instr_ptr = dst;
 		break;
 	}
 	case STRSWITCH: {
