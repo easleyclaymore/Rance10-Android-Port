@@ -2523,6 +2523,58 @@ static enum opcode execute_instruction(enum opcode opcode)
 					       fn->vars[i].name ? display_sjis0(fn->vars[i].name) : "?",
 					       ts ? ts : "?", v, extra);
 				}
+				/* [D279] 结构体 / 数组型的引用局部，把它的成员也打出来。
+				 * 只打槽号时，「这个 motion key 的 begin/end alpha 到底是多少」
+				 * 这种问题在 dump 里完全看不见 —— 而这正是当前卡点。
+				 * 只展开一层、最多 16 个成员，避免又把日志冲掉。 */
+				/* ARRAY_PAGE 且元素是结构体时（`a_type == AIN_ARRAY_STRUCT`），
+				 * 同样把元素展开 —— `PartsMotionKey` 的 begin/end alpha 就藏在这里。
+				 * 元素宽度要按 `array_real_element_size()` 走（接口数组是 2 槽/元素）。 */
+				if (v > 0 && (size_t)v < heap_size && heap_index_valid(v) &&
+				    heap[v].page && heap[v].page->type == ARRAY_PAGE &&
+				    heap[v].page->a_type == AIN_ARRAY_STRUCT) {
+					struct page *ap = heap[v].page;
+					/* 接口型元素占 2 槽/元素（契约 27），其余 1 槽。
+					 * 判据同 `is_interface`：看结构体声明。 */
+					int esz = 1;
+					if (ap->index >= 0 && ap->index < ain->nr_structures &&
+					    ain->structures[ap->index].is_interface)
+						esz = 2;
+					int cnt = ap->nr_vars / esz;
+					cnt = cnt < 3 ? cnt : 3;
+					for (int e = 0; e < cnt; e++) {
+						union vm_value ev = ap->values[e * esz];
+						NOTICE("[dump]       l%d[%d] = %d (elem_size=%d)", i, e, ev.i, esz);
+						if (ev.i > 0 && (size_t)ev.i < heap_size &&
+						    heap_index_valid(ev.i) && heap[ev.i].page &&
+						    heap[ev.i].page->type == STRUCT_PAGE) {
+							struct page *sp = heap[ev.i].page;
+							int lim = sp->nr_vars < 16 ? sp->nr_vars : 16;
+							for (int k = 0; k < lim; k++) {
+								const char *sn = NULL;
+								if (sp->index >= 0 && sp->index < ain->nr_structures &&
+								    k < ain->structures[sp->index].nr_members)
+									sn = ain->structures[sp->index].members[k].name;
+								NOTICE("[dump]         .m%d %-14s = %d",
+								       k, sn ? display_sjis0(sn) : "?", sp->values[k].i);
+							}
+						}
+					}
+				}
+				if (v > 0 && (size_t)v < heap_size && heap_index_valid(v) &&
+				    heap[v].page && heap[v].page->type == STRUCT_PAGE) {
+					struct page *sp = heap[v].page;
+					int lim = sp->nr_vars < 16 ? sp->nr_vars : 16;
+					for (int k = 0; k < lim; k++) {
+						union vm_value mv = sp->values[k];
+						const char *sn = NULL;
+						if (sp->index >= 0 && sp->index < ain->nr_structures &&
+						    k < ain->structures[sp->index].nr_members)
+							sn = ain->structures[sp->index].members[k].name;
+						NOTICE("[dump]       l%d.m%d %-14s = %d",
+						       i, k, sn ? display_sjis0(sn) : "?", mv.i);
+					}
+				}
 				free(ts);
 			}
 			for (int i = call_stack_ptr - 1, k = 0; i >= 0 && k < 8; i--, k++)
