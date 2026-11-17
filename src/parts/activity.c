@@ -48,6 +48,7 @@
 
 #include "xsystem4.h"
 #include "asset_manager.h"
+#include "vm/page.h"
 #include "parts.h"
 #include "parts_internal.h"
 
@@ -1172,7 +1173,51 @@ void activity_free(struct activity *act)
 	free(act);
 }
 
-bool activity_release(const char *name)
+/* [D270] `ReleaseActivity` 的 EraseNumberList 出参。
+ *
+ * AIN 的实现（`parts::detail::EraseLayer` 8296 与 `parts::detail::Release`
+ * 391）拿到这个列表后交给 `CPartsMessageManager@ReleaseFunctionSetList`
+ * (8007)，后者逐个调 `ReleaseFunctionSetWithoutGC` (8005) 把该部件的
+ * CLICK / MOUSE_ON / KEY_DOWN 等**委托下标**从消息分发表里摘掉。
+ *
+ * 原来这里 `(void)erase_number_list` —— 列表恒空，于是 activity 释放后
+ * 委托仍然登记在分发表里，指向已经销毁的部件号。同一个部件号被复用时
+ * 就会命中**上一次活动的委托**（打空炮或调到错误的处理函数）。
+ *
+ * 写进去的是 `delegate_index` 而不是部件号：与 `PE_RemoveController()`
+ * 用的是同一个字段、同一口径（那里早已这么写），两侧必须一致。 */
+static void collect_activity_delegate_indices(struct activity *act,
+		struct page **erase_number_list)
+{
+	int n = 0;
+	for (int i = 0; i < act->nr_parts; i++) {
+		int di = PE_GetDelegateIndex(act->flat[i]->parts_no);
+		if (di < 0)
+			continue;
+		*erase_number_list = array_pushback(*erase_number_list,
+				(union vm_value){.i = di}, AIN_ARRAY_INT, -1);
+		n++;
+	}
+	/* [D270] 判据：这里必须是非 0。为 0 说明出参丢与否根本没区别，
+	 * 那就不算修好了语义 —— 别拿“编译通过”当证据。 */
+	if (getenv("XSYS4_ACT_RELEASE_DGLIST_DBG"))
+		NOTICE("[actrel] '%s' parts=%d → delegate indices=%d",
+		       act->name ? act->name : "(null)", act->nr_parts, n);
+}
+
+/* 默认生效（这是语义补齐，不是实验）；`XSYS4_ACT_RELEASE_DGLIST=0`
+ * 回退到旧的「丢弃出参」行为做 A/B。 */
+static bool act_release_dglist_enabled(void)
+{
+	static int on = -1;
+	if (on < 0) {
+		const char *e = getenv("XSYS4_ACT_RELEASE_DGLIST");
+		on = e && !strcmp(e, "0") ? 0 : 1;
+	}
+	return on != 0;
+}
+
+bool activity_release_ex(const char *name, struct page **erase_number_list)
 {
 	if (getenv("XSYS4_ACT_DBG"))
 		NOTICE("[act] release '%s'", name ? name : "(null)");
@@ -1181,6 +1226,8 @@ bool activity_release(const char *name)
 		if ((*p)->name && name && !strcmp((*p)->name, name)) {
 			struct activity *dead = *p;
 			*p = dead->next;
+			if (erase_number_list && act_release_dglist_enabled())
+				collect_activity_delegate_indices(dead, erase_number_list);
 			for (int i = 0; i < dead->nr_parts; i++)
 				PE_ReleaseParts(dead->flat[i]->parts_no);
 			activity_free(dead);
@@ -1189,6 +1236,11 @@ bool activity_release(const char *name)
 		p = &(*p)->next;
 	}
 	return false;
+}
+
+bool activity_release(const char *name)
+{
+	return activity_release_ex(name, NULL);
 }
 
 void activity_release_all(void)

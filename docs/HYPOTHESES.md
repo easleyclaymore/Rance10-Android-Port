@@ -39,6 +39,7 @@
 | `H035` | 战斗 VS 入场后长时间等待会整屏变黑，是等待玩家输入时的正常淡出，还是渲染层把战斗层隐藏了 | 长等待序列里补一次战斗点击后画面恢复 → 正常等待；仍黑 → 渲染 bug | **D222 定案**：`h025long` 的 390 字节「末帧全黑」是 `import -window` 抓到无内容 framebuffer 的空图（与纯黑 Xvfb 对照图 md5 `36eb5c51…` 完全一致），拿它跟正常帧做像素差无效，D221「文字消失 / 全帧差 969055」结论作废。改用引擎 `glReadPixels` 自截图（`XSYS4_SHOT_DIR` + Alt+S，绕开 X11 与 zenity）：`h035ctrl` 同一次跑测双时间点 25s=**953847B 有画面** / 50s=**10579B 全黑**，证实 GL 主 FBO 真的变黑。`h035engine` 点击后新增 13 个战斗 UI 活动（`BattleApView01` / `BattleApSphere:5..10` / `BattleRoundView(Big)` / `EnemyActionIconBase:0..3`，`battle` 32→45）但点击后 6s 自截图仍全黑；`h035final` 点击后 **20s** 仍全黑 → 排除等输入淡出与贴图加载延迟 | 成立（真渲染 bug：VS 演出结束后战斗 UI 未呈现，非正常淡出） |
 | `H036` | 黑屏是 `scene_render()` 首行 `gfx_clear()` 在没有可见 sprite 时把主 FBO 清空，且此后不再被标脏重绘 | 在黑屏帧上用同帧部件快照 + 引擎自截图联合取证：战斗部件 `vis=1 / tex>0` 却仍全黑 → 命中；强制重绘后画面回来 → 成立 | **D223 部分证伪**：`h036probe`（`until:ReplayMemoDialog` 稳健配方，`battle=32 / acts=108 / replay=1`）同帧快照给出 `cover=7`、`layer_show` 仅 ctrl=3 为 0、`ctrl=7` **263 个 `vis=1`** 部件，其中 `900000614 1347x996` / `900000621 1920x693` / `900000628 1024x1024` 均 `tex=1 a=255` —— 准入与 sprite 注册（parts 层从不设 `sp.hidden`、`has_pixel` 恒 true）全部排除。`vm_frame_pump()` 强制每帧 render 的 A/B 反使基线 `activities 36→13 / scene_quest_map 1→0`、真实流程卡在 ADV，已整段回退 | 证伪（准入 / 注册 / 重绘三条均不成立），收敛到绘制执行层；见 H037 |
 | `H037` | 黑屏是战斗部件 `global.alpha` 被设 0 后没有淡入恢复（D188 同类），或 `multiply_color` 被清零 | 在黑屏帧给 `parts_render_cg()` 加同帧诊断，看那些 `tex=1 a=255` 大部件有没有被调用、调用时 alpha/mul 实际值是多少；再单独 A/B alpha 容错 | **D224 改判（方向相反）**：同帧 CG 绘制日志显示黑屏期 `since_last=17313` 次绘制、`mul=(255,255,255)` / `scale=(1,1)` 全部正常，唯最后一次绘制是 `no=900000613`（`PARTS_CONSTRUCTION_PROCESS`、2x2 单色纹理 × `scale=(960,540)` 铺满全屏、`a=255`、`z=2147483520`）——全屏淡出遮罩。真因是 **D188 兜底修复**（`PE_SetAlpha()` 把 CP 部件的 `alpha<=0` 无条件抬回 255）误把 AIN 用来隐藏遮罩的 0 抬成不透明。`XSYS4_NO_CP_ALPHA_FIX=1` A/B：`shot_002` **10579B 全黑 → 1207952B 有画面** | 成立（真因 D188 误伤，不是「没淡入」）；D224 已修，H035 清零 |
+| `H050` | `ReleaseActivity` 的 `EraseNumberList` 出参被丢弃，活动释放后其部件登记的委托仍留在 AIN 的消息分发表里；号复用时点击会命中**上一次活动的处理器** | 拿掉 `(void)` 后 `XSYS4_ACT_RELEASE_DGLIST_DBG=1` 必须打出非 0 的委托下标个数；若恒 0 说明 AIN 根本不用这个出参、假设错 | `Activity@Release`(29045) → `AFL_Activity_Release`(198) → `activity::Release`(224) → `activity::detail::Release`(391) → `CALLHLL 27 24`，形参名就是 `DelegateIndexList`；391 紧接着把它交给 `CPartsMessageManager@ReleaseFunctionSetList`(8007) → `ReleaseFunctionSetWithoutGC`(8005) 逐个 `Array.Erase`。`logs/live_d270c.log` 实测 `[actrel] 'Game/Battle/CardApView' parts=5 → delegate indices=5`（旧代码此处为 0） | 成立（D270）：`activity_release_ex()` 写回 `delegate_index`，与 `PE_RemoveController()` 同口径；默认生效，`XSYS4_ACT_RELEASE_DGLIST=0` 可回退 |
 | `H020` | `GetQuestEventList` 的 `S_NOTE` 判空或 `Array.PushBack` 在引擎侧有偏差，导致明明查到了值也没进事件列表 | `EX_String` 对 `.战斗` 返回非空串，但 `28578` 的 `result` 仍 `nr=0` | 给 `EX_String`(5467) 加返回探针，或 `XSYS4_LVAR_DBG=28578:3` 看 `b` 的槽号是否 >0 | 待验 |
 
 ## 已证伪（保留，别回头查）
@@ -95,6 +96,9 @@ H005 证伪 ──> H006/H007/H008 证伪 ──> H016 成立（空事件分支�
                                         │      │      └──> H024 成立（补齐跨库 HLL，战斗打通）
                                         │      └──> H023 成立（真实流程自然进战斗）
                                         └──> H020 / H014 待验
+
+H050 成立（D270）：释放活动时把委托下标交还 AIN，消掉号复用后的错委托
+
 H001 证伪 ──> H017 成立 的另一条证据：标题按钮命中区在 (0,40)-(196,80)
 ```
 
