@@ -2319,7 +2319,12 @@ static enum opcode execute_instruction(enum opcode opcode)
 			nd_digit = e ? atoi(e) : -1;
 			nd_init = 1;
 		}
-		if (nd_digit >= 0 && nd_digit <= 9 && call_stack_ptr > 0) {
+		/* [D286] 上限 9 → 99：地图节点不止个位数，而 >9 以前是**静默忽略**的
+		 * —— 我拿 10/15/20/25 跑了四轮「大范围扫描」，日志里一条 `[nodekey]`
+		 * 都没有，那四组数据全是无效的。这种「没生效但看起来跑过了」比报错
+		 * 更危险，所以：① 放宽到 99；② 十位/个位分别改写；③ 改不动时**明确
+		 * 告警**而不是安静跳过。 */
+		if (nd_digit >= 0 && nd_digit <= 99 && call_stack_ptr > 0) {
 			struct function_call *cf = &call_stack[call_stack_ptr - 1];
 			/* 只在 RunAdvAndBattleEvent(23486) 这条链上改：地图装载 /
 			 * PreBattleAutoSave 也调 28578，早改会让 ００２ 节点缺字段，
@@ -2338,13 +2343,28 @@ static enum opcode execute_instruction(enum opcode opcode)
 					if (s && s->text) {
 						size_t n = strlen(s->text);
 						unsigned char *t = (unsigned char *)s->text;
-						/* 末尾须是 3 个同高字节的全角数字，否则不动，避免改坏别的 key。 */
+						/* 末尾须是 3 个同高字节的全角数字，否则不动，避免改坏别的 key。
+						 * 全角数字的末字节连续（０=0x50 … ９=0x59），所以
+						 * `base + d` 就是数字 d 的末字节 —— 不猜 GBK/SJIS。
+						 * 两位以上按位改写：个位放 nd%10，十位放 nd/10。 */
 						if (n >= 6 && t[n-6] == t[n-2] && t[n-4] == t[n-2]) {
-							t[n-1] = (unsigned char)(t[n-5] + nd_digit);
+							unsigned char lastbase = t[n-5];
+							t[n-1] = (unsigned char)(lastbase + nd_digit % 10);
+							int tens = nd_digit / 10;
+							if (tens > 0 && t[n-6] == t[n-2]) {
+								/* 十位：把倒数第二个全角数字改成 tens */
+								t[n-3] = (unsigned char)(t[n-7] + tens);
+							}
 							if (!nd_logged) {
 								nd_logged = 1;
-								NOTICE("[nodekey] KeyBase last digit -> %d", nd_digit);
+								NOTICE("[nodekey] KeyBase -> %d (tens=%d ones=%d)",
+								       nd_digit, tens, nd_digit % 10);
 							}
+						} else if (!nd_logged) {
+							/* 改不动必须说出来，不能静默跳过。 */
+							nd_logged = 1;
+							NOTICE("[nodekey] 无法改写 KeyBase（末 3 字节不是全角数字）"
+							       "，节点 %d 未生效", nd_digit);
 						}
 					}
 				}

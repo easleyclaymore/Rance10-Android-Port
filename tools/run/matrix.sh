@@ -67,6 +67,12 @@ node_run() {
     # 节点推进：XSYS4_AUTO_MAP 进第一章地图，XSYS4_NODE_DIGIT 改 KeyBase 末位。
     # 序列只做「进地图 → 点两下推进 → 等」，不依赖任何具体按钮坐标，
     # 这样节点之间唯一变量就是那个末位数字。
+    #
+    # MATRIX_HOT=1 时额外开 XSYS4_HLL_HOT=1：同一轮扫描既出矩阵又出热力表，
+    # 省掉「为了看缺口再跑一遍」的重复成本。
+    local hotenv=""
+    [ "${MATRIX_HOT:-0}" = "1" ] && hotenv="XSYS4_HLL_HOT=1"
+    env $hotenv \
     XSYS4_AUTO_MAP=1 \
     XSYS4_NODE_DIGIT="$n" \
     RANCE10_SAVE_DIR="$ROOT/logs/savedir/$tag" \
