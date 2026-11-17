@@ -11,9 +11,15 @@
 | | |
 |---|---|
 | **阶段** | 第一章 **链路 + 画面全验收**（D214–D224）保持不变；真实流程已推进到**战斗第一回合可交互**：标题→开场 ADV→回想对话框→選択肢→战斗→`Round 1/10`→**AP 球展开**。`H044`/`[SELECTION-STALL]`/D238/D239/D270/D271 全部结清 |
-| **最大卡点** | **战斗技能按钮的底板不可见**。已拆成两条**互不相同**的因果，别再混着查：<br>① **画不出来**（渲染）：`Button`(900000445) 的 flat 加载成功（`hdr=228x162 tl=3`）但 **`libs=0 cg=0`** —— 一个纹理库都没有，而正常出图的战斗 flat 是 `libs=2~4`。`矩形パーツ` 子部件（`ApBase`）同理不画像素（`render.c` 对 `PARTS_RECT_DETECTION` 直接 `break`）。<br>② **点不到**（z 序）：技能按钮被「开始按钮」`900000716`（ctrl=2、`hb=(823,403,274,274)`，即画面中央 VS 图形）按 gz 压住，点 `(960,540)` 每次都被它消费（`EndInput clicked=900000716`） |
+| **最大卡点** | `[BATTLE-UI-BLANK]` **战斗技能按钮的底板不可见**。已拆成两条**互不相同**的因果，别再混着查：<br>① **画不出来**（渲染）：`Button`(900000445) 的 flat 加载成功（`hdr=228x162 tl=3`）但 **`libs=0 cg=0`** —— 一个纹理库都没有，而正常出图的战斗 flat 是 `libs=2~4`。`矩形パーツ` 子部件（`ApBase`）同理不画像素（`render.c` 对 `PARTS_RECT_DETECTION` 直接 `break`）。<br>② **点不到**（z 序）：技能按钮被「开始按钮」`900000716`（ctrl=2、`hb=(823,403,274,274)`，即画面中央 VS 图形）按 gz 压住，点 `(960,540)` 每次都被它消费（`EndInput clicked=900000716`） |
 | **本轮做过的** | ① **D270**（已转正）：`ReleaseActivity` 的 `EraseNumberList` 出参不再丢弃，把委托下标交还 AIN，消掉号复用后的错委托；② **D271**（已转正）：`矩形パーツ` 的四角坐标此前一个字段都没解析，这类部件恒为 `0x0` —— 补上后 `st=11` 的 `0x0` 部件从 **60 个降到 0 个**；③ **D272**（证伪）：加矩形填充**不能**修好底板，因为 flat 本身 `libs=0` |
 | **判据** | 几何用 `XSYS4_PARTS_DUMP` 看 `st=11` 的尺寸分布；点击类一律看 `[inp] EndInput clicked=N` 落在预期部件上（**不看**"我点了几次"）；画面用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S），不要用 X11 抓屏（GL 直绘下会拿到空 framebuffer，见 GUIDE 1.13） |
+
+> **卡点必须挂债标签**：§0「最大卡点」里的 `` `[TAG]` `` 必须**逐字存在**于
+> `docs/TECH_DEBT.md` 的未结区（A/B/C 组），否则 `gen-doc-numbers.py --check` 报 STALE。
+> 这条是为了治「卡点过期」这类误判——状态文档声称卡在 X，而 X 早已在台账里清零，
+> 于是后续会话照着过期的卡点白跑几轮（D264–D269 就是这么发生的）。
+> 卡点换方向时，**先改台账再改这一行**，别只改这里。
 
 基线四数**以 §4 生成块与 `docs/STATS.md` 为准**（禁止手写）；D214 默认零开关跑测与 D207 逐项一致、无回归。`check_core_deps.py` PASS。
 
@@ -201,7 +207,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **178**（未标注 30）｜ HLL 源码口径 **3284 / 4478（73.3%）** ｜ 假设台账 / 根因编号 / 未结债 **51 / 73 / 29** ｜ 影响面 / 子模块补丁 **30 / 2** ｜ 默认基线 `d273`: `acts=36 / err=0 / core=0 / quest_map=1`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **178**（未标注 30）｜ HLL 源码口径 **3284 / 4478（73.3%）** ｜ 假设台账 / 根因编号 / 未结债 **51 / 75 / 29** ｜ 影响面 / 子模块补丁 **30 / 2** ｜ 默认基线 `d273`: `acts=36 / err=0 / core=0 / quest_map=1`。
 <!-- STATS:END -->
 
 最常用的：
@@ -250,6 +256,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
    由脚本生成；历史进 `archive/`（只读）。
 4. **文档只写结论**：STATUS/TECH_DEBT 单条不超过 3 行排障叙述，过程进 `archive/`。
 5. **重构完成 = 编译通过 + `check_core_deps.py` PASS + 端到端跑一次**；改代码/文档后跑 `gen-switches.py` 与 `gen-doc-numbers.py --check`，数字腐化即失败。
+   `--check` 现在覆盖**四类**腐化，不只是数字：① 数字/开关/台账计数漂移；② 文档结构（契约编号重复、孤儿表格行、已结项留在未结区）；③ **卡点挂的债标签是否真实存在且未清偿**（防「卡点过期」）；④ **文档地图是否声明了每个 `.md`**（防「文档悄悄游离在治理之外」）。
 6. Core Layer 不得依赖 Linux 头文件、不得写死绝对路径；`main` 是交付分支。
 7. **状态文档必须在版本控制内**（D273）。此前 `README.md`/`TECH_DEBT.md` 放在工作区根，
    而根目录不是 git 仓库 —— 项目最重要的两份文档改了无法提交、也没法回滚。
@@ -274,11 +281,13 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 | ② 工作流 | `docs/IMPACT.md` | 影响面清单：影响场景 / 必重跑闭环 / 回退方式 | 改跨模块代码之前 |
 | ③ 知识 | `docs/SDK.md` | 工具链入口：`xsys4` 命令、动作序列、跑测配方、日志前缀 | 动手之前 |
 | ③ 知识 | `docs/OFFLINE.md` | 离线工具参数/模式 + HLL 全量普查方法 | 用离线工具时 |
-| ③ 知识 | `docs/GUIDE/` | 深层方法论与契约（对外成书，不随状态更新） | 要判据 / 方法论时 |
+| ③ 知识 | `docs/GUIDE/` | 深层方法论与契约，对外成书。**定位是「判据与陷阱」，不是状态**：它只在**修订记录**里引用 D 号（说明"这一版补了哪条判据"），正文不写当前进度/卡点。读它要判据，读 `STATUS.md` 要现状 —— 两者不要互相替代 | 要判据 / 方法论时 |
 | ③ 知识 | `tools/MAP.md` | `tools/` 目录分层与脚本分工 | 加 / 找脚本时 |
 | ③ 知识 | `docs/PROJECT-MANAGEMENT.md` | 工程管理复盘，**面向用户/管理者；AI 会话不读** | 带团队 / 立规矩 / 复盘 |
 | ③ 知识 | `docs/MANUAL-INDEX.md` | 官方手册索引 + 图片陷阱 + 验收判据（**不含当前状态**） | 对照手册验收界面 / 查按键时 |
 | ③ 附件 | `game_compatibility.md` | **上游自带**英文兼容性表，与本项目无关；原位保留、不纳管 | 不读 |
+| ③ 附件 | `notes/` | **上游自带**英文技术笔记（`system4` / `parts-engine` / `language-update`，来自 upstream 提交 `cc199dc Add notes directory`，2023-04）；讲的是 System4/PartsEngine **格式与接口的跨游戏演进**，不是兰斯10 移植结论。原位保留、**不纳管**（不随本项目管理，也不得当作结论引用） | 查格式语义时可参考，**结论一律以 `docs/GUIDE/` 为准** |
+| ③ 附件 | `test/Source/`、`tools/patches/`、`tools/dev/patches/` 下的 `README.md` | **上游自带**占位说明；原位保留、不纳管（`tools/MAP.md` 已说明 `tools/dev/patches` 是「只读参照，不要重跑」） | 不读 |
 | ④ 生成 | `docs/MANUAL/` | 官方手册全文 md + 随附图片（`gen-manual.py` 生成，禁止手改） | 全文检索 / 对照界面基准时 |
 | ④ 生成 | `docs/SWITCHES.md` | 开关总表（`gen-switches.py` 生成） | 查开关用途 |
 | ④ 生成 | `docs/STATS.md` | 项目数字（`gen-doc-numbers.py` 生成，`--check` 校验） | 核对数字 |
