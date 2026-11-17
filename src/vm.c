@@ -2491,6 +2491,7 @@ static enum opcode execute_instruction(enum opcode opcode)
 				struct ain_type *vt = &fn->vars[i].type;
 				char *ts = ain_strtype_d(ain, vt);
 				int32_t v = lp->values[i].i;
+				float v_as_f = lp->values[i].f;
 				/* 引用型局部要连"它指向的页"一起打出来（长度/类型），
 				 * 否则看不出这个容器是不是在长。 */
 				char extra[160] = "";
@@ -2508,9 +2509,20 @@ static enum opcode execute_instruction(enum opcode opcode)
 						 "  [page type=%d a_type=%d nr=%d ref=%d]",
 						 pp->type, pp->a_type, pp->nr_vars, heap[v].ref);
 				}
-				NOTICE("[dump]   l%d %-16s %-20s = %d%s", i,
-				       fn->vars[i].name ? display_sjis0(fn->vars[i].name) : "?",
-				       ts ? ts : "?", v, extra);
+				/* [D277] 声明类型是 float 的局部变量必须按 `%f` 打。
+				 * 用 `%d` 读 union 的 `.i` 会把浮点位模式当整数 ——
+				 * `PartsMotionTask@OnUpdate` 的 `r = Time/Span` 明明
+				 * 算对了（实测 0.016/0.088/0.123…），dump 却一直显示 0，
+				 * 害我一路怀疑 `ITOF`/`F_DIV` 的实现。 */
+				if (fn->vars[i].type.data == AIN_FLOAT) {
+					NOTICE("[dump]   l%d %-16s %-20s = %f%s", i,
+					       fn->vars[i].name ? display_sjis0(fn->vars[i].name) : "?",
+					       ts ? ts : "?", (double)v_as_f, extra);
+				} else {
+					NOTICE("[dump]   l%d %-16s %-20s = %d%s", i,
+					       fn->vars[i].name ? display_sjis0(fn->vars[i].name) : "?",
+					       ts ? ts : "?", v, extra);
+				}
 				free(ts);
 			}
 			for (int i = call_stack_ptr - 1, k = 0; i >= 0 && k < 8; i--, k++)
