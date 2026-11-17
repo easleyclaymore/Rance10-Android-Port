@@ -1294,18 +1294,32 @@ static struct hll_function *link_static_library(struct ain_library *ainlib, stru
 		for (int j = 0; lib->functions[j].name; j++) {
 			if (strcmp(ainlib->functions[i].name, lib->functions[j].name))
 				continue;
-			int score;
+			/* [D284] 评分维度加"返回类型"。
+			 *
+			 * `Math.Min`/`Max` 在 AIN 里各有 6 个重载：2/3/4 参 × int/float，
+			 * 而 arity 相同 —— 只按 arity 打分时，float 版会被绑到
+			 * `Math_Min(int,int)`，`rangeF(0,1,val)` 于是把 val 截断成 0
+			 * （`Parts@SetAlpha` 收到 0.75 却算出 alpha=0）。
+			 *
+			 * 现在：arity 权重 4，返回类型权重 2（两者都命中 = 6）。
+			 * 未标注的项拿基础分 1，保持"旧行为不变"的兜底。 */
+			int score = 0;
 			if (lib->functions[j].nr_args < 0)
-				score = 1;
+				score += 1;
 			else if (lib->functions[j].nr_args == ainlib->functions[i].nr_arguments)
-				score = 2;
-			else
-				score = 0;
+				score += 4;
+			if (lib->functions[j].ret_type >= 0) {
+				int ain_ret = ainlib->functions[i].return_type.data;
+				if (lib->functions[j].ret_type == ain_ret)
+					score += 2;
+				else
+					score = 0;   /* 返回类型明确不符：直接排除 */
+			}
 			if (score > best_score) {
 				best_score = score;
 				best = &lib->functions[j];
 			}
-			if (score == 2)
+			if (score >= 6)
 				break;
 		}
 		if (best) {

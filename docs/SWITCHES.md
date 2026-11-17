@@ -16,7 +16,7 @@
 | 分组 | 开关 | 位置 | 用途 |
 |---|---|---|---|
 | 断点与快照 | `XSYS4_CALL_TRACE` | `src/vm.c:785` | 逗号分隔的 AIN 函数号；命中时打印调用点与返回地址（"有没有被调到"的第一手证据） |
-| 断点与快照 | `XSYS4_CALL_TRACE_TOTAL` | `src/vm.c:5376` | [诊断] 退出时汇总 `XSYS4_CALL_TRACE` 各函数的**真实调用次数**（不受"每 fno 8 站点 + 每 200 次一条"的打印限流影响）。**凡是要断言"某函数跑了 N 次"，必须用这个** —— D280/D281 两次把日志条数当次数，把 `View_Update` 的 1504 次误读成 10 次、把 `OnUpdate` 的 150 次误读成 0 次 |
+| 断点与快照 | `XSYS4_CALL_TRACE_TOTAL` | `src/vm.c:5381` | [诊断] 退出时汇总 `XSYS4_CALL_TRACE` 各函数的**真实调用次数**（不受"每 fno 8 站点 + 每 200 次一条"的打印限流影响）。**凡是要断言"某函数跑了 N 次"，必须用这个** —— D280/D281 两次把日志条数当次数，把 `View_Update` 的 1504 次误读成 10 次、把 `OnUpdate` 的 150 次误读成 0 次 |
 | 断点与快照 | `XSYS4_CENSUS` | `src/vm.c:1355` | 按函数做调用普查（与 FN_DUMP 互补） |
 | 断点与快照 | `XSYS4_DUMP_AT` | `src/vm.c:2403` | 在 `<十六进制地址>[,最多几次]` 处停下，打印帧名、this 各成员、局部变量和操作数栈 |
 | 断点与快照 | `XSYS4_FN_DUMP` | `src/vm.c:887` | 函数调用次数统计与慢函数排行 |
@@ -39,19 +39,19 @@
 | 容器与内存 | `XSYS4_DF_DBG` | `src/heap.c:216` | 委托释放路径诊断 |
 | 容器与内存 | `XSYS4_DF_FREE_DBG` | `src/heap.c:325` | 委托释放的逐次释放诊断 |
 | 容器与内存 | `XSYS4_DF_MAX` | `src/heap.c:219` | 委托释放的最大迭代次数（防死循环） |
-| 容器与内存 | `XSYS4_DGPLUSA_DBG` | `src/vm.c:4638` | — |
-| 容器与内存 | `XSYS4_DGPLUSA_MAX` | `src/vm.c:4642` | 〔摘〕前 400 条会被 startup 的 CParts@Attach 占满。 |
-| 容器与内存 | `XSYS4_DG_ASSIGN_DBG` | `src/vm.c:4614` | 委托赋值诊断 |
+| 容器与内存 | `XSYS4_DGPLUSA_DBG` | `src/vm.c:4643` | — |
+| 容器与内存 | `XSYS4_DGPLUSA_MAX` | `src/vm.c:4647` | 〔摘〕前 400 条会被 startup 的 CParts@Attach 占满。 |
+| 容器与内存 | `XSYS4_DG_ASSIGN_DBG` | `src/vm.c:4619` | 委托赋值诊断 |
 | 容器与内存 | `XSYS4_DG_CALL_DBG` | `src/vm.c:1595` | 委托调用诊断 |
 | 容器与内存 | `XSYS4_DG_DBG` | `src/hll/Delegate.c:65` | 委托（Delegate）诊断总开关 |
 | 容器与内存 | `XSYS4_DG_DRIFT` | `src/vm.c:1462` | 委托页"漂移"检测（指向了不该指的对象） |
 | 容器与内存 | `XSYS4_DG_GET_DBG` | `src/page.c:1205` | 委托取值诊断 |
 | 容器与内存 | `XSYS4_DG_KEEPALIVE` | `src/page.c:1054` | 委托页保活（防止被提前回收） |
-| 容器与内存 | `XSYS4_DG_LAZY` | `src/vm.c:4677` | 成员里的委托槽为空时惰性建页（NetworkConfirmation 的 OK/Cancel 靠它） |
+| 容器与内存 | `XSYS4_DG_LAZY` | `src/vm.c:4682` | 成员里的委托槽为空时惰性建页（NetworkConfirmation 的 OK/Cancel 靠它） |
 | 容器与内存 | `XSYS4_DG_MISS_DBG` | `src/vm.c:1565` | 委托 miss（找不到目标）时打印 |
 | 容器与内存 | `XSYS4_DG_MISS_FILTER` | `src/vm.c:1569` | 收窄 DG_MISS 输出 |
 | 容器与内存 | `XSYS4_DG_PAGE_DBG` | `src/vm.c:1506` | 委托页生命周期诊断 |
-| 容器与内存 | `XSYS4_MEM_STAT` | `src/vm.c:4893` | 堆内存与 RSS 实时统计 |
+| 容器与内存 | `XSYS4_MEM_STAT` | `src/vm.c:4898` | 堆内存与 RSS 实时统计 |
 | 呈现与输入 | `XSYS4_ACT_BUILD_DBG` | `src/parts/activity.c:1260` | [诊断] 打印每个 activity 部件的 `no/name/parent/type`（前 3000 条）。用来把运行时部件号对号到 XML 里的名字，例如 `900000397 = ButtonDeffence` |
 | 呈现与输入 | `XSYS4_ACT_CLICKABLE_ALL` | `src/parts/activity.c:1077` | 把所有**活动文件里声明**的部件标为可点（运行时建的 900000xxx 不受影响） |
 | 呈现与输入 | `XSYS4_ACT_DBG` | `src/parts/activity.c:1379` | 活动装载与点击派发诊断 |
@@ -79,13 +79,13 @@
 | 自动化后门 | `XSYS4_AUTO_CARD_CLICK_DELAY` | `src/vm.c:1169` | [后门] 最后一次 InitCardView 之后再等多久点卡（毫秒，默认 1500） |
 | 自动化后门 | `XSYS4_AUTO_CARD_ORG` | `src/vm.c:1171` | [后门] 点卡前先调 PartyCardGroup@ChangeOrganizationId(id) 切组织；0=不切 |
 | 自动化后门 | `XSYS4_AUTO_CARD_REPEAT` | `src/vm.c:1173` | [后门] 连点同一张卡几次（默认 1）；第一击移除、第二击验证 AddCardToFormations |
-| 自动化后门 | `XSYS4_AUTO_MAP` | `src/vm.c:4947` | 无头跑测后门：自动推进到任务地图 |
-| 自动化后门 | `XSYS4_AUTO_MAP_DELAY` | `src/vm.c:4948` | 后门延迟（毫秒） |
+| 自动化后门 | `XSYS4_AUTO_MAP` | `src/vm.c:4952` | 无头跑测后门：自动推进到任务地图 |
+| 自动化后门 | `XSYS4_AUTO_MAP_DELAY` | `src/vm.c:4953` | 后门延迟（毫秒） |
 | 自动化后门 | `XSYS4_AUTO_MAP_ROUTE` | `src/vm.c:1144` | [后门] 地图稳定后直调 SceneQuestMap@StartMoveRoute(23606)，毫秒=延迟 |
 | 自动化后门 | `XSYS4_AUTO_PARTY` | `src/vm.c:1139` | 无头跑测后门：自动推进到部队编成 |
 | 自动化后门 | `XSYS4_AUTO_PARTY_CLOSE` | `src/vm.c:1164` | [后门] 卡片视图就绪后直调 SceneParty@Close(24301)，验证编队出口；=1 开启 |
 | 自动化后门 | `XSYS4_AUTO_PARTY_DELAY` | `src/vm.c:1140` | 后门延迟（毫秒） |
-| 自动化后门 | `XSYS4_AUTO_RUNPARTY` | `src/vm.c:5024` | [后门] 地图起来后直接调 Scenes::RunParty(1)，绕开地图 UI 直进编队界面；值=延迟毫秒 |
+| 自动化后门 | `XSYS4_AUTO_RUNPARTY` | `src/vm.c:5029` | [后门] 地图起来后直接调 Scenes::RunParty(1)，绕开地图 UI 直进编队界面；值=延迟毫秒 |
 | 自动化后门 | `XSYS4_NO_LAYER_COVER` | `src/parts/parts.c:1437` | 关闭「视觉地板」优化（怀疑遮挡算错时用） |
 | 运行环境 | `XSYS4_DATA_DIR` | `src/pal.c:43` | 数据目录（缺省用编译期默认值） |
 | 运行环境 | `XSYS4_SOFT_STUB` | `src/ffi.c:56` | 未实现的导出用零桩顶替（诊断用：判断"缺实现"还是"走错路"） |
@@ -154,7 +154,7 @@
 | 其它 | `XSYS4_NO_AUTO_MOTION` | `src/parts/motion.c:102` | =1 关闭「首次加 motion 自动开表」（D186），用于 motion 自动启动的 A/B |
 | 其它 | `XSYS4_NO_CP_ALPHA_FIX` | `src/parts/parts.c:2292` | =1 关闭「合成类部件 alpha=0 提升为 255」（卡片立绘 A/B 回退开关）。[D224 收窄] 提升现在只作用于 >=8x8 的真实合成纹理，2x2 全屏淡出遮罩不再被误抬 |
 | 其它 | `XSYS4_NO_DI_FALLBACK` | `src/parts/message.c:99` | [回退闸] 关闭 D260 的委托下标回退（消息 delegate_index<0 时不再回退到 0）。用于 A/B：开着它战斗会退回「点击打空炮、停 Round 1/10」的旧行为 |
-| 其它 | `XSYS4_NO_PUMP` | `src/vm.c:4849` | 事件泵空转诊断 |
+| 其它 | `XSYS4_NO_PUMP` | `src/vm.c:4854` | 事件泵空转诊断 |
 | 其它 | `XSYS4_NULLMETHOD_FIX` | `src/vm.c:1230` | — |
 | 其它 | `XSYS4_NULLREF_DBG` | `src/vm.c:322` | 〔摘〕从栈上弹出一个引用，返回被引用对象的地址。 |
 | 其它 | `XSYS4_NULL_METHOD` | `src/vm.c:1076` | — |
@@ -165,7 +165,7 @@
 | 其它 | `XSYS4_PHANTOM_REUSE` | `src/vm.c:1309` | 幽灵槽复用诊断 |
 | 其它 | `XSYS4_PRED_BOUND` | `src/hll/Array.c:694` | — |
 | 其它 | `XSYS4_PRED_DBG` | `src/hll/Array.c:665` | — |
-| 其它 | `XSYS4_PUMP_MASK` | `src/vm.c:4861` | — |
+| 其它 | `XSYS4_PUMP_MASK` | `src/vm.c:4866` | — |
 | 其它 | `XSYS4_RA_DBG` | `src/vm.c:3146` | — |
 | 其它 | `XSYS4_RECYCLE_SLOTS` | `src/heap.c:199` | 复用已释放的堆槽（默认关） |
 | 其它 | `XSYS4_REFDBG` | `src/vm.c:383` | 〔摘〕它之后的代码全部当作不可达删掉。 |
@@ -179,9 +179,9 @@
 | 其它 | `XSYS4_SLOT_ID` | `src/heap.c:250` | 打印稳定槽 ID，便于跨日志对照同一对象 |
 | 其它 | `XSYS4_SP_BALANCE` | `src/vm.c:1950` | 每次函数返回校验栈平衡（失败即报） |
 | 其它 | `XSYS4_SP_TRACE` | `src/vm.c:2619` | 环形缓冲记录栈指针变化，抓"玄学栈漂移" |
-| 其它 | `XSYS4_SP_WATCH` | `src/vm.c:5136` | 监视指定帧的栈指针 |
-| 其它 | `XSYS4_SRDBG` | `src/vm.c:3988` | 〔摘〕绝不会是一张活着的 ARRAY_PAGE。 |
-| 其它 | `XSYS4_STACK_SAMPLE` | `src/vm.c:5160` | 周期性采样调用栈（抓谁在长时间占栈） |
+| 其它 | `XSYS4_SP_WATCH` | `src/vm.c:5141` | 监视指定帧的栈指针 |
+| 其它 | `XSYS4_SRDBG` | `src/vm.c:3993` | 〔摘〕绝不会是一张活着的 ARRAY_PAGE。 |
+| 其它 | `XSYS4_STACK_SAMPLE` | `src/vm.c:5165` | 周期性采样调用栈（抓谁在长时间占栈） |
 | 其它 | `XSYS4_STRICT_REF` | `src/vm.c:407` | 严格引用计数检查（会把"漏 ref/unref"变成显式报错） |
 | 其它 | `XSYS4_STR_INT_DBG` | `src/hll/String.c:59` | 〔摘〕"取对了但字符串已经死了"。 |
 | 其它 | `XSYS4_STUB_BT` | `src/ffi.c:160` | 软桩命中时附带回溯 |
