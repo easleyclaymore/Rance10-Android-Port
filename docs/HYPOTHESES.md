@@ -48,6 +48,7 @@
 
 
 | `H056` | 主循环没有逐帧驱动 `AFL_View_Update`，导致所有动画停摆 | 若按 `#n` 计数读到 `View_Update` 有上千次，则主循环正常、假设错 | **证伪（D281）**：按 `#n` 最大值重读 —— `View_Update`(18766) **1400 次**、`WaitForClick`(8309) **800 次**，主循环完全正常。**本轮的教训**：`XSYS4_CALL_TRACE` 的日志条数受「每 fno 记 8 个调用站点 + 每 200 次一条」限流，**条数 ≠ 次数**，必须读 `#n`。我一度据条数断言「只跑 10 次」并写进债条，是错的。真正异常收窄为：`PartsMotionTask@OnUpdate`(29725) **0 次**；`Init` 16 次 / `SetTask` 17 次但 `CASTask@Execute` 只有 3 次 | 已证伪（D281）。下一步按新债条判据查链式父 task 的 delegate 注册 |
+| `H057` | `PartsMotionTask@OnUpdate` 没被调用，motion 系统对战斗卡完全没作用 | 若用 `XSYS4_CALL_TRACE_TOTAL`（不受打印限流）测得 `OnUpdate` 有上百次、且其中包含 `m_parts=900000439`，则 motion 系统正常，假设错 | **证伪（D282）**：实测 `OnUpdate` **150 次**、`View_Update` **1504 次**，且 `DUMP_AT=480fe0` 的命中里明确有 2 次 `m_parts=900000439`；`getMotionValue` 入参 `from=0 to=1.0 t=0.019…1.0` 全正确。**教训**：`XSYS4_CALL_TRACE` 的日志条数是限流后的，**不等于调用次数**；D280/D281 两次据此误判（把 1504 读成 10、把 150 读成 0）。为此新增 `XSYS4_CALL_TRACE_TOTAL=1`，退出时汇总真实 hits | 已证伪（D282）。收窄后的问题：`900000439` 的 `アルファ值设定` 三次实测 alpha 全为 0，而插值会算出 4→49→255 —— 查这三处的时序 |
 | `H020` | `GetQuestEventList` 的 `S_NOTE` 判空或 `Array.PushBack` 在引擎侧有偏差，导致明明查到了值也没进事件列表 | `EX_String` 对 `.战斗` 返回非空串，但 `28578` 的 `result` 仍 `nr=0` | 给 `EX_String`(5467) 加返回探针，或 `XSYS4_LVAR_DBG=28578:3` 看 `b` 的槽号是否 >0 | 待验 |
 
 ## 已证伪（保留，别回头查）
