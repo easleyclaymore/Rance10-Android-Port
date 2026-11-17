@@ -138,5 +138,7 @@ XSYS4_MSGWIN_FRAME_DBG	[诊断] 打印消息窗口底板 CG（1920x300~500）是
 XSYS4_RELEASE_RECURSIVE	[D219 已转正] PE_ReleaseParts 递归释放整棵部件子树（原 parts_release 只把子部件摘链不释放，对话框关掉后文字层残留，H025/[LAYER-LEAK]）；默认生效，=0 回退做 A/B
 XSYS4_ACT_RELEASE_DGLIST	[D270 已转正] ReleaseActivity 的 EraseNumberList 出参不再丢弃：把被释放部件的 delegate_index 写回 AIN，供 CPartsMessageManager@ReleaseFunctionSetList 销掉消息分发表里的委托（否则释放后的委托仍可命中，号复用时调到上一次活动的处理器）；默认生效，=0 回退做 A/B
 XSYS4_ACT_RELEASE_DGLIST_DBG	[诊断] 打印每次 ReleaseActivity 释放的活动名、部件数与实际写回 EraseNumberList 的委托下标个数；用来证明 D270 的修复不是死代码（个数恒 0 就说明出参本来没被 AIN 用）
+XSYS4_EX_RECT_SIZE	[D271 已转正] EX 装载时为 `矩形パーツ`(组件类型 23) 按四角坐标 左上/右上/左下/右下 算出宽高并 PE_SetPartsSize；此前一个字段都没解析，实测 64 个 PARTS_RECT_DETECTION 部件里 60 个是 0x0（ApBase 因此既画不出也点不到）；默认生效，=0 回退做 A/B
+XSYS4_EX_RECT_DBG	[诊断] 打印每个 `矩形パーツ` 的四角换算结果与是否被保留（已有尺寸时 REPORT 而非覆盖）；用来确认 Ain 运行时 SetRectangleDetectionSize 的优先级没被 EX 静态值盖掉
 XSYS4_SHOT_DIR	[诊断] 指定目录后按 Alt+S 让引擎用 glReadPixels 直接 dump GL main surface 为 shot_NNN.png，绕过 zenity 文件框与 X11 合成；GL 直绘下 x11grab/import 只能拿到全黑 framebuffer，画面判据以此为准（GUIDE 1.13）
 XSYS4_SHOT_PARTS_DUMP	[诊断] 配合 XSYS4_SHOT_DIR：每次引擎自截图时打一次部件快照（layer_show / cover / 每部件 vis）+ 同帧 CG 绘制日志（最近 12 次调用的 alpha / multiply_color / scale / 纹理尺寸、以及两次截图之间的绘制次数）；按截图时刻触发而非全程探针，避免拖慢帧率改变剧情时序；需配 XSYS4_PARTS_DUMP_MIN=900000300 / MAX=1000
