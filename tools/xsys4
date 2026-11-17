@@ -149,7 +149,8 @@ switches)
     fi ;;
 
 debt)
-    f="$PROJ/TECH_DEBT.md"
+    # [D273] 台账已随状态文档迁进仓库（工作区根不受版本控制）。
+    f="$XSYS4/docs/TECH_DEBT.md"
     [ -f "$f" ] || die "找不到 $f"
     if [ -n "${1:-}" ]; then grep -i -- "$1" "$f" | head -20; else sed -n '1,30p' "$f"; fi ;;
 
@@ -164,7 +165,7 @@ doctor)
     echo "== 路径 =="
     echo "  engine : $BIN"
     echo "  game   : $GAME"
-    echo "  离线工具: $PORT/tools/bin"
+    echo "  离线工具: $XSYS4/tools/bin"
     echo "== 检查 =="
     [ -x "$BIN" ] && echo "  [ok] 引擎已构建" || echo "  [!!] 引擎未构建（xsys4 build）"
     [ -f "$GAME" ] && echo "  [ok] 游戏数据可见" || echo "  [!!] 找不到 $GAME（设 GAME=...）"

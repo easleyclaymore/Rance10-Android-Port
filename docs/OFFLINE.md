@@ -91,7 +91,7 @@ tools/bin/gsave_dump logs/savedir/<tag>/GlobalSave.asd
 用它们和跑测日志里的 `Unimplemented library function:` 求交集，
 就能一次性列出「AIN 真的会调用、但引擎没实现」的清单，
 **不需要猜哪些函数属于战斗、也不需要 alice-tools 逐个反汇编**。
-阶段性缺口清单与战斗路径结论已归档（工作区根 `archive/Rance10_HLL-GAP-全文-20261115.md`，只读）；当前结论见工作区根 `TECH_DEBT.md`。
+阶段性缺口清单与战斗路径结论已归档（工作区根 `archive/Rance10_HLL-GAP-全文-20261115.md`，只读）；当前结论见 `docs/TECH_DEBT.md`。
 
 > `calls` 的 400 个 site 硬上限已去掉（D197），默认全量；
 > `AIN_XREF_MAX=400` 可恢复截断。旧版只扫到 `fno=833`，
@@ -186,5 +186,5 @@ multibyte` 并截断、`ar extract -n "<名字>"` 永远匹配不到。`../tools
 跑测纪律（独立 Xvfb / 内存上限 / 不要裸跑）见 [`SDK.md`](SDK.md) 的「三条纪律」。
 
 > **单一信息源**：本文只定义离线工具的参数与模式；`xsys4` 入口命令、动作序列语法、
-> 跑测配方、日志前缀契约一律看 `SDK.md`；项目状态看工作区根 `../README.md`。
+> 跑测配方、日志前缀契约一律看 `SDK.md`；项目状态看`docs/STATUS.md`。
 > 两边都不复制对方的内容，需要时只写链接。
