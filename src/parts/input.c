@@ -444,14 +444,19 @@ void PE_UpdateInputState(int passed_time)
 			bool dump_all = getenv("XSYS4_INPUT_ALL") != NULL;
 			if (!covers && !dump_all)
 				continue;
+			/* [D276] 候选表必须带 `a=`（global alpha）。
+			 * 没有这一列时，一个 `a=0` 却仍在吃点击的全屏部件在日志里
+			 * 和一个正常可见的部件长得一模一样 —— 这次就是靠 dumps 里
+			 * 另一处才发现 705 是全透明的，绕了一大圈。 */
 			NOTICE("[inp]   parts=%d pos=(%d,%d) hb=(%d,%d,%d,%d) "
 			       "global=(%d,%d) parent=%d gz=%d click=%d pass=%d show=%d "
-			       "ctrl=%d cover=%d di=%d uc=%s",
+			       "a=%d ctrl=%d cover=%d di=%d uc=%s",
 			       parts->no, parts->local.pos.x, parts->local.pos.y,
 			       hb.x, hb.y, hb.w, hb.h, gx, gy,
 			       parts->parent ? parts->parent->no : -1,
 			       parts->global.z, parts->clickable, parts->pass_cursor,
-			       parts->global.show, parts->controller_no,
+			       parts->global.show, (int)parts->global.alpha,
+			       parts->controller_no,
 			       covers ? 1 : 0, parts->delegate_index,
 			       parts->uc_object ? parts->uc_object : "-");
 		}
