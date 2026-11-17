@@ -195,6 +195,82 @@ def inject_text(m):
     ])
 
 
+def check_doc_structure():
+    """[D272] 结构腐化检查：数字对了不等于文档没烂。
+
+    这三类是实际发生过的，光靠 num/pct 比对查不出来：
+      1. README §3 契约编号重复（14/15 各出现两次），下游
+         TECH_DEBT 用「契约 N」交叉引用 → 一插新条目全错位。
+      2. TECH_DEBT 出现**没有表头的孤儿表格行** —— markdown 渲染后
+         整行不可见，等于一条债凭空蒸发。
+      3. 已结项（已清零/已结案/已修）留在「未结」区 → 读的人以为还要做。
+    返回问题列表，空表示通过。
+    """
+    import re
+    problems = []
+    if not (os.path.exists(README) and os.path.exists(TECH_DEBT)):
+        return problems
+
+    # --- 1. README §3 契约编号：连续、不重复
+    r = read(README)
+    m = re.search(r"^## 3\..*?$(.*?)^## 4\.", r, re.S | re.M)
+    if m:
+        nums = [int(x) for x in re.findall(r"^(\d+)\.\s", m.group(1), re.M)]
+        dup = sorted({n for n in nums if nums.count(n) > 1})
+        if dup:
+            problems.append(f"README §3 契约编号重复: {dup}")
+        if nums and nums != list(range(1, len(nums) + 1)):
+            problems.append(f"README §3 契约编号不连续: {nums}")
+    else:
+        problems.append("README 找不到 §3 必读契约")
+
+    # --- 2. TECH_DEBT 孤儿表格行
+    lines = read(TECH_DEBT).splitlines()
+    covered = set()
+    i = 0
+    while i < len(lines):
+        if (lines[i].startswith("|") and i + 1 < len(lines)
+                and re.match(r"^\|[\s:\-\|]+\|$", lines[i + 1].strip())):
+            j = i + 2
+            while j < len(lines) and lines[j].startswith("|"):
+                j += 1
+            covered.update(range(i + 1, j + 1))
+            i = j
+        else:
+            i += 1
+    orphans = [n for n in range(1, len(lines) + 1)
+               if lines[n - 1].startswith("|") and n not in covered]
+    if orphans:
+        problems.append(f"TECH_DEBT 孤儿表格行（无表头，渲染后不可见）: L{orphans}")
+
+    # --- 3. 已结项留在未结区
+    try:
+        a = next(i for i, l in enumerate(lines) if l.startswith("## A."))
+        c = next(i for i, l in enumerate(lines) if l.startswith("## 已清零"))
+    except StopIteration:
+        c = None
+    if c is not None:
+        # 只看**状态列**（标签后第二格）。整行搜"已修/已证伪"会大量误报：
+        # [PROBE-GATED] 是"D238 已修这一处"（还剩其余变体）、
+        # [BATTLE-STALL] 是"初判…已证伪"（债本身仍开着）、
+        # [BATTLE-UI-BLANK] 是"已证伪的三条旁路"（旁路死了，债没死）。
+        # 判据必须落在状态格，不能落在现象描述里。
+        done = re.compile(r"已清零|已结案|已清偿")
+        stuck = []
+        for n in range(a, c):
+            ln = lines[n]
+            if not ln.startswith("| `["):
+                continue
+            cells = [x.strip() for x in ln.strip().strip("|").split("|")]
+            status = cells[1] if len(cells) > 1 else ""
+            if done.search(status):
+                mm = re.match(r"\| `(\[[^\]]+\])`", ln)
+                stuck.append(mm.group(1) if mm else ln[:20])
+        if stuck:
+            problems.append(f"TECH_DEBT 未结区里有已结项: {stuck}")
+    return problems
+
+
 def main():
     # 单独克隆 xsystem4 时没有工作区级状态文档：跳过而不让门禁崩溃。
     if not os.path.exists(README) or not os.path.exists(TECH_DEBT):
@@ -222,6 +298,9 @@ def main():
         if m["switches"] != m["switches_doc"]:
             print(f"STALE  docs/SWITCHES.md 声明 {m['switches_doc']} 个开关，"
                   f"源码实为 {m['switches']} 个 —— 跑 tools/gen-switches.py")
+            ok = False
+        for p in check_doc_structure():
+            print("STALE  " + p)
             ok = False
         print(f"doc numbers: {'PASS' if ok else 'FAIL'} "
               f"(switches={m['switches']} hll={m['hll_impl']}/{m['hll_total']} "
