@@ -25,8 +25,13 @@ WS = os.path.dirname(PORT)                            # .../兰斯10
 
 DOCS = os.path.join(REPO, "docs")
 STATS = os.path.join(DOCS, "STATS.md")
-README = os.path.join(WS, "README.md")
-TECH_DEBT = os.path.join(WS, "TECH_DEBT.md")
+# [D273] 状态层文档从工作区根迁进仓库。
+# 起因：根目录不是 git 仓库，README/TECH_DEBT 是项目最重要的状态文档却
+# 完全没有版本控制 —— 改了无法提交、也没法回滚。而 xsystem4/README.md
+# 已被 upstream fork 指针页占用，所以状态文档叫 docs/STATUS.md（职责是
+# 「现状 + 契约 + 卡点 + 纪律」，名字比 README 更准确）。
+README = os.path.join(DOCS, "STATUS.md")
+TECH_DEBT = os.path.join(DOCS, "TECH_DEBT.md")
 HYP = os.path.join(DOCS, "HYPOTHESES.md")
 IMPACT = os.path.join(DOCS, "IMPACT.md")
 SWITCHES = os.path.join(DOCS, "SWITCHES.md")
@@ -195,6 +200,30 @@ def inject_text(m):
     ])
 
 
+def check_stale_workspace_copies():
+    """[D273] 工作区根不许再留状态文档的旧副本。
+
+    迁移时最容易发生的事：有人（或某个旧脚本）又在根目录写了一份
+    README/TECH_DEBT，然后两份分叉。判据不是"文件存不存在"，而是
+    "它有没有变小/变回状态文档" —— 指针页是几百字节且必须含指向
+    docs/ 的链接；超过这个体量说明旧的正文又回来了。
+    """
+    problems = []
+    for name, real in (("README.md", "docs/STATUS.md"),
+                       ("TECH_DEBT.md", "docs/TECH_DEBT.md")):
+        p = os.path.join(WS, name)
+        if not os.path.exists(p):
+            continue
+        txt = read(p)
+        if real not in txt:
+            problems.append(f"工作区根 {name} 没有指向 {real} 的链接"
+                            "（状态文档应只在仓库内，根目录只放指针页）")
+        elif txt.count("\n") > 40:
+            problems.append(f"工作区根 {name} 有 {txt.count(chr(10))} 行，"
+                            f"像是状态文档正文又回来了 —— 只应是指针页")
+    return problems
+
+
 def check_doc_structure():
     """[D272] 结构腐化检查：数字对了不等于文档没烂。
 
@@ -299,7 +328,7 @@ def main():
             print(f"STALE  docs/SWITCHES.md 声明 {m['switches_doc']} 个开关，"
                   f"源码实为 {m['switches']} 个 —— 跑 tools/gen-switches.py")
             ok = False
-        for p in check_doc_structure():
+        for p in check_stale_workspace_copies() + check_doc_structure():
             print("STALE  " + p)
             ok = False
         print(f"doc numbers: {'PASS' if ok else 'FAIL'} "
