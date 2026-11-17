@@ -2262,8 +2262,16 @@ void PE_SetAlpha(int parts_no, int alpha)
 	 * = `CASConstructionProcess@SetSrcX`，它根本不调 SetAlpha）。
 	 * 所以 fno 只能当参考，定位靠 `XSYS4_ALPHA_STACK=1` 打 AIN 调用栈。 */
 	if (getenv("XSYS4_ALPHA_DBG")) {
-		NOTICE("[alpha] set parts=%d alpha=%d fno~%d", parts_no, alpha,
-		       hll_current_fno());
+		/* [D285] 必须同时打 `par=`（直接父部件号）。
+		 *
+		 * 起因：`900000439` 的 alpha 序列一直没法判读 —— 同一个号在不同时刻
+		 * 属于**不同部件**（`LargeSkillButton` 活动根 `par=-1`；活动释放后号
+		 * 被回收，又被 `EnemyInformationView` 拿去当子部件 `par=900000393`）。
+		 * 光看号，`0 → 191 → 255` 到底属于哪个部件全靠猜，D283/D284 两轮就
+		 * 是这么被带偏的。父部件号在同一时刻内唯一，能把两类事件分开。 */
+		struct parts *dbg_p = parts_try_get(parts_no);
+		NOTICE("[alpha] set parts=%d alpha=%d par=%d fno~%d", parts_no, alpha,
+		       dbg_p && dbg_p->parent ? dbg_p->parent->no : -1, hll_current_fno());
 		if (getenv("XSYS4_ALPHA_STACK"))
 			vm_stack_trace();
 	}
