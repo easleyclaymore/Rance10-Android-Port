@@ -1536,7 +1536,14 @@ bool activity_read(struct string *name, struct string *file)
 		activity_release(act->name);
 	}
 
+	/* [D289] 部件创建要归到「即将创建的那一层」，而不是当前 active。
+	 * AIN 的顺序是 Activity@Load（建部件）→ SceneStack@AddLayer（建层），
+	 * 所以这里开一个迁移窗口：这期间建出的部件由 PE_AddController 收走。
+	 * 没有后续 AddLayer 时（比如只是替换同名活动），pending-end 只告警不迁移，
+	 * 行为与旧版一致。 */
+	PE_ControllerPendingBegin();
 	build_part(act->root, -1);
+	PE_ControllerPendingEnd();
 
 	/* 建树时部件还没有父节点，PE_SetPos() 只能算出 global = local，
 	 * 之后父节点是 pending 状态、父链只在 PE_UpdateComponent() 里才挂上，

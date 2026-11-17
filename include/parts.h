@@ -149,6 +149,16 @@ bool PE_Load(struct page **buffer);
 bool PE_SaveBackScene(struct page **buffer);
 bool PE_LoadBackScene(struct page **buffer);
 int PE_AddController(int index);
+/* [D289] AIN 的顺序是 `Activity@Load`（建部件）**先于** `SceneStack@AddLayer`
+ * （建层）。部件创建时按 `ctrl_stack.active` 归属，于是 Load 出的部件全部
+ * 落在**上一层**上；之后 AIN 按新层的 `LayerPartsNumber` 去 EraseLayer，
+ * 那个层是空的 —— 实测 `released=0`（`d315`），旧场景部件永久残留。
+ *
+ * AIN 无法改，所以在 Load 前后包一层：`PE_ControllerPendingBegin()` 记下
+ * 「接下来 Load 出来的部件属于尚未创建的层」，`PE_AddController()` 建层时
+ * 把这些部件迁到新层。XSYS4_CTRL_PENDING=0 可整体回退到旧行为（A/B）。 */
+void PE_ControllerPendingBegin(void);
+void PE_ControllerPendingEnd(void);
 void PE_RemoveController(struct page **erase_number_list, int index);
 /* [D129] 图层 ID ↔ 栈下标的边界转换。AIN 侧保存的是 ID，内部渲染/命中
  * 用的是下标；只有跨 HLL 边界（AddLayer/GetActiveLayer/SetActiveLayer/

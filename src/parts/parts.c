@@ -162,6 +162,8 @@ struct parts *parts_try_get(int parts_no)
 /* [D174] 定义在下方（parts_exists 之前），parts_get 里要先用。 */
 void parts_cb_drop(int parts_no);
 
+static void ctrl_pending_add(int parts_no);
+
 struct parts *parts_get(int parts_no)
 {
 	struct ht_slot *slot = ht_put_int(parts_table, parts_no, NULL);
@@ -171,6 +173,8 @@ struct parts *parts_get(int parts_no)
 	struct parts *parts = parts_alloc();
 	parts->no = parts_no;
 	parts->controller_no = ctrl_stack.active;
+	/* [D289] Load 期间建的部件先记下来，AddLayer 时迁到新层。 */
+	ctrl_pending_add(parts_no);
 	slot->value = parts;
 	parts_list_insert(parts);
 	/* [D174] 部件号会被回收复用。复选框状态存在旁路表里（见下方实现），
@@ -3145,6 +3149,66 @@ void PE_DebugDumpParts(const char *tag)
 	}
 }
 
+/* [D289] `Activity@Load` 建出的部件该归到「即将创建的层」。
+ *
+ * 背景见 include/parts.h 的说明。这里只做一件事：Load 期间把新部件号记进
+ * 待迁移表；`PE_AddController` 建新层成功后，把表里的部件 `controller_no`
+ * 改成新层下标并清表。表和层级都是很小的量（一次 Load 最多几百个部件），
+ * 用固定上限即可，超了只告警不崩。 */
+#define CTRL_PENDING_MAX 4096
+static int ctrl_pending_nos[CTRL_PENDING_MAX];
+static int ctrl_pending_n = 0;
+static int ctrl_pending_begin_active = -1;   /* Load 开始时快照的 active */
+static int ctrl_pending_on = -1;
+
+static bool ctrl_pending_enabled(void)
+{
+	if (ctrl_pending_on < 0) {
+		const char *e = getenv("XSYS4_CTRL_PENDING");
+		ctrl_pending_on = (e && !strcmp(e, "0")) ? 0 : 1;
+	}
+	return ctrl_pending_on;
+}
+
+void PE_ControllerPendingBegin(void)
+{
+	if (!ctrl_pending_enabled())
+		return;
+	/* 窗口开到**下一个 AddLayer 消费为止**，不是 Load 返回就关。
+	 * 实测 `SceneStartScreen@0` 里 Activity@Load 之后还有 3 层调用栈才
+	 * 走到 SceneStack@AddLayer（FadeIn → lambda → ...），立即关窗口会
+	 * 把全部部件退回「归上一层」的旧行为（`pending-end 未迁移 3 个`）。 */
+	if (ctrl_pending_n && getenv("XSYS4_CTRL_DBG"))
+		NOTICE("[ctrl] pending-begin 丢弃上一次未消费的 %d 个", ctrl_pending_n);
+	ctrl_pending_n = 0;
+	ctrl_pending_begin_active = ctrl_stack.active;
+	if (getenv("XSYS4_CTRL_DBG"))
+		NOTICE("[ctrl] pending-begin active=%d", ctrl_pending_begin_active);
+}
+
+void PE_ControllerPendingEnd(void)
+{
+	if (!ctrl_pending_enabled())
+		return;
+	/* 不在这里关窗口：真正的消费点是 PE_AddController。 */
+}
+
+/* 部件创建时调用：Load 期间创建的就记下来，等 AddLayer 迁移。 */
+static void ctrl_pending_add(int parts_no)
+{
+	if (!ctrl_pending_enabled() || ctrl_pending_begin_active < 0)
+		return;
+	if (ctrl_pending_n >= CTRL_PENDING_MAX) {
+		static int warned;
+		if (!warned) {
+			warned = 1;
+			WARNING("[ctrl] pending 表满（%d），后续部件不迁移", CTRL_PENDING_MAX);
+		}
+		return;
+	}
+	ctrl_pending_nos[ctrl_pending_n++] = parts_no;
+}
+
 int PE_AddController(int index)
 {
 	if (index != -1)
@@ -3162,6 +3226,24 @@ int PE_AddController(int index)
 	 * SceneStack.LayerPartsNumber，之后与 GetActiveLayer() 比较。 */
 	ctrl_stack.id[no] = ctrl_stack.next_id++;
 	ctrl_stack.active = no;
+	/* [D289] 把 Load 期间建出的部件迁到刚建好的这一层。
+	 * 这正是 AIN `Activity@Load → SceneStack@AddLayer` 顺序下想要的归属：
+	 * 部件属于「即将用它的那一层」，而不是「上一层」。
+	 * 之后 AIN 按这层的 LayerPartsNumber 去 EraseLayer 才能真正释放掉。 */
+	if (ctrl_pending_n > 0) {
+		int moved = 0;
+		for (int i = 0; i < ctrl_pending_n; i++) {
+			struct parts *pp = parts_try_get(ctrl_pending_nos[i]);
+			if (!pp)
+				continue;
+			pp->controller_no = no;
+			moved++;
+		}
+		if (getenv("XSYS4_CTRL_DBG"))
+			NOTICE("[ctrl] pending-move %d 个部件 -> idx=%d id=%d",
+			       moved, no, ctrl_stack.id[no]);
+		ctrl_pending_n = 0;
+	}
 	if (getenv("XSYS4_CTRL_DBG")) {
 		/* [D268] 把「栈下标 ↔ 稳定 id」成对打出来。之前只有直方图，
 		 * 看不出 AIN 手里记的 id 到底对应哪个下标 —— 而本轮的根因正是
