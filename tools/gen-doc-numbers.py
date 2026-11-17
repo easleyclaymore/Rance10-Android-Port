@@ -70,13 +70,21 @@ def collect():
     m["switches_undoc"] = int(sm.group(2)) if sm else -1
 
     # 2. HLL：源码宏口径（行首导出宏计数），与 AIN 声明口径不同，见 STATS.md。
+    # 导出宏共 4 个，必须全数进来：只数不带类型标注的 HLL_EXPORT/HLL_EXPORT_N
+    # 会把 D284 引入的 HLL_EXPORT_RT/HLL_EXPORT_NRT（Math.c 的 6 组 int/float
+    # 重载）漏掉 16 条 —— 数字变小、百分比变低，而 --check 仍然自洽通过。
+    # 加新导出宏时**必须**同步改这里和 docs/STATS.md 的口径说明。
+    HLL_IMPL_MACROS = (
+        "HLL_EXPORT(", "HLL_EXPORT_N(",
+        "HLL_EXPORT_RT(", "HLL_EXPORT_NRT(",
+    )
     impl = todo = 0
     for p in glob.glob(os.path.join(REPO, "src", "hll", "*.c")):
         for line in read(p).splitlines():
             s = line.lstrip()
             if s.startswith("HLL_TODO_EXPORT("):
                 todo += 1
-            elif s.startswith(("HLL_EXPORT(", "HLL_EXPORT_N(")):
+            elif s.startswith(HLL_IMPL_MACROS):
                 impl += 1
     m["hll_impl"], m["hll_todo"] = impl, todo
     m["hll_total"] = impl + todo
@@ -149,7 +157,7 @@ def stats_text(m):
     rows = [
         ("诊断开关", m["switches"], '`getenv(\"XSYS4_*\")` 去重，与 `gen-switches.py` 同口径', "`src/**/*.c,*.h`"),
         ("未标注开关", m["switches_undoc"], "无人工说明且无就近注释", "`docs/SWITCHES.md`"),
-        ("HLL 已实现", m["hll_impl"], "`HLL_EXPORT(` + `HLL_EXPORT_N(` 行首计数", "`src/hll/*.c`"),
+        ("HLL 已实现", m["hll_impl"], "4 个导出宏行首计数（含 RT/NRT 重载）", "`src/hll/*.c`"),
         ("HLL 缺口", m["hll_todo"], "`HLL_TODO_EXPORT(` 行首计数", "`src/hll/*.c`"),
         ("HLL 源码覆盖率", f"{m['hll_pct']}% ({m['hll_total']} 个导出)", "已实现 /（已实现 + 缺口）", "计算"),
         ("假设台账", f"{m['hyp_total']}（待验 {m['hyp_open']} / 成立 {m['hyp_ok']} / 证伪 {m['hyp_no']}）", "表格行首 `H<编号>` 去重，按 section 归类", "`docs/HYPOTHESES.md`"),

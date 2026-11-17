@@ -22,7 +22,8 @@ OUT="$OFFLINE_BIN"
 
 # 需要暴露的离线工具。加新工具就加到这里（并在 tools/README.md 记一行）。
 TOOLS_DEFAULT="ain_at gsave_dump ain_xref ain_audit ain_locals ain_spec \
-               ain_refparam ain_icast ain_hllarity aindump"
+               ain_refparam ain_icast ain_hllarity aindump \
+               hllsig exdump"
 # 注意：ain_*.c 之间大量使用同一套 libsys4 头，AGENTS 里也别各编一份。
 
 if [ ! -f "$LIB" ]; then

@@ -1,8 +1,8 @@
 /* 按 fno 顺序转储 AIN HLL 库的函数签名。
  *
- * 构建（在 xsystem4 仓库根目录）：
+ * 构建（在 xsystem4 仓库根目录；产物由 tools/build.sh 输出到 tools/bin）：
  *   gcc -O1 -I subprojects/libsys4/include tools/hllsig.c \
- *       build/subprojects/libsys4/libsys4.a -o /tmp/hllsig \
+ *       build/subprojects/libsys4/libsys4.a -o tools/bin/hllsig \
  *       -lm -lz -ldeflate -lpthread
  * 用法：
  *   hllsig <file.ain> <LibraryName> [FunctionName]
