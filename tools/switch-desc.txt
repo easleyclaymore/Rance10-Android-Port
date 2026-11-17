@@ -104,6 +104,7 @@ XSYS4_CONSTRUCT_776	=0 把 AddPartsConstructionProcess(776) 退回空桩，用�
 XSYS4_NO_AUTO_MOTION	=1 关闭「首次加 motion 自动开表」（D186），用于 motion 自动启动的 A/B
 XSYS4_ALPHA_DBG	打印 SetComponentAlpha 与 AddMotionAlpha 的 parts/alpha 序列（查部件为何全透明）。[D277] 现在同时打 `fno~` 提示来源；注意该值只是参考（见下条）
 XSYS4_ALPHA_STACK	[诊断] 配合 ALPHA_DBG，在每次 SetAlpha 时打 AIN 调用栈。定位 alpha 被谁写成 0 必须用它 —— `hll_current_fno()` 返回的是上次 HLL 的值、返回后不复原，实测会打出 `fno=107`(CASConstructionProcess@SetSrcX) 这种完全无关的函数
+XSYS4_CALL_TRACE_TOTAL	[诊断] 退出时汇总 `XSYS4_CALL_TRACE` 各函数的**真实调用次数**（不受"每 fno 8 站点 + 每 200 次一条"的打印限流影响）。**凡是要断言"某函数跑了 N 次"，必须用这个** —— D280/D281 两次把日志条数当次数，把 `View_Update` 的 1504 次误读成 10 次、把 `OnUpdate` 的 150 次误读成 0 次
 XSYS4_NO_CP_ALPHA_FIX	=1 关闭「合成类部件 alpha=0 提升为 255」（卡片立绘 A/B 回退开关）。[D224 收窄] 提升现在只作用于 >=8x8 的真实合成纹理，2x2 全屏淡出遮罩不再被误抬
 # 注意：XSYS4_CP_DBG 是 D116 的结构体深拷贝探针（vm.c），不复用于合成
 XSYS4_DBG_EIP	打印 SetEnableInputProcess 的每次调用与参数（实测 242 次里 238 次 enable=0）

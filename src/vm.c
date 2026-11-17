@@ -816,6 +816,10 @@ static void call_trace_probe(int fno, int ret_addr)
 			call_trace[i].rets[call_trace[i].nret++] = ret_addr;
 			new_site = true;
 		}
+		/* [D282] `XSYS4_CALL_TRACE_TOTAL=1`：函数**退出**时打一条真实总数。
+		 * 光看上面那行限流后的日志条数会把"打印了几条"当成"调用了几次" ——
+		 * D280 我就是这么把 `View_Update` 的 1400 次误读成 10 次的。
+		 * 这个开关在 vm_exit 时统一汇总，不受限流影响。 */
 		if (new_site || n <= 3 || n % 200 == 0) {
 			struct ain_function *f = &ain->functions[fno];
 			/* [D159] `instr_ptr` 在这里指向**被调函数自己**的第一条指令
@@ -5368,6 +5372,13 @@ void vm_sleep(int ms)
 
 _Noreturn void vm_exit(int code)
 {
+	/* [D282] 退出时汇总被跟踪函数的**真实调用次数**（不受打印限流影响）。 */
+	if (getenv("XSYS4_CALL_TRACE_TOTAL"))
+		for (int i = 0; i < call_trace_n; i++)
+			if (call_trace[i].hits > 0)
+				NOTICE("[calltotal] fno=%d hits=%d sites=%d",
+				       call_trace[i].fno, call_trace[i].hits,
+				       call_trace[i].nret);
 	vm_free();
 #ifdef DEBUG_HEAP
 	for (size_t i = 0; i < heap_size; i++) {
