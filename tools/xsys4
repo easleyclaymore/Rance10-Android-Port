@@ -44,6 +44,7 @@ xsys4 — 兰斯10 移植工具链入口
   xsys4 run <tag> [秒] [png]      无头跑一次，出日志和截图（shot 是它的别名）
   xsys4 seq <tag> <动作序列> [秒]  同上，带点击序列（语法见下）
   xsys4 dump <地址>[,次数] <tag> [秒]  在指定指令处停下 dump 一次
+  xsys4 matrix <tag> [节点列表]     场景矩阵：同组判据扫多个地图节点（默认 1,2,3,4）
 
   动作序列（用分号分隔，坐标是 1920x1080 下的绝对坐标）：
     wait:3000                 等 3 秒
@@ -62,6 +63,7 @@ xsys4 — 兰斯10 移植工具链入口
   xsys4 lib <编号|库名>[:子串]        列某个 HLL 库的函数表（库名和编号都认）
   xsys4 struct <结构体名>              看结构体成员类型
   xsys4 switches [关键词]             查诊断开关（例：xsys4 switches ARR）
+  xsys4 hot <日志> [--gaps]           HLL 热力表分析：按实际调用排缺口（先跑 XSYS4_HLL_HOT=1）
   xsys4 debt [关键词]                 查技术债台账
 
 【环境】
@@ -123,6 +125,10 @@ dump)
     [ -n "$at" ] || die "用法：xsys4 dump <地址>[,次数] <tag> [秒]"
     XSYS4_DUMP_AT="$at" exec "$TOOLS_DIR/run/run-headless.sh" "$tag" "$secs" "/tmp/$tag.png" ;;
 
+matrix)
+    tag="${1:-matrix}"; nodes="${2:-1,2,3,4}"
+    exec "$TOOLS_DIR/run/matrix.sh" "$tag" "$nodes" ;;
+
 disas|at|sym|lib|struct)
     [ -x "$AIN_AT" ] || die "ain_at 未构建，先跑 xsys4 build tools"
     case "$cmd" in
@@ -147,6 +153,11 @@ switches)
     else
         head -12 "$f"; echo "..."; echo "（共 $(grep -c '^| ' "$f") 行，用关键词收窄：xsys4 switches ARR）"
     fi ;;
+
+hot)
+    log="${1:-}"; shift || true
+    [ -n "$log" ] || die "用法：xsys4 hot <带 XSYS4_HLL_HOT=1 的日志> [--gaps|--json|--top N]"
+    exec env -u PYTHONPATH -u PYTHONHOME python3 "$TOOLS_DIR/dev/hll_hotness.py" "$log" "$@" ;;
 
 debt)
     # [D273] 台账已随状态文档迁进仓库（工作区根不受版本控制）。

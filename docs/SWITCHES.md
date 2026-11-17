@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **183** 个开关，其中 **30** 个没有就近注释。
+共 **184** 个开关，其中 **30** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -22,14 +22,14 @@
 | 断点与快照 | `XSYS4_FN_DUMP` | `src/vm.c:887` | 函数调用次数统计与慢函数排行 |
 | 断点与快照 | `XSYS4_FN_DUMP_ALL` | `src/vm.c:903` | 统计时不做前 N 次闸门，低频函数也全打 |
 | 断点与快照 | `XSYS4_FN_DUMP_SKIP` | `src/vm.c:895` | 统计时跳过指定函数号 |
-| 断点与快照 | `XSYS4_HLL_TRACE` | `src/ffi.c:520` | 打印每次 HLL 调用（`lib= fno= nr_args= sp= ret=`），不设 FILTER 会很吵 |
-| 断点与快照 | `XSYS4_HLL_TRACE_FILTER` | `src/ffi.c:527` | 收窄 HLL_TRACE：`PartsEngine` 按库名、`27:73` 按库:序号、其它按函数名子串，逗号分隔 |
+| 断点与快照 | `XSYS4_HLL_TRACE` | `src/ffi.c:595` | 打印每次 HLL 调用（`lib= fno= nr_args= sp= ret=`），不设 FILTER 会很吵 |
+| 断点与快照 | `XSYS4_HLL_TRACE_FILTER` | `src/ffi.c:602` | 收窄 HLL_TRACE：`PartsEngine` 按库名、`27:73` 按库:序号、其它按函数名子串，逗号分隔 |
 | 容器与内存 | `XSYS4_ALLOC0_DBG` | `src/page.c:445` | 0 号堆槽分配的诊断 |
 | 容器与内存 | `XSYS4_ARRAY_DBG` | `src/hll/Array.c:1213` | Array 诊断的旧开关（与 ARR_DBG 同类，逐步统一） |
 | 容器与内存 | `XSYS4_ARRAY_FREE_FIX` | `src/hll/Array.c:527` | 数组释放路径的实验修复（默认关，会改行为） |
 | 容器与内存 | `XSYS4_ARRAY_REF_FIX` | `src/hll/Array.c:892` | 数组元素引用处理的实验修复（默认关，会改行为） |
-| 容器与内存 | `XSYS4_ARR_ALLOC_DBG` | `src/ffi.c:722` | 只打数组分配 |
-| 容器与内存 | `XSYS4_ARR_DBG` | `src/ffi.c:634` | Array 操作诊断：alloc/find/any/emp/free/subst 逐条打 |
+| 容器与内存 | `XSYS4_ARR_ALLOC_DBG` | `src/ffi.c:797` | 只打数组分配 |
+| 容器与内存 | `XSYS4_ARR_DBG` | `src/ffi.c:709` | Array 操作诊断：alloc/find/any/emp/free/subst 逐条打 |
 | 容器与内存 | `XSYS4_ARR_MULTIDIM` | `src/hll/Array.c:351` | Array.Alloc 构造多维内层数组；默认开启，=0 回退旧行为做 A/B |
 | 容器与内存 | `XSYS4_ARR_TYPE_DBG` | `src/hll/Array.c:1087` | 数组元素类型推导诊断（泛型数组"由首个元素定型"出问题时用） |
 | 容器与内存 | `XSYS4_ARR_UNSET_FIX` | `src/hll/Array.c:454` | 未初始化槽读取的实验修复（默认关，会改行为） |
@@ -122,10 +122,11 @@
 | 其它 | `XSYS4_GL_DBG` | `src/video.c:267` | [诊断] 启动时打印实际 GL vendor/renderer/version —— 判断有没有用上硬件加速的唯一硬证据（llvmpipe=软件，Mesa Intel=硬件） |
 | 其它 | `XSYS4_GSAVE_DBG` | `src/savedata.c:762` | 〔摘〕所以按可打印的类型名分类。 |
 | 其它 | `XSYS4_HEAP_LIVE_LIMIT` | `src/heap.c:107` | 堆存活槽上限，超了报警 |
-| 其它 | `XSYS4_HLL_ARGDBG` | `src/ffi.c:910` | 打印 HLL 调用的实际参数值（排查"参数顺序/位宽错"时用） |
+| 其它 | `XSYS4_HLL_ARGDBG` | `src/ffi.c:985` | 打印 HLL 调用的实际参数值（排查"参数顺序/位宽错"时用） |
 | 其它 | `XSYS4_HLL_HIST` | `src/vm.c:146` | — |
-| 其它 | `XSYS4_HLL_REFDBG` | `src/ffi.c:857` | [诊断] 引用型 HLL 返回：打印反解 (page_slot,index) 是否成功；默认只打失败项 |
-| 其它 | `XSYS4_HLL_REFDBG_FILTER` | `src/ffi.c:860` | [诊断] 配合 REFDBG，额外打印函数名含该子串的调用（如 At） |
+| 其它 | `XSYS4_HLL_HOT` | `src/ffi.c:113` | [诊断] 全库 HLL 调用热力表：进程退出时按次数倒序打印 `[hllhot] 库 函数 次数`。用来决定「544 个未实现里先补哪个」—— 按实际调用排，不按缺口字母顺序。GUIEngine 的 336 个缺口运行期零调用（菜单系统没进过），补它是纯浪费 |
+| 其它 | `XSYS4_HLL_REFDBG` | `src/ffi.c:932` | [诊断] 引用型 HLL 返回：打印反解 (page_slot,index) 是否成功；默认只打失败项 |
+| 其它 | `XSYS4_HLL_REFDBG_FILTER` | `src/ffi.c:935` | [诊断] 配合 REFDBG，额外打印函数名含该子串的调用（如 At） |
 | 其它 | `XSYS4_ICAST_DBG` | `src/vm.c:3070` | 〔摘〕"对象类型确实不对" 和 "我们的转型判定太严"。 |
 | 其它 | `XSYS4_IFACE_ARR_FIX` | `src/page.c:563` | — |
 | 其它 | `XSYS4_IFACE_COPY_DBG` | `src/page.c:421` | — |
@@ -185,9 +186,9 @@
 | 其它 | `XSYS4_STACK_SAMPLE` | `src/vm.c:5189` | 周期性采样调用栈（抓谁在长时间占栈） |
 | 其它 | `XSYS4_STRICT_REF` | `src/vm.c:407` | 严格引用计数检查（会把"漏 ref/unref"变成显式报错） |
 | 其它 | `XSYS4_STR_INT_DBG` | `src/hll/String.c:59` | 〔摘〕"取对了但字符串已经死了"。 |
-| 其它 | `XSYS4_STUB_BT` | `src/ffi.c:160` | 软桩命中时附带回溯 |
-| 其它 | `XSYS4_STUB_LOG` | `src/ffi.c:102` | 软桩命中清单写到该文件 |
-| 其它 | `XSYS4_SUBST_BT` | `src/ffi.c:638` | 静态库替换（subst）时打印回溯 |
+| 其它 | `XSYS4_STUB_BT` | `src/ffi.c:224` | 软桩命中时附带回溯 |
+| 其它 | `XSYS4_STUB_LOG` | `src/ffi.c:166` | 软桩命中清单写到该文件 |
+| 其它 | `XSYS4_SUBST_BT` | `src/ffi.c:713` | 静态库替换（subst）时打印回溯 |
 | 其它 | `XSYS4_SWAP_LOG` | `src/video.c:446` | 〔摘〕这样启动器可以在第一帧呈现之后立刻冻结进程。 |
 | 其它 | `XSYS4_SWITCH_DBG` | `src/vm.c:3358` | [诊断] 按开关号打印 SWITCH 的实参与落点（`[switch] no=.. val=.. -> 0x..`）。查「某个 key 为什么没派发到预期方法」用它：`SWITCH 496` 按 `m_key` 分派到 `Parts@SetX/SetAlpha/…`，只看 case 表不知道实际弹进来的值是多少 |
 | 其它 | `XSYS4_TALT_EXTRA_FORMATS` | `src/parts/flat.c:400` | [D275 已转正] D200 的「LIBL=0 时追加 TALT 图集」只认 QNT 魔数，而 `战斗画面/シス／战斗／技能按钮／一般` 的 TALT 是 **AJP**，于是零纹理库、底板一个像素不画。默认改成交给 `cg_check_format()` 判定；=qnt 回退成旧行为做 A/B |
