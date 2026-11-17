@@ -10,9 +10,9 @@
 |---|---|---|---|
 | 诊断开关 | 181 | `getenv("XSYS4_*")` 去重，与 `gen-switches.py` 同口径 | `src/**/*.c,*.h` |
 | 未标注开关 | 30 | 无人工说明且无就近注释 | `docs/SWITCHES.md` |
-| HLL 已实现 | 3284 | `HLL_EXPORT(` + `HLL_EXPORT_N(` 行首计数 | `src/hll/*.c` |
+| HLL 已实现 | 3300 | 4 个导出宏行首计数（含 RT/NRT 重载） | `src/hll/*.c` |
 | HLL 缺口 | 1194 | `HLL_TODO_EXPORT(` 行首计数 | `src/hll/*.c` |
-| HLL 源码覆盖率 | 73.3% (4478 个导出) | 已实现 /（已实现 + 缺口） | 计算 |
+| HLL 源码覆盖率 | 73.4% (4494 个导出) | 已实现 /（已实现 + 缺口） | 计算 |
 | 假设台账 | 56（待验 30 / 成立 9 / 证伪 17） | 表格行首 `H<编号>` 去重，按 section 归类 | `docs/HYPOTHESES.md` |
 | 根因编号 | 84 | `D<2-3 位>` 去重 | README + TECH_DEBT + HYPOTHESES |
 | 未结技术债 | 30 | 表格行首 `` `[标签]` `` 去重 | `TECH_DEBT.md` |
