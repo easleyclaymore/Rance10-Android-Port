@@ -157,6 +157,25 @@ struct activity_part {
 	int num_length;        /* 桁数（0 = 按数值自动） */
 	float gauge_num, gauge_denom; /* 分子 / 分母 */
 
+	/* [D271] `矩形パーツ`（组件类型 23）的几何负载。
+	 * EX 原文（LargeSkillButton.pactex 的 ApBase）：
+	 *
+	 *   パーツ类型 = "矩形パーツ"
+	 *   矩形模式 = 1
+	 *   左上 = {0, 0}   右上 = {77, 0}
+	 *   左下 = {0, 30}  右下 = {77, 30}
+	 *
+	 * 此前一个字段都没读（activity.c 全文 grep `矩形模式`/`左上` 零命中），
+	 * 于是这类部件只能拿到 0x0 尺寸。`PARTS_RECT_DETECTION` 本来就不画
+	 * 像素（render.c 直接 break），尺寸再是 0，结果就是彻底不可见 ——
+	 * 战斗技能按钮的 ApBase 底板全黑正是这条。
+	 * 注意：这些不是“四个独立点”，而是同一个四边形在 矩形模式 下的
+	 * 两种表示（见 rect_corners_to_size 的注释）。 */
+	int rect_mode;         /* 矩形模式 */
+	float rect_pts[4][2];  /* 左上/右上/左下/右下 */
+	bool rect_have[4];     /* 每个角点是否真的读到了 */
+	bool has_rect;         /* EX 是否真的给了矩形负载 */
+
 	/* 用户组件（component type 15）：EX 负载是
 	 *   数据 = ['オブジェクト名', 'TextButton', '参数', '标题,从头开始']
 	 * 也就是引擎的一个内建控件加上它逗号分隔的参数。
@@ -407,6 +426,82 @@ static bool get_float(struct ex_tree *t, const char *name, float *out)
 		return true;
 	}
 	return false;
+}
+
+/* [D271] 把 `矩形パーツ` 的四个角点换算成 (宽, 高)。
+ *
+ * 关键点是：这四个点**不是四个独立点** —— 这个名字会误导人。
+ * EX 里它们就是同一个四边形的两个对角：
+ *
+ *   左上=(0,0)  右上=(77,0)
+ *   左下=(0,30) 右下=(77,30)
+ *
+ * 取水平方向的 max-min（左上→右上 = 77，左下→右下 = 77）
+ * 与垂直方向的 max-min（左上→左下 = 30，右上→右下 = 30），
+ * 两对互相校验。正常数据下两对一致；不一致时取较大的那个
+ * （宁可命中盒偏大也不能偏小 —— 偏小会让按钮点不到，而点不到
+ * 在日志里表现为「委托注册了但永远不触发」，比“底板少几像素”难查得多）。
+ *
+ * 缺角时退回用能凑出的那两个点算。
+ */
+static void rect_corners_to_size(const float pts[4][2], bool have[4],
+		int *out_w, int *out_h)
+{
+	/* 下标：0=左上 1=右上 2=左下 3=右下 */
+	float hspan = 0.0f, vspan = 0.0f;
+	if (have[0] && have[1]) {
+		float d = pts[1][0] - pts[0][0];
+		if (d < 0)
+			d = -d;
+		if (d > hspan)
+			hspan = d;
+	}
+	if (have[2] && have[3]) {
+		float d = pts[3][0] - pts[2][0];
+		if (d < 0)
+			d = -d;
+		if (d > hspan)
+			hspan = d;
+	}
+	if (have[0] && have[2]) {
+		float d = pts[2][1] - pts[0][1];
+		if (d < 0)
+			d = -d;
+		if (d > vspan)
+			vspan = d;
+	}
+	if (have[1] && have[3]) {
+		float d = pts[3][1] - pts[1][1];
+		if (d < 0)
+			d = -d;
+		if (d > vspan)
+			vspan = d;
+	}
+	/* 只剩对角两颗时（0/3 或 1/2）用包围盒。 */
+	if (hspan == 0.0f || vspan == 0.0f) {
+		int n = 0;
+		float minx = 0, maxx = 0, miny = 0, maxy = 0;
+		for (int i = 0; i < 4; i++) {
+			if (!have[i])
+				continue;
+			if (n == 0) {
+				minx = maxx = pts[i][0];
+				miny = maxy = pts[i][1];
+			} else {
+				if (pts[i][0] < minx) minx = pts[i][0];
+				if (pts[i][0] > maxx) maxx = pts[i][0];
+				if (pts[i][1] < miny) miny = pts[i][1];
+				if (pts[i][1] > maxy) maxy = pts[i][1];
+			}
+			n++;
+		}
+		if (n >= 2) {
+			if (hspan == 0.0f) hspan = maxx - minx;
+			if (vspan == 0.0f) vspan = maxy - miny;
+		}
+	}
+	*out_w = (int)(hspan + 0.5f);
+	*out_h = (int)(vspan + 0.5f);
 }
 
 /* 把 EX 文件里的 パーツ类型 名映射成兰斯10 的组件类型号。
@@ -670,6 +765,27 @@ static void parse_part_fields(struct ex_tree *node, struct activity_part *part)
 			get_float(src, "分母", &part->gauge_denom);
 			get_float(src, "分子", &part->gauge_num);
 		}
+		/* [D271] 矩形パーツ 的四角 + 模式。先按 src（一般状態）取，
+		 * 取不到再退到 type_info —— D238 的数字/计量负载在 src 里，
+		 * 但不同活动的写位置不完全一致，两处都试一次代价极小。 */
+		if (part->type == ACT_COMP_RECT) {
+			static const char *const corner_names[4] = {
+				"左上", "右上", "左下", "右下"
+			};
+			int mode = 0;
+			bool got = false;
+			for (int i = 0; i < 4; i++) {
+				if (!get_float_list(src, corner_names[i], part->rect_pts[i], 2) &&
+				    !get_float_list(type_info, corner_names[i], part->rect_pts[i], 2))
+					continue;
+				part->rect_have[i] = true;
+				got = true;
+			}
+			if (!get_int(src, "矩形模式", &mode))
+				get_int(type_info, "矩形模式", &mode);
+			part->rect_mode = mode;
+			part->has_rect = got;
+		}
 	} else {
 		part->type = ACT_COMP_CG;
 	}
@@ -888,6 +1004,47 @@ static int build_part(struct activity_part *part, int parent_no)
 		 * 任务地图点完对象后的「確認／放棄」選択肢按钮正是这种形态：
 		 * 流程能建出来、日志一切正常，但既画不出也点不到，回合推不动。 */
 		PE_SetPartsSize(part->parts_no, part->w, part->h, 1);
+	}
+	/* [D271] `矩形パーツ` 的几何在**四角坐标**里，不在「尺寸」里。
+	 * 上面的 `part->w > 0 && part->h > 0` 分支对它是永远进不去的 ——
+	 * 统计过所有 EX：`尺寸` 字段只出现在 `按钮` 类型上（`低レベルパーツ`
+	 * 40 个全都没有），而 ApBase 这类矩形只有 左上/右上/左下/右下。
+	 *
+	 * 实测后果（`XSYS4_PARTS_DUMP`，d271probe）：`st=11`
+	 * (`PARTS_RECT_DETECTION`) 去重 64 个部件里 **60 个是 `0x0`**，
+	 * 只有 AIN 运行时用 SetRectangleDetectionSize 显式设过的 4 个非 0。
+	 * 而 `render.c` 对 `PARTS_RECT_DETECTION` 本来就直接 break、一个像素
+	 * 都不画 —— 尺寸 0 叠上「从不绘制」，结果就是彻底不可见；
+	 * 战斗技能按钮的 ApBase 底板全黑正是这条链。
+	 *
+	 * 本步只补几何，不动绘制（绘制必须单独 A/B：命中盒已在这条路上
+	 * 生效，不能因为加了绘制而改掉点击行为）。
+	 * `XSYS4_EX_RECT_SIZE=0` 回退做 A/B。 */
+	if (part->type == ACT_COMP_RECT && part->has_rect) {
+		static int ex_rect_size = -1;
+		if (ex_rect_size < 0) {
+			const char *e = getenv("XSYS4_EX_RECT_SIZE");
+			ex_rect_size = e && !strcmp(e, "0") ? 0 : 1;
+		}
+		if (ex_rect_size) {
+			int rw = 0, rh = 0;
+			rect_corners_to_size((const float (*)[2])part->rect_pts,
+					part->rect_have, &rw, &rh);
+			/* 已被别人设过尺寸时不覆盖：AIN 运行时的
+			 * SetRectangleDetectionSize 比 EX 静态值更可信。 */
+			bool cur_empty = PE_GetPartsWidth(part->parts_no, 1) <= 0 ||
+					 PE_GetPartsHeight(part->parts_no, 1) <= 0;
+			if (rw > 0 && rh > 0 && cur_empty) {
+				PE_SetPartsSize(part->parts_no, rw, rh, 1);
+				ACT_DEBUG("[act] %s 矩形 模式=%d 四角→%dx%d",
+					  part->name, part->rect_mode, rw, rh);
+			} else if (getenv("XSYS4_EX_RECT_DBG")) {
+				NOTICE("[actrect] %s 模式=%d 四角→%dx%d (保留现有 %dx%d)",
+				       part->name, part->rect_mode, rw, rh,
+				       PE_GetPartsWidth(part->parts_no, 1),
+				       PE_GetPartsHeight(part->parts_no, 1));
+			}
+		}
 	}
 	/* [D216] 比率坐标 → 视图像素。此前直接 (int)part->x/y，把 MessageWindow01
 	 * 的 (0.0, 1.0) 当成 (0,1) 像素，消息窗口整体留在屏幕左上角外，
