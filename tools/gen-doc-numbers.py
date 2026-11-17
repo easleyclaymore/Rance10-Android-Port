@@ -224,6 +224,121 @@ def check_stale_workspace_copies():
     return problems
 
 
+def check_status_debt_tag():
+    """[D274] STATUS §0「最大卡点」必须挂一个**真实存在**的未结债标签。
+
+    为什么需要这条：卡点那一格是自由文本，最容易和台账脱钩。真实发生过 ——
+    STATUS 声称「战斗下半屏底板不渲染」，而台账里同一条债早已被 D264–D269
+    证伪换成别的因果，后续会话照着过期卡点白跑好几轮。数字检查（debts=29）
+    完全看不出来，因为债务总数没变，只是「哪一条」变了。
+
+    判据：§0 的「最大卡点」行里至少有一个 `[TAG]`，且该 TAG 逐字出现在
+    TECH_DEBT 的未结区（A/B/C 组之间）。已清零区里的标签不算 —— 否则
+    「卡点指向一条已清的债」这种最该抓的情况反而会被放过。
+    """
+    import re
+    problems = []
+    if not (os.path.exists(README) and os.path.exists(TECH_DEBT)):
+        return problems
+
+    st = read(README)
+    m = re.search(r"^\| \*\*最大卡点\*\* \|(.+)$", st, re.M)
+    if not m:
+        problems.append("STATUS §0 找不到「最大卡点」行（格式应为 | **最大卡点** | ... |）")
+        return problems
+    cell = m.group(1)
+    tags = re.findall(r"`(\[[^\]]+\])`", cell)
+    if not tags:
+        problems.append("STATUS §0「最大卡点」没有挂 `[TAG]` —— "
+                        "必须指向 docs/TECH_DEBT.md 未结区里的一条债")
+        return problems
+
+    lines = read(TECH_DEBT).splitlines()
+    try:
+        a = next(i for i, l in enumerate(lines) if l.startswith("## A."))
+        c = next(i for i, l in enumerate(lines) if l.startswith("## 已清零"))
+    except StopIteration:
+        return problems   # 台账结构异常由 check_doc_structure 负责报
+    open_tags = set()
+    for n in range(a, c):
+        mm = re.match(r"\| `(\[[^\]]+\])`", lines[n])
+        if mm:
+            open_tags.add(mm.group(1))
+
+    # 已清零区里的标签单独收集，用于给出更准确的报错
+    cleared = set()
+    for n in range(c, len(lines)):
+        mm = re.match(r"\| `(\[[^\]]+\])`", lines[n])
+        if mm:
+            cleared.add(mm.group(1))
+
+    hit = [t for t in tags if t in open_tags]
+    if not hit:
+        for t in tags:
+            if t in cleared:
+                problems.append(f"STATUS §0「最大卡点」挂在 {t}，"
+                                "但它在 TECH_DEBT 的**已清零**区 —— 卡点已过期，"
+                                "先改台账再改这一行")
+            else:
+                problems.append(f"STATUS §0「最大卡点」挂在 {t}，"
+                                "但 TECH_DEBT 未结区没有这个标签（拼写不符或已删）")
+    return problems
+
+
+def check_doc_coverage():
+    """[D274] 文档地图必须**显式声明**每一个 .md 的去向。
+
+    为什么需要：`notes/` 一直躺在仓库里（1413 行的 parts-engine.md），
+    文档地图却一个字没提。它其实该「不纳管」，但**「未声明」和「声明为不纳管」
+    是两回事** —— 前者让人以为漏了，后者是明确决定。game_compatibility.md
+    就做对了（明确标「上游自带、不纳管」）。
+
+    判据：除了生成物目录（docs/MANUAL、subprojects、build）之外，
+    每个 .md 的路径都必须能在 STATUS §6 文档地图里找到（整段或作为目录前缀）。
+    新增文档时要么进地图、要么进「上游自带/不纳管」那一行。
+    """
+    import re
+    problems = []
+    if not os.path.exists(README):
+        return problems
+    st = read(README)
+    sec = re.search(r"^## 6\. 文档地图.*?(?=^## |\Z)", st, re.S | re.M)
+    if not sec:
+        return problems   # 缺 §6 本身由 check_doc_structure 之外的渠道发现
+    map_text = sec.group(0)
+
+    SKIP_DIRS = ("subprojects/", "build/", "docs/MANUAL/", ".git/")
+    found = []
+    for root, dirs, files in os.walk(REPO):
+        rel = os.path.relpath(root, REPO)
+        rel = "" if rel == "." else rel.replace(os.sep, "/") + "/"
+        if any(rel.startswith(d) for d in SKIP_DIRS):
+            dirs[:] = []
+            continue
+        for f in files:
+            if not f.endswith(".md"):
+                continue
+            path = rel + f
+            found.append(path)
+
+    for path in sorted(found):
+        if path in map_text:
+            continue
+        # 「声明整个目录」不能只看前缀 —— `docs/` 是个前缀，于是
+        # `docs/随便新建.md` 会被静默放过（自测时正是这么漏的）。
+        # 只承认**地图里真的写了**以 `/` 结尾的具体目录，
+        # 且必须是该文件路径的前缀（逐层，不含最泛的那一层）。
+        parents = ["/".join(path.split("/")[:i]) + "/"
+                   for i in range(1, len(path.split("/")))]
+        # 去掉过于宽泛的顶层目录（docs/、tools/ 这类不该自动吸纳新文件）
+        TOP = {"docs/", "tools/", "src/", "include/", "test/"}
+        if any(d in map_text and d not in TOP for d in parents):
+            continue
+        problems.append(f"文档地图未声明 {path} —— "
+                        "要么加进 STATUS §6，要么归入「上游自带、不纳管」那一行")
+    return problems
+
+
 def check_doc_structure():
     """[D272] 结构腐化检查：数字对了不等于文档没烂。
 
@@ -328,7 +443,10 @@ def main():
             print(f"STALE  docs/SWITCHES.md 声明 {m['switches_doc']} 个开关，"
                   f"源码实为 {m['switches']} 个 —— 跑 tools/gen-switches.py")
             ok = False
-        for p in check_stale_workspace_copies() + check_doc_structure():
+        for p in (check_stale_workspace_copies()
+                  + check_status_debt_tag()
+                  + check_doc_coverage()
+                  + check_doc_structure()):
             print("STALE  " + p)
             ok = False
         print(f"doc numbers: {'PASS' if ok else 'FAIL'} "
