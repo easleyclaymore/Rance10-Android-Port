@@ -382,14 +382,38 @@ bool parts_flat_load(struct parts *parts, struct parts_flat *f, struct string *f
 	 * 追加一张 TALT 图集纹理，渲染侧按索引回退；render_flat_cg 已经会用
 	 * key->area_x/y/w/h 从图集裁剪。
 	 * 默认开启：这是 FLAT/TALT 格式支持，不是实验开关。 */
+	/* [D275] D200 当时只认 QNT，但 TALT 条目还可以是 **AJP**
+	 * （加密图集，libsys4 的 ajp.c 早就支持），更宽一点还有 PNG/WEBP。
+	 * `战斗画面\シス／战斗／技能按钮／一般` 正是 AJP 形态：
+	 * liberaries=0、talt=1、magic=AJP → 旧判定为假 → 零纹理库 →
+	 * 战斗技能按钮的底板一个像素都画不出来。
+	 * 判据改成交给 `cg_check_format()`：只要 talt[0] 是引擎认得的图片格式
+	 * 就追加一张图集纹理，不再硬编码单个魔数。
+	 * `XSYS4_TALT_EXTRA_FORMATS` 未设时按新口径；=qnt 可回退成 D200 的旧行为做 A/B。 */
 	bool talt_extra = false;
 	if (f->flat->nr_libraries == 0 &&
 	    f->flat->nr_talt_entries > 0) {
 		struct talt_entry *e = &f->flat->talt_entries[0];
-		if (e->size > 4 && e->off + e->size <= dfile->size &&
-		    dfile->data[e->off] == 'Q' && dfile->data[e->off+1] == 'N' &&
-		    dfile->data[e->off+2] == 'T')
-			talt_extra = true;
+		if (e->size > 4 && e->off + e->size <= dfile->size) {
+			static int talt_mode = -1;
+			if (talt_mode < 0) {
+				const char *env = getenv("XSYS4_TALT_EXTRA_FORMATS");
+				talt_mode = (env && !strcmp(env, "qnt")) ? 0 : 1;
+			}
+			if (talt_mode == 0) {
+				/* 回退：D200 的原始判定，只看 QNT。 */
+				if (dfile->data[e->off] == 'Q' &&
+				    dfile->data[e->off+1] == 'N' &&
+				    dfile->data[e->off+2] == 'T')
+					talt_extra = true;
+			} else {
+				enum cg_type fmt =
+					cg_check_format(dfile->data + e->off);
+				/* ALCG_UNKNOWN=1 表示认不出来；其余都是可解的图集 */
+				if (fmt != ALCG_UNKNOWN && fmt != ALCG_DCF)
+					talt_extra = true;
+			}
+		}
 	}
 	f->nr_libraries = f->flat->nr_libraries + (talt_extra ? 1 : 0);
 	f->textures = xcalloc(f->nr_libraries, sizeof(Texture));
