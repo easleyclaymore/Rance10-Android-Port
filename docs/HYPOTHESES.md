@@ -47,6 +47,7 @@
 | `H055` | `LargeSkillButton` 活动根 `900000439` 的 `la=0` 来自 motion 动画未推进 | **再次改判（D279）**：motion **数据与时间都对**。用新增的 dump 展开能力实测 `PartsMotionTask@UpdateByKey` 的 `key`：`m_key=2`、`m_type=0`、`m_from=0`、`m_to=1065353216`(=float 1.0)、`m_isUseInt=0`，`timeRatio` 实测 0.015~0.054。按 `v = from + (to-from)*r` 算是正常的 0→1 淡入。但 `SWITCH 496` 按 `m_type` 派发，**`m_type=0` 落在 `Parts@SetX`（位置）**，而 `Parts@SetAlpha`(29462) 对应 `m_type=2` —— 所以这个 key 根本不是 alpha 动画。**结论：`la=0` 与 motion 无关，真因仍未定位** | 已两次改判（D278 否掉"时间基准为 0"，D279 否掉"motion 数据错误"）。下一步：`m_type=2` 的 alpha key 在 `m_keys` 里根本不存在，说明这个部件的 alpha 不由 `PartsMotionTask` 驱动 —— 回去查 `BattleCardButton@Init` 那次 `alpha=0` 之后，AIN 打算用什么把它恢复（`SetAlpha(255)` 全日志 0 次） |
 
 
+| `H056` | 主循环没有逐帧驱动 `AFL_View_Update`，导致所有动画停摆 | 若按 `#n` 计数读到 `View_Update` 有上千次，则主循环正常、假设错 | **证伪（D281）**：按 `#n` 最大值重读 —— `View_Update`(18766) **1400 次**、`WaitForClick`(8309) **800 次**，主循环完全正常。**本轮的教训**：`XSYS4_CALL_TRACE` 的日志条数受「每 fno 记 8 个调用站点 + 每 200 次一条」限流，**条数 ≠ 次数**，必须读 `#n`。我一度据条数断言「只跑 10 次」并写进债条，是错的。真正异常收窄为：`PartsMotionTask@OnUpdate`(29725) **0 次**；`Init` 16 次 / `SetTask` 17 次但 `CASTask@Execute` 只有 3 次 | 已证伪（D281）。下一步按新债条判据查链式父 task 的 delegate 注册 |
 | `H020` | `GetQuestEventList` 的 `S_NOTE` 判空或 `Array.PushBack` 在引擎侧有偏差，导致明明查到了值也没进事件列表 | `EX_String` 对 `.战斗` 返回非空串，但 `28578` 的 `result` 仍 `nr=0` | 给 `EX_String`(5467) 加返回探针，或 `XSYS4_LVAR_DBG=28578:3` 看 `b` 的槽号是否 >0 | 待验 |
 
 ## 已证伪（保留，别回头查）
