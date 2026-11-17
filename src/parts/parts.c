@@ -2252,8 +2252,21 @@ void PE_SetAlpha(int parts_no, int alpha)
 {
 	/* [D187] 探针：卡片合成完是 a=255，dump 时却 a=0 —— 要回答
 	 * 「谁把它设成 0、之后靠什么恢复」。 */
-	if (getenv("XSYS4_ALPHA_DBG"))
-		NOTICE("[alpha] set parts=%d alpha=%d", parts_no, alpha);
+	/* [D277] 补 fno：不带调用者时，同一个部件号被不同活动复用时
+	 * 完全分不清这次 0 是谁设的。查 `900000439` 的 `la` 为什么是 0，
+	 * 三次 `alpha=0` 分别来自 L982/L1268/L1274 三个不同活动，
+	 * 而部件号是复用的 —— 没有 fno 就只能靠猜。 */
+	/* [D277] 补 fno 与调用栈。**注意 `hll_current_fno()` 在这里不可靠**：
+	 * 它返回的是 `hll_call_fno`，只在 `hll_call()` 入口赋值、返回后不复原，
+	 * 于是残留的是上一个**无关** HLL 的值（实测打出 `fno=107`
+	 * = `CASConstructionProcess@SetSrcX`，它根本不调 SetAlpha）。
+	 * 所以 fno 只能当参考，定位靠 `XSYS4_ALPHA_STACK=1` 打 AIN 调用栈。 */
+	if (getenv("XSYS4_ALPHA_DBG")) {
+		NOTICE("[alpha] set parts=%d alpha=%d fno~%d", parts_no, alpha,
+		       hll_current_fno());
+		if (getenv("XSYS4_ALPHA_STACK"))
+			vm_stack_trace();
+	}
 
 	struct parts *p = parts_get(parts_no);
 	/* [D188] 合成类部件（construction process）拿到 alpha=0 时**不能照单全收**。
