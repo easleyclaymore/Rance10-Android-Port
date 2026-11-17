@@ -377,6 +377,10 @@ struct activity *activity_get(const char *name);
 struct activity *activity_create(const char *name);
 bool activity_read(struct string *name, struct string *file);
 bool activity_release(const char *name);
+/* [D270] 带 EraseNumberList 出参的版本：把被释放部件的委托下标写回
+ * AIN，让它从消息分发表里销掉。`activity_release(name)` 等价于
+ * `activity_release_ex(name, NULL)`。 */
+bool activity_release_ex(const char *name, struct page **erase_number_list);
 void activity_release_all(void);
 void activity_free(struct activity *act);
 bool activity_is_exist_file(const char *file);

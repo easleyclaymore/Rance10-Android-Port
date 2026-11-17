@@ -2364,10 +2364,11 @@ static int PE_Act_CreateActivity(struct string *name)
 
 static int PE_Act_ReleaseActivity(struct string *name, struct page **erase_number_list)
 {
-	(void)erase_number_list;
 	if (!name || !name->text)
 		return 0;
-	return activity_release(name->text);
+	/* [D270] EraseNumberList 是出参，不能丢：见 activity_release_ex() 的
+	 * 注释。AIN 用它去销掉该活动各部件登记的委托下标。 */
+	return activity_release_ex(name->text, erase_number_list);
 }
 
 /* AIN f[25] SaveActivityEXText：仅供编辑器，游戏流程用不到。 */
