@@ -18,7 +18,7 @@
 | 未结技术债 | 29 | 表格行首 `` `[标签]` `` 去重 | `TECH_DEBT.md` |
 | 影响面清单 | 30 | 表格行首 `I<编号>` | `docs/IMPACT.md` |
 | 子模块补丁 | 2 | `patches/*.patch` | `patches/` |
-| 默认基线 | `d270`: acts=36 / err=0 / core=0 / quest_map=1 / rc=0 | 最新 `baseline_*.txt` | `logs/` |
+| 默认基线 | `d270final`: acts=36 / err=0 / core=0 / quest_map=1 / rc=0 | 最新 `baseline_*.txt` | `logs/` |
 
 > **HLL 口径警告**：本表是**源码宏口径**；`PROJECT-MANAGEMENT.md` 里的
 > 「2,151 / 3,351（64%）」是 **AIN 声明口径**（另一天的快照），两者不可混用。
