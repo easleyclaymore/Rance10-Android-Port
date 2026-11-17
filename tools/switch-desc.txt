@@ -140,5 +140,7 @@ XSYS4_ACT_RELEASE_DGLIST	[D270 已转正] ReleaseActivity 的 EraseNumberList �
 XSYS4_ACT_RELEASE_DGLIST_DBG	[诊断] 打印每次 ReleaseActivity 释放的活动名、部件数与实际写回 EraseNumberList 的委托下标个数；用来证明 D270 的修复不是死代码（个数恒 0 就说明出参本来没被 AIN 用）
 XSYS4_EX_RECT_SIZE	[D271 已转正] EX 装载时为 `矩形パーツ`(组件类型 23) 按四角坐标 左上/右上/左下/右下 算出宽高并 PE_SetPartsSize；此前一个字段都没解析，实测 64 个 PARTS_RECT_DETECTION 部件里 60 个是 0x0（ApBase 因此既画不出也点不到）；默认生效，=0 回退做 A/B
 XSYS4_EX_RECT_DBG	[诊断] 打印每个 `矩形パーツ` 的四角换算结果与是否被保留（已有尺寸时 REPORT 而非覆盖）；用来确认 Ain 运行时 SetRectangleDetectionSize 的优先级没被 EX 静态值盖掉
+XSYS4_TALT_EXTRA_FORMATS	[D275 已转正] D200 的「LIBL=0 时追加 TALT 图集」只认 QNT 魔数，而 `战斗画面/シス／战斗／技能按钮／一般` 的 TALT 是 **AJP**，于是零纹理库、底板一个像素不画。默认改成交给 `cg_check_format()` 判定；=qnt 回退成旧行为做 A/B
+XSYS4_FLAT_LIBS_DBG	[诊断] 打印每个 flat 的 LIBL 声明：库数/每个库的 type 与名字/CG 数据指针，以及 TALT 条目的 offset/size/magic。用来区分「0 个库」「有库但不是 CG」「CG 解码失败」三种完全不同的病因
 XSYS4_SHOT_DIR	[诊断] 指定目录后按 Alt+S 让引擎用 glReadPixels 直接 dump GL main surface 为 shot_NNN.png，绕过 zenity 文件框与 X11 合成；GL 直绘下 x11grab/import 只能拿到全黑 framebuffer，画面判据以此为准（GUIDE 1.13）
 XSYS4_SHOT_PARTS_DUMP	[诊断] 配合 XSYS4_SHOT_DIR：每次引擎自截图时打一次部件快照（layer_show / cover / 每部件 vis）+ 同帧 CG 绘制日志（最近 12 次调用的 alpha / multiply_color / scale / 纹理尺寸、以及两次截图之间的绘制次数）；按截图时刻触发而非全程探针，避免拖慢帧率改变剧情时序；需配 XSYS4_PARTS_DUMP_MIN=900000300 / MAX=1000
