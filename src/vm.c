@@ -3663,8 +3663,13 @@ static enum opcode execute_instruction(enum opcode opcode)
 		 * 浮点→整数转换的原始值打出来。`QuestMapObjectLoader@Load` 的循环
 		 * 上界 rIndex 正是这样来的，垃圾浮点在这一步就能看见。 */
 		if (call_stack_ptr > 0 && lvar_watch_matches(call_stack[call_stack_ptr-1].fno)) {
+			/* [D284] 限流上限从 40 提到 400：40 条在多部件场景下会被
+			 * 前面几个部件的淡入吃光，真正关心的那个部件一条都打不出来
+			 * —— 这正是 D283/D284 卡住的地方（439 的 0.75/1.0 转换始终看不见）。
+			 * 用常量而不是新开关：本探针已由 `XSYS4_LVAR_DBG` 整层门控，
+			 * 再加一个环境变量只是把债务从代码搬到开关表。 */
 			static int nf;
-			if (nf++ < 40)
+			if (nf++ < 400)
 				NOTICE("[ftoi] ip=0x%zX fno=%d float=%.9g -> %d", instr_ptr,
 				       call_stack[call_stack_ptr-1].fno,
 				       (double)stack_peek(0).f, (int32_t)stack_peek(0).f);

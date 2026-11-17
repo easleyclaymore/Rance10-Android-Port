@@ -33,10 +33,15 @@ void static_library_replace(struct static_library *lib, const char *name, void *
 		return rval;						\
 	}
 
-#define HLL_EXPORT(fname, funptr) { .name = #fname, .fun = funptr, .nr_args = -1 }
+#define HLL_EXPORT(fname, funptr) { .name = #fname, .fun = funptr, .nr_args = -1, .ret_type = -1 }
 /* 同名重载用这个标注参数个数；链接时优先选 arity 相等的那一项。 */
-#define HLL_EXPORT_N(fname, funptr, n) { .name = #fname, .fun = funptr, .nr_args = (n) }
-#define HLL_TODO_EXPORT(fname, funptr) { .name = #fname, .fun = NULL, .nr_args = -1 }
+#define HLL_EXPORT_N(fname, funptr, n) { .name = #fname, .fun = funptr, .nr_args = (n), .ret_type = -1 }
+/* [D284] 同名 + 同 arity、只有数值类型不同的重载（Math.Min/Max 各 2/3/4 参
+ * 都有 int 与 float 两版）必须再靠返回类型区分，否则浮点版会被绑到整数
+ * 实现上，把小数截断成 0。用法：HLL_EXPORT_RT(Min, Math_Min, AIN_INT)。 */
+#define HLL_EXPORT_RT(fname, funptr, rt) { .name = #fname, .fun = funptr, .nr_args = -1, .ret_type = (rt) }
+#define HLL_EXPORT_NRT(fname, funptr, n, rt) { .name = #fname, .fun = funptr, .nr_args = (n), .ret_type = (rt) }
+#define HLL_TODO_EXPORT(fname, funptr) { .name = #fname, .fun = NULL, .nr_args = -1, .ret_type = -1 }
 
 #define HLL_LIBRARY(lname, ...)				\
 	struct static_library lib_ ## lname = {		\

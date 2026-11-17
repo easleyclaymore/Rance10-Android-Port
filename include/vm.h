@@ -41,6 +41,15 @@ struct static_hll_function {
 	 * 同名重载（String.GetPart 2/3 参）必须靠它区分：以前只比名字，
 	 * 2 参调用被绑到 3 参实现上，第三个参数直接读寄存器垃圾。 */
 	int nr_args;
+	/* [D284] 声明的返回类型（`AIN_INT` / `AIN_FLOAT` / …，-1 = 未标注）。
+	 *
+	 * 为什么必须有它：`Math.Min` 在 AIN 库表里有**同名同参数个数**的
+	 * 整数版和浮点版（各 2/3/4 参），只看名字+arity 根本分不开 ——
+	 * 实测浮点版被绑到整数实现 `Math_Min(int,int)` 上，
+	 * `Parts@SetAlpha` 的 `rangeF(0,1,val)` 于是把 val **截断成 0**，
+	 * 战斗卡按钮的淡入永远停在 alpha=0（`[BATTLE-FLAT-CLOCK]`）。
+	 * 导出表里 `MinF` 这个名字在 AIN 中不存在，是死条目。 */
+	int ret_type;
 };
 
 struct static_library {
