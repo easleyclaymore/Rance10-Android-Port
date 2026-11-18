@@ -207,7 +207,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **224**（未标注 31）｜ HLL 源码口径 **3301 / 4494（73.5%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 107 / 36** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **225**（未标注 31）｜ HLL 源码口径 **3301 / 4494（73.5%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 109 / 36** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
 <!-- STATS:END -->
 
 最常用的：
@@ -286,6 +286,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 | ② 工作流 | `docs/IMPACT.md` | 影响面清单：影响场景 / 必重跑闭环 / 回退方式 | 改跨模块代码之前 |
 | ② 工作流 | `docs/HLL-L3.md` | 第一章 121 个 HLL 的 L2/L3 达标计划（8 批）+ 逐函数台账（台账块脚本生成） | 做 HLL 实现前 |
 | ③ 知识 | `docs/SDK.md` | 工具链入口：`xsys4` 命令、动作序列、跑测配方、日志前缀 | 动手之前 |
+| ③ 知识 | `docs/RENDER-BACKEND.md` | 渲染后端决策记录：SDL3 / Vulkan / SDL_GPU / GLES3 的可行性与成本 | 想动图形层之前 |
 | ③ 知识 | `docs/OFFLINE.md` | 离线工具参数/模式 + HLL 全量普查方法 | 用离线工具时 |
 | ③ 知识 | `docs/GUIDE/` | 深层方法论与契约，对外成书。**定位是「判据与陷阱」，不是状态**：它只在**修订记录**里引用 D 号（说明"这一版补了哪条判据"），正文不写当前进度/卡点。读它要判据，读 `STATUS.md` 要现状 —— 两者不要互相替代 | 要判据 / 方法论时 |
 | ③ 知识 | `tools/MAP.md` | `tools/` 目录分层与脚本分工 | 加 / 找脚本时 |
