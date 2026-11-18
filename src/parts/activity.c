@@ -1219,7 +1219,19 @@ static int build_part(struct activity_part *part, int parent_no)
 			 * 顺序反了 CG 就会落到 (0,1080) 以下的屏幕外。 */
 			PE_SetPartsOriginPosMode(frame_no, part->origin_mode);
 			PE_SetPos(frame_no, px, py);
-			PE_SetZ(frame_no, part->z);
+			/* [D293] 底板 frame 的 z 不能直接用 EX 的 `part->z`(=1)。
+			 * AIN 之后会给**文本件**调 `SetZ(342, 5000)` 把消息窗口
+			 * 提到最上层，但 frame 是我们新分配的号，AIN 根本不知道它，
+			 * 于是它永远停在 z=1 —— 而地图/UI 的 z 在 1500~4349，
+			 * 整块底板被压在最底下（`s83` dump：`no=900000343 z=1`，
+			 * 尺寸/纹理/位置却全对）。这里给一个略低于文字件的基线，
+			 * 保证它盖住地图又不会压住正文。`XSYS4_MSGWIN_FRAME_Z` 可调。 */
+			static int frame_zbase = -1;
+			if (frame_zbase < 0) {
+				const char *e = getenv("XSYS4_MSGWIN_FRAME_Z");
+				frame_zbase = e && *e ? atoi(e) : 4900;
+			}
+			PE_SetZ(frame_no, frame_zbase + part->z);
 			struct string *cg = cstr_to_string(part->cg_name);
 			bool ok = PE_SetPartsCG(frame_no, cg, part->deform, 1);
 			if (ok) {

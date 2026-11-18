@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **191** 个开关，其中 **31** 个没有就近注释。
+共 **192** 个开关，其中 **32** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -52,13 +52,13 @@
 | 容器与内存 | `XSYS4_DG_MISS_FILTER` | `src/vm.c:1569` | 收窄 DG_MISS 输出 |
 | 容器与内存 | `XSYS4_DG_PAGE_DBG` | `src/vm.c:1506` | 委托页生命周期诊断 |
 | 容器与内存 | `XSYS4_MEM_STAT` | `src/vm.c:4942` | 堆内存与 RSS 实时统计 |
-| 呈现与输入 | `XSYS4_ACT_BUILD_DBG` | `src/parts/activity.c:1303` | [诊断] 打印每个 activity 部件的 `no/name/parent/type`（前 3000 条）。用来把运行时部件号对号到 XML 里的名字，例如 `900000397 = ButtonDeffence` |
+| 呈现与输入 | `XSYS4_ACT_BUILD_DBG` | `src/parts/activity.c:1315` | [诊断] 打印每个 activity 部件的 `no/name/parent/type`（前 3000 条）。用来把运行时部件号对号到 XML 里的名字，例如 `900000397 = ButtonDeffence` |
 | 呈现与输入 | `XSYS4_ACT_CLICKABLE_ALL` | `src/parts/activity.c:1107` | 把所有**活动文件里声明**的部件标为可点（运行时建的 900000xxx 不受影响） |
 | 呈现与输入 | `XSYS4_ACT_DBG` | `src/parts/activity.c:742` | 活动装载与点击派发诊断 |
-| 呈现与输入 | `XSYS4_ACT_DEBUG` | `src/parts/activity.c:1601` | 活动诊断的旧开关 |
+| 呈现与输入 | `XSYS4_ACT_DEBUG` | `src/parts/activity.c:1613` | 活动诊断的旧开关 |
 | 呈现与输入 | `XSYS4_ACT_PART_DBG` | `src/parts/parts.c:2206` | 打印活动部件的建造解析（名字/类型/尺寸/表示領域/flat 名）与 300 号段之后的 SetPos/SetZ |
-| 呈现与输入 | `XSYS4_ACT_RELEASE_DGLIST` | `src/parts/activity.c:1414` | [D270 已转正] ReleaseActivity 的 EraseNumberList 出参不再丢弃：把被释放部件的 delegate_index 写回 AIN，供 CPartsMessageManager@ReleaseFunctionSetList 销掉消息分发表里的委托（否则释放后的委托仍可命中，号复用时调到上一次活动的处理器）；默认生效，=0 回退做 A/B |
-| 呈现与输入 | `XSYS4_ACT_RELEASE_DGLIST_DBG` | `src/parts/activity.c:1403` | [诊断] 打印每次 ReleaseActivity 释放的活动名、部件数与实际写回 EraseNumberList 的委托下标个数；用来证明 D270 的修复不是死代码（个数恒 0 就说明出参本来没被 AIN 用） |
+| 呈现与输入 | `XSYS4_ACT_RELEASE_DGLIST` | `src/parts/activity.c:1426` | [D270 已转正] ReleaseActivity 的 EraseNumberList 出参不再丢弃：把被释放部件的 delegate_index 写回 AIN，供 CPartsMessageManager@ReleaseFunctionSetList 销掉消息分发表里的委托（否则释放后的委托仍可命中，号复用时调到上一次活动的处理器）；默认生效，=0 回退做 A/B |
+| 呈现与输入 | `XSYS4_ACT_RELEASE_DGLIST_DBG` | `src/parts/activity.c:1415` | [诊断] 打印每次 ReleaseActivity 释放的活动名、部件数与实际写回 EraseNumberList 的委托下标个数；用来证明 D270 的修复不是死代码（个数恒 0 就说明出参本来没被 AIN 用） |
 | 呈现与输入 | `XSYS4_CLICK_ANY` | `src/parts/input.c:278` | [诊断/已证否] 点击捕获改为「非 flat 一律可捕获」。实测 EndInput 直接变 0（无效部件先消费点击）——保留仅作反例 |
 | 呈现与输入 | `XSYS4_CLICK_BUBBLE` | `src/parts/input.c:394` | [诊断/已证否] 子部件被点时向父链再发一份 CLICK。s98 实测对面板关闭无效（12 次点击仍只 1 次捕获），说明断点是捕获而非冒泡 |
 | 呈现与输入 | `XSYS4_CLICK_ONLY_CLICKABLE` | `src/parts/input.c:173` | [诊断] 点击捕获与 hover 消费都只认「点击許可=1」。这是唯一让 EndInput 恢复正常的判据（点到整屏点击层 700/701） |
@@ -72,7 +72,7 @@
 | 呈现与输入 | `XSYS4_CTRL_PENDING` | `src/parts/parts.c:3167` | [D289] 默认开。`Activity@Load` 建出的部件归到「即将由 AddLayer 创建的那一层」，而不是当前 active。AIN 的顺序是 Load→AddLayer，旧行为让部件全落在上一层，之后按新层 ID 的 EraseLayer 必然 `released=0`（旧场景部件永久残留，标题 Logo 跟到战斗里吃点击）。设 0 回退旧行为做 A/B |
 | 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:465` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
 | 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:432` | 输入命中的候选部件表与点击状态（每 60 帧一条心跳，非沉默） |
-| 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:1625` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
+| 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:1637` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
 | 呈现与输入 | `XSYS4_PARTS_DUMP_MAX` | `src/parts/parts.c:3140` | — |
 | 呈现与输入 | `XSYS4_PARTS_DUMP_MIN` | `src/parts/parts.c:3087` | [诊断] 只 dump 部件号 >= 此值的部件；部件表按插入序遍历，地图号段会吃光 PARTS_DUMP_MAX 名额，设 900000300 才能看到动态号段 |
 | 呈现与输入 | `XSYS4_PARTS_NO_BASE` | `src/parts/parts.c:2950` | — |
@@ -152,6 +152,7 @@
 | 其它 | `XSYS4_MSGQ_DBG` | `src/parts/message.c:179` | 〔摘〕对其它值走 member1[delegate_index]。分派打空炮时必须先知道走的哪条。 |
 | 其它 | `XSYS4_MSGWIN_DBG` | `src/hll/PartsEngine.c:46` | [诊断] 打印消息窗口配置族 setter 的触达与实参（Active/Text/CGName/FlatName/TextArea/OriginPosMode/Space/Speed），每个函数限 20 条；用来判定「空桩是不是真被调用」 |
 | 其它 | `XSYS4_MSGWIN_FRAME_DBG` | `src/parts/render.c:1022` | [诊断] 打印消息窗口底板 CG（1920x300~500）是否进入 parts_render 及其 origin_offset / 准入字段；用来区分「没到渲染」与「画了看不见」 |
+| 其它 | `XSYS4_MSGWIN_FRAME_Z` | `src/parts/activity.c:1231` | — |
 | 其它 | `XSYS4_MSGWIN_FULL` | `src/parts/activity.c:1205` | [D217 已转正] EX 消息窗口组件补齐 39px 字体/字色/字距/行距，并用独立 CG 部件装载 种类別情报 的 底板ＣＧ名；默认生效，=0 回退做 A/B |
 | 其它 | `XSYS4_MSG_DBG` | `src/parts/message.c:45` | 〔摘〕只打非悬停消息，否则前 60 条全被 MOUSE_ON 占满，看不到点击。 |
 | 其它 | `XSYS4_MSG_NO_SENTINEL` | `src/parts/message.c:175` | 〔摘〕这就是那个把 SceneStack@WaitFrame 卡死的忙循环。 |
