@@ -146,3 +146,31 @@ SDL_Lock/UnlockAudioDevice    →  SDL_LockAudioStream / SDL_UnlockAudioStream�
 
 补充：`SDL_Renderer` / `SDL_Texture` 在 SDL3 **仍然存在**，只是 API 有较多调整 —— 本项目两个都没用
 （渲染走裸 OpenGL），所以这一大块改动对我们不适用，这也是本次评估判定「工作量小」的主要依据。
+
+
+---
+
+## 决策二：上游跟进 vs 自主（SDL3 的前提问题）
+
+**先纠正一个事实**：`nunuhara/xsystem4` **没有停更** —— 最近一次 push 是 `2026-11-14`（本次核查时 4 天前），
+而且我们**落后 14 个提交**。所以「得不到上游支持」这个前提不成立。
+
+但「上游的支持不解决我们的痛处」成立。逐条判定（本次实测）：
+
+| 上游提交 | 规模 | 与本仓库的关系 | 判定 |
+|---|---|---|---|
+| `parts: Implement activity system` | 1054 行（`activity.c` 922） | 他们是 `.pact` 二进制解析器；我们 `activity.c` **1728 行**是另一套（`ex_tree` + `uc_*`，为兰斯10 手写） | 两套实现，**不建议整体并** |
+| `PartsEngine: Accept controller IDs in Add/RemoveController` | 19 / 29 行 | **方向相反**：他们判 `id < nr_controllers`（按下标），Rance10 实测传稳定 id（`SetActive no=10` 而只有 6 层），采纳会 `VM_ERROR` | **不采纳** |
+| `parts: change origin mode 0 to top-left` | **1 行** | 我们确实是旧逻辑：`default: return { mode, (3*h)/4 }`（mode 0 会往下推 0.75 个高度） | 已加 `XSYS4_ORIGIN_MODE0_TL` 开关；**首测画面无差异**，待更多场景再判 |
+| `parts: Implement PartsFunc 46 (GetAbsoluteMaxZ)` | 18 行 | 我们没实现；但 Rance10 的 lib 表里**没有这个名字**（启动无 `Unimplemented` 警报） | 备着，当前零收益 |
+| `parts: Implement PartsFunc 158 (SetFlatUpdateSpeedRate)` | 18 行 | 同上 | 备着 |
+| `parts: Add PE_add_construct_process` | 160 / 119 行 | 动 `construction.c`，而我们在这块有 D224 特判 | 需单独评估 |
+| 字体 3 个提交 | 10 行 | ①比例字宽是 **opt-in**，默认仍等宽 → 默认零影响；②`CharSpriteManager` 用 extent 不裁宽字 → 只影响角色精灵 | 低优先 |
+| `PartsEngine: Add Evenicle exports` | 93 行 | 纯增量导出，服务 Evenicle | 无收益 |
+
+**关键结论（决定 SDL3 时机）**：这 14 个提交动的文件是 `parts*.c` / `activity.c` / `font*.c` / `text.c` / `system4.c`，
+**没有一个是 SDL 接线文件**（`video.c` / `input.c` / `audio_mixer.c` / `draw.c` 全未涉及）。
+也就是说：**换 SDL3 与跟上游同步，这两件事在文件层面不重叠** —— 上一版「先吸收上游再换 SDL」的顾虑可以撤销。
+
+至于 `[TEXTBUTTON-CLICK]`：上游代码里 `TextButton` / `MouseLClick` / `CallEvent` **一个引用都没有**
+（`git grep` 全空），所以这条卡点**不能指望上游**，只能我们自己查。
