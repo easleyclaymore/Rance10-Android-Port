@@ -508,10 +508,11 @@ static void parts_render_cg(struct parts *parts, struct parts_common *common){
 			area_logged++;
 			/* [D297] glIsTexture：handle 非 0 不等于纹理有效
 			 * （号复用后旧对象可能已被 delete）。 */
-			NOTICE("[cgarea] no=%d glis=%d tex=%dx%d w/h=%dx%d area=(%d,%d %dx%d) "
+			NOTICE("[cgarea] no=%d glis=%d deform=%d tex=%dx%d w/h=%dx%d area=(%d,%d %dx%d) "
 			       "r=(%d,%d %dx%d)%s",
 			       parts->no, common->texture.handle ?
 					(int)glIsTexture(common->texture.handle) : -1,
+			       parts->sprite_deform,
 			       common->texture.w, common->texture.h,
 			       common->w, common->h,
 			       common->surface_area.x, common->surface_area.y,
