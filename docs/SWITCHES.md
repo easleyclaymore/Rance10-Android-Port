@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **197** 个开关，其中 **31** 个没有就近注释。
+共 **198** 个开关，其中 **31** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -95,12 +95,12 @@
 | 其它 | `XSYS4_ALPHA_DBG` | `src/parts/parts.c:2292` | 打印 SetComponentAlpha 与 AddMotionAlpha 的 parts/alpha 序列（查部件为何全透明）。[D277] 现在同时打 `fno~` 提示来源；注意该值只是参考（见下条） |
 | 其它 | `XSYS4_ALPHA_STACK` | `src/parts/parts.c:2303` | [诊断] 配合 ALPHA_DBG，在每次 SetAlpha 时打 AIN 调用栈。定位 alpha 被谁写成 0 必须用它 —— `hll_current_fno()` 返回的是上次 HLL 的值、返回后不复原，实测会打出 `fno=107`(CASConstructionProcess@SetSrcX) 这种完全无关的函数 |
 | 其它 | `XSYS4_BACKSCENE_SHOW` | `src/hll/PartsEngine.c:2134` | [诊断] 让 `SetShowForBackScene(no,show)` 真正生效（默认空桩）。战斗里全屏背景 flat 705 挡住技能按钮点击，这个 setter 是 AIN 本来要用来按场景隐藏背景的手段；开它可验证 `[backscene] no= show=` 的实参 |
-| 其它 | `XSYS4_CG_AREA_DBG` | `src/parts/render.c:555` | [D292 诊断] 只对面积够大的部件（立绘 1920x1080 量级，w 或 h >= 400）打印纹理尺寸 / 部件 w,h / surface_area / 最终采样 r；用来区分「立绘只画出一部分」是采样区域退化（r.w 或 r.h 为 0）还是纹理本身不对 |
+| 其它 | `XSYS4_CG_AREA_DBG` | `src/parts/render.c:575` | [D292 诊断] 只对面积够大的部件（立绘 1920x1080 量级，w 或 h >= 400）打印纹理尺寸 / 部件 w,h / surface_area / 最终采样 r；用来区分「立绘只画出一部分」是采样区域退化（r.w 或 r.h 为 0）还是纹理本身不对 |
 | 其它 | `XSYS4_CG_EXIST_DBG` | `src/hll/CGManager.c:49` | [D292 诊断] 打印 `CGManager.IsExist` 的每次询问与结果；值=1 打全部，值=子串只打含该 UTF-8 子串的名字（如 `=希露`）。用来回答「AIN 到底问过哪个 CG 名、引擎答了什么」——立绘回退成 `立／？？？` 时必须先确认 AIN 问过 `立／希露／基本` |
 | 其它 | `XSYS4_CG_MISS_DBG` | `src/asset_manager.c:140` | [D292 诊断] 只打印 **未命中** 的 CG 名（`[cgmiss]`，按名字去重）与按名装载/解码失败（`[cgload] LOAD FAILED` / `DECODE FAILED`）。这是定位「立绘缺图」第二条路径的探针：渲染层已经看不到原名，只有这里留着 |
 | 其它 | `XSYS4_CG_MISS_STACK` | `src/hll/CGManager.c:83` | [D292 诊断] 配合 CG_MISS_DBG，在每个未命中的 CG 名后面打一次 AIN 调用栈；用来抓「是谁在问这个不存在的名字」（占位图 `？？？` 的调用方） |
-| 其它 | `XSYS4_CG_SPRITE_DBG` | `src/parts/render.c:608` | [诊断] 配合 CG_SPRITE_PATH：打印走精灵路径的大矩形（no/di/pr/filt/a） |
-| 其它 | `XSYS4_CG_SPRITE_PATH` | `src/parts/render.c:604` | [诊断] 宽≥1900 且高 250..600 的 CG 改走精灵路径（`gfx_render_texture`）。实测与 parts 着色器路径**结果一致**（`s92` vs `s104` 逐像素几乎相同），说明底板一直在正常绘制，保留供以后遇到真·着色器问题时对照 |
+| 其它 | `XSYS4_CG_SPRITE_DBG` | `src/parts/render.c:628` | [诊断] 配合 CG_SPRITE_PATH：打印走精灵路径的大矩形（no/di/pr/filt/a） |
+| 其它 | `XSYS4_CG_SPRITE_PATH` | `src/parts/render.c:624` | [诊断] 宽≥1900 且高 250..600 的 CG 改走精灵路径（`gfx_render_texture`）。实测与 parts 着色器路径**结果一致**（`s92` vs `s104` 逐像素几乎相同），说明底板一直在正常绘制，保留供以后遇到真·着色器问题时对照 |
 | 其它 | `XSYS4_CONSTRUCT_776` | `src/hll/PartsEngine.c:502` | =0 把 AddPartsConstructionProcess(776) 退回空桩，用于卡片合成 A/B |
 | 其它 | `XSYS4_CONSTRUCT_DBG` | `src/parts/construction.c:338` | 打印部件合成操作：PartsFunc(case 162)、776 批量入口、Build 的 parts/cmd/CG 名与 op 数 |
 | 其它 | `XSYS4_CP_DBG` | `src/vm.c:512` | 〔摘〕Parts(1114) 的 m_partsNumber 若在拷贝时还是 0，副本就永远是 0。 |
@@ -108,6 +108,7 @@
 | 其它 | `XSYS4_DUMP_CG_SIZE` | `src/parts/parts.c:868` | [诊断] 配合 DUMP_CG：只转存宽度等于该值的 CG（按尺寸触发，避开号段复用） |
 | 其它 | `XSYS4_DUMP_EVERY` | `src/video.c:460` | 每隔 N 次执行 dump 一次，用于观察循环里的状态漂移 |
 | 其它 | `XSYS4_DUMP_FRAME` | `src/video.c:456` | 指定帧的完整快照（配合 DUMP_AT 的扩展模式） |
+| 其它 | `XSYS4_DUMP_GLYPH` | `src/parts/render.c:253` | [诊断] 把指定文本部件的字形纹理逐个转存成 /tmp/glyph_<no>_<i>.png（最多 6 个）。判断「字被裁」是位图层还是绘制层的唯一硬证据 |
 | 其它 | `XSYS4_DUMP_TOPS` | `src/vm.c:2438` | 〔摘〕「条件是真是假」，而这类「条件永远为假」正是最难查的一类。 |
 | 其它 | `XSYS4_ENV_DBG` | `src/vm.c:2997` | — |
 | 其它 | `XSYS4_EX_DBG` | `src/hll/MainEXFile.c:527` | 〔摘〕所有任务都会被判成地图任务、剧情整段跳过——所以必须能看见。 |
@@ -127,7 +128,7 @@
 | 其它 | `XSYS4_FLAT_FRAME_DBG` | `src/parts/parts.c:1180` | [诊断] 轻量 flat 帧探针：打印 no/ctrl/frame/root_state.stopped/fps/passed_time。值=1 打全部，值=部件号只跟一个。用来区分「帧没推进」是 parts_flat.stopped、root_state.stopped（脚本 stop 键）还是 passed_time 为 0 |
 | 其它 | `XSYS4_FLAT_TICK_DBG` | `src/parts/flat.c:220` | [诊断] 逐 tick 打印 flat 推进前后（prev/next/cf/cap/inc/stop/sup/jump），值 = 只跟 end_frame >= N 的长演出（默认 70）。用来分辨「帧不涨」是 increment=0（stopped）还是被封顶 |
 | 其它 | `XSYS4_FLAT_TREE` | `src/parts/flat.c:668` | — |
-| 其它 | `XSYS4_FPS_DBG` | `src/parts/render.c:1240` | [诊断] 每秒打印一次实际渲染帧数。用来区分「演出推进慢」是逻辑卡死还是 llvmpipe 低帧率（D92 全量标脏） |
+| 其它 | `XSYS4_FPS_DBG` | `src/parts/render.c:1260` | [诊断] 每秒打印一次实际渲染帧数。用来区分「演出推进慢」是逻辑卡死还是 llvmpipe 低帧率（D92 全量标脏） |
 | 其它 | `XSYS4_G14_WATCH` | `src/vm.c:2911` | [诊断] 只在 global[14] 的值变化时打印 ip/旧值/新值/栈/调用栈（抓单例被覆写） |
 | 其它 | `XSYS4_GL_DBG` | `src/video.c:267` | [诊断] 启动时打印实际 GL vendor/renderer/version —— 判断有没有用上硬件加速的唯一硬证据（llvmpipe=软件，Mesa Intel=硬件） |
 | 其它 | `XSYS4_GSAVE_DBG` | `src/savedata.c:762` | 〔摘〕所以按可打印的类型名分类。 |
@@ -155,7 +156,7 @@
 | 其它 | `XSYS4_MSGF_FIX` | `src/hacks.c:328` | [D204] AIN v12 无 MSGF 段时按函数名把 msgf 解析到 "message"/3（Rance10: fno 6100）；默认开启，=0 关闭做 A/B |
 | 其它 | `XSYS4_MSGQ_DBG` | `src/parts/message.c:179` | 〔摘〕对其它值走 member1[delegate_index]。分派打空炮时必须先知道走的哪条。 |
 | 其它 | `XSYS4_MSGWIN_DBG` | `src/hll/PartsEngine.c:46` | [诊断] 打印消息窗口配置族 setter 的触达与实参（Active/Text/CGName/FlatName/TextArea/OriginPosMode/Space/Speed），每个函数限 20 条；用来判定「空桩是不是真被调用」 |
-| 其它 | `XSYS4_MSGWIN_FRAME_DBG` | `src/parts/render.c:1123` | [诊断] 打印消息窗口底板 CG（1920x300~500）是否进入 parts_render 及其 origin_offset / 准入字段；用来区分「没到渲染」与「画了看不见」 |
+| 其它 | `XSYS4_MSGWIN_FRAME_DBG` | `src/parts/render.c:1143` | [诊断] 打印消息窗口底板 CG（1920x300~500）是否进入 parts_render 及其 origin_offset / 准入字段；用来区分「没到渲染」与「画了看不见」 |
 | 其它 | `XSYS4_MSGWIN_FRAME_Z` | `src/parts/activity.c:1232` | [诊断] 消息窗口底板 frame 部件的 z 基线（默认 4900）。用来 A/B「底板到底画没画」：设 1 会让它排到地图后面，底部像素会明显变化 |
 | 其它 | `XSYS4_MSGWIN_FULL` | `src/parts/activity.c:1205` | [D217 已转正] EX 消息窗口组件补齐 39px 字体/字色/字距/行距，并用独立 CG 部件装载 种类別情报 的 底板ＣＧ名；默认生效，=0 回退做 A/B |
 | 其它 | `XSYS4_MSG_DBG` | `src/parts/message.c:45` | 〔摘〕只打非悬停消息，否则前 60 条全被 MOUSE_ON 占满，看不到点击。 |
@@ -204,9 +205,9 @@
 | 其它 | `XSYS4_SWAP_LOG` | `src/video.c:446` | 〔摘〕这样启动器可以在第一帧呈现之后立刻冻结进程。 |
 | 其它 | `XSYS4_SWITCH_DBG` | `src/vm.c:3378` | [诊断] 按开关号打印 SWITCH 的实参与落点（`[switch] no=.. val=.. -> 0x..`）。查「某个 key 为什么没派发到预期方法」用它：`SWITCH 496` 按 `m_key` 分派到 `Parts@SetX/SetAlpha/…`，只看 case 表不知道实际弹进来的值是多少 |
 | 其它 | `XSYS4_TALT_EXTRA_FORMATS` | `src/parts/flat.c:400` | [D275 已转正] D200 的「LIBL=0 时追加 TALT 图集」只认 QNT 魔数，而 `战斗画面/シス／战斗／技能按钮／一般` 的 TALT 是 **AJP**，于是零纹理库、底板一个像素不画。默认改成交给 `cg_check_format()` 判定；=qnt 回退成旧行为做 A/B |
-| 其它 | `XSYS4_TEXT_CHAR_DBG` | `src/parts/render.c:194` | [诊断] 逐个文本部件打印行数/行高/逐字符 advance 与字形尺寸，用来区分「advance 太小」与「两段文本叠在一起」 |
-| 其它 | `XSYS4_TEXT_RENDER_DBG` | `src/parts/render.c:155` | =1 列全部非 UC 文字层；=<部件号下限> 只盯该号段（如 900000300），每号最多 3 条并附 show/alpha/vis/mw/mwshow 准入字段；修掉了「全局 80 条被地图吃光」的假阴性 |
-| 其它 | `XSYS4_TITLE_UI_FIX` | `src/parts/render.c:124` | — |
+| 其它 | `XSYS4_TEXT_CHAR_DBG` | `src/parts/render.c:196` | [诊断] 逐个文本部件打印行数/行高/逐字符 advance 与字形尺寸，用来区分「advance 太小」与「两段文本叠在一起」 |
+| 其它 | `XSYS4_TEXT_RENDER_DBG` | `src/parts/render.c:156` | =1 列全部非 UC 文字层；=<部件号下限> 只盯该号段（如 900000300），每号最多 3 条并附 show/alpha/vis/mw/mwshow 准入字段；修掉了「全局 80 条被地图吃光」的假阴性 |
+| 其它 | `XSYS4_TITLE_UI_FIX` | `src/parts/render.c:125` | — |
 | 其它 | `XSYS4_TRACE` | `src/vm.c:2378` | — |
 | 其它 | `XSYS4_UC_RENDER_DBG` | `src/text.c:274` | 用户组件（TextButton 等）渲染诊断 |
 | 其它 | `XSYS4_USERCOMP_DBG` | `src/parts/activity.c:856` | — |

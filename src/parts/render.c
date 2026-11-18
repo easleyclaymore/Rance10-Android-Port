@@ -18,6 +18,7 @@
 #include <cglm/cglm.h>
 
 #include "system4.h"
+#include "system4/cg.h"
 #include "system4/hashtable.h"
 #include "system4/string.h"
 #include "system4/flat.h"
@@ -247,6 +248,24 @@ static void parts_render_text(struct parts *parts, struct parts_text *t)
 		struct parts_text_line *line = &t->lines[i];
 		for (int j = 0; j < line->nr_chars; j++) {
 			struct parts_text_char *ch = &line->chars[j];
+			/* [D305] 把字形纹理本身转存成 PNG：判断「字被裁」是位图层
+			 * 还是绘制层。只在 XSYS4_DUMP_GLYPH 指定部件号时触发。 */
+			if (getenv("XSYS4_DUMP_GLYPH")) {
+				static int gn;
+				int want = atoi(getenv("XSYS4_DUMP_GLYPH"));
+				if (want && parts->no == want && gn < 6) {
+					typedef struct texture Texture;
+					extern int gfx_save_texture(Texture *, const char *, enum cg_type);
+					char gp[128];
+					snprintf(gp, sizeof(gp), "/tmp/glyph_%d_%d.png", parts->no, gn);
+					gfx_save_texture(&ch->t, gp, ALCG_PNG);
+					NOTICE("[glyph] no=%d i=%d ch=%02x%02x wh=%dx%d off=(%d,%d) path=%s",
+					       parts->no, gn, (unsigned char)ch->ch[0],
+					       (unsigned char)ch->ch[1], ch->t.w, ch->t.h,
+					       ch->off.x, ch->off.y, gp);
+					gn++;
+				}
+			}
 			/* 用精灵路径贴字形，而不是 parts 着色器。
 			 *
 			 * parts 着色器采样字形纹理时一个像素都不出——把纹理换成已知

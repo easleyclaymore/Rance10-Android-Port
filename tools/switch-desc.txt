@@ -145,6 +145,7 @@ XSYS4_CG_SPRITE_PATH	[诊断] 宽≥1900 且高 250..600 的 CG 改走精灵路�
 XSYS4_CG_SPRITE_DBG	[诊断] 配合 CG_SPRITE_PATH：打印走精灵路径的大矩形（no/di/pr/filt/a）
 XSYS4_DUMP_CG	[诊断] 把刚上传的 CG 纹理另存成 /tmp/texdump_<no>_<w>x<h>.png（最多 8 张，全宽高 250..600）。判断「纹理内容有没有图」的唯一决定性证据
 XSYS4_DUMP_CG_SIZE	[诊断] 配合 DUMP_CG：只转存宽度等于该值的 CG（按尺寸触发，避开号段复用）
+XSYS4_DUMP_GLYPH	[诊断] 把指定文本部件的字形纹理逐个转存成 /tmp/glyph_<no>_<i>.png（最多 6 个）。判断「字被裁」是位图层还是绘制层的唯一硬证据
 XSYS4_TEXT_CHAR_DBG	[诊断] 逐个文本部件打印行数/行高/逐字符 advance 与字形尺寸，用来区分「advance 太小」与「两段文本叠在一起」
 XSYS4_MSGWIN_FRAME_DBG	[诊断] 打印消息窗口底板 CG（1920x300~500）是否进入 parts_render 及其 origin_offset / 准入字段；用来区分「没到渲染」与「画了看不见」
 XSYS4_RELEASE_RECURSIVE	[D219 已转正] PE_ReleaseParts 递归释放整棵部件子树（原 parts_release 只把子部件摘链不释放，对话框关掉后文字层残留，H025/[LAYER-LEAK]）；默认生效，=0 回退做 A/B
