@@ -1,0 +1,125 @@
+# HLL 本章路径台账 —— 人工维护「级」与「契约/证据」两列
+# 格式: 库.函数<TAB>级(L0/L1/L2/L3/NA)<TAB>契约或证据
+# 数字列（调用次数/调用点）由 tools/offline/hll_hotness.py --emit 生成，不写在这里
+
+AFAFactory.LoadArchive	L0	
+AFAFactory.SearchTitle	L0	
+AnteaterADVLogList.AddNewPage	L0	
+AnteaterADVLogList.AddText	L0	
+Array.Alloc	L0	
+Array.Any	L0	
+Array.At	L0	
+Array.BinarySearch	L0	
+Array.Concat	L0	
+Array.Copy	L0	
+Array.EmplaceBack	L0	
+Array.Empty	L0	
+Array.Erase	L0	
+Array.EraseAll	L0	
+Array.Find	L0	
+Array.First	L0	
+Array.Free	L0	
+Array.Insert	L0	
+Array.IsExist	L0	
+Array.Last	L0	
+Array.LowerBound	L0	
+Array.Numof	L0	
+Array.PopBack	L0	
+Array.PushBack	L0	
+Array.Realloc	L0	
+Array.Reverse	L0	
+Array.ShallowCopy	L0	
+Array.Sort	L0	
+Array.Unique	L0	
+Array.Where	L0	
+CGManager.GetSize	L0	
+CGManager.IsExist	L0	
+ChipmunkSpriteEngine.Sleep	L0	
+ChipmunkSpriteEngine.TRANS_Begin	L0	
+ChipmunkSpriteEngine.Update	L0	
+CommonSystemData.SetDataInt	L0	
+Delegate.Clear	L0	
+Delegate.Empty	L0	
+Delegate.Numof	L0	
+Delegate.Set	L0	
+IbisInputEngine.Joystick_ClearCaptureFlag	L0	
+IbisInputEngine.Joystick_IsKeyDown	NA	键鼠路径不需要手柄；接 SDL 手柄属可选功能
+IbisInputEngine.Key_IsDown	L0	
+IbisInputEngine.MouseWheel_GetCount	L0	
+MainEXFile.A2Exists	L0	
+MainEXFile.A2Int	L0	
+MainEXFile.A2String	L0	
+MainEXFile.AInt	L0	
+MainEXFile.AString	L0	
+MainEXFile.GetColAtFormatName	L0	
+MainEXFile.GetEXNameList	L0	
+MainEXFile.GetNodeNameList	L0	
+MainEXFile.GetRowAtIntKey	L0	
+MainEXFile.GetRowAtStringKey	L0	
+MainEXFile.Int	L0	
+MainEXFile.Row	L0	
+MainEXFile.String	L0	
+Math.Clamp	L0	
+Math.Max	L0	
+Math.Min	L0	
+Math.Rand	L0	
+Math.RandF	L0	
+PartsEngine.AddPartsConstructionProcess	L0	
+PartsEngine.BeginInput	L0	
+PartsEngine.CreateUserPartsNumber	L0	
+PartsEngine.EndInput	L0	
+PartsEngine.GetActiveController	L0	
+PartsEngine.GetActivityParts	L0	
+PartsEngine.GetActivityPartsName	L0	
+PartsEngine.GetActivityPartsNumber	L0	
+PartsEngine.GetChild	L0	
+PartsEngine.GetClickNumber	L2	s141：EndInput clicked=N 与 GetClickNumber 返回值一致
+PartsEngine.GetComponentPosX	L0	
+PartsEngine.GetComponentType	L0	
+PartsEngine.GetControllerID	L0	
+PartsEngine.GetControllerLength	L0	
+PartsEngine.GetDelegateIndex	L0	
+PartsEngine.GetFreeNumber	L0	
+PartsEngine.GetMessageDelegateIndex	L0	
+PartsEngine.GetMessageType	L0	
+PartsEngine.GetMessageVariableType	L0	
+PartsEngine.IsComponentShow	L0	
+PartsEngine.NumofActivityParts	L0	
+PartsEngine.NumofChild	L0	
+PartsEngine.Parts_GetParentPartsNumber	L2	D312：返真实父号（含 pending_parent，0=无父）
+PartsEngine.Parts_GetPartsHeight	L0	
+PartsEngine.Parts_GetPartsWidth	L0	
+PartsEngine.Parts_IsPartsFlatEnd	L0	
+PartsEngine.Parts_SetComment	L0	
+PartsEngine.Parts_SetParentPartsNumber	L3	D194：运行时挂父立即 RefreshGlobalTree，防子树 z 停在建树瞬间
+PartsEngine.Parts_SetPartsCG	L2	D310：纹理转存证明挂图正确（1798x680 即目标图）
+PartsEngine.Parts_SetPassCursor	L0	
+PartsEngine.Parts_SetSoundName	L0	
+PartsEngine.Parts_SetText	L0	
+PartsEngine.Parts_SetTextCharSpace	L0	
+PartsEngine.PopMessage	L0	
+PartsEngine.ReadActivityFile	L0	
+PartsEngine.SetActiveController	L3	D312：稳定 id→栈下标；6741 次全解析、无 VM_ERROR（目视待验）
+PartsEngine.SetComponentAlpha	L0	
+PartsEngine.SetComponentPos	L0	
+PartsEngine.SetComponentPosZ	L0	
+PartsEngine.SetComponentShow	L0	
+PartsEngine.SetComponentType	L0	
+PartsEngine.SetDelegateIndex	L0	
+PartsEngine.SetEnableInputProcess	L0	
+PartsEngine.SetKeyWaitShow	L0	
+PartsEngine.SetWantSaveBackScene	L0	
+PassRegister.RegistText	L0	
+String.Contains	L0	
+String.Empty	L0	
+String.GetPart	L0	
+String.Length	L0	
+String.StartsWith	L0	
+system.DeleteSaveFile	L0	
+system.GetFuncStackName	L0	
+system.GetSaveFolderName	L0	
+system.GetTime	L0	
+system.GroupLoad	L0	
+system.GroupSave	L0	
+system.IsDebugMode	NA	发行环境应恒 false，属正确行为，无需实现
+system.Peek	L0	

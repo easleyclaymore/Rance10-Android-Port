@@ -25,6 +25,9 @@
 
     python3 tools/offline/hll_hotness.py ../logs/live_h1.log [更多日志...]
     python3 tools/offline/hll_hotness.py --todo ../logs/live_h1.log   # 只看待办
+    python3 tools/offline/hll_hotness.py --by-lib ../logs/live_h1.log # 按库分类
+    python3 tools/offline/hll_hotness.py --emit docs/HLL-L3.md \
+            --disasm /tmp/ain_full.txt ../logs/live_h1.log            # 把台账注入计划文档
 """
 
 import glob
@@ -104,6 +107,9 @@ def main(argv):
         print(__doc__)
         return 2
 
+    if "--emit" in argv:
+        return emit_ledger(argv)
+
     todo, stub = scan_source()
     calls, _ = parse_logs(paths)
     if not calls:
@@ -159,6 +165,96 @@ def main(argv):
           f" = {100.0 * handled / len(rows):.1f}%")
     return 0
 
+
+
+
+# ---------------------------------------------------------------- 台账注入
+LEDGER_TSV = os.path.join(REPO, "tools", "offline", "hll_ledger.tsv")
+BEGIN = "<!-- BEGIN:LEDGER -->"
+END = "<!-- END:LEDGER -->"
+SITE_RE = re.compile(r"CALLHLL\s+arg=\d+\s+\(0x[0-9a-f]+\)(\S+?)\s*$")
+
+
+def load_ledger():
+    """读 func<TAB>级<TAB>契约/证据，缺省 L0。"""
+    st = {}
+    if not os.path.exists(LEDGER_TSV):
+        return st
+    for ln in open(LEDGER_TSV, encoding="utf-8"):
+        if not ln.strip() or ln.startswith("#"):
+            continue
+        parts = ln.rstrip("\n").split("\t")
+        if len(parts) >= 2:
+            st[parts[0]] = (parts[1].strip() or "L0",
+                            parts[2].strip() if len(parts) > 2 else "")
+    return st
+
+
+def count_sites(path):
+    """每个函数的 AIN 调用点数量。"""
+    import collections
+    c = collections.Counter()
+    for ln in open(path, encoding="utf-8", errors="replace"):
+        m = SITE_RE.search(ln)
+        if m:
+            c[m.group(1)] += 1
+    return c
+
+
+def emit_ledger(argv):
+    out_path = argv[argv.index("--emit") + 1]
+    disasm = "/tmp/ain_full.txt"
+    if "--disasm" in argv:
+        disasm = argv[argv.index("--disasm") + 1]
+    logs = [a for a in argv if not a.startswith("--") and a != out_path and a != disasm]
+    if not logs:
+        print("需要至少一个日志文件", file=sys.stderr)
+        return 2
+
+    calls, _ = parse_logs(logs)
+    sites = count_sites(disasm) if os.path.exists(disasm) else {}
+    st = load_ledger()
+
+    rows = sorted(calls.items(), key=lambda kv: (kv[0].split(".")[0], -kv[1]))
+    levels = {}
+    for fn, _ in rows:
+        lv = st.get(fn, ("L0", ""))[0]
+        levels[lv] = levels.get(lv, 0) + 1
+
+    buf = [BEGIN, ""]
+    buf.append("由 `tools/offline/hll_hotness.py --emit` 生成，**勿手填**；"
+               "级与证据在 `tools/offline/hll_ledger.tsv` 维护。")
+    buf.append("")
+    buf.append("| 级 | 函数数 | 含义 |")
+    buf.append("|---|---:|---|")
+    for lv in ("L0", "L1", "L2", "L3", "NA"):
+        if levels.get(lv):
+            buf.append(f"| {lv} | {levels[lv]} | "
+                       f"{ {'L0':'注册','L1':'类型合法','L2':'单点语义','L3':'副作用联动','NA':'豁免'}[lv] } |")
+    buf.append(f"| **合计** | **{len(rows)}** | 本章路径调用的 HLL |")
+    buf.append("")
+    buf.append("| 库 | 函数 | 调用次数 | 调用点 | 级 | 契约 / 证据 |")
+    buf.append("|---|---|---:|---:|:--:|---|")
+    for fn, n in rows:
+        lib, name = fn.split(".", 1)
+        lv, note = st.get(fn, ("L0", ""))
+        buf.append(f"| {lib} | `{name}` | {n} | {sites.get(fn, 0)} | {lv} | {note} |")
+    buf.append("")
+    buf.append(END)
+
+    try:
+        doc = open(out_path, encoding="utf-8").read()
+    except FileNotFoundError:
+        doc = ""
+    block = "\n".join(buf)
+    if BEGIN in doc and END in doc:
+        doc = doc[:doc.index(BEGIN)] + block + doc[doc.index(END) + len(END):]
+    else:
+        doc = doc.rstrip("\n") + "\n\n" + block + "\n"
+    open(out_path, "w", encoding="utf-8").write(doc)
+    print(f"台账已写入 {out_path}：{len(rows)} 行，"
+          + " / ".join(f"{k}={v}" for k, v in sorted(levels.items())))
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

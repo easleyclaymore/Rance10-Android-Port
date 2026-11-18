@@ -89,6 +89,7 @@ Core Layer = `vm.c` / `page.c` / `heap.c` / `ffi.c` / `pal.c` 及对应头文件
 | ① 入口 | 未结技术债 / 已清零索引 | `../TECH_DEBT.md`（仓库外，工作区根） |
 | ① 入口 | 仓库定位 / 构建 / 门禁 / 分支 | 本文件（**不写状态**） |
 | ② 工作流 | 假设台账 / 变更影响面清单 | `docs/HYPOTHESES.md` / `docs/IMPACT.md` |
+| ② 工作流 | **第一章 121 个 HLL 的 L2/L3 达标计划与台账** | `docs/HLL-L3.md`（台账块由 `hll_hotness.py --emit` 生成） |
 | ③ 知识 | 工具链入口 / 动作序列 / 跑测配方 / 日志前缀 | `docs/SDK.md` |
 | ③ 知识 | 离线工具参数与模式 / HLL 全量普查方法 | `docs/OFFLINE.md` |
 | ③ 知识 | 引擎移植方法论（对外成书） | `docs/GUIDE/` |
