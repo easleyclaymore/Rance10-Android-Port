@@ -5013,6 +5013,27 @@ void vm_frame_pump(void)
 			const char *pat = getenv("XSYS4_FN_LIST");
 			if (pat && *pat && ain) {
 				int n = 0;
+				/* [D309] `#<号>[,<号>...]`：按函数号直接查名字。
+				 * 反汇编里 `CALLMETHOD` 的立即数是 nargs、被调函数号在栈上，
+				 * 静态反汇编拿不到；只能先在反汇编里认出「PUSH <号>」，
+				 * 再用这个入口把号翻成名字。 */
+				if (*pat == '#') {
+					const char *q = pat + 1;
+					while (*q) {
+						int want = atoi(q);
+						if (want > 0 && want < ain->nr_functions) {
+							NOTICE("[fnlist] %d 0x%08x %s", want,
+							       (unsigned)ain->functions[want].address,
+							       ain->functions[want].name
+							       ? ain->functions[want].name : "?");
+							n++;
+						}
+						while (*q && *q != ',') q++;
+						if (*q == ',') q++;
+					}
+					NOTICE("[fnlist] '#%s' 命中 %d 个", pat + 1, n);
+					goto fn_list_done;
+				}
 				for (int i = 0; i < ain->nr_functions; i++) {
 					const char *nm = ain->functions[i].name;
 					if (nm && strstr(nm, pat)) {
@@ -5023,6 +5044,7 @@ void vm_frame_pump(void)
 				}
 				NOTICE("[fnlist] '%s' 命中 %d 个", pat, n);
 			}
+		fn_list_done:;
 			/* [D307] XSYS4_STRUCT_LIST=<子串>：把匹配的结构体连同成员名一起打出来。
 			 * 查「m1 是委托表还是哈希表」这类问题时，成员名（`<AddMouseLClickEvent>`
 			 * 之类）比任何猜测都直接。 */
