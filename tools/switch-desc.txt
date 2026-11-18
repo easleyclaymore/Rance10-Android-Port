@@ -26,6 +26,9 @@ XSYS4_HLL_TRACE_FILTER	收窄 HLL_TRACE：`PartsEngine` 按库名、`27:73` 按�
 XSYS4_HLL_ARGDBG	打印 HLL 调用的实际参数值（排查"参数顺序/位宽错"时用）
 XSYS4_FN_DUMP	函数调用次数统计与慢函数排行
 XSYS4_FN_DUMP_ALL	统计时不做前 N 次闸门，低频函数也全打
+XSYS4_BACKSCENE_DBG	[诊断] 打印 SetWantSaveBackScene / SaveBackScene / LoadBackScene 的时机与规模（背景场景快照链）
+XSYS4_BACKSCENE_WANT	[诊断] `=1` 让 `IsWantSaveBackScene` 返回真实标记（默认仍恒 false）。实测对开场剧情背景无影响
+XSYS4_DUMP_CG_SIZE	[诊断] 配合 XSYS4_DUMP_CG：只转存该宽度的 CG 纹理（按尺寸触发，避开部件号复用）
 XSYS4_ACTIVE_PARTS	[诊断] `PartsEngine.GetActiveParts` 返回光标指向的部件（默认开，D309）。`=0` 回退到旧桩（恒 0）
 XSYS4_DG_APPEND_DBG	[诊断] 委托追加/丢弃各打一条（obj/fun/dst_nr）。用来分辨「没注册」和「注册被静默丢掉」
 XSYS4_FN_LIST	[诊断] 按名字子串列出 AIN 函数（号 / 地址 / 名字）；写 `#29096,29526` 则按函数号查名字（反汇编里 CALLMETHOD 的被调号在栈上，只能先认出 `PUSH <号>` 再回查）。`CallDelegate`、`TextButton@Motion` 这类只存在于内存表的函数号，靠它才能上 CALL_TRACE / DUMP_AT

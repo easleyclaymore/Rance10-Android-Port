@@ -457,6 +457,14 @@ static struct string *PartsEngine_GetComment(int parts_no)
  * AIN_BOOL 按 ffi_type_sint32 传递，所以 C 侧接的是 int。 */
 static void PE_SetWantSaveBackScene(int parts_no, int want)
 {
+	/* [D310] XSYS4_BACKSCENE_DBG=1：看 AIN 到底把哪些部件标成「背景场景」。
+	 * 剧情里从世界地图切到战舰内部时，地图那几层（z≥4200 的 CG）应该被
+	 * 收起来，只留 ADV 自己的背景件（900000413）。 */
+	if (getenv("XSYS4_BACKSCENE_DBG")) {
+		static int n;
+		if (n++ < 300)
+			NOTICE("[bs] want_save no=%d want=%d", parts_no, !!want);
+	}
 	PE_parts_set_want_save_back_scene(parts_no, !!want);
 }
 
@@ -1672,7 +1680,25 @@ static int PE_GetActiveParts(void)
 /* [D202] 背景快照辅助：引擎始终按 SaveBackScene 的完整快照工作，
  * 不需要按部件标记是否要保存，Clear 也无需单独动作（Load 会重建整树）。 */
 static void PE_ClearBackScene(void) { }
-static bool PE_IsWantSaveBackScene(int no) { (void)no; return false; }
+static bool PE_IsWantSaveBackScene(int no)
+{
+	/* [D310] 原来是恒 false 的桩。`SetWantSaveBackScene(no, want)` 明明
+	 * 一直在被调用（实测 30 次），说明 AIN 指望用这个标记决定「哪些部件
+	 * 属于背景场景、可以被 SaveBackScene 收起」。恒 false 的结果就是：
+	 * 标记写了、没人读，剧情从世界地图切到战舰内部时，地图那几层 CG
+	 * 一直留在屏幕上，盖住 ADV 自己的背景件 `900000413`。
+	 * **默认仍关**：实测打开后这条剧情链的画面没有变化（地图仍在），
+	 * 说明它不是直接原因，不能当作已验证的修复发出去。
+	 * `XSYS4_BACKSCENE_WANT=1` 才生效，留作后续 A/B。 */
+	static int on = -1;
+	if (on < 0) {
+		const char *e = getenv("XSYS4_BACKSCENE_WANT");
+		on = (e && !strcmp(e, "1"));
+	}
+	if (!on)
+		return false;
+	return PE_parts_get_want_save_back_scene(no);
+}
 
 static struct string **msgwin_text_slot(int no);
 

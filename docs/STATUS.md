@@ -11,8 +11,8 @@
 | | |
 |---|---|
 | **阶段** | 第一章剧情**画面**已全线验收（`s133` 12 屏 / `s135` 40 次点击，含 1/2/3 行段落与说话人切换）；但**流程卡在开场回想对话** `ReplayMemoDialog`：右按钮「過後查看」点不动（`[TEXTBUTTON-CLICK]`），`Ctrl` 快进 + `Esc` 只能把画面藏掉、遮挡层仍在，剧情走不到任务地图，战斗仍未进入 |
-| **最大卡点** | `[TEXTBUTTON-CLICK]` —— 点击**已捕获**到 `900000513`、`CallDelegate(7973)` 也派发到 `CallDelegateMouseClick(7978)`，但该部件的 `CPartsFunctionSet` 十五个事件数组**全为 nr=0**：`TextButton@SetOnClickEvent`(22907) 只把委托存进对象自身（`this.m5.DG_ASSIGN`），派发用的 `Motion`(22908)/`IsClickable`(22909) 与 H044 那条 `SceneReplayMemoDialog@<lambda>`(36563) 本次**都是 0 次** |
-| **本轮做过的** | ① 补掉 `PartsEngine.GetActiveParts` 的恒 0 桩（D309），按原义返回「光标指向的部件」，`s185` 12 屏 ADV 回归通过；② 继续拆 `[TEXTBUTTON-CLICK]`：`WaitForClick`(8309) 轮询的是 `GetClickPartsNumber`(8307)，`GetActivePartsType`(8308)/`IsInputPartsActive`(7243) 实测 **0 次**（这条对话不走那条分支）；`XSYS4_DG_APPEND_DBG` 实测 710 次追加、**0 次丢弃**，排除「注册被吞」；剩下唯一异常是整屏委托表只有 `SceneStack@RegisterEvent()(77,44)` 一个，H044 当时是 `SceneReplayMemoDialog@<lambda>`(36563) |
+| **最大卡点** | `[BG-LAYER]`（用户当前最在意）：剧情推进时背景不切换 —— 旁白已说「巨型战舰内部」，画面仍是世界地图。背景 CG 与纹理都已确认正确，卡在**合成顺序/层归属**：地图 CG（z≈4200）与 ADV 背景件（z=2000）同落在 ctrl=4，AIN 隐藏的是 idx=3 那层，于是地图盖住背景。详见 `TECH_DEBT` |
+| **本轮做过的** | 走**真实流程**（标题「从头开始」= `click:646,738`）复现背景问题并逐层拆：① 用 `XSYS4_DUMP_CG` 转存纹理，证明 `背景／宇航船／通道` 加载正确；② 用 `[cglog]`/部件快照证明地图 CG 盖在背景之上；③ 用 `XSYS4_CTRL_DBG` 证明 AIN 确实 hide 了 401/403/405/406/407/409/410，但没 hide 地图基本 400/408；④ 排除 `SetShowForBackScene`、`Save/LoadBackScene`、`IsWantSaveBackScene`、`XSYS4_CTRL_PENDING=0` 四条路 |
 | **判据** | 几何用 `XSYS4_PARTS_DUMP` 看 `st=11` 的尺寸分布；点击类一律看 `[inp] EndInput clicked=N` 落在预期部件上（**不看**"我点了几次"）；画面用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S），不要用 X11 抓屏（GL 直绘下会拿到空 framebuffer，见 GUIDE 1.13） |
 
 > **卡点必须挂债标签**：§0「最大卡点」里的 `` `[TAG]` `` 必须**逐字存在**于
@@ -207,7 +207,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **207**（未标注 31）｜ HLL 源码口径 **3301 / 4495（73.4%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 96 / 34** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **209**（未标注 31）｜ HLL 源码口径 **3301 / 4495（73.4%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 96 / 35** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
 <!-- STATS:END -->
 
 最常用的：

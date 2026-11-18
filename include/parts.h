@@ -178,6 +178,8 @@ int PE_get_system_controller(void);
 int PE_get_nr_controllers(void);
 void PE_parts_set_want_save(int parts_no, bool want_save);
 void PE_parts_set_want_save_back_scene(int parts_no, bool want);
+/* [D310] 读取端：该部件是否属于「背景场景」（SaveBackScene 保存/收起的范围）。 */
+bool PE_parts_get_want_save_back_scene(int parts_no);
 bool PE_save_thumbnail(struct string *filename, int reduction_factor);
 bool PE_init_parts_movie(int parts_no, int width, int height, int bg_r, int bg_g, int bg_b, int state);
 int PE_get_movie_sprite(int parts_no, int state);

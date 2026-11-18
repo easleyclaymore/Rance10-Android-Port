@@ -3147,6 +3147,20 @@ void PE_DebugDumpParts(const char *tag)
 		       parts_is_visible(p) ? 1 : 0,
 		       p->clickable ? 1 : 0, p->pass_cursor ? 1 : 0,
 		       p->uc_object ? p->uc_object : "-");
+		/* [D310] CG 部件把**当前挂的 CG 名**打出来。
+		 *
+		 * 起因：剧情里旁白已经说「巨型战舰内部」，画面却还停在世界地图。
+		 * 背景部件 `900000413` 是 `1920x1080 → 1798x680`、`vis=1 a=255 tex=1`，
+		 * 从快照看一切正常 —— 但「正常」也可能是**旧图没被换掉**。
+		 * 尺寸相同的新旧背景（`背景／任务／宇航船／通道` 与 `背景／宇航船／通道`
+		 * 都是 1798x680）光看尺寸分不出来，必须看名字。 */
+		if (st->type == PARTS_CG) {
+			NOTICE("[parts] %s   cg no=%d name='%s' no#=%d",
+			       tag, p->no,
+			       st->cg.name && st->cg.name->text
+			               ? display_sjis0(st->cg.name->text) : "(null)",
+			       st->cg.no);
+		}
 		/* [D226] flat 部件的 `tex=` 列永远是 0（flat 不写 common.texture），
 		 * 光看主行分不清「加载成功、只是没有单张纹理」和「flat 根本没装载」
 		 * —— 后者 parts_render_flat() 直接 return，一个像素不画，却仍会被
@@ -3409,6 +3423,16 @@ int PE_get_nr_controllers(void)
 void PE_parts_set_want_save(int parts_no, bool want_save)
 {
 	parts_get(parts_no)->want_save = want_save;
+}
+
+/* [D310] `IsWantSaveBackScene` 的读取端。见 PartsEngine.c 里的说明：
+ * 恒返回 false 会让 AIN 以为「没有任何部件属于背景场景」，于是它既不会
+ * 在 SaveBackScene 之后把这些部件收起来，剧情切到新背景时旧画面就留在
+ * 上面（世界地图盖住战舰通道）。 */
+bool PE_parts_get_want_save_back_scene(int parts_no)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	return parts ? parts->want_save_back_scene : false;
 }
 
 void PE_parts_set_want_save_back_scene(int parts_no, bool want)
