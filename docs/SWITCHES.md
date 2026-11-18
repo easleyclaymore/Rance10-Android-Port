@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **222** 个开关，其中 **31** 个没有就近注释。
+共 **224** 个开关，其中 **31** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -16,7 +16,7 @@
 | 分组 | 开关 | 位置 | 用途 |
 |---|---|---|---|
 | 断点与快照 | `XSYS4_CALL_TRACE` | `src/vm.c:785` | 逗号分隔的 AIN 函数号；命中时打印调用点与返回地址（"有没有被调到"的第一手证据） |
-| 断点与快照 | `XSYS4_CALL_TRACE_TOTAL` | `src/vm.c:5599` | [诊断] 退出时汇总 `XSYS4_CALL_TRACE` 各函数的**真实调用次数**（不受"每 fno 8 站点 + 每 200 次一条"的打印限流影响）。**凡是要断言"某函数跑了 N 次"，必须用这个** —— D280/D281 两次把日志条数当次数，把 `View_Update` 的 1504 次误读成 10 次、把 `OnUpdate` 的 150 次误读成 0 次 |
+| 断点与快照 | `XSYS4_CALL_TRACE_TOTAL` | `src/vm.c:5647` | [诊断] 退出时汇总 `XSYS4_CALL_TRACE` 各函数的**真实调用次数**（不受"每 fno 8 站点 + 每 200 次一条"的打印限流影响）。**凡是要断言"某函数跑了 N 次"，必须用这个** —— D280/D281 两次把日志条数当次数，把 `View_Update` 的 1504 次误读成 10 次、把 `OnUpdate` 的 150 次误读成 0 次 |
 | 断点与快照 | `XSYS4_CENSUS` | `src/vm.c:1460` | 按函数做调用普查（与 FN_DUMP 互补） |
 | 断点与快照 | `XSYS4_DUMP_AT` | `src/vm.c:2528` | 在 `<十六进制地址>[,最多几次]` 处停下，打印帧名、this 各成员、局部变量和操作数栈 |
 | 断点与快照 | `XSYS4_FN_DUMP` | `src/vm.c:887` | 函数调用次数统计与慢函数排行 |
@@ -41,22 +41,24 @@
 | 容器与内存 | `XSYS4_DF_DBG` | `src/heap.c:216` | 委托释放路径诊断 |
 | 容器与内存 | `XSYS4_DF_FREE_DBG` | `src/heap.c:325` | 委托释放的逐次释放诊断 |
 | 容器与内存 | `XSYS4_DF_MAX` | `src/heap.c:219` | 委托释放的最大迭代次数（防死循环） |
+| 容器与内存 | `XSYS4_DGA_DROP` | `src/vm.c:4784` | [诊断] 只在「DG_ASSIGN 目标是空槽、而源委托里有条目」时打 `[dgadrop]`（D324，实测 0 次 = 没有委托被丢） |
 | 容器与内存 | `XSYS4_DGIDX_DBG` | `src/parts/parts.c:1615` | [诊断] 逐次打印 `SetDelegateIndex` / `GetDelegateIndex`（部件↔委托索引绑定），用来判「绑定过没有、读回还是不是原值」（D320） |
-| 容器与内存 | `XSYS4_DGPLUSA_DBG` | `src/vm.c:4792` | — |
-| 容器与内存 | `XSYS4_DGPLUSA_MAX` | `src/vm.c:4796` | 〔摘〕前 400 条会被 startup 的 CParts@Attach 占满。 |
+| 容器与内存 | `XSYS4_DGPLUSA_DBG` | `src/vm.c:4840` | — |
+| 容器与内存 | `XSYS4_DGPLUSA_MAX` | `src/vm.c:4844` | 〔摘〕前 400 条会被 startup 的 CParts@Attach 占满。 |
 | 容器与内存 | `XSYS4_DG_APPEND_DBG` | `src/page.c:1087` | [诊断] 委托追加/丢弃各打一条（obj/fun/dst_nr）。用来分辨「没注册」和「注册被静默丢掉」 |
 | 容器与内存 | `XSYS4_DG_ASSIGN_DBG` | `src/vm.c:4768` | 委托赋值诊断 |
+| 容器与内存 | `XSYS4_DG_ASSIGN_NULLALLOC` | `src/vm.c:4809` | `=1` 让 `DG_ASSIGN` 在目标为空槽时分配新页并写回成员（D324 的 A/B，**已证伪**，默认关） |
 | 容器与内存 | `XSYS4_DG_CALL_DBG` | `src/vm.c:1700` | 委托调用诊断 |
 | 容器与内存 | `XSYS4_DG_DBG` | `src/hll/Delegate.c:65` | 委托（Delegate）诊断总开关 |
 | 容器与内存 | `XSYS4_DG_DRIFT` | `src/vm.c:1567` | 委托页"漂移"检测（指向了不该指的对象） |
 | 容器与内存 | `XSYS4_DG_GC_DBG` | `src/page.c:1121` | [诊断] 委托被 delegate_numof 的 GC 丢弃时打一条（obj/fun/seq）。分辨「没注册」与「注册了又被丢掉」 |
 | 容器与内存 | `XSYS4_DG_GET_DBG` | `src/page.c:1221` | 委托取值诊断 |
 | 容器与内存 | `XSYS4_DG_KEEPALIVE` | `src/page.c:1054` | 委托页保活（防止被提前回收） |
-| 容器与内存 | `XSYS4_DG_LAZY` | `src/vm.c:4831` | 成员里的委托槽为空时惰性建页（NetworkConfirmation 的 OK/Cancel 靠它） |
+| 容器与内存 | `XSYS4_DG_LAZY` | `src/vm.c:4879` | 成员里的委托槽为空时惰性建页（NetworkConfirmation 的 OK/Cancel 靠它） |
 | 容器与内存 | `XSYS4_DG_MISS_DBG` | `src/vm.c:1670` | 委托 miss（找不到目标）时打印 |
 | 容器与内存 | `XSYS4_DG_MISS_FILTER` | `src/vm.c:1674` | 收窄 DG_MISS 输出 |
 | 容器与内存 | `XSYS4_DG_PAGE_DBG` | `src/vm.c:1611` | 委托页生命周期诊断 |
-| 容器与内存 | `XSYS4_MEM_STAT` | `src/vm.c:5116` | 堆内存与 RSS 实时统计 |
+| 容器与内存 | `XSYS4_MEM_STAT` | `src/vm.c:5164` | 堆内存与 RSS 实时统计 |
 | 呈现与输入 | `XSYS4_ACTIVE_CTRL_SET` | `src/parts/parts.c:3594` | `=0` 把 `PartsEngine.SetActiveController` 退回空实现（D312 前行为）。默认真设置活动层 |
 | 呈现与输入 | `XSYS4_ACTIVE_PARTS` | `src/parts/input.c:53` | [诊断] `PartsEngine.GetActiveParts` 返回光标指向的部件（默认开，D309）。`=0` 回退到旧桩（恒 0） |
 | 呈现与输入 | `XSYS4_ACT_BUILD_DBG` | `src/parts/activity.c:1341` | [诊断] 打印每个 activity 部件的 `no/name/parent/type`（前 3000 条）。用来把运行时部件号对号到 XML 里的名字，例如 `900000397 = ButtonDeffence` |
@@ -89,13 +91,13 @@
 | 自动化后门 | `XSYS4_AUTO_CARD_CLICK_DELAY` | `src/vm.c:1274` | [后门] 最后一次 InitCardView 之后再等多久点卡（毫秒，默认 1500） |
 | 自动化后门 | `XSYS4_AUTO_CARD_ORG` | `src/vm.c:1276` | [后门] 点卡前先调 PartyCardGroup@ChangeOrganizationId(id) 切组织；0=不切 |
 | 自动化后门 | `XSYS4_AUTO_CARD_REPEAT` | `src/vm.c:1278` | [后门] 连点同一张卡几次（默认 1）；第一击移除、第二击验证 AddCardToFormations |
-| 自动化后门 | `XSYS4_AUTO_MAP` | `src/vm.c:5170` | 无头跑测后门：自动推进到任务地图 |
-| 自动化后门 | `XSYS4_AUTO_MAP_DELAY` | `src/vm.c:5171` | 后门延迟（毫秒） |
+| 自动化后门 | `XSYS4_AUTO_MAP` | `src/vm.c:5218` | 无头跑测后门：自动推进到任务地图 |
+| 自动化后门 | `XSYS4_AUTO_MAP_DELAY` | `src/vm.c:5219` | 后门延迟（毫秒） |
 | 自动化后门 | `XSYS4_AUTO_MAP_ROUTE` | `src/vm.c:1249` | [后门] 地图稳定后直调 SceneQuestMap@StartMoveRoute(23606)，毫秒=延迟 |
 | 自动化后门 | `XSYS4_AUTO_PARTY` | `src/vm.c:1244` | 无头跑测后门：自动推进到部队编成 |
 | 自动化后门 | `XSYS4_AUTO_PARTY_CLOSE` | `src/vm.c:1269` | [后门] 卡片视图就绪后直调 SceneParty@Close(24301)，验证编队出口；=1 开启 |
 | 自动化后门 | `XSYS4_AUTO_PARTY_DELAY` | `src/vm.c:1245` | 后门延迟（毫秒） |
-| 自动化后门 | `XSYS4_AUTO_RUNPARTY` | `src/vm.c:5247` | [后门] 地图起来后直接调 Scenes::RunParty(1)，绕开地图 UI 直进编队界面；值=延迟毫秒 |
+| 自动化后门 | `XSYS4_AUTO_RUNPARTY` | `src/vm.c:5295` | [后门] 地图起来后直接调 Scenes::RunParty(1)，绕开地图 UI 直进编队界面；值=延迟毫秒 |
 | 自动化后门 | `XSYS4_NO_LAYER_COVER` | `src/parts/parts.c:1475` | 关闭「视觉地板」优化（怀疑遮挡算错时用） |
 | 运行环境 | `XSYS4_DATA_DIR` | `src/pal.c:43` | 数据目录（缺省用编译期默认值） |
 | 运行环境 | `XSYS4_SOFT_STUB` | `src/ffi.c:56` | 未实现的导出用零桩顶替（诊断用：判断"缺实现"还是"走错路"） |
@@ -140,7 +142,7 @@
 | 其它 | `XSYS4_FLAT_FRAME_DBG` | `src/parts/parts.c:1188` | [诊断] 轻量 flat 帧探针：打印 no/ctrl/frame/root_state.stopped/fps/passed_time。值=1 打全部，值=部件号只跟一个。用来区分「帧没推进」是 parts_flat.stopped、root_state.stopped（脚本 stop 键）还是 passed_time 为 0 |
 | 其它 | `XSYS4_FLAT_TICK_DBG` | `src/parts/flat.c:220` | [诊断] 逐 tick 打印 flat 推进前后（prev/next/cf/cap/inc/stop/sup/jump），值 = 只跟 end_frame >= N 的长演出（默认 70）。用来分辨「帧不涨」是 increment=0（stopped）还是被封顶 |
 | 其它 | `XSYS4_FLAT_TREE` | `src/parts/flat.c:668` | — |
-| 其它 | `XSYS4_FN_LIST` | `src/vm.c:5045` | [诊断] 按名字子串列出 AIN 函数（号 / 地址 / 名字）；`#29096` 按号查名；`*` 导出全表（供 tools/offline/callsite.py 把地址翻成函数名）（反汇编里 CALLMETHOD 的被调号在栈上，只能先认出 `PUSH <号>` 再回查）。`CallDelegate`、`TextButton@Motion` 这类只存在于内存表的函数号，靠它才能上 CALL_TRACE / DUMP_AT |
+| 其它 | `XSYS4_FN_LIST` | `src/vm.c:5093` | [诊断] 按名字子串列出 AIN 函数（号 / 地址 / 名字）；`#29096` 按号查名；`*` 导出全表（供 tools/offline/callsite.py 把地址翻成函数名）（反汇编里 CALLMETHOD 的被调号在栈上，只能先认出 `PUSH <号>` 再回查）。`CallDelegate`、`TextButton@Motion` 这类只存在于内存表的函数号，靠它才能上 CALL_TRACE / DUMP_AT |
 | 其它 | `XSYS4_FN_WATCH` | `src/vm.c:1218` | `=22908,22909` 按**解析后的函数号**打方法调用（`CALLMETHOD` 在运行期才解析出 fno，静态 grep `arg=<fno>` 数不出来）。判「某方法到底跑没跑」只能靠它（D323） |
 | 其它 | `XSYS4_FORCE_HIDE` | `src/parts/parts.c:3326` | `=900000400,900000408`：每帧强制隐藏这些部件。**判定性实验用**，不是修复手段。用来把「背景不切换」缩成「隐藏这几个号画面是否就对」（D314） |
 | 其它 | `XSYS4_FORCE_MOVE` | `src/parts/parts.c:3353` | `=900000400:3`：每帧把部件强制改到指定层（号:层号，逗号分隔）。**判定性实验用**，验证「部件创建时落错了层」（D315） |
@@ -187,7 +189,7 @@
 | 其它 | `XSYS4_NO_AUTO_MOTION` | `src/parts/motion.c:102` | =1 关闭「首次加 motion 自动开表」（D186），用于 motion 自动启动的 A/B |
 | 其它 | `XSYS4_NO_CP_ALPHA_FIX` | `src/parts/parts.c:2478` | =1 关闭「合成类部件 alpha=0 提升为 255」（卡片立绘 A/B 回退开关）。[D224 收窄] 提升现在只作用于 >=8x8 的真实合成纹理，2x2 全屏淡出遮罩不再被误抬 |
 | 其它 | `XSYS4_NO_DI_FALLBACK` | `src/parts/message.c:99` | [回退闸] 关闭 D260 的委托下标回退（消息 delegate_index<0 时不再回退到 0）。用于 A/B：开着它战斗会退回「点击打空炮、停 Round 1/10」的旧行为 |
-| 其它 | `XSYS4_NO_PUMP` | `src/vm.c:5003` | 事件泵空转诊断 |
+| 其它 | `XSYS4_NO_PUMP` | `src/vm.c:5051` | 事件泵空转诊断 |
 | 其它 | `XSYS4_NULLMETHOD_FIX` | `src/vm.c:1335` | — |
 | 其它 | `XSYS4_NULLREF_DBG` | `src/vm.c:322` | 〔摘〕从栈上弹出一个引用，返回被引用对象的地址。 |
 | 其它 | `XSYS4_NULL_METHOD` | `src/vm.c:1154` | — |
@@ -200,7 +202,7 @@
 | 其它 | `XSYS4_PHANTOM_REUSE` | `src/vm.c:1414` | 幽灵槽复用诊断 |
 | 其它 | `XSYS4_PRED_BOUND` | `src/hll/Array.c:694` | — |
 | 其它 | `XSYS4_PRED_DBG` | `src/hll/Array.c:665` | — |
-| 其它 | `XSYS4_PUMP_MASK` | `src/vm.c:5015` | — |
+| 其它 | `XSYS4_PUMP_MASK` | `src/vm.c:5063` | — |
 | 其它 | `XSYS4_RA_DBG` | `src/vm.c:3271` | — |
 | 其它 | `XSYS4_RECYCLE_SLOTS` | `src/heap.c:199` | 复用已释放的堆槽（默认关） |
 | 其它 | `XSYS4_REFDBG` | `src/vm.c:383` | 〔摘〕它之后的代码全部当作不可达删掉。 |
@@ -215,11 +217,11 @@
 | 其它 | `XSYS4_SPLIT_DBG` | `src/hll/String.c:598` | [D292 诊断] 打印 `String.Split` 前 60 次调用的入参（原串 / 分隔符 / contain 标志）与切出的每一段；判据是「切开再拼回是否恒等」——立绘名少一个 `／` 就是这里 contain=1 没生效 |
 | 其它 | `XSYS4_SP_BALANCE` | `src/vm.c:2055` | 每次函数返回校验栈平衡（失败即报） |
 | 其它 | `XSYS4_SP_TRACE` | `src/vm.c:2744` | 环形缓冲记录栈指针变化，抓"玄学栈漂移" |
-| 其它 | `XSYS4_SP_WATCH` | `src/vm.c:5359` | 监视指定帧的栈指针 |
+| 其它 | `XSYS4_SP_WATCH` | `src/vm.c:5407` | 监视指定帧的栈指针 |
 | 其它 | `XSYS4_SRDBG` | `src/vm.c:4142` | 〔摘〕绝不会是一张活着的 ARRAY_PAGE。 |
-| 其它 | `XSYS4_STACK_SAMPLE` | `src/vm.c:5383` | 周期性采样调用栈（抓谁在长时间占栈） |
+| 其它 | `XSYS4_STACK_SAMPLE` | `src/vm.c:5431` | 周期性采样调用栈（抓谁在长时间占栈） |
 | 其它 | `XSYS4_STRICT_REF` | `src/vm.c:407` | 严格引用计数检查（会把"漏 ref/unref"变成显式报错） |
-| 其它 | `XSYS4_STRUCT_LIST` | `src/vm.c:5087` | [诊断] 按名字子串列出结构体及成员名。查「m7 是委托表还是哈希表」时，成员名比任何猜测都直接 |
+| 其它 | `XSYS4_STRUCT_LIST` | `src/vm.c:5135` | [诊断] 按名字子串列出结构体及成员名。查「m7 是委托表还是哈希表」时，成员名比任何猜测都直接 |
 | 其它 | `XSYS4_STR_INT_DBG` | `src/hll/String.c:59` | 〔摘〕"取对了但字符串已经死了"。 |
 | 其它 | `XSYS4_STUB_BT` | `src/ffi.c:224` | 软桩命中时附带回溯 |
 | 其它 | `XSYS4_STUB_LOG` | `src/ffi.c:166` | 软桩命中清单写到该文件 |

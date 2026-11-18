@@ -4773,6 +4773,54 @@ case SR_ASSIGN: {
 		/* dst_i == -1 表示空的委托目标；delete_page(-1) 会拿一个非法槽
 		 * 去调 heap_get_page（D57）。
 		 * 而 heap_set_page() 本来就会忽略负槽。 */
+		/* [D324] `XSYS4_DGA_DROP=1`：只在「目标为空槽（dst_i<=0）而源委托
+		 * 里**确实装着条目**」时打一行 —— 这正是「委托被静默丢掉」的形状。
+		 *
+		 * 起因：`TextButton@SetOnClickEvent` 的写法是
+		 * `this.m5; REF; <源 dg>; A_REF; DG_ASSIGN`。成员本来是空的，
+		 * `REF` 给出 -1，下面只 `if (dst_i > 0)` 才写回 → 赋值**整个丢掉**，
+		 * 于是 TextButton 的点击委托永远为空，`Motion` 即使跑了也没东西可派。
+		 * 这个探针把「丢了什么」点名。 */
+		if (getenv("XSYS4_DGA_DROP") && dst_i <= 0 && set &&
+		    set->type == DELEGATE_PAGE && set->nr_vars > 0) {
+			static int n;
+			if (n++ < 300)
+				NOTICE("[dgadrop] dst_i=%d set_nr=%d first=[%d,%d] ip=0x%zX",
+				       dst_i, set->nr_vars, set->values[0].i,
+				       set->nr_vars > 1 ? set->values[1].i : -1, instr_ptr);
+		}
+		/* [D324] `XSYS4_DG_ASSIGN_NULLALLOC=1`：目标成员是**空槽**时，
+		 * 给它分配一张新委托页并写回成员，而不是把这次赋值丢掉。
+		 *
+		 * 为什么这么改：`TextButton@SetOnClickEvent` 的字节码是
+		 * `PUSHSTRUCTPAGE; PUSH 5; REF; <源 dg>; A_REF; DG_ASSIGN`。
+		 * 成员 `m5` 本来是空的，`REF` 只能给出 `-1`，而下面只
+		 * `if (dst_i > 0)` 才写回 —— 于是**这次赋值无声无息地消失**。
+		 * 结果就是：点击委托生成了、也注册了（`[dgadd]` 827 次），
+		 * 却永远进不了 TextButton 的 `m5`，`Motion` 即使跑了也没东西可派。
+		 *
+		 * 写回位置用 `REF` 记录的 `last_ref_heap/index`（REF 每次都会更新），
+		 * 并额外要求那一格**现在仍是空槽**，避免写到别处。
+		 *
+		 * **实测已证伪**：`XSYS4_DGA_DROP=1` 跑到回想对话框，`[dgadrop]` **0 条**
+		 * —— 没有任何委托因为「目标是空槽」被丢掉。开关保留只为 A/B，
+		 * 默认关；不要再据此改 DG_ASSIGN 的默认行为。 */
+		if (dst_i <= 0 && set && set->nr_vars > 0 &&
+		    getenv("XSYS4_DG_ASSIGN_NULLALLOC")) {
+			if (last_ref_heap > 0 && (size_t)last_ref_heap < heap_size &&
+			    heap[last_ref_heap].page &&
+			    last_ref_index >= 0 &&
+			    last_ref_index < heap[last_ref_heap].page->nr_vars &&
+			    heap[last_ref_heap].page->values[last_ref_index].i <= 0) {
+				int slot = heap_alloc_page(new_dg);
+				heap[last_ref_heap].page->values[last_ref_index].i = slot;
+				NOTICE("[dganull] 空成员承接委托 slot=%d nr=%d at=%d[%d]",
+				       slot, new_dg ? new_dg->nr_vars : -1,
+				       last_ref_heap, last_ref_index);
+				stack_push(set_i);
+				break;
+			}
+		}
 		if (dst_i > 0)
 			delete_page(dst_i);
 		/* D75：槽 0 是保留的全局页。dst_i<=0 的 DG_ASSIGN
