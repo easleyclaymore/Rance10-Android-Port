@@ -427,6 +427,10 @@ struct parts {
 	bool lock_input_state;
 	bool want_save;
 	bool want_save_back_scene;
+	/* [D311] 创建序号：部件号会被复用，「同一个号在不同时刻是不同部件」
+	 * 已经坑过好几轮（D277 的 alpha 序列、本轮的 show 判定）。
+	 * 序号只在创建时递增，永远不复用，用来在日志里区分实例。 */
+	unsigned serial;
 	bool draggable;
 	int on_cursor_sound;
 	int on_click_sound;

@@ -71,6 +71,8 @@ static void parts_init(struct parts *parts)
 	parts->delegate_index = -1;
 	parts->want_save = true;
 	parts->want_save_back_scene = false;
+	/* [D311] 见 parts_internal.h：创建序号，永不复用。 */
+	{ static unsigned next_serial = 1; parts->serial = next_serial++; }
 	parts->on_cursor_sound = -1;
 	parts->on_click_sound = -1;
 	parts->origin_mode = 1;
@@ -2254,9 +2256,30 @@ void PE_SetShow(int parts_no, bool show)
 		if (c < 0 || c == PARTS_CONTROLLER_SYSTEM_OVERLAY)
 			return;
 		ctrl_stack.show[c] = show;
-		if (getenv("XSYS4_CTRL_DBG"))
-			NOTICE("[ctrl] layer id=%d idx=%d show=%d fno=%d", parts_no, c,
-			       show, hll_current_fno());
+		if (getenv("XSYS4_CTRL_DBG")) {
+			/* [D311] 这层里到底有哪些部件。
+			 * 起因：剧情要从世界地图切到战舰内部时，AIN 关掉的是
+			 * `idx=3`，可地图那几张 CG（`地图／世界地图基本`、`地图／赫尔曼基本`）
+			 * 实测挂在 `ctrl=4` —— 关的那层和画图的那层不是同一层。
+			 * 只打层号看不出这一点，必须把同层部件号一起打出来。 */
+			char buf[400] = "";
+			size_t off = 0;
+			int n_in_layer = 0, shown_in_layer = 0;
+			struct parts *q;
+			TAILQ_FOREACH(q, &parts_list, parts_list_entry) {
+				if (q->controller_no != c)
+					continue;
+				n_in_layer++;
+				if (q->global.show)
+					shown_in_layer++;
+				if (off < sizeof(buf) - 24 && n_in_layer <= 40)
+					off += snprintf(buf + off, sizeof(buf) - off,
+							" %d", q->no);
+			}
+			NOTICE("[ctrl] layer id=%d idx=%d show=%d fno=%d nr=%d shown_in=%d parts:%s",
+			       parts_no, c, show, hll_current_fno(), n_in_layer,
+			       shown_in_layer, buf);
+		}
 		if (getenv("XSYS4_LAYER_TRACE"))
 			vm_stack_trace();
 		scene_dirty();
@@ -2264,12 +2287,28 @@ void PE_SetShow(int parts_no, bool show)
 	}
 	/* 只记"隐藏"：这是场景切换时图层挂起的动作，量少且正是要看的东西。
 	 * 创建期的 show=1 每部件一条，全打会把日志冲掉。 */
+	/* [D311] 900000390..900000430 这一段是 ADV 的合成层（地图 CG / 背景 / 立绘 /
+	 * 消息框），show 与 hide 都要记：只记 hide 会漏掉「谁又把它显示回来」，
+	 * 而本轮正是卡在「hide 过之后画面里 vis 仍是 1」。 */
+	if (parts_no >= 900000390 && parts_no <= 900000430 &&
+	    getenv("XSYS4_CTRL_DBG")) {
+		static int n2;
+		struct parts *sp2 = parts_try_get(parts_no);
+		if (n2++ < 2000)
+			NOTICE("[ctrl] setshow parts=%d show=%d serial=%u", parts_no,
+			       (int)show, sp2 ? sp2->serial : 0u);
+	}
 	if (!show && getenv("XSYS4_CTRL_DBG")) {
 		/* [D243] 限流从 200 提到 3000：场景切换阶段本身就能打出 200 条以上，
 		 * 旧上限会在战斗装载前耗尽，导致「战斗部件没 hide」这类结论是假阴性。 */
 		static int n;
-		if (n++ < 3000)
-			NOTICE("[ctrl] hide parts=%d", parts_no);
+		if (n++ < 3000) {
+			/* [D311] 带创建序号：号会被复用，只有序号能说明「这次 hide 的
+			 * 是不是后来在画面上那个」。 */
+			struct parts *hp = parts_try_get(parts_no);
+			NOTICE("[ctrl] hide parts=%d serial=%u", parts_no,
+			       hp ? hp->serial : 0u);
+		}
 		else if (n == 3001)
 			NOTICE("[ctrl] hide parts=... (3000 条上限已到，后续不再打印)");
 	}
@@ -3147,6 +3186,8 @@ void PE_DebugDumpParts(const char *tag)
 		       parts_is_visible(p) ? 1 : 0,
 		       p->clickable ? 1 : 0, p->pass_cursor ? 1 : 0,
 		       p->uc_object ? p->uc_object : "-");
+		if (p->serial)
+			NOTICE("[parts] %s   serial=%u", tag, p->serial);
 		/* [D310] CG 部件把**当前挂的 CG 名**打出来。
 		 *
 		 * 起因：剧情里旁白已经说「巨型战舰内部」，画面却还停在世界地图。
