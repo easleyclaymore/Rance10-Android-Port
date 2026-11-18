@@ -1,110 +1,148 @@
-# 渲染后端与 SDL 版本：迁移可行性评估
+# 渲染后端决策记录（SDL2 / SDL3 / Vulkan / SDL_GPU / GLES3）
 
-> 评估日期 2026-11-18。针对「SDL2 → SDL3.4、OpenGL → Vulkan」的提案。
-> 结论先行：**SDL3 可以做、但收益与代价都不在图形上；Vulkan 直接迁移会堵死 Web，
-> 不建议。若目标是 Web，唯一现成路径是 GLES3/WebGL2。**
+> 本文是 `STATUS.md` §6 声明的那份「想动图形层之前先读」的决策记录。
+> 曾经被声明但文件缺失（D327 修复），现在内容以 **SDL2→SDL3 迁移** 为首个正式评估。
 
-## 1. 现状量化（本仓库实测）
+## 决策一：SDL2 → SDL3 迁移可行性
 
-| 维度 | 数字 | 说明 |
+
+> 结论先行：**可行，工作量中等偏小**（桌面出画面 ~1.5–3 人日；Android 打包另加 1–2 天）。
+> 难点不在「改不完」，而在 **音频要重写** 和 **与上游分叉** 这两件事上。
+> 本文的数字全部来自本仓库实测（`grep` 统计 + 逐个核对 SDL3 头文件），不是估算。
+
+## 一、现状盘点
+
+| 项目 | 实测值 | 说明 |
 |---|---:|---|
-| 源码文件 | 250 | `src/` + `include/` |
-| 直接用到 SDL 的文件 | 63 | 多数只用到 `SDL_Color`/`SDL_Rect`/scancode |
-| SDL 符号去重数 | 227 | 其中 `SDL_GetTicks` 41 处、`SDL_Color` 114 处 |
-| GL 相关文件 / 行数 | **8 / 5654** | `video.c` 824、`draw.c` 1236、`parts/render.c` 1330 为大头 |
-| GL 函数去重数 | 87 | 无固定管线残留（`glBegin` 等 0 处） |
-| 绘制调用点 | `glDrawArrays` 10 / `glDrawElements` 4 | 已经批次化，集中在一个 helper |
-| 着色器 | **2 个**（`#version 300 es` / `#version 140`） | 都在 `src/video.c` |
-| GL 上下文 | GLES 3.0 **或** GL 3.1 core | `meson -Dopengles` 已是双路径 |
-| `libsys4` 子模块的 SDL 依赖 | **0 个文件** | 迁移不触碰 submodule |
-| 上游 `nunuhara/xsystem4` master | 仍是 `dependency('sdl2')` | 迁移即长期偏离上游 |
+| 使用 SDL 的源文件 | **62** | `src/` + `include/` |
+| 不同的 SDL 函数 | **67** | 剩下的 200 多个符号是 `SDL_SCANCODE_*` / `SDL_CONTROLLER_*` 枚举 |
+| `SDL_Renderer` / `SDL_Texture` | **0 / 0** | 渲染走**裸 OpenGL**（`GL_*` 共 291 行） |
+| `SDL_RWops` | **0** | 已全部走自有文件层 |
+| SDL_ttf / SDL_image / SDL_mixer | **0 / 0 / 0** | 字体用 freetype，音频用 libsndfile + 自研 mixer |
+| 构建依赖 | `dependency('sdl2')` 一处 | 无子库、无扩展包 |
+| `SDL_*(...) < 0` 这类「负值判错」 | **5 处** | SDL3 改 bool 返回，需要翻转的检查点很少 |
 
-结论：**图形层是一个小而现代的 2D 渲染器**（无固定管线、有 VAO/VBO、只有 2 个着色器），
-不是那种需要彻底重写的遗留 GL 代码。这一点决定了下面的成本估计。
+**这是本次评估里最重要的数字**：SDL3 最伤筋动骨的三块（渲染器 API 重写、`RWops`→`IOStream`、扩展库改名）在这里**全是零**。剩下的是核心库层面的改名与少量语义调整。
 
-## 2. 四个方案 × 五个目标
+拉取方式（本次核对用）：
 
-| 方案 | Linux | Android | **Web** | macOS/Win | 代码量变化 |
-|---|:--:|:--:|:--:|:--:|---|
-| A. 现状（SDL2 + GL/GLES3） | ✅ | ✅ GLES3 | ✅ WebGL2（需 Emscripten 适配） | ✅ | 0 |
-| B. SDL3 + 现有 GL | ✅ | ✅ | ✅（同上） | ✅ | 小（见 §3） |
-| C. SDL3 + `SDL_GPU` | ✅ | ✅ | ❌ **无 Web 后端** | ✅ | 大（重写绘制层） |
-| D. 裸 Vulkan | ✅ | ✅ | ❌ **浏览器不提供 Vulkan** | ⚠️ 需 MoltenVK | 最大 |
+```sh
+# SDL3 的权威头文件，逐符号比对
+curl -sSL https://raw.githubusercontent.com/libsdl-org/SDL/main/include/SDL3/SDL_timer.h
+curl -sSL https://raw.githubusercontent.com/libsdl-org/SDL/main/include/SDL3/SDL_rect.h
+```
 
-- 浏览器只暴露 **WebGL2（≈GLES3）** 与 **WebGPU**。Vulkan 在 Web 上没有任何实现路径。
-- `SDL_GPU` 当前只实现了 **Vulkan / D3D12 / Metal** 三个后端，**不覆盖 Web**
-  （这也是它"只抽象 2026 年值得抽象的三个 API"的设计取舍）。
-- 因此：**「迁到 Vulkan 以便上 Web」这个前提不成立**——它正好相反。
+## 二、变更分四类
 
-## 3. SDL3 迁移的真实代价：不在图形，在音频
+### A. 机械改名（脚本可批量，风险≈0）
 
-SDL3 删除了回调式音频模型：`SDL_LockAudioDevice` / `SDL_UnlockAudioDevice` **已移除**
-（没有用户回调线程了），必须改走 `SDL_AudioStream` / `SDL_OpenAudioDeviceStream`。
+| 现在 | SDL3 | 备注 |
+|---|---|---|
+| `#include <SDL.h>` / `<SDL2/...>` | `<SDL3/SDL.h>` / `<SDL3/...>` | 含 `main()` 的文件另加 `<SDL3/SDL_main.h>` |
+| `SDL_GetTicks64` | `SDL_GetTicks` | SDL3 的 `SDL_GetTicks` 就是 64 位；`GetTicks64` 已删（12 处调用） |
+| `SDL_UnionRect` | `SDL_GetRectUnion` | 改返回 bool |
+| `SDL_IntersectRect` | `SDL_GetRectIntersection` | 改返回 bool |
+| `SDL_AllocFormat` / `SDL_FreeFormat` | `SDL_GetPixelFormatDetails` / 无 | 返回共享数据，**不需要释放** |
+| `SDL_CreateRGBSurfaceWithFormatFrom` | `SDL_CreateSurfaceFrom` | 参数表变了，需手改 |
+| `SDL_MapRGBA` | `SDL_MapSurfaceRGBA` | 需要 surface 而不是 format |
+| `SDL_CondWaitTimeout` | `SDL_WaitConditionTimeout` | 改返回 bool |
+| `SDL_GameController*` | `SDL_Gamepad*` | 头文件 `SDL_gamepad.h`；`SDL_INIT_GAMECONTROLLER`→`SDL_INIT_GAMEPAD` |
+| `SDL_ShowCursor(1/0)` | `SDL_ShowCursor()` / `SDL_HideCursor()` | 拆成两个函数 |
+| `SDL_StartTextInput()` / `StopTextInput()` | 都要传 `SDL_Window*` | |
 
-| API | 本仓库用量 | SDL3 状态 |
-|---|---:|---|
-| `SDL_LockAudioDevice` | 17 | **已移除** |
-| `SDL_UnlockAudioDevice` | 19 | **已移除** |
-| `SDL_OpenAudioDevice` | 2 | 语义改为「逻辑设备 + stream」 |
-| `SDL_AudioSpec` | 4 | 已移除 |
-| `SDL_CreateThread` / `SDL_mutex` | 1 / 6 | 签名有变，改动小 |
-| `SDL_WINDOWEVENT` | 2 | 改为顶层事件 |
-| `SDL_GetTicks` / `SDL_GL_SetAttribute` | 41 / 6 | 不变 |
+`SDL_PointInRect` **不用改**（SDL3 仍保留整型版本；我们另用的 `SDL_PointInRectFloat` 也在）。
 
-`libsys4` 完全不依赖 SDL，所以工作量集中在 `src/audio_mixer.c` 与 6 个左右的事件/线程调用点。
-**估计 3–5 个工作日**（含一遍 12 屏 ADV 回归 + 音频听测）。
+### B. 语义漂移（改一行，但要读清楚）
 
-## 4. SDL_GPU 或 Vulkan 的代价
+- `SDL_PauseAudioDevice(dev, 1)` → `SDL_PauseAudioDevice(dev)`，恢复要用 `SDL_ResumeAudioDevice()`。
+- `SDL_WarpMouseInWindow` 收 **float** 坐标（原来是 int）。
+- `SDL_CreateThread(fn, name, data)` → 需补 `pfnBegin/pfnEnd` 两个参数，或改用 `SDL_CreateThreadWithProperties`。
+- `SDL_AddEventWatch` 回调返回值 `int` → `bool`。
+- `SDL_Init` 的 `SDL_INIT_EVERYTHING` 已删；`SDL_INIT_GAMECONTROLLER` 改名 `SDL_INIT_GAMEPAD`。我们的旗标是 `SDL_INIT_VIDEO | SDL_INIT_AUDIO (| GAMECONTROLLER)`，只改最后一个。
 
-重写范围 = 8 个文件 / 5654 行里真正碰绘制的部分（`video.c` `draw.c` `parts/render.c`
-`sprite.c` `effect.c` `movie_plmpeg.c` + `dungeon/*`）。
+### C. 必须重写（真正的工作量）
 
-难点不是"画三角形"，而是这三点：
+**C1 音频（最大一块）**
 
-1. **纹理即状态**：引擎现在靠 `glBindTexture` + 逐部件 uniform 表达「这张图 + 这组 alpha/加法色」，
-   换成 Vulkan 要变成描述符集与管线状态，绘制前必须按管线分批。
-   `parts/render.c` 里 `alpha_clipper` 的实现（用另一张纹理做遮罩）在 Vulkan 下要重做成第二组采样器。
-2. **帧缓冲**：现有 3 个 FBO（合成/截图/效果）要重做成 render pass + 离屏附件。
-3. **基础设施**：裸 Vulkan 还要自己写 ~3–5k 行（instance/device/swapchain/pipeline/descriptor/
-   frames-in-flight）。`SDL_GPU` 把这部分省掉，但仍然要重写上面 1、2 两条。
+`SDL_LockAudioDevice` / `SDL_UnlockAudioDevice` **在 SDL3 里已删除**（回调不再跑在别的线程）。
+实测命中：设备锁 17 + 19 处、`SDL_OpenAudioDevice` 2 处、`Pause` 3 处、`Close` 1 处，共 **36 处**，
+加上 `src/audio_mixer.c`（807 行）与 `include/sts_mixer.h` 的回调结构，需要改成 stream 模型：
 
-估计：**SDL_GPU 路线 2–4 周；裸 Vulkan 4–8 周**，且两者都把 Web 排除在外。
+```
+SDL_OpenAudioDevice(...)      →  SDL_OpenAudioDeviceStream(dev, &spec, cb, user)
+回调里写缓冲                  →  SDL_PutAudioStreamData(stream, buf, len)   （或 pull 模型）
+SDL_Lock/UnlockAudioDevice    →  SDL_LockAudioStream / SDL_UnlockAudioStream（多数情况不需要了）
+```
 
-## 5. 更硬的事实：Web 的真正门槛不在图形
+风险：本引擎对时序敏感（`[BATTLE-FLAT-CLOCK]`、演出节奏都靠帧/时钟），音频重写后**必须重听**
+关键场景（开场演出、点击音、战斗音效），不能只验「有声音」。
 
-- 游戏数据目录 **3.8 GB**（`Rance10CG.afa` 等）。Web 上不可能整包预载，必须做
-  按需 range-request + 缓存；这是**内容分发**问题，换图形 API 一点忙都帮不上。
-- 运行时 RSS 约 **305 MB**，wasm32 勉强够用，但没有余量。
-- 视频用了外挂 `libavcodec`（`movie_ffmpeg.c`），Web 上要换成 `<video>` 或 wasm 解码器。
-- AIN 解释器是**热路径**，wasm 下的性能尚未测过。
+**C2 事件结构**
 
-## 6. 建议
+`SDL_KeyboardEvent.keysym` 字段被删：`e.key.keysym.scancode` → `e.key.scancode`、`.mod` → `e.key.mod`；
+`SDL_Keysym` 类型不存在；`state` 改 `down`（bool）。鼠标事件的坐标改 float。
+`src/input.c` 899 行是主战场，但改动形态统一（机械替换 + 编译报错兜底）。
 
-**现在做：什么都不做。**
+**C3 Android 专用调用**
 
-理由：当前第一章卡在 `[TEXTBUTTON-CLICK]`（AIN 委托派发）与战斗入口，
-**瓶颈 100% 在字节码语义层，不在渲染层**。这一周已实测：headless 软件渲染 13.5 fps、
-真机 GL 99.7 fps —— 图形从来不是性能瓶颈。此时把 5654 行渲染层推倒重来，
-只会让取证节奏停摆，而且不解决任何一个当前 bug。
+`SDL_AndroidSendMessage` **在 SDL3 里已不存在**（`SDL_system.h` 里已核，0 命中）。
+我们只有 1 处（`src/hll/SystemService.c:336`，`#ifdef __ANDROID__` 分支，用于打开说明书）。
+替代：直接 JNI（`SDL_AndroidGetJNIEnv` + `SDL_AndroidGetActivity`）或 `SDL_OpenURL`。
 
-**如果要做现代化，顺序应当是：**
+### D. 构建与打包
 
-1. **把 GL 收敛成 GLES3 单一路径**（删掉桌面 `#version 140` 分支，只留 `300 es`）。
-   代价极小（`video.c` 里两个着色器二选一），收益是**同一份代码同时覆盖 Android 与 WebGL2**。
-   这是通向 Web 的唯一低成本动作。
-2. **等第一章可玩、战斗能进之后**，再评估 SDL3（为了 SDL2 进入维护模式的长期风险）。
-   届时应连带把音频改成 stream 模型（§3）。
-3. **只有在明确放弃 Web、且要做 3D/战斗特效重活时**，才考虑 `SDL_GPU`。
-   那时它比裸 Vulkan 便宜得多，且能同时覆盖 Linux/Android/macOS/Win。**永远不要裸写 Vulkan。**
+- `meson.build`：`dependency('sdl2')` → `dependency('sdl3')`，并加最低版本（建议 `>=3.2`）。
+- 静态链接：`static_libs` 开关在 SDL3 仍然可用（`libSDL3.a`）。
+- Android：SDL3 官方模板用 **prefab + Gradle**，要求 `minSdk ≥ 21`；我们的 APK 流水线要跟着改，
+  且 SDL3 的 Android 入口点仍由 `SDL_main` 接管，`AndroidManifest` 的 Activity 名不变。
 
-**改主意的信号**（满足任一才值得动）：
+## 三、风险清单（按严重度）
 
-- 真机上出现 GL 驱动兼容性问题（尤其国产 Android 机型），且 GLES2/3 兜底失效；
-- 战斗特效需要 compute / 大量 draw call，GL 实测撑不住（要有帧率数据，不是感觉）；
-- 官方明确 Web 版是交付目标之一 —— 那时应当**立刻做第 1 步**，而不是换图形 API。
+| # | 风险 | 影响 | 缓解 |
+|---|---|---|---|
+| 1 | 音频重写引入时序/爆音回归 | 高 | 单独一个提交，A/B 开关 `XSYS4_SDL2_AUDIO=1` 暂时保留旧路径 |
+| 2 | 上游分叉成本 | 中高 | `nunuhara/xsystem4` 至今 **0 个 SDL3 提交**（本次已查），我们改的 62 个文件后续每次同步上游都要解冲突 |
+| 3 | bool 返回值翻转漏改 | 中 | 只有 5 处 `< 0`/`== -1`，逐个改成 `!SDL_...()`；编译告警 + 跑测兜底 |
+| 4 | Android 打包链 | 中 | 先做桌面，APK 单独一个阶段，不和逻辑修复混在一起 |
+| 5 | 验证成本 | 中 | 本项目每轮真流程跑测 5 分钟起，SDL3 后需要重跑全部基线（12 屏 ADV + 场景序列） |
 
-## 7. 一句话给决策者
+## 四、建议路径（若要动）
 
-> 换 Vulkan 是把「未来可移植」换成「现在就不可移植到 Web」；
-> 想上 Web，正确动作是把 OpenGL 收敛到 GLES3，而不是升级图形 API。
-> SDL3 值得做，但它是音频工程，不是图形工程。
+**不要一次性替换**。分四步，每步都有可判定的完成条件：
+
+| 阶段 | 做什么 | 判据 |
+|---|---|---|
+| 0 | 用 SDL 官方 `rename_symbols.py` 干跑一遍，产出改名清单 | 清单能覆盖我们 67 个函数里的绝大多数 |
+| 1 | 新建分支 `sdl3`，加一层 `src/sdl_compat.h`（只做**改名映射**，不改行为） | 桌面能编过、能起窗、ADV 第一屏与 SDL2 版**逐像素可比** |
+| 2 | 音频改 stream 模型（单提交 + 开关） | 开场演出/点击音/战斗音效听感正常，且 `[BATTLE-FLAT-CLOCK]` 类时序指标不变差 |
+| 3 | Android 打包（prefab/Gradle + JNI 替代 `SDL_AndroidSendMessage`） | arm64 APK 在 realme RMX3700 上起窗、能操作 |
+
+兼容头的价值：**上游仍是 SDL2**，有了这层映射，将来上游改 SDL2 代码时可以低成本跟；
+没有它，62 个文件的 diff 会让每次上游同步都变成手工活。
+
+## 五、我的判断（什么时候值得做）
+
+**现在不值得。** 理由不是技术难，而是**收益为零**：
+
+- 当前阶段最大的卡点是 `[TEXTBUTTON-CLICK]`（整类 TextButton 点击注入链路缺失）和战斗侧那几条，
+  这些与 SDL 版本**没有关系**；迁移完 SDL3，第一章依然卡在第 37 句。
+- 交付目标是 arm64 APK，SDL2 在 Android 上是成熟路径；SDL3 在 Android 的收益（更好 IME、HiDPI、
+  高刷）要等 UI 真跑起来才体现得出来。
+
+**值得做的时机**（满足任一）：
+
+1. 第一章 + 战斗在 SDL2 上跑通，进入「上架/长期维护」阶段（那时 SDL3 的 Android 与 Wayland 收益才兑现）；
+2. 上游 `nunuhara/xsystem4` 自己迁到 SDL3（那时我们从「分叉」变成「跟随」，成本反转）；
+3. 遇到 SDL2 无法解决的硬问题（例如某个 Android 输入/HiDPI 缺陷）。
+
+## 附：本次核对过的 SDL3 符号（避免下次重复查）
+
+已确认 **SDL3 仍存在**：`SDL_GetTicks`、`SDL_GetTicksNS`、`SDL_OpenURL`、`SDL_ShowSimpleMessageBox`、
+`SDL_LoadFile`、`SDL_CreateThread`、`SDL_CreateSurfaceFrom`、`SDL_PointInRect`、`SDL_PointInRectFloat`、
+`SDL_GetRectUnion`、`SDL_GetRectIntersection`、`SDL_WaitConditionTimeout`。
+
+已确认 **SDL3 不存在**：`SDL_GetTicks64`、`SDL_UnionRect`、`SDL_IntersectRect`、`SDL_FreeFormat`、
+`SDL_LockAudioDevice`、`SDL_UnlockAudioDevice`、`SDL_AndroidSendMessage`、`SDL_Keysym`。
+
+补充：`SDL_Renderer` / `SDL_Texture` 在 SDL3 **仍然存在**，只是 API 有较多调整 —— 本项目两个都没用
+（渲染走裸 OpenGL），所以这一大块改动对我们不适用，这也是本次评估判定「工作量小」的主要依据。
