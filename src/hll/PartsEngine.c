@@ -559,14 +559,23 @@ static void PartsEngine_UpdateComponent(int passed_time, int scaled_time,
 	(void)scaled_time; (void)mul_color_rate; (void)alpha_rate;
 	PE_Update(passed_time, message_window_show != 0);
 }
-/* AIN PartsEngine.Parts_GetParentPartsNumber：第一阶段移植里不做父部件
- * 追踪，一律报「没有」(-1)（D80）。 */
+/* AIN PartsEngine.Parts_GetParentPartsNumber。
+ *
+ * [D312] 原来是恒 0 的桩（D80/D81 的"HACK-POC 仅探针"）。但父链正是 AIN 算
+ * **层号**的输入：`AFL_Parts_GetLayerIDByParts`(7260) 沿父链上溯、遇 0 结束。
+ * 恒 0 ⇒ 所有部件都被判成根 ⇒ 层号与真实归属不符 ⇒ AIN 隐藏的分支落空
+ * （`[BG-LAYER]` 的形状）。运行期实测被调 18 次，属"冷但关键"。
+ * `XSYS4_PARENT_REAL=0` 回退到旧桩。 */
 static int PartsEngine_Parts_GetParentPartsNumber(uintptr_t parts_no)
 {
-	(void)parts_no;
-	/* [HACK-POC D81] 仅探针：把「没有父部件」报成 0，
-	 * 因为 AIN AFL_Parts_GetLayerIDByParts（函数号 7260）就是靠 0 结束的。 */
-	return 0;
+	static int off = -1;
+	if (off < 0) {
+		const char *e = getenv("XSYS4_PARENT_REAL");
+		off = (e && !strcmp(e, "0"));
+	}
+	if (off)
+		return 0;
+	return PE_parts_get_parent_parts_number((int)parts_no);
 }
 
 /* AIN PartsEngine.CreateUserPartsNumber：分配一个新的用户部件号。
@@ -1119,11 +1128,10 @@ static void PE_Noop_Parts_SetWheelable(int a0, int a1)
 	(void)a1;
 }
 
-/* AIN SetActiveController：void SetActiveController。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetActiveController(int a0)
-{
-	(void)a0;
-}
+/* AIN SetActiveController：void SetActiveController。
+ * [D312] 原来空实现（D85 占位）。实测运行期 **5970 次**，且它决定新部件落在
+ * 哪一层（`parts->controller_no = ctrl_stack.active`），空实现会让 AIN 的
+ * "往低层放东西/隐藏低层"全部落空。见 parts.c 的 PE_SetActiveController。 */
 
 /* AIN SetButtonCharSpace：void SetButtonCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetButtonCharSpace(int a0, int a1)
@@ -3315,7 +3323,8 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Parts_GetPartsClickable, PE_GetPartsClickable),
 	    HLL_TODO_EXPORT(Parts_GetResetTimerByChangeInputStatus, PartsEngine_Parts_GetResetTimerByChangeInputStatus),
 	    HLL_TODO_EXPORT(Parts_GetPartsDrag, PartsEngine_Parts_GetPartsDrag),
-	    HLL_TODO_EXPORT(Parts_GetParentPartsNumber, PartsEngine_Parts_GetParentPartsNumber),
+	    /* [D312] 删除同名重复登记：本行原为 `HLL_TODO_EXPORT(Parts_GetParentPartsNumber, …)`，
+	    /* 与上方 HLL_EXPORT 重复，覆盖率把它算两次、工具误报 TODO。 */
 	    HLL_EXPORT(Parts_GetInputState, PE_GetInputState),
 	    HLL_TODO_EXPORT(Parts_GetOnCursorShowLinkPartsNumber, PartsEngine_Parts_GetOnCursorShowLinkPartsNumber),
 	    HLL_TODO_EXPORT(Parts_GetSoundNumber, PartsEngine_Parts_GetSoundNumber),
@@ -3340,7 +3349,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Parts_SetUpdateLookAtPos, PE_Noop_Parts_SetUpdateLookAtPos),
 	    HLL_EXPORT(Parts_SetVGaugeReverse, PE_Noop_Parts_SetVGaugeReverse),
 	    HLL_EXPORT(Parts_SetWheelable, PE_Noop_Parts_SetWheelable),
-	    HLL_EXPORT(SetActiveController, PE_Noop_SetActiveController),
+	    HLL_EXPORT(SetActiveController, PE_SetActiveController),
 	    HLL_EXPORT(SetButtonCharSpace, PE_Noop_SetButtonCharSpace),
 	    HLL_EXPORT(SetButtonFlatName, PE_Noop_SetButtonFlatName),
 	    HLL_EXPORT(SetButtonLineSpace, PE_Noop_SetButtonLineSpace),

@@ -95,6 +95,10 @@ int PE_GetPartsUpperLeftPosY(int parts_no, int state);
 void PE_SetPartsOriginPosMode(int parts_no, int origin_pos_mode);
 int PE_GetPartsOriginPosMode(int parts_no);
 void PE_SetParentPartsNumber(int parts_no, int parent_parts_no);
+/* [D312] 父部件号查询（0 = 没有父）。AIN 的 Parts_GetParentPartsNumber 用它算层号。 */
+int PE_parts_get_parent_parts_number(int parts_no);
+/* [D312] 真正设置活动层（决定新部件落在哪一层）。 */
+void PE_SetActiveController(int no);
 void PE_AddChild(int parts_no, int child_no);
 void PE_InsertChild(int parts_no, int child_no, int index);
 void PE_RemoveChild(int parts_no, int child_no);

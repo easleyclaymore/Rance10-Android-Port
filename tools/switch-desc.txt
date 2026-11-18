@@ -26,6 +26,9 @@ XSYS4_HLL_TRACE_FILTER	收窄 HLL_TRACE：`PartsEngine` 按库名、`27:73` 按�
 XSYS4_HLL_ARGDBG	打印 HLL 调用的实际参数值（排查"参数顺序/位宽错"时用）
 XSYS4_FN_DUMP	函数调用次数统计与慢函数排行
 XSYS4_FN_DUMP_ALL	统计时不做前 N 次闸门，低频函数也全打
+XSYS4_ACTIVE_CTRL_SET	`=0` 把 `PartsEngine.SetActiveController` 退回空实现（D312 前行为）。默认真设置活动层
+XSYS4_PARENT_REAL	`=0` 把 `Parts_GetParentPartsNumber` 退回恒 0 桩（D80/D81 行为）。默认返回真实父号
+XSYS4_HLL_HOT	[诊断] 退出时打印全库 HLL 调用热力表（次数倒序，含是否有 C 实现）。`tools/hll-hotness.py` 吃它排工作队列
 XSYS4_BACKSCENE_DBG	[诊断] 打印 SetWantSaveBackScene / SaveBackScene / LoadBackScene 的时机与规模（背景场景快照链）
 XSYS4_BACKSCENE_WANT	[诊断] `=1` 让 `IsWantSaveBackScene` 返回真实标记（默认仍恒 false）。实测对开场剧情背景无影响
 XSYS4_DUMP_CG_SIZE	[诊断] 配合 XSYS4_DUMP_CG：只转存该宽度的 CG 纹理（按尺寸触发，避开部件号复用）

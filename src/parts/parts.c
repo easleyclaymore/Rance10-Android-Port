@@ -2520,6 +2520,29 @@ int PE_GetPartsOriginPosMode(int parts_no)
 	return parts_get(parts_no)->origin_mode;
 }
 
+/* [D312] 真实的父部件号查询。
+ *
+ * `PartsEngine.Parts_GetParentPartsNumber` 一直是「恒返回 0」的桩（D80/D81），
+ * 理由是「第一阶段不做父部件追踪」。但父链是 AIN 算**层号**的输入：
+ * `AFL_Parts_GetLayerIDByParts`(7260) 就是沿父链往上找、遇到 0 结束。
+ * 恒返回 0 ⇒ 每个部件都被判成「根」⇒ 算出的层号与实际归属不符，
+ * 于是 AIN 去隐藏 A 层、而部件其实在 B 层（`[BG-LAYER]` 的形状）。
+ *
+ * `parent_parts_no` 的 0 表示「没有父」，与 AIN 的终止约定一致。 */
+int PE_parts_get_parent_parts_number(int parts_no)
+{
+	struct parts *p = parts_try_get(parts_no);
+	if (!p)
+		return 0;
+	if (p->parent)
+		return p->parent->no;
+	/* 挂父是延迟生效的（`pending_parent` 等下次 RefreshGlobalTree 才落地），
+	 * 这期间也要报出「将来会挂到谁」，否则刚 SetParent 完就问的情况全错。 */
+	if (p->pending_parent >= 0)
+		return p->pending_parent;
+	return 0;
+}
+
 void PE_SetParentPartsNumber(int parts_no, int parent_parts_no)
 {
 	/* [D194] 選択肢按钮的根 `par=-1`、z=100，而兄弟面板 z=22000。
@@ -3294,6 +3317,47 @@ static void ctrl_pending_add(int parts_no)
 		return;
 	}
 	ctrl_pending_nos[ctrl_pending_n++] = parts_no;
+}
+
+/* [D312] 真正设置「活动层」。
+ *
+ * `PartsEngine.SetActiveController` 一直是 `PE_Noop_SetActiveController` 空实现
+ * （D85 的占位），实测运行期被调用 **5970 次** —— 每建一层、每次切场景都在调。
+ * 它决定 `parts->controller_no = ctrl_stack.active`（新部件落在哪层），
+ * 也是 AIN 判断「这一层现在是不是前台」的依据。空实现 ⇒ 活动层永远是栈顶，
+ * 于是 AIN 想往低层放/隐藏的东西全被放到栈顶，隐藏因此不生效。
+ *
+ * `XSYS4_ACTIVE_CTRL_SET=0` 可回退到空实现做 A/B。 */
+void PE_SetActiveController(int no)
+{
+	static int off = -1;
+	if (off < 0) {
+		const char *e = getenv("XSYS4_ACTIVE_CTRL_SET");
+		off = (e && !strcmp(e, "0"));
+	}
+	if (getenv("XSYS4_CTRL_DBG"))
+		NOTICE("[ctrl] SetActive no=%d (idx 范围 0..%d, 原 active=%d)%s",
+		       no, ctrl_stack.nr_controllers - 1, ctrl_stack.active,
+		       off ? "  [已禁用]" : "");
+	if (off)
+		return;
+	/* 参数是**稳定 id**，不是栈下标。
+	 *
+	 * 实测（`s/h2`）：`SetActive no=2` 而当时只有 `0..1` 两层、`no=9` 而只有
+	 * `0..4` —— 用下标判定会 6739/6741 全部越界丢弃。与 `PE_get_active_controller`
+	 * 对称（它 `return PE_get_controller_id(active)`，D129 起就是 id），
+	 * 所以这里必须按 id 反查下标。 */
+	for (int i = 0; i < ctrl_stack.nr_controllers; i++) {
+		if (ctrl_stack.id[i] == no) {
+			if (getenv("XSYS4_CTRL_DBG") && i != ctrl_stack.active)
+				NOTICE("[ctrl] SetActive id=%d -> idx=%d", no, i);
+			ctrl_stack.active = i;
+			return;
+		}
+	}
+	if (getenv("XSYS4_CTRL_DBG"))
+		NOTICE("[ctrl] SetActive 未知 id=%d（现有 %d 层），忽略",
+		       no, ctrl_stack.nr_controllers);
 }
 
 int PE_AddController(int index)
