@@ -532,6 +532,44 @@ static void parts_render_cg(struct parts *parts, struct parts_common *common){
 		parts->global.multiply_color.g / 255.0f,
 		parts->global.multiply_color.b / 255.0f,
 	};
+	/* [D299] parts 着色器路径对某些纹理「提交了但不出像素」
+	 * （`[UC-TEXSHADER]`；STATUS 契约 19 已记录文字必须走精灵路径）。
+	 * 消息窗口底板 `シス／ＡＤＶ／事件／提示` 正好中招：s92–s99 七项全排除
+	 * （纹理有效 glIsTexture=1、矩形 r=(0,0,1920,330)、vis=1、a=255、
+	 * gz=4901 无遮挡、deform=0、被调 302 次）却看不见。
+	 * 这里提供精灵路径兜底：仅在「无缩放无旋转」时启用（底板/立绘都是），
+	 * 有变换的仍走原路径以免破坏既有画面。XSYS4_CG_SPRITE_PATH=1 开启。 */
+	/* 只卡缩放/旋转：`draw_filter` 与 `alpha` 不该成为判据
+	 * （底板 alpha=255 但 draw_filter 可能非 0，上一版因此整条没进这条路径）。 */
+	/* 范围必须收紧：一刀切让**所有** CG 走精灵路径会把地图大 CG 画黑
+	 * （`s102` 就是），因为原路径还负责 blend/draw_filter。
+	 * 只处理「我们为消息窗口新建的底板」——特征：`di=-1`（不属于任何
+	 * activity）+ 全宽 + 高 250..600（1920x330 / 1920x417 两种）。 */
+	if (getenv("XSYS4_CG_SPRITE_PATH") &&
+	    parts->delegate_index < 0 &&
+	    r.w >= 1900 && r.h >= 250 && r.h <= 600 &&
+	    parts->global.scale.x == 1.0f && parts->global.scale.y == 1.0f &&
+	    parts->local.rotation.z == 0.0f) {
+		if (getenv("XSYS4_CG_SPRITE_DBG")) {
+			static int n;
+			/* 只打底板级（宽 >=1900）的大矩形：名额按到达顺序分配时，
+			 * 一堆小 CG 会先把 40 条占满，目标部件永远打不出来。 */
+			if (r.w >= 1900 && n++ < 500)
+				NOTICE("[cgsp] no=%d pr=(%d,%d %dx%d) filt=%d a=%d",
+				       parts->no,
+				       (int)(parts->global.pos.x + common->origin_offset.x),
+				       (int)(parts->global.pos.y + common->origin_offset.y),
+				       r.w, r.h, parts->draw_filter,
+				       (int)parts->global.alpha);
+		}
+		Rectangle pr = {
+			(int)(parts->global.pos.x + common->origin_offset.x),
+			(int)(parts->global.pos.y + common->origin_offset.y),
+			r.w, r.h,
+		};
+		gfx_render_texture(&common->texture, &pr);
+		return;
+	}
 	parts_render_texture(&common->texture, mw_transform, &r, parts->global.alpha / 255.0,
 			add_color, multiply_color, parts->draw_filter,
 			parts->global.alpha_clipper_parts_no);
