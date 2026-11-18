@@ -1106,6 +1106,14 @@ int delegate_numof(struct page *page)
 	// 垃圾回收
 	for (int i = 0; i < page->nr_vars; i += 3) {
 		if (heap_get_seq(page->values[i].i) != page->values[i+2].i) {
+			/* [D307] XSYS4_DG_GC_DBG=1：委托被 GC 掉时打一条。
+			 * 「按钮注册了委托却点不动」的一种可能是：注册成功，但
+			 * 目标对象槽被回收/复用后 seq 对不上，委托被这里静默删掉，
+			 * 于是 FunctionSet 的 `<MouseLClickEvent>` 变成 nr=0。 */
+			if (getenv("XSYS4_DG_GC_DBG"))
+				NOTICE("[dggc] drop obj=%d fun=%d seq=%d(now %d)",
+				       page->values[i].i, page->values[i+1].i,
+				       page->values[i+2].i, heap_get_seq(page->values[i].i));
 			for (int j = i+3; j < page->nr_vars; j += 3) {
 				page->values[j-3].i = page->values[j+0].i;
 				page->values[j-2].i = page->values[j+1].i;

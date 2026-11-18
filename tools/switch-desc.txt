@@ -26,6 +26,11 @@ XSYS4_HLL_TRACE_FILTER	收窄 HLL_TRACE：`PartsEngine` 按库名、`27:73` 按�
 XSYS4_HLL_ARGDBG	打印 HLL 调用的实际参数值（排查"参数顺序/位宽错"时用）
 XSYS4_FN_DUMP	函数调用次数统计与慢函数排行
 XSYS4_FN_DUMP_ALL	统计时不做前 N 次闸门，低频函数也全打
+XSYS4_FN_LIST	[诊断] 按名字子串列出 AIN 函数（号 / 地址 / 名字）。`CallDelegate`、`TextButton@Motion` 这类只存在于内存表的函数号，靠它才能上 CALL_TRACE / DUMP_AT
+XSYS4_STRUCT_LIST	[诊断] 按名字子串列出结构体及成员名。查「m7 是委托表还是哈希表」时，成员名比任何猜测都直接
+XSYS4_FN_DUMP_FSSCAN	[诊断] 配合 FN_DUMP：扫描堆里所有 CPartsFunctionSet，打印有点击委托的 parts 号与委托函数名
+XSYS4_FN_DUMP_FSALL	[诊断] 配合 FN_DUMP_FSSCAN：连点击委托为空的 FunctionSet 也打出来
+XSYS4_DG_GC_DBG	[诊断] 委托被 delegate_numof 的 GC 丢弃时打一条（obj/fun/seq）。分辨「没注册」与「注册了又被丢掉」
 XSYS4_FN_DUMP_SKIP	统计时跳过指定函数号
 XSYS4_CENSUS	按函数做调用普查（与 FN_DUMP 互补）
 XSYS4_IP_WATCH	监视指令指针，抓"跑到不该跑的地方"
