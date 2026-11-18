@@ -128,6 +128,20 @@ def main(argv):
     print(f"源码口径缺口合计: {len(todo)} 个"
           f"（其中运行期从未被调用: {len(todo) - counts['TODO']} 个）\n")
 
+    if "--by-lib" in argv:
+        per = {}
+        for fn, n in rows:
+            lib = fn.split(".")[0]
+            e = per.setdefault(lib, {"n": 0, "calls": 0, "TODO": 0, "STUB": 0})
+            e["n"] += 1
+            e["calls"] += n
+            e[tag(fn)] = e.get(tag(fn), 0) + 1
+        print(f"{'库':22}{'函数数':>7}{'调用次数':>12}{'TODO':>6}{'STUB':>6}")
+        print("-" * 56)
+        for lib, e in sorted(per.items(), key=lambda kv: -kv[1]["calls"]):
+            print(f"{lib:22}{e['n']:>7}{e['calls']:>12}{e['TODO']:>6}{e['STUB']:>6}")
+        return 0
+
     if todo_only:
         rows = [r for r in rows if tag(r[0]) != "OK"]
         if not rows:
