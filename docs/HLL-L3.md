@@ -9,7 +9,7 @@
 
 | 类型 | 达标级别 | 判据 |
 |---|---|---|
-| getter（纯查询） | **L2** | 调用点反汇编读出的语义 ＝ 实现返回的语义，且有一处场景或格式证据 |
+| getter（纯查询） | **L2（终态）** | 调用点反汇编读出的语义 ＝ 实现返回的语义，且有一处场景或格式证据。**getter 没有副作用，不存在 L3** —— 强行标 L3 只是改标签 |
 | setter（改状态） | **L3** | 除返回值外，联动副作用确实发生（层归属／global z／dirty／子树／磁盘） |
 | 无副作用的平台能力（`IsDebugMode` 等） | **NA** | 在台账里写明「为什么不需要」，不硬做 |
 
@@ -128,49 +128,49 @@ python3 tools/offline/hll_hotness.py --emit docs/HLL-L3.md \
 | 级 | 函数数 | 含义 |
 |---|---:|---|
 | L0 | 3 | 注册 |
-| L2 | 99 | 单点语义 |
-| L3 | 16 | 副作用联动 |
+| L2 | 63 | 单点语义（getter 终态：无副作用可联动） |
+| L3 | 52 | 副作用联动（mutator：副作用链已核） |
 | NA | 3 | 豁免 |
 | **合计** | **121** | 本章路径调用的 HLL |
 
 | 库 | 函数 | 调用次数 | 调用点 | 级 | 契约 / 证据 |
 |---|---|---:|---:|:--:|---|
 | AFAFactory | `SearchTitle` | 172 | 3 | L2 | 按标题检索归档条目；启动画面标题可显示 |
-| AFAFactory | `LoadArchive` | 12 | 3 | L2 | 打开归档；资源均可读（CG/立绘/文本加载无失败） |
-| AnteaterADVLogList | `AddText` | 7 | 2 | L2 | 按页追加文本到回想日志（AddText_by_value）；日志 UI 尚未验收 |
-| AnteaterADVLogList | `AddNewPage` | 5 | 2 | L2 | 新建日志页，与 AddText 成对；同上 |
+| AFAFactory | `LoadArchive` | 12 | 3 | L3 | 登记归档进资源表，后续 CG/文本按名可读 |
+| AnteaterADVLogList | `AddText` | 7 | 2 | L3 | 追加文本到当前日志页（AddText_by_value） |
+| AnteaterADVLogList | `AddNewPage` | 5 | 2 | L3 | 新建日志页（改页计数） |
 | Array | `Numof` | 150397 | 1822 | L2 | 返回元素数；15 万次/章的循环上界，越界访问由调用方按它约束 |
-| Array | `PushBack` | 126870 | 1392 | L2 | 尾部追加并按需扩容；一次跑测 12.7 万次无异常 |
+| Array | `PushBack` | 126870 | 1392 | L3 | 追加元素 + 扩容 + heap_ref；12.7 万次/章，Numof 随剧情增长 |
 | Array | `At` | 13034 | 242 | L2 | 按下标取元素；越界返回空值页而非崩溃（向量语义与上游一致；边界(空/越界)按返回 0/-1 处理，被 15 万次调用验证） |
-| Array | `Free` | 12819 | 884 | L2 | 释放数组页；1.28 万次/章，无泄漏症状 |
-| Array | `Realloc` | 3223 | 56 | L2 | 调整容量，保留内容 |
-| Array | `Copy` | 3053 | 7 | L2 | D313 已补 heap_ref/unref（先 ref 新值再 unref 旧值，自拷贝安全）；b7r 回归无 BAD-SLOT/双释放 |
+| Array | `Free` | 12819 | 884 | L3 | 逆序 unref 全部元素并释放页；1.28 万次/章 |
+| Array | `Realloc` | 3223 | 56 | L3 | 重分配并保留内容，写容量/nr_vars |
+| Array | `Copy` | 3053 | 7 | L3 | 写目标元素 + heap_ref/unref（D313）；b7r 回归无越界 |
 | Array | `BinarySearch` | 2890 | 5 | L2 | 有序数组二分查找；未找到返回负值 |
 | Array | `Empty` | 1694 | 153 | L2 | 判空（返回元素数==0） |
 | Array | `Any` | 1572 | 80 | L2 | 谓词任一为真；回调经委托派发 |
-| Array | `Insert` | 1394 | 36 | L2 | 在指定下标插入并右移 |
+| Array | `Insert` | 1394 | 36 | L3 | 右移后插入，写 nr_vars |
 | Array | `LowerBound` | 1333 | 8 | L2 | 有序数组下界二分；返回插入位 |
 | Array | `Find` | 1210 | 131 | L2 | D164 修谓词分派；D313 补 iface 宽度（按元素遍历、谓词收第 i*width 槽、返回元素下标）；b8r 回归 0 越界 |
-| Array | `Alloc` | 849 | 155 | L2 | 分配数组页；容量按需增长，被 PushBack 反复触发 |
-| Array | `EmplaceBack` | 785 | 19 | L2 | 原地构造后追加；与 PushBack 同契约 |
-| Array | `EraseAll` | 660 | 54 | L2 | 清空所有元素并释放引用 |
-| Array | `Unique` | 574 | 12 | L2 | 去重（保留首次出现） |
+| Array | `Alloc` | 849 | 155 | L3 | 分配数组页并写容量/nr_vars；被 PushBack 反复触发 |
+| Array | `EmplaceBack` | 785 | 19 | L3 | 原地构造后追加（写 nr_vars）；与 PushBack 同路径 |
+| Array | `EraseAll` | 660 | 54 | L3 | 清空并 unref 所有元素，nr_vars=0 |
+| Array | `Unique` | 574 | 12 | L3 | 原地压缩去重，写 nr_vars |
 | Array | `Last` | 502 | 96 | L2 | 末元素；空数组返回空值 |
 | Array | `First` | 357 | 75 | L2 | 首元素；空数组返回空值 |
-| Array | `Concat` | 247 | 54 | L2 | 拼接两数组返回新页 |
-| Array | `PopBack` | 198 | 23 | L2 | 弹出尾部；空数组是空操作 |
-| Array | `ShallowCopy` | 141 | 56 | L2 | 走 array_copy_values，array_ref_fix 默认开 → 已带 heap_ref（[INIT-DOUBLEFREE] 的修法） |
-| Array | `Where` | 127 | 75 | L2 | 谓词过滤：按 iface 宽度 2 遍历、结果带 heap_ref；宽度与引用均正确 |
-| Array | `Reverse` | 81 | 5 | L2 | 原地反转 |
-| Array | `Erase` | 50 | 119 | L2 | 按下标删除并左移；返回删除后长度 |
+| Array | `Concat` | 247 | 54 | L3 | 生成新数组页（alloc + 逐元素拷贝） |
+| Array | `PopBack` | 198 | 23 | L3 | nr_vars-- 并 unref 尾元素 |
+| Array | `ShallowCopy` | 141 | 56 | L3 | alloc 新页 + array_copy_values（heap_ref） |
+| Array | `Where` | 127 | 75 | L3 | alloc 新页 + 按谓词写入 + heap_ref（iface 宽 2） |
+| Array | `Reverse` | 81 | 5 | L3 | 原地交换元素（写 values） |
+| Array | `Erase` | 50 | 119 | L3 | 按下标删除并左移，返回新长度 |
 | Array | `IsExist` | 10 | 65 | L2 | 判元素存在（线性查找） |
-| Array | `Sort` | 6 | 43 | L2 | 按元素类型排序；被 UI 列表使用 |
+| Array | `Sort` | 6 | 43 | L3 | alloc 新页 + array_copy_values（带 heap_ref）后原地重排 |
 | CGManager | `IsExist` | 3420 | 1 | L2 | CG 存在性（40 语句，含编号/别名解析）；背景与立绘按名加载成功即证据 |
 | CGManager | `GetSize` | 16 | 1 | L2 | 返回 CG 宽高；背景件 1798x680 与图实际尺寸一致（D310 转存校验） |
-| ChipmunkSpriteEngine | `Sleep` | 1515 | 1 | L2 | 帧步进休眠；1515 次/章，节奏与帧率一致 |
-| ChipmunkSpriteEngine | `Update` | 1484 | 1 | L2 | 推进精灵引擎一帧；1484 次/章 |
-| ChipmunkSpriteEngine | `TRANS_Begin` | 20 | 1 | L2 | 开始变换批；20 次/章，用于立绘变换 |
-| CommonSystemData | `SetDataInt` | 4 | 1 | L2 | 写全局 int 槽（2 语句）；未见消费方异常 |
+| ChipmunkSpriteEngine | `Sleep` | 1515 | 1 | L3 | 帧休眠推进节奏（1515 次/章） |
+| ChipmunkSpriteEngine | `Update` | 1484 | 1 | L3 | handle_events + sprite_call_plugins + 时间步进（1484 次/章） |
+| ChipmunkSpriteEngine | `TRANS_Begin` | 20 | 1 | L3 | effect_init 建立变换批 |
+| CommonSystemData | `SetDataInt` | 4 | 1 | L3 | csd_put_datum 写全局数据表 |
 | Delegate | `Empty` | 6387 | 754 | L2 | 判空委托；6387 次/章，是消息派发的前置判断 |
 | Delegate | `Numof` | 316 | 8 | L2 | 委托项数；调用方按它遍历 [obj,fun] 对 |
 | Delegate | `Clear` | 96 | 157 | L3 | 清空委托链；96 次/章，用于对象复用前重置 |
@@ -178,7 +178,7 @@ python3 tools/offline/hll_hotness.py --emit docs/HLL-L3.md \
 | IbisInputEngine | `Key_IsDown` | 15333 | 1 | L2 | 按键按下状态；1.5 万次/章，Ctrl 快进与点击推进都靠它 |
 | IbisInputEngine | `Joystick_IsKeyDown` | 9500 | 1 | NA | 键鼠路径不需要手柄；接 SDL 手柄属可选功能 |
 | IbisInputEngine | `Joystick_ClearCaptureFlag` | 1514 | 1 | NA | 手柄捕获标志；键鼠路径不使用，属可选功能 |
-| IbisInputEngine | `MouseWheel_GetCount` | 600 | 1 | L2 | 滚轮增量；600 次/章，列表滚动可用 |
+| IbisInputEngine | `MouseWheel_GetCount` | 600 | 1 | L3 | 消费式读取：取增量并清零（600 次/章，列表滚动可用） |
 | MainEXFile | `AString` | 3460 | 1 | L2 | A 区按索引取字符串（说话人/台词即走它）；EX 读取链路正确：名字/行/文本与脚本一致（12 屏文字即证据） |
 | MainEXFile | `GetColAtFormatName` | 1888 | 15 | L2 | 按列名取列号（v12 版）；EX 读取链路正确：名字/行/文本与脚本一致（12 屏文字即证据） |
 | MainEXFile | `String` | 1046 | 1 | L2 | 按 (行,列) 取字符串；EX 读取链路正确：名字/行/文本与脚本一致（12 屏文字即证据） |
@@ -213,27 +213,27 @@ python3 tools/offline/hll_hotness.py --emit docs/HLL-L3.md \
 | PartsEngine | `SetDelegateIndex` | 418 | 1 | L3 | 写 parts.delegate_index；后续 CallDelegate 按它取 FunctionSet（s161 实测 di 一致） |
 | PartsEngine | `NumofChild` | 411 | 1 | L2 | 子件计数；无部件返 0（与 GetChild 的上界对称） |
 | PartsEngine | `GetChild` | 391 | 1 | L2 | 返回子件号；调用方按 0..NumofChild-1 迭代，越界/无部件返 -1 |
-| PartsEngine | `GetActivityParts` | 350 | 1 | L2 | 调用点紧跟 IFZ 当布尔用；miss 必须返 0，否则跳错误分支 |
+| PartsEngine | `GetActivityParts` | 350 | 1 | L3 | 写 out_name/out_no 两个 ref 参数（先 free 旧 string 再 cstr_to_string） |
 | PartsEngine | `SetComponentShow` | 305 | 1 | L3 | 层号走 ctrl_stack.show（D128），部件走 local.show；D311 serial 实测 show/hide 序列与 AIN 意图一致 |
 | PartsEngine | `SetKeyWaitShow` | 267 | 2 | L0 | 两个调用点都是薄封装（activityeditor / message::キー待ち表示設定），未找到可见载体；猜成 parts.show 有误隐藏风险，暂缓 |
 | PartsEngine | `SetComponentPosZ` | 260 | 1 | L3 | parts_set_z：local.z 变化即重算 global.z 并 parts_dirty（子树排序依据） |
 | PartsEngine | `Parts_SetParentPartsNumber` | 256 | 1 | L3 | D194：运行时挂父立即 RefreshGlobalTree，防子树 global.z 停在建树瞬间 |
-| PartsEngine | `SetComponentPos` | 254 | 3 | L2 | 写 local.pos 并置脏；但 PE_SetPos 收 int，AIN 传 float 会被截断（亚像素丢失，1px 级） |
-| PartsEngine | `Parts_SetComment` | 245 | 2 | L2 | 独立数组存注释（上限 PE_COMMENT_MAX，超出静默丢弃），不参与渲染 |
+| PartsEngine | `SetComponentPos` | 254 | 3 | L3 | parts_set_pos：写 local.pos + 重算 global + dirty；**float 被 int 截断**（亚像素丢失，1px 级） |
+| PartsEngine | `Parts_SetComment` | 245 | 2 | L3 | 写 pe_comments 旁路表（strdup，上限 PE_COMMENT_MAX 超出丢弃）；不参与渲染 |
 | PartsEngine | `Parts_SetPassCursor` | 233 | 1 | L3 | pass_cursor 参与 click_eligible=clickable||!pass_cursor，直接影响命中；12 屏与对话框点击命中与预期一致 |
 | PartsEngine | `SetEnableInputProcess` | 226 | 1 | L0 | 契约未定。D165 试过映射到 clickable，238/242 次 enable=0 把按钮全关掉、只加载 27 个活动后卡死，已回退。需行为实验（[EIP-NOT-CLICKABLE]） |
 | PartsEngine | `CreateUserPartsNumber` | 215 | 1 | L3 | 同 GetFreeNumber 分配器：返回值即部件号，必须唯一且不复用（D82/D161） |
 | PartsEngine | `Parts_GetPartsWidth` | 212 | 1 | L2 | 1-based state，越界返 0；直接读 states[].common.w |
 | PartsEngine | `Parts_GetPartsHeight` | 208 | 1 | L2 | 1-based state，越界返 0；直接读 states[].common.h |
-| PartsEngine | `Parts_SetPartsCG` | 170 | 3 | L2 | D310：XSYS4_DUMP_CG 转存出的纹理即目标图（1798x680 战舰通道），挂图链路正确 |
+| PartsEngine | `Parts_SetPartsCG` | 170 | 3 | L3 | parts_cg_set：换图 + 改 state 类型 + dirty；D310 纹理转存证明图正确 |
 | PartsEngine | `IsComponentShow` | 111 | 1 | L2 | 图层号走 ctrl_stack.show（D128），部件走 local.show；**state 参数被忽略**，与 SetComponentShow 对称，多状态串味留给 B4 一起处理 |
-| PartsEngine | `AddPartsConstructionProcess` | 86 | 1 | L2 | 构建进度计数供 AIN 轮询；12 屏装载与切场景未出现等待卡死 |
+| PartsEngine | `AddPartsConstructionProcess` | 86 | 1 | L3 | 写构建进度计数供 AIN 轮询（12 屏装载无卡死） |
 | PartsEngine | `NumofActivityParts` | 72 | 1 | L2 | Activity@GetList 用它定长；返 0 会导致按钮对象不创建（D119） |
 | PartsEngine | `SetComponentAlpha` | 65 | 1 | L3 | 写 local alpha 并进入合成；12 屏文字/立绘渐变正常（[UC-ALPHA] 的 0 值路径仍未结，单列） |
-| PartsEngine | `SetComponentType` | 54 | 1 | L2 | 1-based state；类型变更时 parts_state_reset 重建；component_type 原样往返供 Activity 选包装类 |
-| PartsEngine | `ReadActivityFile` | 39 | 1 | L2 | 装载活动：parts 逐个创建 + layout，副作用由 activity_load 承担；[act] loaded 逐条可见 |
+| PartsEngine | `SetComponentType` | 54 | 1 | L3 | 类型变更时 parts_state_reset 重建状态 + 写 component_type（1-based state） |
+| PartsEngine | `ReadActivityFile` | 39 | 1 | L3 | activity_load：创建部件 + 布局（[act]  loaded 逐条可见） |
 | PartsEngine | `Parts_SetSoundName` | 38 | 2 | L0 | 音频后端未接（KiwiSoundEngine 未移植），只存名字无产出；等音频通路再实现 |
-| PartsEngine | `SetWantSaveBackScene` | 30 | 1 | L2 | 写入 want_save_back_scene 标记；读取端 IsWantSaveBackScene 已实现但默认关（D310 未证实其效果），联动未验 |
+| PartsEngine | `SetWantSaveBackScene` | 30 | 1 | L3 | 写 want_save_back_scene，决定 SaveBackScene 的收录范围（读取端默认关，D310） |
 | PartsEngine | `GetFreeNumber` | 28 | 1 | L3 | 分配空闲号；D161 实测号段必须落在 1..999999999，旧起点 1000001000 让 213 次 Release 全失败 |
 | PartsEngine | `Parts_SetText` | 26 | 1 | L3 | 写文本并重排版；12 屏 1/2/3 行段落与说话人切换均正确 |
 | PartsEngine | `GetActivityPartsName` | 21 | 1 | L2 | 未找到返空串；调用方随后与字面量 S_EQUALE 比较 |
@@ -242,7 +242,7 @@ python3 tools/offline/hll_hotness.py --emit docs/HLL-L3.md \
 | PartsEngine | `Parts_SetTextCharSpace` | 15 | 1 | L3 | 字距写入并被渲染采用（D306 字号补偿后 12 屏无「半个字」） |
 | PartsEngine | `BeginInput` | 14 | 1 | L3 | 开输入窗口：置 parts_began_click（帧内捕获的前提） |
 | PartsEngine | `EndInput` | 13 | 1 | L3 | 关窗口：清 began、clamp 点击号到 0、重置拖拽（s141 EndInput clicked=N 实测） |
-| PassRegister | `RegistText` | 175 | 3 | L2 | 登记文本进有序注册表并落盘（write_register），幂等；消费方是游戏读的注册表文件 |
+| PassRegister | `RegistText` | 175 | 3 | L3 | 有序插入 + write_register 落盘，幂等 |
 | String | `Empty` | 1219 | 304 | L2 | 判空字符串；1219 次/章 |
 | String | `Contains` | 470 | 106 | L2 | 子串存在性；470 次/章 |
 | String | `GetPart` | 189 | 101 | L2 | 按分隔位置取子串；[D119-SPLIT] 的 Split 另案，不影响 GetPart |
@@ -252,9 +252,9 @@ python3 tools/offline/hll_hotness.py --emit docs/HLL-L3.md \
 | system | `IsDebugMode` | 1767 | 41 | NA | 发行环境应恒 false，属正确行为，无需实现 |
 | system | `Peek` | 1516 | 8 | L2 | 取栈顶不弹出；1516 次/章 |
 | system | `GetFuncStackName` | 221 | 10 | L2 | 返回当前 AIN 函数名，供错误信息 |
-| system | `GroupSave` | 9 | 4 | L2 | 写 GroupSave 存档；结构与 AIN 声明一致（落盘位置 logs/savedir） |
-| system | `DeleteSaveFile` | 8 | 5 | L2 | 删除存档文件；不存在时静默 |
-| system | `GroupLoad` | 3 | 4 | L2 | 读 GroupSave；与 GroupSave 成对 |
+| system | `GroupSave` | 9 | 4 | L3 | → save_globals：落盘到 savedir（实测生成 GlobalSave.asd） |
+| system | `DeleteSaveFile` | 8 | 5 | L3 | → savedir_path + remove()：真删文件 |
+| system | `GroupLoad` | 3 | 4 | L3 | → load_globals：读盘并改写全局槽 |
 | system | `GetSaveFolderName` | 1 | 10 | L2 | 返回存档目录名；与 savedata 路径一致 |
 
 <!-- END:LEDGER -->

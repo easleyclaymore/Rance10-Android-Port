@@ -229,8 +229,13 @@ def emit_ledger(argv):
     buf.append("|---|---:|---|")
     for lv in ("L0", "L1", "L2", "L3", "NA"):
         if levels.get(lv):
-            buf.append(f"| {lv} | {levels[lv]} | "
-                       f"{ {'L0':'注册','L1':'类型合法','L2':'单点语义','L3':'副作用联动','NA':'豁免'}[lv] } |")
+            label = {'L0':'注册','L1':'类型合法','L2':'单点语义',
+                     'L3':'副作用联动','NA':'豁免'}[lv]
+            if lv == "L2":
+                label += "（getter 终态：无副作用可联动）"
+            if lv == "L3":
+                label += "（mutator：副作用链已核）"
+            buf.append(f"| {lv} | {levels[lv]} | {label} |")
     buf.append(f"| **合计** | **{len(rows)}** | 本章路径调用的 HLL |")
     buf.append("")
     buf.append("| 库 | 函数 | 调用次数 | 调用点 | 级 | 契约 / 证据 |")
