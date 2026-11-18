@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **211** 个开关，其中 **31** 个没有就近注释。
+共 **212** 个开关，其中 **31** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -27,13 +27,13 @@
 | 断点与快照 | `XSYS4_HLL_TRACE` | `src/ffi.c:595` | 打印每次 HLL 调用（`lib= fno= nr_args= sp= ret=`），不设 FILTER 会很吵 |
 | 断点与快照 | `XSYS4_HLL_TRACE_FILTER` | `src/ffi.c:602` | 收窄 HLL_TRACE：`PartsEngine` 按库名、`27:73` 按库:序号、其它按函数名子串，逗号分隔 |
 | 容器与内存 | `XSYS4_ALLOC0_DBG` | `src/page.c:445` | 0 号堆槽分配的诊断 |
-| 容器与内存 | `XSYS4_ARRAY_DBG` | `src/hll/Array.c:1213` | Array 诊断的旧开关（与 ARR_DBG 同类，逐步统一） |
+| 容器与内存 | `XSYS4_ARRAY_DBG` | `src/hll/Array.c:1247` | Array 诊断的旧开关（与 ARR_DBG 同类，逐步统一） |
 | 容器与内存 | `XSYS4_ARRAY_FREE_FIX` | `src/hll/Array.c:527` | 数组释放路径的实验修复（默认关，会改行为） |
-| 容器与内存 | `XSYS4_ARRAY_REF_FIX` | `src/hll/Array.c:892` | 数组元素引用处理的实验修复（默认关，会改行为） |
+| 容器与内存 | `XSYS4_ARRAY_REF_FIX` | `src/hll/Array.c:915` | 数组元素引用处理的实验修复（默认关，会改行为） |
 | 容器与内存 | `XSYS4_ARR_ALLOC_DBG` | `src/ffi.c:797` | 只打数组分配 |
 | 容器与内存 | `XSYS4_ARR_DBG` | `src/ffi.c:709` | Array 操作诊断：alloc/find/any/emp/free/subst 逐条打 |
 | 容器与内存 | `XSYS4_ARR_MULTIDIM` | `src/hll/Array.c:351` | Array.Alloc 构造多维内层数组；默认开启，=0 回退旧行为做 A/B |
-| 容器与内存 | `XSYS4_ARR_TYPE_DBG` | `src/hll/Array.c:1087` | 数组元素类型推导诊断（泛型数组"由首个元素定型"出问题时用） |
+| 容器与内存 | `XSYS4_ARR_TYPE_DBG` | `src/hll/Array.c:1121` | 数组元素类型推导诊断（泛型数组"由首个元素定型"出问题时用） |
 | 容器与内存 | `XSYS4_ARR_UNSET_FIX` | `src/hll/Array.c:454` | 未初始化槽读取的实验修复（默认关，会改行为） |
 | 容器与内存 | `XSYS4_BADSTRUCT_DBG` | `src/vm.c:1359` | 结构体成员访问越界诊断 |
 | 容器与内存 | `XSYS4_BADTHIS` | `src/vm.c:1328` | 非法 this（类型不匹配/越界）时打回溯 |
@@ -56,7 +56,7 @@
 | 容器与内存 | `XSYS4_DG_MISS_FILTER` | `src/vm.c:1642` | 收窄 DG_MISS 输出 |
 | 容器与内存 | `XSYS4_DG_PAGE_DBG` | `src/vm.c:1579` | 委托页生命周期诊断 |
 | 容器与内存 | `XSYS4_MEM_STAT` | `src/vm.c:5084` | 堆内存与 RSS 实时统计 |
-| 呈现与输入 | `XSYS4_ACTIVE_CTRL_SET` | `src/parts/parts.c:3335` | `=0` 把 `PartsEngine.SetActiveController` 退回空实现（D312 前行为）。默认真设置活动层 |
+| 呈现与输入 | `XSYS4_ACTIVE_CTRL_SET` | `src/parts/parts.c:3388` | `=0` 把 `PartsEngine.SetActiveController` 退回空实现（D312 前行为）。默认真设置活动层 |
 | 呈现与输入 | `XSYS4_ACTIVE_PARTS` | `src/parts/input.c:53` | [诊断] `PartsEngine.GetActiveParts` 返回光标指向的部件（默认开，D309）。`=0` 回退到旧桩（恒 0） |
 | 呈现与输入 | `XSYS4_ACT_BUILD_DBG` | `src/parts/activity.c:1341` | [诊断] 打印每个 activity 部件的 `no/name/parent/type`（前 3000 条）。用来把运行时部件号对号到 XML 里的名字，例如 `900000397 = ButtonDeffence` |
 | 呈现与输入 | `XSYS4_ACT_CLICKABLE_ALL` | `src/parts/activity.c:1107` | 把所有**活动文件里声明**的部件标为可点（运行时建的 900000xxx 不受影响） |
@@ -75,12 +75,12 @@
 | 呈现与输入 | `XSYS4_CLICK_SKIP_INVISIBLE` | `src/parts/input.c:232` | [诊断] 把 `global.alpha<=0`（完全透明、一个像素不画）的部件排除出 hover 消费与点击捕获。依据是 `parts_is_visible()` 不检查 alpha，导致全屏 flat `900000705`（a=0、z 比接收器还高）总先吞点击；d301 实测三次点击全落它 | |
 | 呈现与输入 | `XSYS4_CLICK_SKIP_NONCLICKABLE` | `src/parts/input.c:284` | [诊断] 跑测专用：`clickable=0` 的部件不参与点击捕获（回到 D113 之前的行为）。用来验证「全屏背景 flat 705 截胡技能按钮点击」这一条；默认关，开始画面这类「点击任意处继续」的场景开了会卡住 |
 | 呈现与输入 | `XSYS4_CTRL_DBG` | `src/parts/parts.c:1515` | controller 栈、视觉地板（cover_layer）、hide/remove 事件 |
-| 呈现与输入 | `XSYS4_CTRL_PENDING` | `src/parts/parts.c:3277` | [D289] 默认开。`Activity@Load` 建出的部件归到「即将由 AddLayer 创建的那一层」，而不是当前 active。AIN 的顺序是 Load→AddLayer，旧行为让部件全落在上一层，之后按新层 ID 的 EraseLayer 必然 `released=0`（旧场景部件永久残留，标题 Logo 跟到战斗里吃点击）。设 0 回退旧行为做 A/B |
+| 呈现与输入 | `XSYS4_CTRL_PENDING` | `src/parts/parts.c:3330` | [D289] 默认开。`Activity@Load` 建出的部件归到「即将由 AddLayer 创建的那一层」，而不是当前 active。AIN 的顺序是 Load→AddLayer，旧行为让部件全落在上一层，之后按新层 ID 的 EraseLayer 必然 `released=0`（旧场景部件永久残留，标题 Logo 跟到战斗里吃点击）。设 0 回退旧行为做 A/B |
 | 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:495` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
 | 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:460` | 输入命中的候选部件表与点击状态（每 60 帧一条心跳，非沉默） |
 | 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:1663` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
-| 呈现与输入 | `XSYS4_PARTS_DUMP_MAX` | `src/parts/parts.c:3250` | — |
-| 呈现与输入 | `XSYS4_PARTS_DUMP_MIN` | `src/parts/parts.c:3181` | [诊断] 只 dump 部件号 >= 此值的部件；部件表按插入序遍历，地图号段会吃光 PARTS_DUMP_MAX 名额，设 900000300 才能看到动态号段 |
+| 呈现与输入 | `XSYS4_PARTS_DUMP_MAX` | `src/parts/parts.c:3303` | — |
+| 呈现与输入 | `XSYS4_PARTS_DUMP_MIN` | `src/parts/parts.c:3234` | [诊断] 只 dump 部件号 >= 此值的部件；部件表按插入序遍历，地图号段会吃光 PARTS_DUMP_MAX 名额，设 900000300 才能看到动态号段 |
 | 呈现与输入 | `XSYS4_PARTS_NO_BASE` | `src/parts/parts.c:3044` | — |
 | 呈现与输入 | `XSYS4_UPD_DBG` | `src/parts/parts.c:1560` | PE_Update 的每帧诊断 |
 | 自动化后门 | `XSYS4_AUTO_CARD_CLICK` | `src/vm.c:1239` | [后门] 编队卡片视图初始化完成后直调 SceneParty@OnClickCard(idx)；值=卡片索引 |
@@ -137,7 +137,8 @@
 | 其它 | `XSYS4_FLAT_TICK_DBG` | `src/parts/flat.c:220` | [诊断] 逐 tick 打印 flat 推进前后（prev/next/cf/cap/inc/stop/sup/jump），值 = 只跟 end_frame >= N 的长演出（默认 70）。用来分辨「帧不涨」是 increment=0（stopped）还是被封顶 |
 | 其它 | `XSYS4_FLAT_TREE` | `src/parts/flat.c:668` | — |
 | 其它 | `XSYS4_FN_LIST` | `src/vm.c:5013` | [诊断] 按名字子串列出 AIN 函数（号 / 地址 / 名字）；`#29096` 按号查名；`*` 导出全表（供 tools/offline/callsite.py 把地址翻成函数名）（反汇编里 CALLMETHOD 的被调号在栈上，只能先认出 `PUSH <号>` 再回查）。`CallDelegate`、`TextButton@Motion` 这类只存在于内存表的函数号，靠它才能上 CALL_TRACE / DUMP_AT |
-| 其它 | `XSYS4_FPS_DBG` | `src/parts/render.c:1275` | [诊断] 每秒打印一次实际渲染帧数。用来区分「演出推进慢」是逻辑卡死还是 llvmpipe 低帧率（D92 全量标脏） |
+| 其它 | `XSYS4_FORCE_HIDE` | `src/parts/parts.c:3172` | `=900000400,900000408`：每帧强制隐藏这些部件。**判定性实验用**，不是修复手段。用来把「背景不切换」缩成「隐藏这几个号画面是否就对」（D314） |
+| 其它 | `XSYS4_FPS_DBG` | `src/parts/render.c:1278` | [诊断] 每秒打印一次实际渲染帧数。用来区分「演出推进慢」是逻辑卡死还是 llvmpipe 低帧率（D92 全量标脏） |
 | 其它 | `XSYS4_G14_WATCH` | `src/vm.c:2984` | [诊断] 只在 global[14] 的值变化时打印 ip/旧值/新值/栈/调用栈（抓单例被覆写） |
 | 其它 | `XSYS4_GL_DBG` | `src/video.c:267` | [诊断] 启动时打印实际 GL vendor/renderer/version —— 判断有没有用上硬件加速的唯一硬证据（llvmpipe=软件，Mesa Intel=硬件） |
 | 其它 | `XSYS4_GSAVE_DBG` | `src/savedata.c:762` | 〔摘〕所以按可打印的类型名分类。 |
@@ -151,7 +152,7 @@
 | 其它 | `XSYS4_IFACE_ARR_FIX` | `src/page.c:563` | — |
 | 其它 | `XSYS4_IFACE_COPY_DBG` | `src/page.c:421` | — |
 | 其它 | `XSYS4_IFACE_COPY_FIX` | `src/page.c:397` | — |
-| 其它 | `XSYS4_IFACE_PUSH_DBG` | `src/hll/Array.c:1131` | 〔摘〕若这里从不出现，说明该数组不是 Array.PushBack 建的。 |
+| 其它 | `XSYS4_IFACE_PUSH_DBG` | `src/hll/Array.c:1165` | 〔摘〕若这里从不出现，说明该数组不是 Array.PushBack 建的。 |
 | 其它 | `XSYS4_IFACE_REALLOC_FIX` | `src/page.c:635` | — |
 | 其它 | `XSYS4_IP_WATCH` | `src/vm.c:2923` | 监视指令指针，抓"跑到不该跑的地方" |
 | 其它 | `XSYS4_KEYCODE_PROBE` | `src/parts/input.c:67` | 打印收到的原始键码 |

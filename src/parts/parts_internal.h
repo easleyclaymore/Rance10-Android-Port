@@ -533,6 +533,7 @@ struct parts *parts_get(int parts_no);
 /* [D128] 场景图层诊断：controller 分布 + 当前显示部件快照。 */
 void PE_DebugControllerHistogram(const char *tag);
 void PE_DebugDumpParts(const char *tag);
+void PE_debug_force_hide(void);
 struct parts_cg *parts_get_cg(struct parts *parts, int state);
 struct parts_text *parts_get_text(struct parts *parts, int state);
 struct parts_animation *parts_get_animation(struct parts *parts, int state);

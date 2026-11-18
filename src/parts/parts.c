@@ -3158,6 +3158,34 @@ void PE_DebugControllerHistogram(const char *tag)
  * （`(0,608) 512x91`），画面上却一个像素都没有。原格式只有 w/h，
  * "有尺寸但没画"的三种原因（alpha=0 / 内容类型不是 CG / 纹理没加载）
  * 一个都区分不出来。 */
+/* [D314] `XSYS4_FORCE_HIDE=900000400,900000408`：每帧强制隐藏这些部件。
+ *
+ * 唯一用途是**判定性实验**：把「地图 CG 盖住新背景」缩成一句
+ * 「只要隐藏这几个号，画面是否立刻变成新背景」。
+ * 变了 ⇒ 根因是「AIN 从未 hide 它们」，去查切换逻辑；
+ * 没变 ⇒ 还有别的东西在盖，回到合成顺序。默认关。 */
+void PE_debug_force_hide(void)
+{
+	static int nos[16], n_nos, inited;
+	if (!inited) {
+		inited = 1;
+		const char *e = getenv("XSYS4_FORCE_HIDE");
+		if (e && *e) {
+			const char *q = e;
+			while (*q && n_nos < 16) {
+				nos[n_nos++] = atoi(q);
+				while (*q && *q != ',') q++;
+				if (*q == ',') q++;
+			}
+		}
+	}
+	for (int i = 0; i < n_nos; i++) {
+		struct parts *p = parts_try_get(nos[i]);
+		if (p && p->local.show)
+			parts_set_show(p, false);
+	}
+}
+
 void PE_DebugDumpParts(const char *tag)
 {
 	struct parts *p;
@@ -3169,9 +3197,34 @@ void PE_DebugDumpParts(const char *tag)
 		int ln = snprintf(lbuf, sizeof(lbuf), "[parts] %s layer_show=", tag);
 		for (int c = 0; c < PARTS_CONTROLLER_STACK_MAX && ln < (int)sizeof(lbuf) - 16; c++)
 			ln += snprintf(lbuf + ln, sizeof(lbuf) - ln, "%c", ctrl_stack.show[c] ? '1' : '0');
-		snprintf(lbuf + ln, sizeof(lbuf) - ln, " cover=%d active=%d",
-			 parts_cover_layer, ctrl_stack.active);
+		snprintf(lbuf + ln, sizeof(lbuf) - ln, " cover=%d active=%d nctrl=%d",
+			 parts_cover_layer, ctrl_stack.active, ctrl_stack.nr_controllers);
 		NOTICE("%s", lbuf);
+	}
+	/* [D314] 「孤儿层」统计：`controller_no` 指向**已经不存在的层**的部件。
+	 *
+	 * `parts_is_visible()` 的上界是 `PARTS_CONTROLLER_STACK_MAX`，不是
+	 * `nr_controllers`，所以层被 `RemoveController` 删掉后，留在旧号上的部件
+	 * 仍然读到 `ctrl_stack.show[c]` 的**陈旧值 true** —— 永远可见。
+	 * 这正是「地图 CG 一直盖住新背景、AIN 却从没 hide 过它」的形状：
+	 * 它根本不在 AIN 认为的那一层里。 */
+	{
+		int orphan = 0;
+		char obuf[200] = "";
+		size_t oo = 0;
+		struct parts *q;
+		TAILQ_FOREACH(q, &parts_list, parts_list_entry) {
+			if (q->controller_no < 0 ||
+			    q->controller_no == PARTS_CONTROLLER_SYSTEM_OVERLAY ||
+			    q->controller_no < ctrl_stack.nr_controllers)
+				continue;
+			orphan++;
+			if (oo < sizeof(obuf) - 24 && orphan <= 10)
+				oo += snprintf(obuf + oo, sizeof(obuf) - oo, " %d(c%d)",
+					       q->no, q->controller_no);
+		}
+		if (orphan)
+			NOTICE("[parts] %s ORPHAN-LAYER n=%d parts:%s", tag, orphan, obuf);
 	}
 	/* [D216] 部件表按插入顺序遍历，地图（9000000xx）会先把
 	 * XSYS4_PARTS_DUMP_MAX 的名额吃光，动态号段（9000003xx）一条都打不出

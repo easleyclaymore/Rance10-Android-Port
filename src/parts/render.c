@@ -1266,8 +1266,11 @@ void parts_sprite_render(struct sprite *sp)
 
 static bool pe_dirty = false;
 
+/* [D314] 判定性实验见 parts.c 的 PE_debug_force_hide()。 */
+
 void parts_render_update(void)
 {
+	PE_debug_force_hide();
 	/* [D244] 帧率探针。D92 的 hack（每帧把全场部件标脏）在 llvmpipe 下
 	 * 只有 3~8 fps，而战斗演出 / instantTimer / flat 推进全按墙钟走，
 	 * 低帧率会把「点 15 次才到 AP 球」这类现象误判成逻辑卡死。
