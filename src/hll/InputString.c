@@ -103,12 +103,12 @@ static void InputString_OpenIME(void)
 	register_editing_handler(handle_editing);
 	register_key_handler(handle_key);
 	has_editing_text = false;
-	SDL_StartTextInput();
+	input_start_text_input();
 }
 
 static void InputString_CloseIME(void)
 {
-	SDL_StopTextInput();
+	input_stop_text_input();
 	has_editing_text = false;
 	clear_input_handler();
 	clear_editing_handler();

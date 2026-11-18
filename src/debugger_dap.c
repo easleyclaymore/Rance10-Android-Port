@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <SDL_thread.h>
+#include <SDL3/SDL_thread.h>
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>

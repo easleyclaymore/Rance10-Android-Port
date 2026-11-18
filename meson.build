@@ -4,6 +4,8 @@ project('system4', 'c',
 
 # SDL3 迁移试验：打开旧名兼容层（rename 类错误一次清零）
 add_project_arguments('-DSDL_ENABLE_OLD_NAMES', language : 'c')
+# [D329] SDL3 的 SDL.h 不再顺带包含 math/stdlib/ctype，统一在兼容头里补。
+add_project_arguments('-include', meson.current_source_dir() / 'src/sdl3_compat.h', language : 'c')
 add_project_arguments('-D_DEFAULT_SOURCE', language : 'c')
 add_project_arguments('-DXSYS4_DEFAULT_DATA_DIR="' + get_option('prefix') / get_option('datadir') / 'xsystem4"', language : 'c')
 

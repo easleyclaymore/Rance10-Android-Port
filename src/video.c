@@ -237,13 +237,15 @@ int gfx_init(void)
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 #endif
 
-	sdl.format = SDL_AllocFormat(SDL_PIXELFORMAT_RGBA32);
-	sdl.window =  SDL_CreateWindow("XSystem4",
-				       SDL_WINDOWPOS_UNDEFINED,
-				       SDL_WINDOWPOS_UNDEFINED,
-				       config.view_width,
-				       config.view_height,
-				       SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+	/* [D329] SDL3 没有 SDL_AllocFormat：格式描述由 SDL 全局持有，
+	 * 用 SDL_GetPixelFormatDetails 取只读指针，且**不得释放**。 */
+	sdl.format = SDL_GetPixelFormatDetails(SDL_PIXELFORMAT_RGBA32);
+	/* [D329] SDL3 的 SDL_CreateWindow 去掉了 x/y（6 参 -> 4 参），
+	 * 也没有 SDL_WINDOW_SHOWN（建出来就是可见的）。 */
+	sdl.window = SDL_CreateWindow("XSystem4",
+				      config.view_width,
+				      config.view_height,
+				      SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 	if (!sdl.window)
 		ERROR("SDL_CreateWindow failed: %s", SDL_GetError());
 
@@ -289,7 +291,7 @@ void gfx_fini(void)
 {
 	glDeleteProgram(default_shader.program);
 	SDL_DestroyWindow(sdl.window);
-	SDL_FreeFormat(sdl.format);
+	/* [D329] SDL3 的格式描述归 SDL 所有，不能释放。 */
 	SDL_Quit();
 }
 
@@ -329,7 +331,9 @@ void gfx_set_window_logical_size(int w, int h)
 
 bool gfx_set_fullscreen(bool enable)
 {
-	uint32_t flags = enable ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0;
+	/* [D329] SDL3 删除了 SDL_WINDOW_FULLSCREEN_DESKTOP：SDL_WINDOW_FULLSCREEN
+	 * 在 SDL3 里就是「桌面全屏」（不再改显示模式）。 */
+	uint32_t flags = enable ? SDL_WINDOW_FULLSCREEN : 0;
 	if (SDL_SetWindowFullscreen(sdl.window, flags) < 0) {
 		WARNING("Failed to set fullscreen mode: %s", SDL_GetError());
 		return false;
@@ -339,7 +343,7 @@ bool gfx_set_fullscreen(bool enable)
 
 bool gfx_is_fullscreen(void)
 {
-	return SDL_GetWindowFlags(sdl.window) & SDL_WINDOW_FULLSCREEN_DESKTOP;
+	return SDL_GetWindowFlags(sdl.window) & SDL_WINDOW_FULLSCREEN;
 }
 
 void gfx_toggle_fullscreen(void)
@@ -350,7 +354,8 @@ void gfx_toggle_fullscreen(void)
 void gfx_update_screen_scale(void)
 {
 	int display_w, display_h;
-	SDL_GL_GetDrawableSize(sdl.window, &display_w, &display_h);
+	/* [D329] SDL_GL_GetDrawableSize -> SDL_GetWindowSizeInPixels（同语义）。 */
+	SDL_GetWindowSizeInPixels(sdl.window, &display_w, &display_h);
 
 	if (display_w * sdl.h == display_h * sdl.w) {
 		// 宽高比一样，按比例缩放即可。
@@ -703,7 +708,8 @@ void gfx_init_texture_amap(struct texture *t, int w, int h, uint8_t *amap, SDL_C
 {
 	uint32_t *pixels = xmalloc(sizeof(uint32_t) * w * h);
 	for (int i = 0; i < w*h; i++) {
-		uint32_t c = SDL_MapRGBA(sdl.format, color.r, color.g, color.b, amap[i]);
+		/* [D329] SDL3 的 SDL_MapRGBA 多了 palette 参数（无调色板传 NULL）。 */
+		uint32_t c = SDL_MapRGBA(sdl.format, NULL, color.r, color.g, color.b, amap[i]);
 		pixels[i] = c;
 	}
 

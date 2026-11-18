@@ -26,7 +26,7 @@
 
 struct sdl_private {
 	SDL_Window *window;
-	SDL_PixelFormat *format;
+	const SDL_PixelFormatDetails *format; /* [D329] SDL3：由 SDL 拥有，不要释放 */
 	struct {
 		SDL_GLContext context;
 		GLuint vao;
