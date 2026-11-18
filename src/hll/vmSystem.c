@@ -13,7 +13,7 @@
 #include <errno.h>
 #include <string.h>
 #include <time.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include "system4/string.h"
 

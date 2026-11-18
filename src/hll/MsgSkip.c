@@ -15,7 +15,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include "system4.h"
 #include "system4/ain.h"

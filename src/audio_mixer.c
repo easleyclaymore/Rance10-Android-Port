@@ -15,7 +15,7 @@
 #include <assert.h>
 
 #include <sndfile.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include "system4.h"
 #include "system4/archive.h"

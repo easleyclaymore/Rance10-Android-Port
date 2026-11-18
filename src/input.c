@@ -13,7 +13,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <time.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "system4.h"
 #include "queue.h"
 #include "gfx/gfx.h"

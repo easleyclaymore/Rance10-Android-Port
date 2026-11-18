@@ -16,7 +16,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <time.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include "system4.h"
 #include "system4/cg.h"

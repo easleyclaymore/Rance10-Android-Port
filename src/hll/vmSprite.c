@@ -10,7 +10,7 @@
  * 如果没有，见 <http://gnu.org/licenses/>。
  */
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include "cJSON.h"
 #include "effect.h"

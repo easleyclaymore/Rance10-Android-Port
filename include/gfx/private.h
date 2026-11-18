@@ -21,7 +21,7 @@
 #define SYSTEM4_GFX_PRIVATE_H
 
 #include <stdbool.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "gfx/gl.h"
 
 struct sdl_private {

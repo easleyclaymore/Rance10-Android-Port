@@ -18,7 +18,7 @@
 #include FT_FREETYPE_H
 #include FT_BITMAP_H
 #include FT_ADVANCES_H
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include "system4.h"
 #include "system4/hashtable.h"

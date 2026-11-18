@@ -10,7 +10,7 @@
  * 如果没有，见 <http://gnu.org/licenses/>。
  */
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "gfx/gl.h"
 #include <cglm/cglm.h>
 #include <string.h>

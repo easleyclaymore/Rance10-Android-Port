@@ -18,7 +18,7 @@
 #include <time.h>
 #include <setjmp.h>
 #include <assert.h>
-#include <SDL.h> // for system.MsgBox
+#include <SDL3/SDL.h> // for system.MsgBox
 
 #include "system4.h"
 #include "system4/ain.h"

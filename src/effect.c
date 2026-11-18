@@ -12,7 +12,7 @@
 
 #include <stdlib.h>
 #include <math.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "effect.h"
 #include "gfx/gfx.h"
 #include "system4.h"
