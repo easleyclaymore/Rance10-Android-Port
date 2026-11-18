@@ -4921,6 +4921,15 @@ case SR_ASSIGN: {
 	case DG_NEW_FROM_METHOD: {
 		int fun = stack_pop().i;
 		int obj = stack_pop().i;
+		/* [D325] `XSYS4_DGNEW_DBG=1`：打印每次「由方法建委托」的 (obj,fun)。
+		 * 起因：`CADVEngine@ClickUpdateTextButtonEvent`(2109) 从不执行，而
+		 * `0x8a352/0x8a36c` 两处 `DG_NEW_FROM_METHOD(20907)` 是通往它的唯一
+		 * 入口 —— 先确认这两次「建委托」到底发生了没有。 */
+		if (getenv("XSYS4_DGNEW_DBG")) {
+			static int n;
+			if (n++ < 400)
+				NOTICE("[dgnew] obj=%d fun=%d ip=0x%zX", obj, fun, instr_ptr);
+		}
                 /* [D118] 记住创建者那一帧的局部页，供 X_GETENV 使用 */
                 if (!lambda_parent_slot)
                         lambda_parent_init();
@@ -5408,6 +5417,31 @@ static void vm_execute(void)
 		sp_watch_fno = w && *w ? atoi(w) : -1;
 	}
 	for (;;) {
+		/* [D325] `XSYS4_IP_WATCH="0x8a2aa-0x8a388"`：监视一段指令地址是否被执行。
+		 *
+		 * 起因：`20907 → 2108 → 2109`（TextButton 的点击更新链）所在的那段
+		 * `0x8a2aa..0x8a388` 在反汇编里**没有 FUNC 标记**、不在函数表里，
+		 * `XSYS4_FN_WATCH` 按 fno 打点根本覆盖不到。要判「这段匿名 lambda
+		 * 到底跑没跑」，只能按**指令地址**看。 */
+		{
+			static long ip_lo = -2, ip_hi = -1;
+			static int ip_n;
+			if (ip_lo == -2) {
+				ip_lo = -1;
+				const char *e = getenv("XSYS4_IP_WATCH");
+				if (e && *e) {
+					char *end;
+					ip_lo = strtol(e, &end, 16);
+					if (*end == '-')
+						ip_hi = strtol(end + 1, NULL, 16);
+					else
+						ip_hi = ip_lo;
+				}
+			}
+			if (ip_lo >= 0 && (long)instr_ptr >= ip_lo &&
+			    (long)instr_ptr <= ip_hi && ip_n++ < 40)
+				NOTICE("[ipwatch] ip=0x%zX (第 %d 次进入该段)", instr_ptr, ip_n);
+		}
 		uint16_t opcode;
 		++_insn;
 		/* 帧心跳：在 AIN 指令流里定期提交一帧（XSYS4_NO_PUMP=1 关闭）。
