@@ -935,14 +935,19 @@ static void function_call(int fno, int return_address)
 				struct page *vp = heap[vs].page;
 				if (!vp || vp->type != STRUCT_PAGE)
 					continue;
-				char line[1024];
+				/* [D323] 1024 字节**不够**：`CPartsFunctionSet` 有 42 个成员，
+				 * 每个 delegate 成员还要展开 `<nr=.. [obj,fun]>`，第 14 个就被
+				 * 截断了 —— 而事件数组在**后半段**（`Init` 清的是 28..42），
+				 * 截断正好把要看的部分切掉，害得两轮都把「全空」当结论。
+				 * 实测必须 4096 才装得下 42 个成员。 */
+				char line[4096];
 				int off = snprintf(line, sizeof(line), "[fn]     v%d struct '%s' nr=%d:",
 						   i, vp->index >= 0 && vp->index < ain->nr_structures &&
 						      ain->structures[vp->index].name
 						      ? ain->structures[vp->index].name : "?",
 						   vp->nr_vars);
 				for (int k = 0; k < vp->nr_vars && k < 42 && off > 0 &&
-				     off < (int)sizeof(line) - 96; k++) {
+				     off < (int)sizeof(line) - 200; k++) {
 					int mv = vp->values[k].i;
 					off += snprintf(line + off, sizeof(line) - off,
 							" m%d=%d", k, mv);
@@ -1202,6 +1207,33 @@ static void method_call(int nargs, int return_address)
 				return;
 			}
 			VM_ERROR("CALLMETHOD: invalid function index %d", fno);
+		}
+	}
+	/* [D323] `XSYS4_FN_WATCH="22907,22908,22909"`：按**解析后的函数号**打方法调用。
+	 *
+	 * 起因：`grep "arg=22908"` 得到 0，看起来 `TextButton@Motion` 从没被调过 ——
+	 * 但方法是通过 `CALLMETHOD` 走的，函数号**要等对像页的 vtable 解析出来**，
+	 * 静态反汇编里只有方法下标，用 fno 计数根本测不到。这个探针在派发点打，
+	 * 才回答得了「这个方法到底跑了没有」。 */
+	if (getenv("XSYS4_FN_WATCH")) {
+		static int w[16], nw = -1;
+		static int cnt[16];
+		if (nw < 0) {
+			nw = 0;
+			const char *q = getenv("XSYS4_FN_WATCH");
+			while (q && *q && nw < 16) {
+				w[nw++] = atoi(q);
+				while (*q && *q != ',') q++;
+				if (*q == ',') q++;
+			}
+		}
+		for (int i = 0; i < nw; i++) {
+			if (w[i] == fno) {
+				if (cnt[i]++ < 40)
+					NOTICE("[fwatch] fno=%d nargs=%d this=%d", fno, nargs,
+					       nargs + 1 <= stack_ptr ? stack_peek(nargs + 1).i : -2);
+				break;
+			}
 		}
 	}
 	/* [AUTO] 记录 SceneQuestMap 场景实例的 `this`（见文件上方 auto_party_page

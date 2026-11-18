@@ -38,6 +38,7 @@ XSYS4_CTRL_ACTIVE_RESTORE	`=1` `EraseLayer` 后把活动层恢复到**建层前�
 XSYS4_MSG_LINES	[诊断] 每开始一句新台词打一行 `[msgline] N`。剧情推进的唯一可量化指标，也是「卡住了没」的判据（D319）
 XSYS4_DGIDX_DBG	[诊断] 逐次打印 `SetDelegateIndex` / `GetDelegateIndex`（部件↔委托索引绑定），用来判「绑定过没有、读回还是不是原值」（D320）
 XSYS4_PART_LIFE	[诊断] 打印 900000560..900000600（回想对话框段）部件的 create/release，用于判「绑定是不是随部件重建丢掉」（D320）
+XSYS4_FN_WATCH	`=22908,22909` 按**解析后的函数号**打方法调用（`CALLMETHOD` 在运行期才解析出 fno，静态 grep `arg=<fno>` 数不出来）。判「某方法到底跑没跑」只能靠它（D323）
 XSYS4_FORCE_HIDE	`=900000400,900000408`：每帧强制隐藏这些部件。**判定性实验用**，不是修复手段。用来把「背景不切换」缩成「隐藏这几个号画面是否就对」（D314）
 XSYS4_BACKSCENE_DBG	[诊断] 打印 SetWantSaveBackScene / SaveBackScene / LoadBackScene 的时机与规模（背景场景快照链）
 XSYS4_BACKSCENE_WANT	[诊断] `=1` 让 `IsWantSaveBackScene` 返回真实标记（默认仍恒 false）。实测对开场剧情背景无影响
