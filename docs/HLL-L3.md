@@ -28,7 +28,7 @@
 | 调用点 4–10 | **16** |
 | 调用点 > 10 | **35** |
 | 已有 L2／L3 证据 | 见文末台账（每批做完 `--emit` 刷新，不写死） |
-| 批次进度 | B1（层与活动，8 个）已完成：L2×7、L3×1，无需改代码 |
+| 批次进度 | B1（层与活动 8 个）完成：L2×7、L3×1，无代码改动（连带修 `AddLayer` 卫语句）；B2（消息与点击 11 个）完成：L2×5、L3×4，2 个留 L0 并写明阻塞理由；B3（部件树与几何 11 个）完成：L2×9、L3×2 |
 
 **关键结论：这不是「重写 121 个」，而是「审计 121 个，只有不符的才改」。**
 调用点中位数是 **2**，59 个函数只在一处被调用 —— 逐个读完全可行。
@@ -126,9 +126,9 @@ python3 tools/offline/hll_hotness.py --emit docs/HLL-L3.md \
 
 | 级 | 函数数 | 含义 |
 |---|---:|---|
-| L0 | 107 | 注册 |
-| L2 | 10 | 单点语义 |
-| L3 | 2 | 副作用联动 |
+| L0 | 89 | 注册 |
+| L2 | 22 | 单点语义 |
+| L3 | 8 | 副作用联动 |
 | NA | 2 | 豁免 |
 | **合计** | **121** | 本章路径调用的 HLL |
 
@@ -196,36 +196,36 @@ python3 tools/offline/hll_hotness.py --emit docs/HLL-L3.md \
 | Math | `Min` | 3361 | 123 | L0 |  |
 | Math | `Clamp` | 3030 | 62 | L0 |  |
 | Math | `Max` | 263 | 148 | L0 |  |
-| PartsEngine | `GetMessageVariableType` | 25259 | 1 | L0 |  |
+| PartsEngine | `GetMessageVariableType` | 25259 | 1 | L2 | 调用点紧跟 IFNZ 当布尔用；1=int 合法（0x1e101a 反汇编） |
 | PartsEngine | `GetActiveController` | 15036 | 1 | L2 | GetActiveLayer 薄封装直属返回；值=层稳定 id（D129） |
-| PartsEngine | `GetMessageType` | 9944 | 1 | L0 |  |
+| PartsEngine | `GetMessageType` | 9944 | 1 | L2 | 队头 type，空队 -1 哨兵（D112；返 0 会让 WaitFrame 忙循环） |
 | PartsEngine | `GetControllerID` | 8984 | 1 | L2 | GetLayerID 薄封装；调用方只在 0..NumofLayer-1 用，越界返 -1 |
-| PartsEngine | `PopMessage` | 8430 | 2 | L0 |  |
-| PartsEngine | `GetMessageDelegateIndex` | 8427 | 1 | L0 |  |
+| PartsEngine | `PopMessage` | 8430 | 2 | L3 | 弹出队头并释放，队列前进；空队是空操作（[mpop] 实测） |
+| PartsEngine | `GetMessageDelegateIndex` | 8427 | 1 | L2 | 队头 delegate_index，空队 -1；CallDelegate 用它查 FunctionSetList |
 | PartsEngine | `SetActiveController` | 5970 | 1 | L3 | h3 闭环：SetActive id=1→idx=0 后 #2632 active=0；id=4→idx=2 后 active=2。连带修 PE_AddController 的「active 必须在栈顶」断言（b1r2 VM_ERROR → b1r3 通过） |
 | PartsEngine | `GetControllerLength` | 2940 | 1 | L2 | NumofLayer 薄封装，返回层数 |
-| PartsEngine | `GetClickNumber` | 1429 | 1 | L2 | s141：EndInput clicked=N 与 GetClickNumber 返回值一致 |
+| PartsEngine | `GetClickNumber` | 1429 | 1 | L2 | 薄封装 GetClickPartsNumber；值=被点部件号，0=无（s141 EndInput clicked=N 一致） |
 | PartsEngine | `GetActivityPartsNumber` | 1102 | 1 | L2 | 0=未找到，与本引擎「0 即无效部件号」一致 |
-| PartsEngine | `GetComponentPosX` | 686 | 1 | L0 |  |
-| PartsEngine | `GetComponentType` | 578 | 1 | L0 |  |
-| PartsEngine | `GetDelegateIndex` | 496 | 1 | L0 |  |
-| PartsEngine | `SetDelegateIndex` | 418 | 1 | L0 |  |
-| PartsEngine | `NumofChild` | 411 | 1 | L0 |  |
-| PartsEngine | `GetChild` | 391 | 1 | L0 |  |
+| PartsEngine | `GetComponentPosX` | 686 | 1 | L2 | float；错误路径 F_PUSH 0.0（调用点反汇编可见） |
+| PartsEngine | `GetComponentType` | 578 | 1 | L2 | 1-based state（内部 --state）；越界/无部件 -1，与 D309 的 -1 语义一致 |
+| PartsEngine | `GetDelegateIndex` | 496 | 1 | L2 | parts.delegate_index；无此部件返 -1，与 Set 对称 |
+| PartsEngine | `SetDelegateIndex` | 418 | 1 | L3 | 写 parts.delegate_index；后续 CallDelegate 按它取 FunctionSet（s161 实测 di 一致） |
+| PartsEngine | `NumofChild` | 411 | 1 | L2 | 子件计数；无部件返 0（与 GetChild 的上界对称） |
+| PartsEngine | `GetChild` | 391 | 1 | L2 | 返回子件号；调用方按 0..NumofChild-1 迭代，越界/无部件返 -1 |
 | PartsEngine | `GetActivityParts` | 350 | 1 | L2 | 调用点紧跟 IFZ 当布尔用；miss 必须返 0，否则跳错误分支 |
 | PartsEngine | `SetComponentShow` | 305 | 1 | L0 |  |
-| PartsEngine | `SetKeyWaitShow` | 267 | 2 | L0 |  |
+| PartsEngine | `SetKeyWaitShow` | 267 | 2 | L0 | 两个调用点都是薄封装（activityeditor / message::キー待ち表示設定），未找到可见载体；猜成 parts.show 有误隐藏风险，暂缓 |
 | PartsEngine | `SetComponentPosZ` | 260 | 1 | L0 |  |
 | PartsEngine | `Parts_SetParentPartsNumber` | 256 | 1 | L3 | D194：运行时挂父立即 RefreshGlobalTree，防子树 z 停在建树瞬间 |
 | PartsEngine | `SetComponentPos` | 254 | 3 | L0 |  |
 | PartsEngine | `Parts_SetComment` | 245 | 2 | L0 |  |
 | PartsEngine | `Parts_SetPassCursor` | 233 | 1 | L0 |  |
-| PartsEngine | `SetEnableInputProcess` | 226 | 1 | L0 |  |
-| PartsEngine | `CreateUserPartsNumber` | 215 | 1 | L0 |  |
-| PartsEngine | `Parts_GetPartsWidth` | 212 | 1 | L0 |  |
-| PartsEngine | `Parts_GetPartsHeight` | 208 | 1 | L0 |  |
+| PartsEngine | `SetEnableInputProcess` | 226 | 1 | L0 | 契约未定。D165 试过映射到 clickable，238/242 次 enable=0 把按钮全关掉、只加载 27 个活动后卡死，已回退。需行为实验（[EIP-NOT-CLICKABLE]） |
+| PartsEngine | `CreateUserPartsNumber` | 215 | 1 | L3 | 同 GetFreeNumber 分配器：返回值即部件号，必须唯一且不复用（D82/D161） |
+| PartsEngine | `Parts_GetPartsWidth` | 212 | 1 | L2 | 1-based state，越界返 0；直接读 states[].common.w |
+| PartsEngine | `Parts_GetPartsHeight` | 208 | 1 | L2 | 1-based state，越界返 0；直接读 states[].common.h |
 | PartsEngine | `Parts_SetPartsCG` | 170 | 3 | L2 | D310：纹理转存证明挂图正确（1798x680 即目标图） |
-| PartsEngine | `IsComponentShow` | 111 | 1 | L0 |  |
+| PartsEngine | `IsComponentShow` | 111 | 1 | L2 | 图层号走 ctrl_stack.show（D128），部件走 local.show；**state 参数被忽略**，与 SetComponentShow 对称，多状态串味留给 B4 一起处理 |
 | PartsEngine | `AddPartsConstructionProcess` | 86 | 1 | L0 |  |
 | PartsEngine | `NumofActivityParts` | 72 | 1 | L2 | Activity@GetList 用它定长；返 0 会导致按钮对象不创建（D119） |
 | PartsEngine | `SetComponentAlpha` | 65 | 1 | L0 |  |
@@ -233,14 +233,14 @@ python3 tools/offline/hll_hotness.py --emit docs/HLL-L3.md \
 | PartsEngine | `ReadActivityFile` | 39 | 1 | L0 |  |
 | PartsEngine | `Parts_SetSoundName` | 38 | 2 | L0 |  |
 | PartsEngine | `SetWantSaveBackScene` | 30 | 1 | L0 |  |
-| PartsEngine | `GetFreeNumber` | 28 | 1 | L0 |  |
+| PartsEngine | `GetFreeNumber` | 28 | 1 | L3 | 分配空闲号；D161 实测号段必须落在 1..999999999，旧起点 1000001000 让 213 次 Release 全失败 |
 | PartsEngine | `Parts_SetText` | 26 | 1 | L0 |  |
 | PartsEngine | `GetActivityPartsName` | 21 | 1 | L2 | 未找到返空串；调用方随后与字面量 S_EQUALE 比较 |
 | PartsEngine | `Parts_GetParentPartsNumber` | 18 | 1 | L2 | D312：返真实父号（含 pending_parent，0=无父） |
-| PartsEngine | `Parts_IsPartsFlatEnd` | 17 | 1 | L0 |  |
+| PartsEngine | `Parts_IsPartsFlatEnd` | 17 | 1 | L2 | 判据 frame==end_frame；曾差 1 导致 Join 无限等，已统一 end_frame 来源（flat.c） |
 | PartsEngine | `Parts_SetTextCharSpace` | 15 | 1 | L0 |  |
-| PartsEngine | `BeginInput` | 14 | 1 | L0 |  |
-| PartsEngine | `EndInput` | 13 | 1 | L0 |  |
+| PartsEngine | `BeginInput` | 14 | 1 | L3 | 开输入窗口：置 parts_began_click（帧内捕获的前提） |
+| PartsEngine | `EndInput` | 13 | 1 | L3 | 关窗口：清 began、clamp 点击号到 0、重置拖拽（s141 EndInput clicked=N 实测） |
 | PassRegister | `RegistText` | 175 | 3 | L0 |  |
 | String | `Empty` | 1219 | 304 | L0 |  |
 | String | `Contains` | 470 | 106 | L0 |  |

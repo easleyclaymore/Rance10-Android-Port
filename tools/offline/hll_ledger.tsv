@@ -65,31 +65,31 @@ Math.Min	L0
 Math.Rand	L0	
 Math.RandF	L0	
 PartsEngine.AddPartsConstructionProcess	L0	
-PartsEngine.BeginInput	L0	
-PartsEngine.CreateUserPartsNumber	L0	
-PartsEngine.EndInput	L0	
+PartsEngine.BeginInput	L3	开输入窗口：置 parts_began_click（帧内捕获的前提）
+PartsEngine.CreateUserPartsNumber	L3	同 GetFreeNumber 分配器：返回值即部件号，必须唯一且不复用（D82/D161）
+PartsEngine.EndInput	L3	关窗口：清 began、clamp 点击号到 0、重置拖拽（s141 EndInput clicked=N 实测）
 PartsEngine.GetActiveController	L2	GetActiveLayer 薄封装直属返回；值=层稳定 id（D129）
 PartsEngine.GetActivityParts	L2	调用点紧跟 IFZ 当布尔用；miss 必须返 0，否则跳错误分支
 PartsEngine.GetActivityPartsName	L2	未找到返空串；调用方随后与字面量 S_EQUALE 比较
 PartsEngine.GetActivityPartsNumber	L2	0=未找到，与本引擎「0 即无效部件号」一致
-PartsEngine.GetChild	L0	
-PartsEngine.GetClickNumber	L2	s141：EndInput clicked=N 与 GetClickNumber 返回值一致
-PartsEngine.GetComponentPosX	L0	
-PartsEngine.GetComponentType	L0	
+PartsEngine.GetChild	L2	返回子件号；调用方按 0..NumofChild-1 迭代，越界/无部件返 -1
+PartsEngine.GetClickNumber	L2	薄封装 GetClickPartsNumber；值=被点部件号，0=无（s141 EndInput clicked=N 一致）
+PartsEngine.GetComponentPosX	L2	float；错误路径 F_PUSH 0.0（调用点反汇编可见）
+PartsEngine.GetComponentType	L2	1-based state（内部 --state）；越界/无部件 -1，与 D309 的 -1 语义一致
 PartsEngine.GetControllerID	L2	GetLayerID 薄封装；调用方只在 0..NumofLayer-1 用，越界返 -1
 PartsEngine.GetControllerLength	L2	NumofLayer 薄封装，返回层数
-PartsEngine.GetDelegateIndex	L0	
-PartsEngine.GetFreeNumber	L0	
-PartsEngine.GetMessageDelegateIndex	L0	
-PartsEngine.GetMessageType	L0	
-PartsEngine.GetMessageVariableType	L0	
-PartsEngine.IsComponentShow	L0	
+PartsEngine.GetDelegateIndex	L2	parts.delegate_index；无此部件返 -1，与 Set 对称
+PartsEngine.GetFreeNumber	L3	分配空闲号；D161 实测号段必须落在 1..999999999，旧起点 1000001000 让 213 次 Release 全失败
+PartsEngine.GetMessageDelegateIndex	L2	队头 delegate_index，空队 -1；CallDelegate 用它查 FunctionSetList
+PartsEngine.GetMessageType	L2	队头 type，空队 -1 哨兵（D112；返 0 会让 WaitFrame 忙循环）
+PartsEngine.GetMessageVariableType	L2	调用点紧跟 IFNZ 当布尔用；1=int 合法（0x1e101a 反汇编）
+PartsEngine.IsComponentShow	L2	图层号走 ctrl_stack.show（D128），部件走 local.show；**state 参数被忽略**，与 SetComponentShow 对称，多状态串味留给 B4 一起处理
 PartsEngine.NumofActivityParts	L2	Activity@GetList 用它定长；返 0 会导致按钮对象不创建（D119）
-PartsEngine.NumofChild	L0	
+PartsEngine.NumofChild	L2	子件计数；无部件返 0（与 GetChild 的上界对称）
 PartsEngine.Parts_GetParentPartsNumber	L2	D312：返真实父号（含 pending_parent，0=无父）
-PartsEngine.Parts_GetPartsHeight	L0	
-PartsEngine.Parts_GetPartsWidth	L0	
-PartsEngine.Parts_IsPartsFlatEnd	L0	
+PartsEngine.Parts_GetPartsHeight	L2	1-based state，越界返 0；直接读 states[].common.h
+PartsEngine.Parts_GetPartsWidth	L2	1-based state，越界返 0；直接读 states[].common.w
+PartsEngine.Parts_IsPartsFlatEnd	L2	判据 frame==end_frame；曾差 1 导致 Join 无限等，已统一 end_frame 来源（flat.c）
 PartsEngine.Parts_SetComment	L0	
 PartsEngine.Parts_SetParentPartsNumber	L3	D194：运行时挂父立即 RefreshGlobalTree，防子树 z 停在建树瞬间
 PartsEngine.Parts_SetPartsCG	L2	D310：纹理转存证明挂图正确（1798x680 即目标图）
@@ -97,7 +97,7 @@ PartsEngine.Parts_SetPassCursor	L0
 PartsEngine.Parts_SetSoundName	L0	
 PartsEngine.Parts_SetText	L0	
 PartsEngine.Parts_SetTextCharSpace	L0	
-PartsEngine.PopMessage	L0	
+PartsEngine.PopMessage	L3	弹出队头并释放，队列前进；空队是空操作（[mpop] 实测）
 PartsEngine.ReadActivityFile	L0	
 PartsEngine.SetActiveController	L3	h3 闭环：SetActive id=1→idx=0 后 #2632 active=0；id=4→idx=2 后 active=2。连带修 PE_AddController 的「active 必须在栈顶」断言（b1r2 VM_ERROR → b1r3 通过）
 PartsEngine.SetComponentAlpha	L0	
@@ -105,9 +105,9 @@ PartsEngine.SetComponentPos	L0
 PartsEngine.SetComponentPosZ	L0	
 PartsEngine.SetComponentShow	L0	
 PartsEngine.SetComponentType	L0	
-PartsEngine.SetDelegateIndex	L0	
-PartsEngine.SetEnableInputProcess	L0	
-PartsEngine.SetKeyWaitShow	L0	
+PartsEngine.SetDelegateIndex	L3	写 parts.delegate_index；后续 CallDelegate 按它取 FunctionSet（s161 实测 di 一致）
+PartsEngine.SetEnableInputProcess	L0	契约未定。D165 试过映射到 clickable，238/242 次 enable=0 把按钮全关掉、只加载 27 个活动后卡死，已回退。需行为实验（[EIP-NOT-CLICKABLE]）
+PartsEngine.SetKeyWaitShow	L0	两个调用点都是薄封装（activityeditor / message::キー待ち表示設定），未找到可见载体；猜成 parts.show 有误隐藏风险，暂缓
 PartsEngine.SetWantSaveBackScene	L0	
 PassRegister.RegistText	L0	
 String.Contains	L0	
