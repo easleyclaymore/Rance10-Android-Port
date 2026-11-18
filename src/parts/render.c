@@ -169,10 +169,11 @@ static void text_render_probe(struct parts *parts, struct parts_text *t)
 	}
 	if (seen[slot].n++ >= 3)
 		return;
-	NOTICE("[txtr] no=%d pos=(%d,%d) off=(%d,%d) area=(%d,%d) start=(%d,%d) "
+	NOTICE("[txtr] no=%d size=%d face=%d bold=%.1f pos=(%d,%d) off=(%d,%d) area=(%d,%d) start=(%d,%d) "
 	       "wh=%dx%d lines=%d "
 	       "state=%d type=%d show=%d a=%d vis=%d mw=%d mwshow=%d uc=-",
-	       parts->no, parts->global.pos.x, parts->global.pos.y,
+	       parts->no, (int)t->ts.size, (int)t->ts.face, t->ts.bold_width,
+	       parts->global.pos.x, parts->global.pos.y,
 	       t->common.origin_offset.x, t->common.origin_offset.y,
 	       t->area_x, t->area_y,
 	       parts->global.pos.x + t->common.origin_offset.x + t->area_x,
@@ -190,9 +191,30 @@ static void parts_render_text(struct parts *parts, struct parts_text *t)
 	text_render_probe(parts, t);
 	/* [D301] 逐字符几何探针：正文「嗯……」看起来是两个字叠在一起，
 	 * 需要区分「advance 太小」还是「同一段被画了两遍」。 */
-	if (getenv("XSYS4_TEXT_CHAR_DBG")) {
-		/* 每个部件只打一次（最多 8 个部件），用来确认「同一时刻有几个
-		 * 文本件在同一位置画字」——正文那两个字明显是两段叠在一起。 */
+	const char *tcd = getenv("XSYS4_TEXT_CHAR_DBG");
+	/* 值 >=1000 时只跟指定部件号，且不按「每个部件只打一次」限流。 */
+	int tcd_target = tcd ? atoi(tcd) : 0;
+	if (tcd_target >= 1000) {
+		if (parts->no == tcd_target && t->nr_lines) {
+			static int rep;
+			int only = rep < 6;
+			if (only) rep++;
+			for (unsigned i = 0; i < t->nr_lines && i < 4; i++) {
+				struct parts_text_line *ln = &t->lines[i];
+				if (i == 0)
+					NOTICE("[txtc] no=%d lines=%u h=%d space=%d size=%d",
+					       parts->no, t->nr_lines, ln->height,
+					       t->line_space, (int)t->ts.size);
+				for (unsigned j = 0; j < ln->nr_chars && j < 10; j++) {
+					struct parts_text_char *c = &ln->chars[j];
+					NOTICE("[txtc]   j=%u ch=%02x%02x%02x adv=%d t=%dx%d",
+					       j, (unsigned char)c->ch[0], (unsigned char)c->ch[1],
+					       (unsigned char)c->ch[2], c->advance, c->t.w, c->t.h);
+				}
+			}
+			if (!only) {}
+		}
+	} else if (tcd) {
 		static int seen[8], nseen, total;
 		if (t->nr_lines && parts->no >= 900000300 && total < 40) {
 			int known = 0;

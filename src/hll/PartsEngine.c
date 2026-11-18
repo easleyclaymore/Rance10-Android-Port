@@ -1863,6 +1863,20 @@ static void PE_SetMessageWindowText(int no, struct string *text, int msg_num,
 	(void)ver;
 	(void)step;
 	MSGWIN_HIT("SetMessageWindowText no=%d len=%d", no, text ? (int)strlen(text->text) : -1);
+	/* [D303] 打印原始字节：说话态首行渲染出碎片，需要确认是「字符本身」
+	 * 还是「解码/字形缺失」的问题。 */
+	if (text && getenv("XSYS4_MSGWIN_DBG")) {
+		static int hn;
+		if (hn++ < 6) {
+			char hex[3 * 17];
+			int n = (int)strlen(text->text);
+			if (n > 16) n = 16;
+			for (int i = 0; i < n; i++)
+				snprintf(hex + i * 3, 4, "%02x ", (unsigned char)text->text[i]);
+			hex[n ? n * 3 : 0] = '\0';
+			NOTICE("[msghex] no=%d n=%d bytes=%s", no, (int)strlen(text->text), hex);
+		}
+	}
 	if (!text)
 		return;
 	struct string **slot = msgwin_text_slot(no);
