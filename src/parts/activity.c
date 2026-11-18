@@ -1249,8 +1249,23 @@ static int build_part(struct activity_part *part, int parent_no)
 			 * area_y = y - 底板高度。 */
 			if (ok && part->text_area[1] > 0) {
 				int fh = PE_GetPartsHeight(frame_no, 1);
-				PE_SetTextArea(part->parts_no, part->text_area[0],
-						part->text_area[1] - fh);
+				/* [D306] 少补偿一个字号：文本件的 `origin_offset.y`
+				 * 是 `-字形高`（mode 7 底对齐，`s131` 实测 `offy=-39`），
+				 * 而 `文本エリア.y` 给的是「正文第一行**顶边**距窗口顶」。
+				 * 不补偿时 y = 1080 - 39 - 184 = **857**，比应有的
+				 * `panel_top(663) + 233 = 896` 高出整整一个字号，
+				 * 于是正文上半 29px 被名牌（底边 886）盖住，屏幕上只剩
+				 * 最下面约 10 行墨迹（`s126` 的「半个字」）。
+				 * `XSYS4_MSGWIN_TEXT_BASELINE=0` 回退到旧行为。 */
+				static int baseline_fix = -1;
+				if (baseline_fix < 0) {
+					const char *e = getenv("XSYS4_MSGWIN_TEXT_BASELINE");
+					baseline_fix = e && !strcmp(e, "0") ? 0 : 1;
+				}
+				int ay = part->text_area[1] - fh;
+				if (baseline_fix && part->font_size > 0)
+					ay += part->font_size;
+				PE_SetTextArea(part->parts_no, part->text_area[0], ay);
 			}
 			free_string(cg);
 		}

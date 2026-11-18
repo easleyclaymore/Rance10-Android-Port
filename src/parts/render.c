@@ -273,6 +273,21 @@ static void parts_render_text(struct parts *parts, struct parts_text *t)
 			 * 而同一张白纹理走 render_uc_rect() 就能画（见 TECH_DEBT
 			 * [UC-TEXSHADER]，未定位）。精灵路径稳定，先走这条。 */
 			Rectangle pr = RECT(x, y, ch->t.w, ch->t.h);
+			/* [D306] 打印**提交绘制时**的真实矩形。上一轮探针拿到的
+			 * `start=(470,896)` 与屏幕墨迹（y≈884..892）对不上，
+			 * 这里直接量 pr，确认差异出在 x/y 计算还是绘制层。 */
+			const char *tdd = getenv("XSYS4_TEXT_DRAW_DBG");
+			if (tdd && *tdd) {
+				static int dn;
+				int want = atoi(tdd);
+				if (parts->no == want && dn < 8) {
+					NOTICE("[txtd] no=%d j=%d pr=(%d,%d %dx%d) posy=%d offy=%d areay=%d",
+					       parts->no, j, pr.x, pr.y, pr.w, pr.h,
+					       parts->global.pos.y, t->common.origin_offset.y,
+					       t->area_y);
+					dn++;
+				}
+			}
 			gfx_render_texture(&ch->t, &pr);
 			x += ch->advance;
 		}

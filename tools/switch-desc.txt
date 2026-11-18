@@ -140,6 +140,7 @@ XSYS4_MSGWIN_DBG	[诊断] 打印消息窗口配置族 setter 的触达与实参�
 XSYS4_PARTS_DUMP_MIN	[诊断] 只 dump 部件号 >= 此值的部件；部件表按插入序遍历，地图号段会吃光 PARTS_DUMP_MAX 名额，设 900000300 才能看到动态号段
 XSYS4_MSGWIN_FULL	[D217 已转正] EX 消息窗口组件补齐 39px 字体/字色/字距/行距，并用独立 CG 部件装载 种类別情报 的 底板ＣＧ名；默认生效，=0 回退做 A/B
 XSYS4_MOUSE_DBG	[诊断] 打印 SDL 按钮事件（btn / state / clicks / pos / windowID）。用来二分「X 层没把 ButtonPress 交给 SDL」和「SDL 收到了但引擎丢边沿」：同一配方下无 `key:Shift_L` 激活时 `[mouse]` 一条都没有（`s27`），加激活后立即出现并点中 `900000716`（`s26`）
+XSYS4_MSGWIN_TEXT_BASELINE	[诊断] 消息窗口正文 y 补偿一个字号（默认开）。`文本エリア.y` 是「首行顶边距窗口顶」，而文本件的 `origin_offset.y` 已是 `-字形高`，不补偿会高出整一个字，正文上半被名牌盖住（`s126` 的「半个字」）；`=0` 回退
 XSYS4_MSGWIN_FRAME_Z	[诊断] 消息窗口底板 frame 部件的 z 基线（默认 4900）。用来 A/B「底板到底画没画」：设 1 会让它排到地图后面，底部像素会明显变化
 XSYS4_CG_SPRITE_PATH	[诊断] 宽≥1900 且高 250..600 的 CG 改走精灵路径（`gfx_render_texture`）。实测与 parts 着色器路径**结果一致**（`s92` vs `s104` 逐像素几乎相同），说明底板一直在正常绘制，保留供以后遇到真·着色器问题时对照
 XSYS4_CG_SPRITE_DBG	[诊断] 配合 CG_SPRITE_PATH：打印走精灵路径的大矩形（no/di/pr/filt/a）
