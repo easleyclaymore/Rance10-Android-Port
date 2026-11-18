@@ -175,6 +175,12 @@ struct parts *parts_get(int parts_no)
 	struct parts *parts = parts_alloc();
 	parts->no = parts_no;
 	parts->controller_no = ctrl_stack.active;
+	/* [D320] 部件生命周期探针：`XSYS4_PART_LIFE=1` 时打印 900000560..900000600
+	 * 这一段（回想对话框）的**创建**。起因：AIN 给按钮 574 绑了
+	 * `SetDelegateIndex(574, 404)`，之后 `GetDelegateIndex(574)` 却读回 -1 ——
+	 * 只有「部件被释放后重建」能造成这种结果，而重建会丢掉全部绑定。 */
+	if (getenv("XSYS4_PART_LIFE") && parts_no >= 900000560 && parts_no <= 900000600)
+		NOTICE("[plife] create no=%d ctrl=%d", parts_no, parts->controller_no);
 	/* [D289] Load 期间建的部件先记下来，AddLayer 时迁到新层。 */
 	ctrl_pending_add(parts_no);
 	slot->value = parts;
@@ -1268,6 +1274,8 @@ void parts_release(int parts_no)
 		return;
 
 	struct parts *parts = slot->value;
+	if (getenv("XSYS4_PART_LIFE") && parts_no >= 900000560 && parts_no <= 900000600)
+		NOTICE("[plife] release no=%d di=%d", parts_no, parts->delegate_index);
 	parts_input_reset_drag(parts);
 	parts_clear_motion(parts);
 	for (int i = 0; i < PARTS_NR_STATES; i++) {
@@ -1599,12 +1607,22 @@ void PE_UpdateParts(int passed_time, possibly_unused bool is_skip, bool message_
 
 void PE_SetDelegateIndex(int parts_no, int delegate_index)
 {
+	/* [D320] 部件 → 委托索引的绑定点了名才能查。
+	 * `ReplayMemoDialog` 的「過後查看」(900000574) 点击**捕获成功**
+	 * （`[inp] EndInput clicked=900000574`）却毫无反应，而派发侧的
+	 * `CPartsFunctionSet` 里 `m1=parts` 与 `m7=<MouseLClickEvent>` 都是空的。
+	 * 这条日志回答「AIN 到底有没有给 574 绑过 delegate_index」。 */
+	if (getenv("XSYS4_DGIDX_DBG"))
+		NOTICE("[dgidx] set parts=%d di=%d", parts_no, delegate_index);
 	parts_get(parts_no)->delegate_index = delegate_index;
 }
 
 int PE_GetDelegateIndex(int parts_no)
 {
 	struct parts *parts = parts_try_get(parts_no);
+	if (getenv("XSYS4_DGIDX_DBG") && parts_no >= 900000560)
+		NOTICE("[dgidx] get parts=%d -> %d", parts_no,
+		       parts ? parts->delegate_index : -1);
 	return parts ? parts->delegate_index : -1;
 }
 

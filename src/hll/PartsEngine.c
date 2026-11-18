@@ -1907,6 +1907,20 @@ static void PE_SetMessageWindowText(int no, struct string *text, int msg_num,
 	(void)ver;
 	(void)step;
 	MSGWIN_HIT("SetMessageWindowText no=%d len=%d", no, text ? (int)strlen(text->text) : -1);
+	/* [D319] 台词进度探针：`CMessageTextView@CreateDrawChar` 是**逐字**调
+	 * `SetMessageWindowText` 的（取串 → 追加一个字 → 设回），所以不能逐次打，
+	 * 否则一行 20 字就是 20 条。这里只在「长度从有到接近 0」时认作新行起点，
+	 * 打一个累计行号 —— 它同时是「剧情推进到第几句」的唯一可量化指标，
+	 * 也是判断「是不是卡住不动了」的判据。 */
+	if (getenv("XSYS4_MSG_LINES")) {
+		static int last_len, lines;
+		int len = text ? (int)strlen(text->text) : 0;
+		if (len <= 2 && last_len > 2) {
+			lines++;
+			NOTICE("[msgline] %d no=%d", lines, no);
+		}
+		last_len = len;
+	}
 	/* [D303] 打印原始字节：说话态首行渲染出碎片，需要确认是「字符本身」
 	 * 还是「解码/字形缺失」的问题。 */
 	if (text && getenv("XSYS4_MSGWIN_DBG")) {
