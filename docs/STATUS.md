@@ -12,7 +12,7 @@
 |---|---|
 | **阶段** | 第一章剧情**画面**已全线验收（`s133` 12 屏 / `s135` 40 次点击，含 1/2/3 行段落与说话人切换）；但**流程卡在开场回想对话** `ReplayMemoDialog`：右按钮「過後查看」点不动（`[TEXTBUTTON-CLICK]`），`Ctrl` 快进 + `Esc` 只能把画面藏掉、遮挡层仍在，剧情走不到任务地图，战斗仍未进入 |
 | **最大卡点** | `[TEXTBUTTON-CLICK]` —— 点击**已捕获**到 `900000513`、`CallDelegate(7973)` 也派发到 `CallDelegateMouseClick(7978)`，但该部件的 `CPartsFunctionSet` 十五个事件数组**全为 nr=0**：`TextButton@SetOnClickEvent`(22907) 只把委托存进对象自身（`this.m5.DG_ASSIGN`），派发用的 `Motion`(22908)/`IsClickable`(22909) 与 H044 那条 `SceneReplayMemoDialog@<lambda>`(36563) 本次**都是 0 次** |
-| **本轮做过的** | 把「点不动」拆到**委托注册**这一层：新增 5 个探针（`FN_LIST`/`STRUCT_LIST`/`FN_DUMP_FSSCAN`/`FN_DUMP_FSALL`/`DG_GC_DBG`）与「结构体实参展开」，据此拿到 `CallDelegate`=7973、`CPartsFunctionSet` 成员名（m7=`<MouseLClickEvent>`）、全堆有点击委托的部件名单；反汇编确认 `SetOnClickEvent` 只写 `this.m5`；对照左按钮 `900000516`（`ActivityButton` lambda）**点得动**，说明部件委托链路本身是通的，缺的是 TextButton → 委托的衔接 |
+| **本轮做过的** | ① 补掉 `PartsEngine.GetActiveParts` 的恒 0 桩（D309），按原义返回「光标指向的部件」，`s185` 12 屏 ADV 回归通过；② 继续拆 `[TEXTBUTTON-CLICK]`：`WaitForClick`(8309) 轮询的是 `GetClickPartsNumber`(8307)，`GetActivePartsType`(8308)/`IsInputPartsActive`(7243) 实测 **0 次**（这条对话不走那条分支）；`XSYS4_DG_APPEND_DBG` 实测 710 次追加、**0 次丢弃**，排除「注册被吞」；剩下唯一异常是整屏委托表只有 `SceneStack@RegisterEvent()(77,44)` 一个，H044 当时是 `SceneReplayMemoDialog@<lambda>`(36563) |
 | **判据** | 几何用 `XSYS4_PARTS_DUMP` 看 `st=11` 的尺寸分布；点击类一律看 `[inp] EndInput clicked=N` 落在预期部件上（**不看**"我点了几次"）；画面用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S），不要用 X11 抓屏（GL 直绘下会拿到空 framebuffer，见 GUIDE 1.13） |
 
 > **卡点必须挂债标签**：§0「最大卡点」里的 `` `[TAG]` `` 必须**逐字存在**于
@@ -207,7 +207,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **205**（未标注 31）｜ HLL 源码口径 **3301 / 4495（73.4%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 95 / 34** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **207**（未标注 31）｜ HLL 源码口径 **3301 / 4495（73.4%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 96 / 34** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
 <!-- STATS:END -->
 
 最常用的：

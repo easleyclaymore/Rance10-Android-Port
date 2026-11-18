@@ -1656,7 +1656,17 @@ static void PE_Noop_SetMessageWindowFlatName(int a0, struct string * a1)
  * 是安全默认：点击推进仍由已实现的 GetClickNumber / WaitForClick 负责。 */
 static int PE_GetActiveParts(void)
 {
-	return 0;
+	/* [D309] 补成真实语义（原来是恒 0 的桩）。
+	 *
+	 * AIN 侧：`parts::detail::GetActivePartsType`(8308) = 本函数返回 0 则
+	 * **-1**，否则 `GetComponentType(parts, 1)`；`parts::IsInputPartsActive`(7243)
+	 * 与 `parts::detail::WaitForClick`(8309) 全靠它判断「这次点击算不算数」。
+	 * 恒返回 0 ⇒ 类型恒 -1 ⇒ `TextButton@Motion`/`IsClickable` 一次都不被调用
+	 * ⇒ 开场回想对话的「過後查看」点不动（`s141`–`s174` 全链路取证，见
+	 * `[TEXTBUTTON-CLICK]`）。
+	 *
+	 * `XSYS4_ACTIVE_PARTS=0` 回退到旧桩，供 A/B。 */
+	return parts_input_active_parts();
 }
 
 /* [D202] 背景快照辅助：引擎始终按 SaveBackScene 的完整快照工作，

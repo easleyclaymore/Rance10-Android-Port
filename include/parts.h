@@ -247,6 +247,8 @@ void PE_EndInput(void);
 bool PE_IsInputBegun(void);
 int PE_GetClickPartsNumber(void);
 bool PE_IsCursorIn(int parts_no, int mouse_x, int mouse_y, int state);
+/* [D309] 光标当前指向的部件号（0 = 没有）。AIN 的 PartsEngine.GetActiveParts 用它。 */
+int parts_input_active_parts(void);
 
 // message.c
 void PE_ReleaseMessage(void);

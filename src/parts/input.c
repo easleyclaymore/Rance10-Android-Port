@@ -32,6 +32,30 @@ static int clicked_parts = 0;
 // 本次（部分）点击到的部件号
 static int click_down_parts = 0;
 
+/* [D309] 光标当前**指向**的部件号（最上层、可见、命中）。
+ *
+ * 原版引擎有「active parts」概念：`PartsEngine.GetActiveParts` 返回它会话里
+ * 被指着的部件，AIN 的 `parts::detail::GetActivePartsType`(8308) 再拿它去
+ * `GetComponentType(parts, 1)` 求组件类型，返回 -1 表示「没有」。
+ * `parts::detail::WaitForClick`(8309) / `parts::IsInputPartsActive`(7243)
+ * 就是靠这一对判断「这次点击算不算数」。
+ *
+ * D202 把它实现成恒返回 0 的桩，注释说「点击推进仍由 GetClickNumber 负责」——
+ * 但那正是开场回想对话「過後查看」点不动的原因：类型恒为 -1，
+ * WaitForClick 永远认为没有可点部件，于是 `TextButton@Motion` 一次都不跑。
+ * 这里把它补成真实语义：本帧悬停消费顺序里第一个命中的部件。 */
+static int active_parts_no = 0;
+
+int parts_input_active_parts(void)
+{
+	static int off = -1;
+	if (off < 0) {
+		const char *e = getenv("XSYS4_ACTIVE_PARTS");
+		off = (e && !strcmp(e, "0"));
+	}
+	return off ? 0 : active_parts_no;
+}
+
 /* [D119 probe] CPartsFunctionSet@CallFunctionMouseClick dispatches on the
  * 第三个消息变量（KeyCode）：1 -> this[7]，2 -> this[8]，4 -> this[9]。
  * xsystem4 传的是 VK_LBUTTON（1）；兰斯10 的 AIN 可能期望左键是 4。
@@ -210,6 +234,10 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	}
 	if (is_hovered && hover_blocking)
 		*hover_consumed = true;
+	/* [D309] 第一个（z 最高、可见、命中）的部件即「光标指向的部件」，
+	 * 与 hover 消费顺序一致；不要求真的按下。 */
+	if (is_hovered && !active_parts_no)
+		active_parts_no = parts->no;
 
 	if (parts->linked_from >= 0 && is_hovered != was_hovered) {
 		parts_dirty(parts_get(parts->linked_from));
@@ -444,6 +472,8 @@ void PE_UpdateInputState(int passed_time)
 
 	bool hover_consumed = false;
 	bool click_consumed = false;
+	/* [D309] 重算本帧「光标指向的部件」。 */
+	active_parts_no = 0;
 	/* [D123] 排序后的候选表，命中与调试打印共用同一顺序。 */
 	int sorted_nr = 0;
 	struct parts **sorted = parts_input_collect(&sorted_nr);

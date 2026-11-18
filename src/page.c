@@ -1079,6 +1079,14 @@ bool delegate_contains(struct page *dst, int obj, int fun)
 
 struct page *delegate_append(struct page *dst, int obj, int fun)
 {
+	/* [D309] `XSYS4_DG_APPEND_DBG=1`：委托追加/丢弃都打一条。
+	 *
+	 * 「按钮注册了委托却点不动」还有第三种可能：注册调用发生了，但
+	 * 委托的函数号是 0（lambda 没解析出来），在这里被静默丢掉 ——
+	 * 日志里既没有报错也没有痕迹。`fun<1` 这一支必须能看见。 */
+	if (getenv("XSYS4_DG_APPEND_DBG"))
+		NOTICE("[dgadd] obj=%d fun=%d dst_nr=%d%s", obj, fun,
+		       dst ? dst->nr_vars : -1, fun < 1 ? "  <== DROP" : "");
 	if (fun < 1)
 		return dst;
 	if (!dst)

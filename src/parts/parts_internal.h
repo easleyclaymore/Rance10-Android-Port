@@ -611,6 +611,8 @@ void parts_add_motion(struct parts *parts, struct parts_motion *motion);
 // input.c
 extern bool parts_began_click;
 void parts_input_reset_drag(struct parts *parts);
+/* [D309] 光标当前指向的部件号（0 = 没有）。供 `PartsEngine.GetActiveParts` 使用。 */
+int parts_input_active_parts(void);
 
 // message.c
 enum parts_message_type {
