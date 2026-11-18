@@ -935,14 +935,19 @@ static void function_call(int fno, int return_address)
 				struct page *vp = heap[vs].page;
 				if (!vp || vp->type != STRUCT_PAGE)
 					continue;
-				char line[1024];
+				/* [D323] 1024 字节**不够**：`CPartsFunctionSet` 有 42 个成员，
+				 * 每个 delegate 成员还要展开 `<nr=.. [obj,fun]>`，第 14 个就被
+				 * 截断了 —— 而事件数组在**后半段**（`Init` 清的是 28..42），
+				 * 截断正好把要看的部分切掉，害得两轮都把「全空」当结论。
+				 * 实测必须 4096 才装得下 42 个成员。 */
+				char line[4096];
 				int off = snprintf(line, sizeof(line), "[fn]     v%d struct '%s' nr=%d:",
 						   i, vp->index >= 0 && vp->index < ain->nr_structures &&
 						      ain->structures[vp->index].name
 						      ? ain->structures[vp->index].name : "?",
 						   vp->nr_vars);
 				for (int k = 0; k < vp->nr_vars && k < 42 && off > 0 &&
-				     off < (int)sizeof(line) - 96; k++) {
+				     off < (int)sizeof(line) - 200; k++) {
 					int mv = vp->values[k].i;
 					off += snprintf(line + off, sizeof(line) - off,
 							" m%d=%d", k, mv);
@@ -1202,6 +1207,33 @@ static void method_call(int nargs, int return_address)
 				return;
 			}
 			VM_ERROR("CALLMETHOD: invalid function index %d", fno);
+		}
+	}
+	/* [D323] `XSYS4_FN_WATCH="22907,22908,22909"`：按**解析后的函数号**打方法调用。
+	 *
+	 * 起因：`grep "arg=22908"` 得到 0，看起来 `TextButton@Motion` 从没被调过 ——
+	 * 但方法是通过 `CALLMETHOD` 走的，函数号**要等对像页的 vtable 解析出来**，
+	 * 静态反汇编里只有方法下标，用 fno 计数根本测不到。这个探针在派发点打，
+	 * 才回答得了「这个方法到底跑了没有」。 */
+	if (getenv("XSYS4_FN_WATCH")) {
+		static int w[16], nw = -1;
+		static int cnt[16];
+		if (nw < 0) {
+			nw = 0;
+			const char *q = getenv("XSYS4_FN_WATCH");
+			while (q && *q && nw < 16) {
+				w[nw++] = atoi(q);
+				while (*q && *q != ',') q++;
+				if (*q == ',') q++;
+			}
+		}
+		for (int i = 0; i < nw; i++) {
+			if (w[i] == fno) {
+				if (cnt[i]++ < 40)
+					NOTICE("[fwatch] fno=%d nargs=%d this=%d", fno, nargs,
+					       nargs + 1 <= stack_ptr ? stack_peek(nargs + 1).i : -2);
+				break;
+			}
 		}
 	}
 	/* [AUTO] 记录 SceneQuestMap 场景实例的 `this`（见文件上方 auto_party_page
@@ -4741,6 +4773,54 @@ case SR_ASSIGN: {
 		/* dst_i == -1 表示空的委托目标；delete_page(-1) 会拿一个非法槽
 		 * 去调 heap_get_page（D57）。
 		 * 而 heap_set_page() 本来就会忽略负槽。 */
+		/* [D324] `XSYS4_DGA_DROP=1`：只在「目标为空槽（dst_i<=0）而源委托
+		 * 里**确实装着条目**」时打一行 —— 这正是「委托被静默丢掉」的形状。
+		 *
+		 * 起因：`TextButton@SetOnClickEvent` 的写法是
+		 * `this.m5; REF; <源 dg>; A_REF; DG_ASSIGN`。成员本来是空的，
+		 * `REF` 给出 -1，下面只 `if (dst_i > 0)` 才写回 → 赋值**整个丢掉**，
+		 * 于是 TextButton 的点击委托永远为空，`Motion` 即使跑了也没东西可派。
+		 * 这个探针把「丢了什么」点名。 */
+		if (getenv("XSYS4_DGA_DROP") && dst_i <= 0 && set &&
+		    set->type == DELEGATE_PAGE && set->nr_vars > 0) {
+			static int n;
+			if (n++ < 300)
+				NOTICE("[dgadrop] dst_i=%d set_nr=%d first=[%d,%d] ip=0x%zX",
+				       dst_i, set->nr_vars, set->values[0].i,
+				       set->nr_vars > 1 ? set->values[1].i : -1, instr_ptr);
+		}
+		/* [D324] `XSYS4_DG_ASSIGN_NULLALLOC=1`：目标成员是**空槽**时，
+		 * 给它分配一张新委托页并写回成员，而不是把这次赋值丢掉。
+		 *
+		 * 为什么这么改：`TextButton@SetOnClickEvent` 的字节码是
+		 * `PUSHSTRUCTPAGE; PUSH 5; REF; <源 dg>; A_REF; DG_ASSIGN`。
+		 * 成员 `m5` 本来是空的，`REF` 只能给出 `-1`，而下面只
+		 * `if (dst_i > 0)` 才写回 —— 于是**这次赋值无声无息地消失**。
+		 * 结果就是：点击委托生成了、也注册了（`[dgadd]` 827 次），
+		 * 却永远进不了 TextButton 的 `m5`，`Motion` 即使跑了也没东西可派。
+		 *
+		 * 写回位置用 `REF` 记录的 `last_ref_heap/index`（REF 每次都会更新），
+		 * 并额外要求那一格**现在仍是空槽**，避免写到别处。
+		 *
+		 * **实测已证伪**：`XSYS4_DGA_DROP=1` 跑到回想对话框，`[dgadrop]` **0 条**
+		 * —— 没有任何委托因为「目标是空槽」被丢掉。开关保留只为 A/B，
+		 * 默认关；不要再据此改 DG_ASSIGN 的默认行为。 */
+		if (dst_i <= 0 && set && set->nr_vars > 0 &&
+		    getenv("XSYS4_DG_ASSIGN_NULLALLOC")) {
+			if (last_ref_heap > 0 && (size_t)last_ref_heap < heap_size &&
+			    heap[last_ref_heap].page &&
+			    last_ref_index >= 0 &&
+			    last_ref_index < heap[last_ref_heap].page->nr_vars &&
+			    heap[last_ref_heap].page->values[last_ref_index].i <= 0) {
+				int slot = heap_alloc_page(new_dg);
+				heap[last_ref_heap].page->values[last_ref_index].i = slot;
+				NOTICE("[dganull] 空成员承接委托 slot=%d nr=%d at=%d[%d]",
+				       slot, new_dg ? new_dg->nr_vars : -1,
+				       last_ref_heap, last_ref_index);
+				stack_push(set_i);
+				break;
+			}
+		}
 		if (dst_i > 0)
 			delete_page(dst_i);
 		/* D75：槽 0 是保留的全局页。dst_i<=0 的 DG_ASSIGN
