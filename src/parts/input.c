@@ -178,6 +178,26 @@ void parts_input_reset_drag(struct parts *parts)
 static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clicking,
 		int passed_time, bool *hover_consumed, bool *click_consumed)
 {
+	/* [D331] 点击捕获归因探针（`XSYS4_CAP_DBG=1`）。
+	 *
+	 * 用途单一：回答「按下那一帧，光标下的部件各自是什么状态、为什么没人
+	 * 拿到 click_down_parts」。之前只能靠 `[inp] down=0` 知道"没人捕获"，
+	 * 但捕获链有四级前提（可见 / 命中 / hover 没被吃掉 / 资格判据），
+	 * 没有逐级快照就只能猜。这里把四项一次性打出来，并且**只在按下那帧、
+	 * 且命中盒真的覆盖光标**时打，量很小。 */
+	if (getenv("XSYS4_CAP_DBG") && cur_clicking && !prev_clicking) {
+		Rectangle dbghb = parts_hitbox_at(parts, PARTS_STATE_DEFAULT);
+		if (cur_pos.x >= dbghb.x && cur_pos.x < dbghb.x + dbghb.w &&
+		    cur_pos.y >= dbghb.y && cur_pos.y < dbghb.y + dbghb.h)
+			NOTICE("[cap] no=%d z=%d vis=%d show=%d ck=%d pc=%d "
+			       "hcons=%d began=%d hb=(%d,%d,%d,%d)",
+			       parts->no, parts->global.z,
+			       parts_is_visible(parts) ? 1 : 0, parts->global.show,
+			       parts->clickable, parts->pass_cursor,
+			       *hover_consumed ? 1 : 0, parts_began_click ? 1 : 0,
+			       dbghb.x, dbghb.y, dbghb.w, dbghb.h);
+	}
+
 	// 不管当前显示状态是什么，命中盒一律用 DEFAULT 状态。
 	/* [D128] 隐藏的图层不参与命中（否则旧场景的按钮还挡在新场景前面）。 */
 	bool is_hovered = parts_is_visible(parts)
@@ -243,7 +263,20 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 		parts_dirty(parts_get(parts->linked_from));
 	}
 
-	if (!parts_began_click)
+	/* [D332] **释放沿即使输入窗口已关也必须处理**。
+	 *
+	 * 实测（`t6`，标题菜单「从头开始」按钮 `900000063`）：按下那一帧
+	 * `[cap] ... began=1`（AIN 的 `BeginInput` 窗口开着），抬起那一帧
+	 * `[cap] ... began=0`（AIN 已经 `EndInput`）—— 于是这里 `return` 掉，
+	 * 下面那行 `prev_clicking && !cur_clicking` 的收尾永远跑不到，
+	 * `click_down_parts` 变不成 `clicked_parts`。
+	 *
+	 * 表现正是「按下有反应（hover/pressed 状态切换了）、松手没有结果」，
+	 * 也是 `[TEXTBUTTON-CLICK]` 里「点得中但没反应」的一半。
+	 *
+	 * 只放行**释放沿**：按下沿仍然要求窗口开着（否则会在 AIN 没准备接收时
+	 * 抢走点击）。D120 处理的是相反方向（按下在窗口外），这里是抬起在窗口外。 */
+	if (!parts_began_click && !(prev_clicking && !cur_clicking))
 		return;
 
 	if (is_hovered && !was_hovered) {
@@ -519,6 +552,9 @@ void PE_UpdateInputState(int passed_time)
 			       parts->uc_object ? parts->uc_object : "-");
 		}
 	}
+	if (getenv("XSYS4_CAP_DBG") && cur_clicking && !prev_clicking)
+		NOTICE("[cap] 按下帧 sorted_nr=%d began=%d pos=(%d,%d)",
+		       sorted_nr, parts_began_click, cur_pos.x, cur_pos.y);
 	// z 最高的排前面：排序后的列表是从前到后。
 	for (int si = 0; si < sorted_nr; si++) {
 		parts = sorted[si];
@@ -611,7 +647,10 @@ void PE_UpdateInputState(int passed_time)
 	 * 之外照样把 prev_clicking 更新成"未按下"，抬起沿就被吃掉了，
 	 * clicked_parts 永远不置位 —— 表现正是"点了没反应，但重试几次偶尔能中"。
 	 * 冻结在窗口内的最后状态，边缘检测只在窗口开的时候前进。 */
-	if (parts_began_click)
+	/* [D332] 释放沿那一刻窗口可能已经关了（见上）。若只在窗口开着时推进
+	 * `prev_clicking`，它会永远冻结在"按下"，之后每一次物理按下都不再是
+	 * 上升沿 —— 点击从此全部静默。所以释放沿也推进一次。 */
+	if (parts_began_click || (prev_clicking && !cur_clicking))
 		prev_clicking = cur_clicking;
 	parts_prev_pos = cur_pos;
 }
