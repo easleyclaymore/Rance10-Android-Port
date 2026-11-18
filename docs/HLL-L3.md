@@ -27,7 +27,8 @@
 | 调用点 2–3 | **11** |
 | 调用点 4–10 | **16** |
 | 调用点 > 10 | **35** |
-| 已有 L2／L3 证据 | **8**（含 2 个 NA） |
+| 已有 L2／L3 证据 | 见文末台账（每批做完 `--emit` 刷新，不写死） |
+| 批次进度 | B1（层与活动，8 个）已完成：L2×7、L3×1，无需改代码 |
 
 **关键结论：这不是「重写 121 个」，而是「审计 121 个，只有不符的才改」。**
 调用点中位数是 **2**，59 个函数只在一处被调用 —— 逐个读完全可行。
@@ -101,6 +102,11 @@
   证据列写清来源（上游文件 + 行号），不冒充场景验证。
 - **改名/重载陷阱**：`Math.Min` 等有 6 个重载，绑定按 arity + 返回类型打分（D284），
   批量审计时不要只看函数名。
+- **L3 的连带风险（B1 实测）**：把一个 setter 从空实现变真，会**激活别处按「它永不生效」写的断言**。
+  `SetActiveController` 生效后，`PE_AddController` 里那句 `active controller is not at the top of the stack`
+  立刻在 `NetworkConfirmation → AddLayer` 上触发，直接 `VM_ERROR` 退出。
+  处置：按 `AddLayer` 自身契约（压栈后新层即活动层）容忍并归位，只留痕不致命。
+  **每批做 setter 时，先 grep 一遍「assert/VM_ERROR + 该状态」的卫语句。**
 
 ---
 
@@ -120,8 +126,8 @@ python3 tools/offline/hll_hotness.py --emit docs/HLL-L3.md \
 
 | 级 | 函数数 | 含义 |
 |---|---:|---|
-| L0 | 114 | 注册 |
-| L2 | 3 | 单点语义 |
+| L0 | 107 | 注册 |
+| L2 | 10 | 单点语义 |
 | L3 | 2 | 副作用联动 |
 | NA | 2 | 豁免 |
 | **合计** | **121** | 本章路径调用的 HLL |
@@ -191,22 +197,22 @@ python3 tools/offline/hll_hotness.py --emit docs/HLL-L3.md \
 | Math | `Clamp` | 3030 | 62 | L0 |  |
 | Math | `Max` | 263 | 148 | L0 |  |
 | PartsEngine | `GetMessageVariableType` | 25259 | 1 | L0 |  |
-| PartsEngine | `GetActiveController` | 15036 | 1 | L0 |  |
+| PartsEngine | `GetActiveController` | 15036 | 1 | L2 | GetActiveLayer 薄封装直属返回；值=层稳定 id（D129） |
 | PartsEngine | `GetMessageType` | 9944 | 1 | L0 |  |
-| PartsEngine | `GetControllerID` | 8984 | 1 | L0 |  |
+| PartsEngine | `GetControllerID` | 8984 | 1 | L2 | GetLayerID 薄封装；调用方只在 0..NumofLayer-1 用，越界返 -1 |
 | PartsEngine | `PopMessage` | 8430 | 2 | L0 |  |
 | PartsEngine | `GetMessageDelegateIndex` | 8427 | 1 | L0 |  |
-| PartsEngine | `SetActiveController` | 5970 | 1 | L3 | D312：稳定 id→栈下标；6741 次全解析、无 VM_ERROR（目视待验） |
-| PartsEngine | `GetControllerLength` | 2940 | 1 | L0 |  |
+| PartsEngine | `SetActiveController` | 5970 | 1 | L3 | h3 闭环：SetActive id=1→idx=0 后 #2632 active=0；id=4→idx=2 后 active=2。连带修 PE_AddController 的「active 必须在栈顶」断言（b1r2 VM_ERROR → b1r3 通过） |
+| PartsEngine | `GetControllerLength` | 2940 | 1 | L2 | NumofLayer 薄封装，返回层数 |
 | PartsEngine | `GetClickNumber` | 1429 | 1 | L2 | s141：EndInput clicked=N 与 GetClickNumber 返回值一致 |
-| PartsEngine | `GetActivityPartsNumber` | 1102 | 1 | L0 |  |
+| PartsEngine | `GetActivityPartsNumber` | 1102 | 1 | L2 | 0=未找到，与本引擎「0 即无效部件号」一致 |
 | PartsEngine | `GetComponentPosX` | 686 | 1 | L0 |  |
 | PartsEngine | `GetComponentType` | 578 | 1 | L0 |  |
 | PartsEngine | `GetDelegateIndex` | 496 | 1 | L0 |  |
 | PartsEngine | `SetDelegateIndex` | 418 | 1 | L0 |  |
 | PartsEngine | `NumofChild` | 411 | 1 | L0 |  |
 | PartsEngine | `GetChild` | 391 | 1 | L0 |  |
-| PartsEngine | `GetActivityParts` | 350 | 1 | L0 |  |
+| PartsEngine | `GetActivityParts` | 350 | 1 | L2 | 调用点紧跟 IFZ 当布尔用；miss 必须返 0，否则跳错误分支 |
 | PartsEngine | `SetComponentShow` | 305 | 1 | L0 |  |
 | PartsEngine | `SetKeyWaitShow` | 267 | 2 | L0 |  |
 | PartsEngine | `SetComponentPosZ` | 260 | 1 | L0 |  |
@@ -221,7 +227,7 @@ python3 tools/offline/hll_hotness.py --emit docs/HLL-L3.md \
 | PartsEngine | `Parts_SetPartsCG` | 170 | 3 | L2 | D310：纹理转存证明挂图正确（1798x680 即目标图） |
 | PartsEngine | `IsComponentShow` | 111 | 1 | L0 |  |
 | PartsEngine | `AddPartsConstructionProcess` | 86 | 1 | L0 |  |
-| PartsEngine | `NumofActivityParts` | 72 | 1 | L0 |  |
+| PartsEngine | `NumofActivityParts` | 72 | 1 | L2 | Activity@GetList 用它定长；返 0 会导致按钮对象不创建（D119） |
 | PartsEngine | `SetComponentAlpha` | 65 | 1 | L0 |  |
 | PartsEngine | `SetComponentType` | 54 | 1 | L0 |  |
 | PartsEngine | `ReadActivityFile` | 39 | 1 | L0 |  |
@@ -229,7 +235,7 @@ python3 tools/offline/hll_hotness.py --emit docs/HLL-L3.md \
 | PartsEngine | `SetWantSaveBackScene` | 30 | 1 | L0 |  |
 | PartsEngine | `GetFreeNumber` | 28 | 1 | L0 |  |
 | PartsEngine | `Parts_SetText` | 26 | 1 | L0 |  |
-| PartsEngine | `GetActivityPartsName` | 21 | 1 | L0 |  |
+| PartsEngine | `GetActivityPartsName` | 21 | 1 | L2 | 未找到返空串；调用方随后与字面量 S_EQUALE 比较 |
 | PartsEngine | `Parts_GetParentPartsNumber` | 18 | 1 | L2 | D312：返真实父号（含 pending_parent，0=无父） |
 | PartsEngine | `Parts_IsPartsFlatEnd` | 17 | 1 | L0 |  |
 | PartsEngine | `Parts_SetTextCharSpace` | 15 | 1 | L0 |  |

@@ -79,6 +79,35 @@ key:Shift_L;wait:1000;click:650,683;wait:8000"
 采样不到，40 次点击只有 9 次产生 `[inp] EndInput`。已改为 `sleep 0.2`
 （≈3 帧）。判据始终是「有几次 `EndInput`」，不是「我点了多少次」。
 
+## 跑到第一章剧情（真实流程，2026-11-18 复核）
+
+```sh
+RANCE10_LIVE_SEQ="wait:20000;click:646,738;wait:6000;click:960,540;wait:4000;\
+until:MessageWindow02:20000" \
+  xsystem4/tools/run/run-headless.sh ch1 120 /tmp/ch1.png
+```
+
+- `click:646,738` = 标题「从头开始」/ Chapter1（EX 声明坐标，与 `STATUS` 坐标表同源）。
+  **旧版本这里写「已失效」是错的**：2026-11-18 用 `h2/h3/h4/b4` 多次复现都能进。
+- 若先弹出「网络确认」对话，先 `click:963,817` 再点标题。
+- `until:MessageWindow02` 命中即表示第一章 ADV 已装载。
+
+另一条路（跳过剧情直达地图）：
+
+```sh
+XSYS4_AUTO_MAP=1 \
+RANCE10_LIVE_SEQ="wait:26000;key:Shift_L;wait:600;click:995,373;wait:6000;\
+key:Shift_L;wait:500;click:853,471;wait:8000" \
+  xsystem4/tools/run/run-headless.sh ch1 78 /tmp/ch1.png
+```
+
+- `click:995,373` → ハルマン区域（装载 `SceneQuestMap`/`QuestMapFrame`/`QuestInformationPanel`）
+- `click:853,471` → ランク・バル主城节点 → `MessageWindow02` 装载、地图暗化 `a=127`
+
+> `AUTO_MAP` 会跳过背景层初始化，**不能**用它判断背景是否正确；验背景必须走真实流程。
+
+三次点击前都要 `key:Shift_L`（`[D242]`）。标题画面那一步不要指望固定坐标。
+
 ## 渲染后端：默认 Xvfb 是软件，硬件要显式开
 
 `run-headless.sh` 默认起独立 Xvfb，而 **Xvfb 没有 DRI3/GLX 硬件**，于是 Mesa

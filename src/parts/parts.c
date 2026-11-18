@@ -3364,9 +3364,23 @@ int PE_AddController(int index)
 {
 	if (index != -1)
 		VM_ERROR("index != -1 not supported (got %d)", index);
+	/* [D312] 这条断言原本假设「活动层永远是栈顶」—— 因为当年
+	 * `SetActiveController` 是空实现，active 只可能在 `PE_AddController`
+	 * 里被改，自然恒等于栈顶。
+	 *
+	 * 现在 setter 真的生效了（AIN 的 `parts::detail::SetActiveLayer` 会把
+	 * 活动层切到低层），紧接着再 `AddLayer` 就会命中这里。实测：
+	 * `NetworkConfirmation` 装载后 `AddLayer` 直接 VM_ERROR 退出。
+	 *
+	 * `AddLayer` 自身的契约是「压一层并让它成为活动层」—— 函数末尾本来就会
+	 * `ctrl_stack.active = no`。所以这里不再当作致命错误，只留痕并继续，
+	 * 由函数末尾把 active 归位到新栈顶。 */
 	if (ctrl_stack.nr_controllers > 0 &&
-			ctrl_stack.active != ctrl_stack.nr_controllers - 1)
-		VM_ERROR("active controller is not at the top of the stack");
+			ctrl_stack.active != ctrl_stack.nr_controllers - 1) {
+		if (getenv("XSYS4_CTRL_DBG"))
+			NOTICE("[ctrl] AddLayer 前 active=%d 不在栈顶(%d)，按压栈语义归位",
+			       ctrl_stack.active, ctrl_stack.nr_controllers - 1);
+	}
 	if (ctrl_stack.nr_controllers >= PARTS_CONTROLLER_STACK_MAX)
 		VM_ERROR("controller stack overflow");
 

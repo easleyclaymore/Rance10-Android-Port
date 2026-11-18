@@ -16,7 +16,7 @@
 | 分组 | 开关 | 位置 | 用途 |
 |---|---|---|---|
 | 断点与快照 | `XSYS4_CALL_TRACE` | `src/vm.c:785` | 逗号分隔的 AIN 函数号；命中时打印调用点与返回地址（"有没有被调到"的第一手证据） |
-| 断点与快照 | `XSYS4_CALL_TRACE_TOTAL` | `src/vm.c:5563` | [诊断] 退出时汇总 `XSYS4_CALL_TRACE` 各函数的**真实调用次数**（不受"每 fno 8 站点 + 每 200 次一条"的打印限流影响）。**凡是要断言"某函数跑了 N 次"，必须用这个** —— D280/D281 两次把日志条数当次数，把 `View_Update` 的 1504 次误读成 10 次、把 `OnUpdate` 的 150 次误读成 0 次 |
+| 断点与快照 | `XSYS4_CALL_TRACE_TOTAL` | `src/vm.c:5567` | [诊断] 退出时汇总 `XSYS4_CALL_TRACE` 各函数的**真实调用次数**（不受"每 fno 8 站点 + 每 200 次一条"的打印限流影响）。**凡是要断言"某函数跑了 N 次"，必须用这个** —— D280/D281 两次把日志条数当次数，把 `View_Update` 的 1504 次误读成 10 次、把 `OnUpdate` 的 150 次误读成 0 次 |
 | 断点与快照 | `XSYS4_CENSUS` | `src/vm.c:1428` | 按函数做调用普查（与 FN_DUMP 互补） |
 | 断点与快照 | `XSYS4_DUMP_AT` | `src/vm.c:2496` | 在 `<十六进制地址>[,最多几次]` 处停下，打印帧名、this 各成员、局部变量和操作数栈 |
 | 断点与快照 | `XSYS4_FN_DUMP` | `src/vm.c:887` | 函数调用次数统计与慢函数排行 |
@@ -55,7 +55,7 @@
 | 容器与内存 | `XSYS4_DG_MISS_DBG` | `src/vm.c:1638` | 委托 miss（找不到目标）时打印 |
 | 容器与内存 | `XSYS4_DG_MISS_FILTER` | `src/vm.c:1642` | 收窄 DG_MISS 输出 |
 | 容器与内存 | `XSYS4_DG_PAGE_DBG` | `src/vm.c:1579` | 委托页生命周期诊断 |
-| 容器与内存 | `XSYS4_MEM_STAT` | `src/vm.c:5080` | 堆内存与 RSS 实时统计 |
+| 容器与内存 | `XSYS4_MEM_STAT` | `src/vm.c:5084` | 堆内存与 RSS 实时统计 |
 | 呈现与输入 | `XSYS4_ACTIVE_CTRL_SET` | `src/parts/parts.c:3335` | `=0` 把 `PartsEngine.SetActiveController` 退回空实现（D312 前行为）。默认真设置活动层 |
 | 呈现与输入 | `XSYS4_ACTIVE_PARTS` | `src/parts/input.c:53` | [诊断] `PartsEngine.GetActiveParts` 返回光标指向的部件（默认开，D309）。`=0` 回退到旧桩（恒 0） |
 | 呈现与输入 | `XSYS4_ACT_BUILD_DBG` | `src/parts/activity.c:1341` | [诊断] 打印每个 activity 部件的 `no/name/parent/type`（前 3000 条）。用来把运行时部件号对号到 XML 里的名字，例如 `900000397 = ButtonDeffence` |
@@ -87,13 +87,13 @@
 | 自动化后门 | `XSYS4_AUTO_CARD_CLICK_DELAY` | `src/vm.c:1242` | [后门] 最后一次 InitCardView 之后再等多久点卡（毫秒，默认 1500） |
 | 自动化后门 | `XSYS4_AUTO_CARD_ORG` | `src/vm.c:1244` | [后门] 点卡前先调 PartyCardGroup@ChangeOrganizationId(id) 切组织；0=不切 |
 | 自动化后门 | `XSYS4_AUTO_CARD_REPEAT` | `src/vm.c:1246` | [后门] 连点同一张卡几次（默认 1）；第一击移除、第二击验证 AddCardToFormations |
-| 自动化后门 | `XSYS4_AUTO_MAP` | `src/vm.c:5134` | 无头跑测后门：自动推进到任务地图 |
-| 自动化后门 | `XSYS4_AUTO_MAP_DELAY` | `src/vm.c:5135` | 后门延迟（毫秒） |
+| 自动化后门 | `XSYS4_AUTO_MAP` | `src/vm.c:5138` | 无头跑测后门：自动推进到任务地图 |
+| 自动化后门 | `XSYS4_AUTO_MAP_DELAY` | `src/vm.c:5139` | 后门延迟（毫秒） |
 | 自动化后门 | `XSYS4_AUTO_MAP_ROUTE` | `src/vm.c:1217` | [后门] 地图稳定后直调 SceneQuestMap@StartMoveRoute(23606)，毫秒=延迟 |
 | 自动化后门 | `XSYS4_AUTO_PARTY` | `src/vm.c:1212` | 无头跑测后门：自动推进到部队编成 |
 | 自动化后门 | `XSYS4_AUTO_PARTY_CLOSE` | `src/vm.c:1237` | [后门] 卡片视图就绪后直调 SceneParty@Close(24301)，验证编队出口；=1 开启 |
 | 自动化后门 | `XSYS4_AUTO_PARTY_DELAY` | `src/vm.c:1213` | 后门延迟（毫秒） |
-| 自动化后门 | `XSYS4_AUTO_RUNPARTY` | `src/vm.c:5211` | [后门] 地图起来后直接调 Scenes::RunParty(1)，绕开地图 UI 直进编队界面；值=延迟毫秒 |
+| 自动化后门 | `XSYS4_AUTO_RUNPARTY` | `src/vm.c:5215` | [后门] 地图起来后直接调 Scenes::RunParty(1)，绕开地图 UI 直进编队界面；值=延迟毫秒 |
 | 自动化后门 | `XSYS4_NO_LAYER_COVER` | `src/parts/parts.c:1467` | 关闭「视觉地板」优化（怀疑遮挡算错时用） |
 | 运行环境 | `XSYS4_DATA_DIR` | `src/pal.c:43` | 数据目录（缺省用编译期默认值） |
 | 运行环境 | `XSYS4_SOFT_STUB` | `src/ffi.c:56` | 未实现的导出用零桩顶替（诊断用：判断"缺实现"还是"走错路"） |
@@ -136,7 +136,7 @@
 | 其它 | `XSYS4_FLAT_FRAME_DBG` | `src/parts/parts.c:1182` | [诊断] 轻量 flat 帧探针：打印 no/ctrl/frame/root_state.stopped/fps/passed_time。值=1 打全部，值=部件号只跟一个。用来区分「帧没推进」是 parts_flat.stopped、root_state.stopped（脚本 stop 键）还是 passed_time 为 0 |
 | 其它 | `XSYS4_FLAT_TICK_DBG` | `src/parts/flat.c:220` | [诊断] 逐 tick 打印 flat 推进前后（prev/next/cf/cap/inc/stop/sup/jump），值 = 只跟 end_frame >= N 的长演出（默认 70）。用来分辨「帧不涨」是 increment=0（stopped）还是被封顶 |
 | 其它 | `XSYS4_FLAT_TREE` | `src/parts/flat.c:668` | — |
-| 其它 | `XSYS4_FN_LIST` | `src/vm.c:5013` | [诊断] 按名字子串列出 AIN 函数（号 / 地址 / 名字）；写 `#29096,29526` 则按函数号查名字（反汇编里 CALLMETHOD 的被调号在栈上，只能先认出 `PUSH <号>` 再回查）。`CallDelegate`、`TextButton@Motion` 这类只存在于内存表的函数号，靠它才能上 CALL_TRACE / DUMP_AT |
+| 其它 | `XSYS4_FN_LIST` | `src/vm.c:5013` | [诊断] 按名字子串列出 AIN 函数（号 / 地址 / 名字）；`#29096` 按号查名；`*` 导出全表（供 tools/offline/callsite.py 把地址翻成函数名）（反汇编里 CALLMETHOD 的被调号在栈上，只能先认出 `PUSH <号>` 再回查）。`CallDelegate`、`TextButton@Motion` 这类只存在于内存表的函数号，靠它才能上 CALL_TRACE / DUMP_AT |
 | 其它 | `XSYS4_FPS_DBG` | `src/parts/render.c:1275` | [诊断] 每秒打印一次实际渲染帧数。用来区分「演出推进慢」是逻辑卡死还是 llvmpipe 低帧率（D92 全量标脏） |
 | 其它 | `XSYS4_G14_WATCH` | `src/vm.c:2984` | [诊断] 只在 global[14] 的值变化时打印 ip/旧值/新值/栈/调用栈（抓单例被覆写） |
 | 其它 | `XSYS4_GL_DBG` | `src/video.c:267` | [诊断] 启动时打印实际 GL vendor/renderer/version —— 判断有没有用上硬件加速的唯一硬证据（llvmpipe=软件，Mesa Intel=硬件） |
@@ -205,11 +205,11 @@
 | 其它 | `XSYS4_SPLIT_DBG` | `src/hll/String.c:598` | [D292 诊断] 打印 `String.Split` 前 60 次调用的入参（原串 / 分隔符 / contain 标志）与切出的每一段；判据是「切开再拼回是否恒等」——立绘名少一个 `／` 就是这里 contain=1 没生效 |
 | 其它 | `XSYS4_SP_BALANCE` | `src/vm.c:2023` | 每次函数返回校验栈平衡（失败即报） |
 | 其它 | `XSYS4_SP_TRACE` | `src/vm.c:2712` | 环形缓冲记录栈指针变化，抓"玄学栈漂移" |
-| 其它 | `XSYS4_SP_WATCH` | `src/vm.c:5323` | 监视指定帧的栈指针 |
+| 其它 | `XSYS4_SP_WATCH` | `src/vm.c:5327` | 监视指定帧的栈指针 |
 | 其它 | `XSYS4_SRDBG` | `src/vm.c:4110` | 〔摘〕绝不会是一张活着的 ARRAY_PAGE。 |
-| 其它 | `XSYS4_STACK_SAMPLE` | `src/vm.c:5347` | 周期性采样调用栈（抓谁在长时间占栈） |
+| 其它 | `XSYS4_STACK_SAMPLE` | `src/vm.c:5351` | 周期性采样调用栈（抓谁在长时间占栈） |
 | 其它 | `XSYS4_STRICT_REF` | `src/vm.c:407` | 严格引用计数检查（会把"漏 ref/unref"变成显式报错） |
-| 其它 | `XSYS4_STRUCT_LIST` | `src/vm.c:5051` | [诊断] 按名字子串列出结构体及成员名。查「m7 是委托表还是哈希表」时，成员名比任何猜测都直接 |
+| 其它 | `XSYS4_STRUCT_LIST` | `src/vm.c:5055` | [诊断] 按名字子串列出结构体及成员名。查「m7 是委托表还是哈希表」时，成员名比任何猜测都直接 |
 | 其它 | `XSYS4_STR_INT_DBG` | `src/hll/String.c:59` | 〔摘〕"取对了但字符串已经死了"。 |
 | 其它 | `XSYS4_STUB_BT` | `src/ffi.c:224` | 软桩命中时附带回溯 |
 | 其它 | `XSYS4_STUB_LOG` | `src/ffi.c:166` | 软桩命中清单写到该文件 |

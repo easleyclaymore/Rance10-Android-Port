@@ -42,7 +42,8 @@ tools/
 ├── dev/                 ← 开发辅助（不参与构建/跑测）
 │   ├── ain_arity_check.py    批量校验 AIN 函数 arity
 │   ├── rebuild_hll_table.py  重生成 HLL 表
-│   ├── hll_hotness.py        HLL 热力表分析：按实际调用排缺口，不按缺口字母序
+│   ├── hll_hotness.py        HLL 热力表 → 工作队列／台账（--todo / --by-lib / --emit）
+│   ├── callsite.py           某个 HLL 函数的调用点 + 上下文（L2 契约判据的入口）
 │   └── patches/              历史补丁脚本（**只读参照，不要重跑**）
 │
 ├── check_core_deps.py   ← 门禁（xsys4 check 调）

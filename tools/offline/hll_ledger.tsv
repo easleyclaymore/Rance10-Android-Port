@@ -68,23 +68,23 @@ PartsEngine.AddPartsConstructionProcess	L0
 PartsEngine.BeginInput	L0	
 PartsEngine.CreateUserPartsNumber	L0	
 PartsEngine.EndInput	L0	
-PartsEngine.GetActiveController	L0	
-PartsEngine.GetActivityParts	L0	
-PartsEngine.GetActivityPartsName	L0	
-PartsEngine.GetActivityPartsNumber	L0	
+PartsEngine.GetActiveController	L2	GetActiveLayer 薄封装直属返回；值=层稳定 id（D129）
+PartsEngine.GetActivityParts	L2	调用点紧跟 IFZ 当布尔用；miss 必须返 0，否则跳错误分支
+PartsEngine.GetActivityPartsName	L2	未找到返空串；调用方随后与字面量 S_EQUALE 比较
+PartsEngine.GetActivityPartsNumber	L2	0=未找到，与本引擎「0 即无效部件号」一致
 PartsEngine.GetChild	L0	
 PartsEngine.GetClickNumber	L2	s141：EndInput clicked=N 与 GetClickNumber 返回值一致
 PartsEngine.GetComponentPosX	L0	
 PartsEngine.GetComponentType	L0	
-PartsEngine.GetControllerID	L0	
-PartsEngine.GetControllerLength	L0	
+PartsEngine.GetControllerID	L2	GetLayerID 薄封装；调用方只在 0..NumofLayer-1 用，越界返 -1
+PartsEngine.GetControllerLength	L2	NumofLayer 薄封装，返回层数
 PartsEngine.GetDelegateIndex	L0	
 PartsEngine.GetFreeNumber	L0	
 PartsEngine.GetMessageDelegateIndex	L0	
 PartsEngine.GetMessageType	L0	
 PartsEngine.GetMessageVariableType	L0	
 PartsEngine.IsComponentShow	L0	
-PartsEngine.NumofActivityParts	L0	
+PartsEngine.NumofActivityParts	L2	Activity@GetList 用它定长；返 0 会导致按钮对象不创建（D119）
 PartsEngine.NumofChild	L0	
 PartsEngine.Parts_GetParentPartsNumber	L2	D312：返真实父号（含 pending_parent，0=无父）
 PartsEngine.Parts_GetPartsHeight	L0	
@@ -99,7 +99,7 @@ PartsEngine.Parts_SetText	L0
 PartsEngine.Parts_SetTextCharSpace	L0	
 PartsEngine.PopMessage	L0	
 PartsEngine.ReadActivityFile	L0	
-PartsEngine.SetActiveController	L3	D312：稳定 id→栈下标；6741 次全解析、无 VM_ERROR（目视待验）
+PartsEngine.SetActiveController	L3	h3 闭环：SetActive id=1→idx=0 后 #2632 active=0；id=4→idx=2 后 active=2。连带修 PE_AddController 的「active 必须在栈顶」断言（b1r2 VM_ERROR → b1r3 通过）
 PartsEngine.SetComponentAlpha	L0	
 PartsEngine.SetComponentPos	L0	
 PartsEngine.SetComponentPosZ	L0	

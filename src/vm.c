@@ -5011,8 +5011,12 @@ void vm_frame_pump(void)
 		if (!fn_list_done) {
 			fn_list_done = true;
 			const char *pat = getenv("XSYS4_FN_LIST");
+			/* `=*` 表示「全部导出」：一次性把 fno / 地址 / 名字落成表，
+			 * 供 `tools/offline/callsite.py` 把调用点翻译成 AIN 函数名。
+			 * 全量 8000+ 行，只在离线取证时开。 */
 			if (pat && *pat && ain) {
 				int n = 0;
+				bool all = (pat[0] == '*' && pat[1] == 0);
 				/* [D309] `#<号>[,<号>...]`：按函数号直接查名字。
 				 * 反汇编里 `CALLMETHOD` 的立即数是 nargs、被调函数号在栈上，
 				 * 静态反汇编拿不到；只能先在反汇编里认出「PUSH <号>」，
@@ -5036,7 +5040,7 @@ void vm_frame_pump(void)
 				}
 				for (int i = 0; i < ain->nr_functions; i++) {
 					const char *nm = ain->functions[i].name;
-					if (nm && strstr(nm, pat)) {
+					if (nm && (all || strstr(nm, pat))) {
 						NOTICE("[fnlist] %d 0x%08x %s", i,
 						       (unsigned)ain->functions[i].address, nm);
 						n++;
