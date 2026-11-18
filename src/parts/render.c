@@ -501,11 +501,18 @@ static void parts_render_cg(struct parts *parts, struct parts_common *common){
 	if (getenv("XSYS4_CG_AREA_DBG") && common->texture.handle &&
 	    (common->texture.w >= 400 || common->texture.h >= 400)) {
 		static int area_logged;
-		if (area_logged < 80) {
+		/* [D296] 名额从 80 提到 2000：80 个会被地图的大 CG 先占满，
+		 * 消息窗口底板（1920x330）根本轮不到打印 —— 上一轮据此
+		 * 误判成「parts_render_cg 没被调用」。 */
+		if (area_logged < 2000) {
 			area_logged++;
-			NOTICE("[cgarea] no=%d tex=%dx%d w/h=%dx%d area=(%d,%d %dx%d) "
+			/* [D297] glIsTexture：handle 非 0 不等于纹理有效
+			 * （号复用后旧对象可能已被 delete）。 */
+			NOTICE("[cgarea] no=%d glis=%d tex=%dx%d w/h=%dx%d area=(%d,%d %dx%d) "
 			       "r=(%d,%d %dx%d)%s",
-			       parts->no, common->texture.w, common->texture.h,
+			       parts->no, common->texture.handle ?
+					(int)glIsTexture(common->texture.handle) : -1,
+			       common->texture.w, common->texture.h,
 			       common->w, common->h,
 			       common->surface_area.x, common->surface_area.y,
 			       common->surface_area.w, common->surface_area.h,
@@ -1024,9 +1031,10 @@ void parts_render(struct parts *parts)
 		struct parts_state *fst = &parts->states[parts->state];
 		if (fst->type == PARTS_CG && fst->common.w >= 1900 &&
 		    fst->common.h >= 300 && fst->common.h <= 500 && fn++ < 12)
-			NOTICE("[frame] no=%d tex=%u pos=(%d,%d) off=(%d,%d) "
+			NOTICE("[frame] no=%d tex=%u(%dx%d) pos=(%d,%d) off=(%d,%d) "
 			       "%dx%d vis=%d mw=%d mwshow=%d link=%d a=%d",
 			       parts->no, fst->common.texture.handle,
+			       fst->common.texture.w, fst->common.texture.h,
 			       parts->global.pos.x, parts->global.pos.y,
 			       fst->common.origin_offset.x,
 			       fst->common.origin_offset.y,

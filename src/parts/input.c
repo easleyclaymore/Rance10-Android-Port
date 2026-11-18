@@ -471,7 +471,7 @@ void PE_UpdateInputState(int passed_time)
 			 * 另一处才发现 705 是全透明的，绕了一大圈。 */
 			NOTICE("[inp]   parts=%d pos=(%d,%d) hb=(%d,%d,%d,%d) "
 			       "global=(%d,%d) parent=%d gz=%d click=%d pass=%d show=%d "
-			       "a=%d ctrl=%d cover=%d di=%d uc=%s",
+			       "a=%d ctrl=%d cover=%d di=%d tex=%d isvis=%d uc=%s",
 			       parts->no, parts->local.pos.x, parts->local.pos.y,
 			       hb.x, hb.y, hb.w, hb.h, gx, gy,
 			       parts->parent ? parts->parent->no : -1,
@@ -479,6 +479,13 @@ void PE_UpdateInputState(int passed_time)
 			       parts->global.show, (int)parts->global.alpha,
 			       parts->controller_no,
 			       covers ? 1 : 0, parts->delegate_index,
+			       /* [D295] tex / isvis 决定「数据全对却画不出来」的归属：
+			        * tex=0 → 纹理没建（装载问题）；
+			        * isvis=0 → `show && ctrl_stack.show[c] && c>=cover_layer`
+			        * 中某一项挂了（图层/遮挡问题）。 */
+			       (parts->states[parts->state].common.w > 0 ||
+				parts->states[parts->state].common.h > 0) ? 1 : 0,
+			       parts_is_visible(parts) ? 1 : 0,
 			       parts->uc_object ? parts->uc_object : "-");
 		}
 	}
