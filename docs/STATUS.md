@@ -10,10 +10,10 @@
 
 | | |
 |---|---|
-| **阶段** | 第一章 **链路 + 画面全验收**（D214–D224）保持不变；真实流程已推进到**战斗第一回合可交互**：标题→开场 ADV→回想对话框→選択肢→战斗→`Round 1/10`→**AP 球展开**。`H044`/`[SELECTION-STALL]`/D238/D239/D270/D271 全部结清 |
-| **最大卡点** | `[HITTEST-ALPHA]` —— 战斗点击被**完全透明的全屏部件**吞掉。`parts_is_visible()` 复用渲染准入（`global.show` / `ctrl_stack.show[c]` / `c >= parts_cover_layer`），**不检查 alpha**；于是 `EnemyActionIconBase:3` 的全屏 flat `900000705`（`a=0`、一个像素不画、`z=1073742949`）永远排在真正的整屏点击接收器 `700/701`（`gz=1073741824`、`ck=1`）之前。`d301` 三次点击全部 `EndInput clicked=900000705`；加 alpha 判据（`XSYS4_CLICK_SKIP_INVISIBLE=1`）后 `d302` 变为 `900000716 / 900000031 / 900000031` —— **截胡消失，链路前进一格**。<br>下一层是 `900000031`（`SceneStartScreen` 的 `Logo`，`ctrl=0`、`hb=1920x1080`、`a=255`）出现在战斗里：要么场景没切干净（`[LAYER-LEAK]` 同族），要么它本来就该在那儿。<br>**已结清**：`[SKILLCARD-ALPHA]` / `[BATTLE-FLAT-CLOCK]` 两条债是**误判** —— D285 用 `DUMP_AT=480fc6` + `SWITCH_DBG=496` 证明 `900000439` 的 motion 一直在跑（`v=0.75→191`、`1.0→255`），`0x4812F6`(default) 从未进入；旧结论源于「按部件号跨活动取数」+「`PE_DebugDumpParts` 打的是全局表」两处误读（见 `H058`） |
-| **本轮做过的** | ① **D284**（已提交）：`Math.Min/Max` 同名同 arity 的 int/float 重载靠**返回类型**绑定，Math 未实现告警 **7 → 0**；② **推翻两条债**：`[SKILLCARD-ALPHA]` / `[BATTLE-FLAT-CLOCK]` 均为误判，探针补 `par=`；③ **新工具**：`ain_at` 加 `swno:<n>[:<hex>]`（查 SWITCH case 表与落点）、`XSYS4_SWITCH_DBG=<no>`（打 SWITCH 实参与目标）、`XSYS4_CLICK_SKIP_INVISIBLE`；④ **修口径腐化**：HLL 计数漏了 `HLL_EXPORT_RT/NRT` 两个宏（3284→**3300**），`gen-doc-numbers.py --check` 当时「自洽通过」但数值是错的；⑤ **SDK 工具纳管**：`hllsig`/`exdump` 进 `TOOLS_DEFAULT`，`rebuild_hll_table.py` 去 `/tmp` 硬编码，顺带修掉它的两个真 bug（表尾找不到、重载被吃掉） |
-| **判据** | 几何用 `XSYS4_PARTS_DUMP` 看 `st=11` 的尺寸分布；点击类一律看 `[inp] EndInput clicked=N` 落在预期部件上（**不看**"我点了几次"）；画面用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S），不要用 X11 抓屏（GL 直绘下会拿到空 framebuffer，见 GUIDE 1.13） |
+| **阶段** | 第一章 ADV **画面完全正确**（背景随剧情切换已修）；流程仍卡在开场回想对话（`[TEXTBUTTON-CLICK]`）。战斗未进入 |
+| **最大卡点** | `[TEXTBUTTON-CLICK]` 回想对话的「過後查看」点不动（`[BG-LAYER]` 已于 D317 收敛，画面验收通过：走廊背景 + 立绘 + 名牌 + 对话框）。战斗仍未进入 |
+| **本轮做过的** | ① 用 `XSYS4_HLL_HOT` 量化了「HLL 覆盖率」的真实含义（见 `[HLL-QUEUE]`）：源码 1189 个缺口里 **1188 个在本章零调用**，851 个所在库连启动绑定都不出现；补上一直缺失的 `tools/offline/hll_hotness.py`，把工作队列改成按运行期调用次数排序；② 按该队列实现 `Parts_GetParentPartsNumber`（真实父号）与 `SetActiveController`（稳定 id → 栈下标），并删除 1 处同名重复登记（覆盖率虚增）；③ 新增开关 `XSYS4_HLL_HOT` / `XSYS4_PARENT_REAL` / `XSYS4_ACTIVE_CTRL_SET` |
+| **判据** | 画面一律用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S，且 alt+s 前空 ≥1.5s，否则会丢帧）；层/归属看 `[ctrl] SetActive id=N -> idx=M` 与 `[ctrl] layer … parts:` 清单；HLL 进展看 `python3 tools/offline/hll_hotness.py --todo ../logs/live_<tag>.log` 的输出是否为 0 |
 
 > **卡点必须挂债标签**：§0「最大卡点」里的 `` `[TAG]` `` 必须**逐字存在**于
 > `docs/TECH_DEBT.md` 的未结区（A/B/C 组），否则 `gen-doc-numbers.py --check` 报 STALE。
@@ -207,7 +207,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **183**（未标注 30）｜ HLL 源码口径 **3300 / 4494（73.4%）** ｜ 假设台账 / 根因编号 / 未结债 **58 / 91 / 31** ｜ 影响面 / 子模块补丁 **30 / 2** ｜ 默认基线 `d304`: `acts=36 / err=0 / core=0 / quest_map=1`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **218**（未标注 31）｜ HLL 源码口径 **3301 / 4494（73.5%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 102 / 36** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
 <!-- STATS:END -->
 
 最常用的：
@@ -256,12 +256,17 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
    由脚本生成；历史进 `archive/`（只读）。
 4. **文档只写结论**：STATUS/TECH_DEBT 单条不超过 3 行排障叙述，过程进 `archive/`。
 5. **重构完成 = 编译通过 + `check_core_deps.py` PASS + 端到端跑一次**；改代码/文档后跑 `gen-switches.py` 与 `gen-doc-numbers.py --check`，数字腐化即失败。
-   `--check` 现在覆盖**四类**腐化，不只是数字：① 数字/开关/台账计数漂移；② 文档结构（契约编号重复、孤儿表格行、已结项留在未结区）；③ **卡点挂的债标签是否真实存在且未清偿**（防「卡点过期」）；④ **文档地图是否声明了每个 `.md`**（防「文档悄悄游离在治理之外」）。
+   `--check` 现在覆盖**五类**腐化，不只是数字：① 数字/开关/台账计数漂移；② 文档结构（契约编号重复、孤儿表格行、已结项留在未结区）；③ **卡点挂的债标签是否真实存在且未清偿**（防「卡点过期」）；④ **文档地图是否声明了每个 `.md`**（防「文档悄悄游离在治理之外」）；⑤ **工作区根 `AGENTS.md` 是否存在且指向本文件**（防「压缩上下文后丢核心目标」，D291）。
 6. Core Layer 不得依赖 Linux 头文件、不得写死绝对路径；`main` 是交付分支。
 7. **状态文档必须在版本控制内**（D273）。此前 `README.md`/`TECH_DEBT.md` 放在工作区根，
    而根目录不是 git 仓库 —— 项目最重要的两份文档改了无法提交、也没法回滚。
    现在它们是 `docs/STATUS.md` 与 `docs/TECH_DEBT.md`，随仓库走。
    **新增状态类文档时先确认它落在仓库内**，否则等于没纳管。
+8. **工作区根必须有 `AGENTS.md`，且它只许是指针 + 纪律**（D291）。
+   原因：agent harness 只把 `AGENTS.md`/`CLAUDE.md` 注入**系统提示**，而本文件是
+   普通文件 —— 读过才进对话，一压缩就被摘要掉，于是「压缩后忘了核心目标是移植兰斯10」。
+   它**不得复制** §0 卡点（写拷贝必然过期，D264–D269 就是这么白跑几轮的），
+   卡点唯一定义仍是 §0 这一屏；`gen-doc-numbers.py --check` 兼管存在性与体积。
 
 ---
 
@@ -279,6 +284,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 | ① 入口 | `README.md` | 仓库指针页：定位/构建/补丁/门禁/分支；**不写状态** | 单独 clone / 要构建时 |
 | ② 工作流 | `docs/HYPOTHESES.md` | 假设台账：可证伪判据 + 证据位置 + 改判链，证伪不删 | 开工前看「当前待验」 |
 | ② 工作流 | `docs/IMPACT.md` | 影响面清单：影响场景 / 必重跑闭环 / 回退方式 | 改跨模块代码之前 |
+| ② 工作流 | `docs/HLL-L3.md` | 第一章 121 个 HLL 的 L2/L3 达标计划（8 批）+ 逐函数台账（台账块脚本生成） | 做 HLL 实现前 |
 | ③ 知识 | `docs/SDK.md` | 工具链入口：`xsys4` 命令、动作序列、跑测配方、日志前缀 | 动手之前 |
 | ③ 知识 | `docs/OFFLINE.md` | 离线工具参数/模式 + HLL 全量普查方法 | 用离线工具时 |
 | ③ 知识 | `docs/GUIDE/` | 深层方法论与契约，对外成书。**定位是「判据与陷阱」，不是状态**：它只在**修订记录**里引用 D 号（说明"这一版补了哪条判据"），正文不写当前进度/卡点。读它要判据，读 `STATUS.md` 要现状 —— 两者不要互相替代 | 要判据 / 方法论时 |

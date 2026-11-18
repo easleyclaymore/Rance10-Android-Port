@@ -752,11 +752,23 @@ static bool parts_engine_save(struct page **buffer, bool save_hidden)
  * 部件序列化（XPE 格式），保证 Save/Load 对称。 */
 bool PE_SaveBackScene(struct page **buffer)
 {
+	/* [D310] XSYS4_BACKSCENE_DBG=1：记录保存/恢复的时机与规模。 */
+	if (getenv("XSYS4_BACKSCENE_DBG")) {
+		int shown = 0, want = 0;
+		struct parts *p;
+		PARTS_LIST_FOREACH(p) {
+			if (p->global.show) shown++;
+			if (p->want_save) want++;
+		}
+		NOTICE("[bs] SaveBackScene shown=%d want_save=%d", shown, want);
+	}
 	return parts_engine_save(buffer, true);
 }
 
 bool PE_LoadBackScene(struct page **buffer)
 {
+	if (getenv("XSYS4_BACKSCENE_DBG"))
+		NOTICE("[bs] LoadBackScene");
 	return PE_Load(buffer);
 }
 

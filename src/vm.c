@@ -920,6 +920,79 @@ static void function_call(int fno, int return_address)
 				NOTICE("[fn]     v%d text='%s'", i,
 				       str && str->text ? display_sjis0(str->text) : "(null)");
 			}
+			/* [D307] 结构体实参也展开成员。
+			 *
+			 * 起因：`CallDelegateMouseClick(fs)` 的 `fs` 是
+			 * `CPartsFunctionSet`，里面 `m0=m_Using`、`m1=m_PartsNumber`、
+			 * `m7=<MouseLClickEvent>`。只打 `v0 i=8` 完全看不出
+			 * 「这个 FunctionSet 属于哪个部件」「点击委托数组是不是空的」，
+			 * 而这两条正是「点中了、消息也派发了、却什么都没发生」的全部原因。
+			 * 委托数组打成 `[obj,fun]` 对，一眼能看出 nr=0。 */
+			for (int i = 0; i < f->nr_vars && i < 24; i++) {
+				int vs = lp->values[i].i;
+				if (vs <= 0 || (size_t)vs >= heap_size)
+					continue;
+				struct page *vp = heap[vs].page;
+				if (!vp || vp->type != STRUCT_PAGE)
+					continue;
+				char line[1024];
+				int off = snprintf(line, sizeof(line), "[fn]     v%d struct '%s' nr=%d:",
+						   i, vp->index >= 0 && vp->index < ain->nr_structures &&
+						      ain->structures[vp->index].name
+						      ? ain->structures[vp->index].name : "?",
+						   vp->nr_vars);
+				for (int k = 0; k < vp->nr_vars && k < 42 && off > 0 &&
+				     off < (int)sizeof(line) - 96; k++) {
+					int mv = vp->values[k].i;
+					off += snprintf(line + off, sizeof(line) - off,
+							" m%d=%d", k, mv);
+					if (mv > 0 && (size_t)mv < heap_size && heap[mv].page &&
+					    heap[mv].page->type == DELEGATE_PAGE) {
+						struct page *dp = heap[mv].page;
+						off += snprintf(line + off, sizeof(line) - off,
+								"<nr=%d", dp->nr_vars);
+						for (int q = 0; q + 1 < dp->nr_vars && q < 8; q += 2)
+							off += snprintf(line + off, sizeof(line) - off,
+									" [%d,%d]", dp->values[q].i,
+									dp->values[q + 1].i);
+						off += snprintf(line + off, sizeof(line) - off, ">");
+					}
+				}
+				NOTICE("%s", line);
+			}
+			/* [D307] XSYS4_FN_DUMP_FSSCAN=1：扫描堆里所有
+			 * `CPartsFunctionSet`（struct 299），把 `<MouseLClickEvent>`
+			 * 非空的那些连 parts_no 一起打出来。
+			 *
+			 * 起因：点 `ReplayMemoDialog` 的「过后查看」(900000513) 时，
+			 * 消息确实派发到了 `CallDelegateMouseClick`，但它的
+			 * FunctionSet `m7<nr=0>` —— 一个委托都没有，于是"点了个寂寞"。
+			 * 这张表直接回答「点击委托到底注册在哪个部件号上」，
+			 * 比逐个猜 parts_no 快一个数量级。 */
+			if (getenv("XSYS4_FN_DUMP_FSSCAN")) {
+				for (size_t s2 = 1; s2 < heap_size; s2++) {
+					struct page *pp = heap[s2].page;
+					if (!pp || pp->type != STRUCT_PAGE || pp->index != 299 ||
+					    pp->nr_vars < 8)
+						continue;
+					int pn = pp->values[1].i;
+					int ev = pp->values[7].i;
+					struct page *ep = (ev > 0 && (size_t)ev < heap_size)
+					                  ? heap[ev].page : NULL;
+					int en = ep ? ep->nr_vars : 0;
+					if (en <= 0 && !getenv("XSYS4_FN_DUMP_FSALL"))
+						continue;
+					NOTICE("[fss] slot=%zu parts=%d using=%d click_ev=%d", s2,
+					       pn, pp->values[0].i, en);
+					for (int q = 0; ep && q + 1 < ep->nr_vars && q < 12; q += 2) {
+						int f2 = ep->values[q + 1].i;
+						NOTICE("[fss]   [obj=%d fun=%d %s]", ep->values[q].i, f2,
+						       (f2 > 0 && f2 < ain->nr_functions &&
+						        ain->functions[f2].name)
+						       ? ain->functions[f2].name : "?");
+					}
+				}
+			}
 			/* this 结构体成员也 dump 出来：SceneStack@IsActive 这类判据
 			 * 全靠 this[6] 之类的字段，只打印实参看不到。 */
 			int sp = lp->local.struct_ptr;
@@ -2319,7 +2392,12 @@ static enum opcode execute_instruction(enum opcode opcode)
 			nd_digit = e ? atoi(e) : -1;
 			nd_init = 1;
 		}
-		if (nd_digit >= 0 && nd_digit <= 9 && call_stack_ptr > 0) {
+		/* [D286] 上限 9 → 99：地图节点不止个位数，而 >9 以前是**静默忽略**的
+		 * —— 我拿 10/15/20/25 跑了四轮「大范围扫描」，日志里一条 `[nodekey]`
+		 * 都没有，那四组数据全是无效的。这种「没生效但看起来跑过了」比报错
+		 * 更危险，所以：① 放宽到 99；② 十位/个位分别改写；③ 改不动时**明确
+		 * 告警**而不是安静跳过。 */
+		if (nd_digit >= 0 && nd_digit <= 99 && call_stack_ptr > 0) {
 			struct function_call *cf = &call_stack[call_stack_ptr - 1];
 			/* 只在 RunAdvAndBattleEvent(23486) 这条链上改：地图装载 /
 			 * PreBattleAutoSave 也调 28578，早改会让 ００２ 节点缺字段，
@@ -2338,13 +2416,28 @@ static enum opcode execute_instruction(enum opcode opcode)
 					if (s && s->text) {
 						size_t n = strlen(s->text);
 						unsigned char *t = (unsigned char *)s->text;
-						/* 末尾须是 3 个同高字节的全角数字，否则不动，避免改坏别的 key。 */
+						/* 末尾须是 3 个同高字节的全角数字，否则不动，避免改坏别的 key。
+						 * 全角数字的末字节连续（０=0x50 … ９=0x59），所以
+						 * `base + d` 就是数字 d 的末字节 —— 不猜 GBK/SJIS。
+						 * 两位以上按位改写：个位放 nd%10，十位放 nd/10。 */
 						if (n >= 6 && t[n-6] == t[n-2] && t[n-4] == t[n-2]) {
-							t[n-1] = (unsigned char)(t[n-5] + nd_digit);
+							unsigned char lastbase = t[n-5];
+							t[n-1] = (unsigned char)(lastbase + nd_digit % 10);
+							int tens = nd_digit / 10;
+							if (tens > 0 && t[n-6] == t[n-2]) {
+								/* 十位：把倒数第二个全角数字改成 tens */
+								t[n-3] = (unsigned char)(t[n-7] + tens);
+							}
 							if (!nd_logged) {
 								nd_logged = 1;
-								NOTICE("[nodekey] KeyBase last digit -> %d", nd_digit);
+								NOTICE("[nodekey] KeyBase -> %d (tens=%d ones=%d)",
+								       nd_digit, tens, nd_digit % 10);
 							}
+						} else if (!nd_logged) {
+							/* 改不动必须说出来，不能静默跳过。 */
+							nd_logged = 1;
+							NOTICE("[nodekey] 无法改写 KeyBase（末 3 字节不是全角数字）"
+							       "，节点 %d 未生效", nd_digit);
 						}
 					}
 				}
@@ -4905,6 +4998,75 @@ void vm_frame_pump(void)
 	 * 后者会让已经准备好的精灵失效（D113）。 */
 	static uint32_t last_tick;
 	static bool auto_map_done;
+	/* [D307] XSYS4_FN_LIST=<子串>：一次性把名字里含该子串的 AIN 函数
+	 * （函数号 / 代码地址 / 名字）打到日志里。
+	 *
+	 * 起因：`CPartsMessageManager@CallDelegate` 的**函数号**只存在于
+	 * `ain->functions[i].name` 这张内存表里，而 `--disasm` 全程反汇编一份
+	 * 要两分钟、`--stat-method` 只印 CALLMETHOD 直方图。排查「点击消息被
+	 * PopMessage 掉、委托从不执行」必须先知道 fno 才能上 `XSYS4_DUMP_AT`
+	 * / `XSYS4_CALL_TRACE`，否则只能盲猜。 */
+	{
+		static bool fn_list_done;
+		if (!fn_list_done) {
+			fn_list_done = true;
+			const char *pat = getenv("XSYS4_FN_LIST");
+			/* `=*` 表示「全部导出」：一次性把 fno / 地址 / 名字落成表，
+			 * 供 `tools/offline/callsite.py` 把调用点翻译成 AIN 函数名。
+			 * 全量 8000+ 行，只在离线取证时开。 */
+			if (pat && *pat && ain) {
+				int n = 0;
+				bool all = (pat[0] == '*' && pat[1] == 0);
+				/* [D309] `#<号>[,<号>...]`：按函数号直接查名字。
+				 * 反汇编里 `CALLMETHOD` 的立即数是 nargs、被调函数号在栈上，
+				 * 静态反汇编拿不到；只能先在反汇编里认出「PUSH <号>」，
+				 * 再用这个入口把号翻成名字。 */
+				if (*pat == '#') {
+					const char *q = pat + 1;
+					while (*q) {
+						int want = atoi(q);
+						if (want > 0 && want < ain->nr_functions) {
+							NOTICE("[fnlist] %d 0x%08x %s", want,
+							       (unsigned)ain->functions[want].address,
+							       ain->functions[want].name
+							       ? ain->functions[want].name : "?");
+							n++;
+						}
+						while (*q && *q != ',') q++;
+						if (*q == ',') q++;
+					}
+					NOTICE("[fnlist] '#%s' 命中 %d 个", pat + 1, n);
+					goto fn_list_done;
+				}
+				for (int i = 0; i < ain->nr_functions; i++) {
+					const char *nm = ain->functions[i].name;
+					if (nm && (all || strstr(nm, pat))) {
+						NOTICE("[fnlist] %d 0x%08x %s", i,
+						       (unsigned)ain->functions[i].address, nm);
+						n++;
+					}
+				}
+				NOTICE("[fnlist] '%s' 命中 %d 个", pat, n);
+			}
+		fn_list_done:;
+			/* [D307] XSYS4_STRUCT_LIST=<子串>：把匹配的结构体连同成员名一起打出来。
+			 * 查「m1 是委托表还是哈希表」这类问题时，成员名（`<AddMouseLClickEvent>`
+			 * 之类）比任何猜测都直接。 */
+			const char *sp = getenv("XSYS4_STRUCT_LIST");
+			if (sp && *sp && ain) {
+				for (int i = 0; i < ain->nr_structures; i++) {
+					struct ain_struct *st = &ain->structures[i];
+					if (!st->name || !strstr(st->name, sp))
+						continue;
+					NOTICE("[stlist] struct %d '%s' nr_members=%d",
+					       i, st->name, st->nr_members);
+					for (int k = 0; k < st->nr_members; k++)
+						NOTICE("[stlist]   m%-2d %s", k,
+						       st->members[k].name ? st->members[k].name : "?");
+				}
+			}
+		}
+	}
 	uint32_t now = SDL_GetTicks();
 	/* 这个函数每 4096 条指令被调用一次（一秒可达数千次）。没有时间闸门时，
 	 * 输入阶段会给消息队列喂进成百上千条重复的 MOUSE_ON，AIN 侧每帧消费不

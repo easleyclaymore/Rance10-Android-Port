@@ -457,6 +457,14 @@ static struct string *PartsEngine_GetComment(int parts_no)
  * AIN_BOOL 按 ffi_type_sint32 传递，所以 C 侧接的是 int。 */
 static void PE_SetWantSaveBackScene(int parts_no, int want)
 {
+	/* [D310] XSYS4_BACKSCENE_DBG=1：看 AIN 到底把哪些部件标成「背景场景」。
+	 * 剧情里从世界地图切到战舰内部时，地图那几层（z≥4200 的 CG）应该被
+	 * 收起来，只留 ADV 自己的背景件（900000413）。 */
+	if (getenv("XSYS4_BACKSCENE_DBG")) {
+		static int n;
+		if (n++ < 300)
+			NOTICE("[bs] want_save no=%d want=%d", parts_no, !!want);
+	}
 	PE_parts_set_want_save_back_scene(parts_no, !!want);
 }
 
@@ -551,14 +559,23 @@ static void PartsEngine_UpdateComponent(int passed_time, int scaled_time,
 	(void)scaled_time; (void)mul_color_rate; (void)alpha_rate;
 	PE_Update(passed_time, message_window_show != 0);
 }
-/* AIN PartsEngine.Parts_GetParentPartsNumber：第一阶段移植里不做父部件
- * 追踪，一律报「没有」(-1)（D80）。 */
+/* AIN PartsEngine.Parts_GetParentPartsNumber。
+ *
+ * [D312] 原来是恒 0 的桩（D80/D81 的"HACK-POC 仅探针"）。但父链正是 AIN 算
+ * **层号**的输入：`AFL_Parts_GetLayerIDByParts`(7260) 沿父链上溯、遇 0 结束。
+ * 恒 0 ⇒ 所有部件都被判成根 ⇒ 层号与真实归属不符 ⇒ AIN 隐藏的分支落空
+ * （`[BG-LAYER]` 的形状）。运行期实测被调 18 次，属"冷但关键"。
+ * `XSYS4_PARENT_REAL=0` 回退到旧桩。 */
 static int PartsEngine_Parts_GetParentPartsNumber(uintptr_t parts_no)
 {
-	(void)parts_no;
-	/* [HACK-POC D81] 仅探针：把「没有父部件」报成 0，
-	 * 因为 AIN AFL_Parts_GetLayerIDByParts（函数号 7260）就是靠 0 结束的。 */
-	return 0;
+	static int off = -1;
+	if (off < 0) {
+		const char *e = getenv("XSYS4_PARENT_REAL");
+		off = (e && !strcmp(e, "0"));
+	}
+	if (off)
+		return 0;
+	return PE_parts_get_parent_parts_number((int)parts_no);
 }
 
 /* AIN PartsEngine.CreateUserPartsNumber：分配一个新的用户部件号。
@@ -1111,11 +1128,10 @@ static void PE_Noop_Parts_SetWheelable(int a0, int a1)
 	(void)a1;
 }
 
-/* AIN SetActiveController：void SetActiveController。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetActiveController(int a0)
-{
-	(void)a0;
-}
+/* AIN SetActiveController：void SetActiveController。
+ * [D312] 原来空实现（D85 占位）。实测运行期 **5970 次**，且它决定新部件落在
+ * 哪一层（`parts->controller_no = ctrl_stack.active`），空实现会让 AIN 的
+ * "往低层放东西/隐藏低层"全部落空。见 parts.c 的 PE_SetActiveController。 */
 
 /* AIN SetButtonCharSpace：void SetButtonCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetButtonCharSpace(int a0, int a1)
@@ -1656,13 +1672,41 @@ static void PE_Noop_SetMessageWindowFlatName(int a0, struct string * a1)
  * 是安全默认：点击推进仍由已实现的 GetClickNumber / WaitForClick 负责。 */
 static int PE_GetActiveParts(void)
 {
-	return 0;
+	/* [D309] 补成真实语义（原来是恒 0 的桩）。
+	 *
+	 * AIN 侧：`parts::detail::GetActivePartsType`(8308) = 本函数返回 0 则
+	 * **-1**，否则 `GetComponentType(parts, 1)`；`parts::IsInputPartsActive`(7243)
+	 * 与 `parts::detail::WaitForClick`(8309) 全靠它判断「这次点击算不算数」。
+	 * 恒返回 0 ⇒ 类型恒 -1 ⇒ `TextButton@Motion`/`IsClickable` 一次都不被调用
+	 * ⇒ 开场回想对话的「過後查看」点不动（`s141`–`s174` 全链路取证，见
+	 * `[TEXTBUTTON-CLICK]`）。
+	 *
+	 * `XSYS4_ACTIVE_PARTS=0` 回退到旧桩，供 A/B。 */
+	return parts_input_active_parts();
 }
 
 /* [D202] 背景快照辅助：引擎始终按 SaveBackScene 的完整快照工作，
  * 不需要按部件标记是否要保存，Clear 也无需单独动作（Load 会重建整树）。 */
 static void PE_ClearBackScene(void) { }
-static bool PE_IsWantSaveBackScene(int no) { (void)no; return false; }
+static bool PE_IsWantSaveBackScene(int no)
+{
+	/* [D310] 原来是恒 false 的桩。`SetWantSaveBackScene(no, want)` 明明
+	 * 一直在被调用（实测 30 次），说明 AIN 指望用这个标记决定「哪些部件
+	 * 属于背景场景、可以被 SaveBackScene 收起」。恒 false 的结果就是：
+	 * 标记写了、没人读，剧情从世界地图切到战舰内部时，地图那几层 CG
+	 * 一直留在屏幕上，盖住 ADV 自己的背景件 `900000413`。
+	 * **默认仍关**：实测打开后这条剧情链的画面没有变化（地图仍在），
+	 * 说明它不是直接原因，不能当作已验证的修复发出去。
+	 * `XSYS4_BACKSCENE_WANT=1` 才生效，留作后续 A/B。 */
+	static int on = -1;
+	if (on < 0) {
+		const char *e = getenv("XSYS4_BACKSCENE_WANT");
+		on = (e && !strcmp(e, "1"));
+	}
+	if (!on)
+		return false;
+	return PE_parts_get_want_save_back_scene(no);
+}
 
 static struct string **msgwin_text_slot(int no);
 
@@ -1830,6 +1874,31 @@ static struct string **msgwin_text_slot(int no)
 	return &msgwin_text[i].text;
 }
 
+/* AIN 签名：void SetMessageWindowTextFont(int Number, int Type, int Size,
+ *   int R, int G, int B, float BoldWeight, int EdgeR, int EdgeG, int EdgeB,
+ *   float EdgeWeight)
+ *
+ * [D301] 之前未注册 → `Unimplemented library function`，消息窗口正文用的是
+ * 默认字体（face/size/edge 全没设），而名牌走另一条路径（EX 的字体字段），
+ * 于是同一屏里名牌字大而正文又小又糊。它本质是 6 个 SetPartsFont* 的
+ * 组合，直接转发即可；状态固定 1（这几个 API 的 state 是 1-based）。
+ */
+static void PE_SetMessageWindowTextFont(int no, int type, int size,
+		int r, int g, int b, float bold_weight,
+		int edge_r, int edge_g, int edge_b, float edge_weight)
+{
+	MSGWIN_HIT("SetMessageWindowTextFont no=%d type=%d size=%d color=(%d,%d,%d) "
+		   "bold=%.2f edge=(%d,%d,%d) ew=%.2f",
+		   no, type, size, r, g, b, bold_weight, edge_r, edge_g, edge_b,
+		   edge_weight);
+	PE_SetPartsFontType(no, type, 1);
+	PE_SetPartsFontSize(no, size, 1);
+	PE_SetPartsFontColor(no, r, g, b, 1);
+	PE_SetPartsFontBoldWeight(no, bold_weight, 1);
+	PE_SetPartsFontEdgeColor(no, edge_r, edge_g, edge_b, 1);
+	PE_SetPartsFontEdgeWeight(no, edge_weight, 1);
+}
+
 static void PE_SetMessageWindowText(int no, struct string *text, int msg_num,
 		struct string *func_name, int ver, int step)
 {
@@ -1838,6 +1907,20 @@ static void PE_SetMessageWindowText(int no, struct string *text, int msg_num,
 	(void)ver;
 	(void)step;
 	MSGWIN_HIT("SetMessageWindowText no=%d len=%d", no, text ? (int)strlen(text->text) : -1);
+	/* [D303] 打印原始字节：说话态首行渲染出碎片，需要确认是「字符本身」
+	 * 还是「解码/字形缺失」的问题。 */
+	if (text && getenv("XSYS4_MSGWIN_DBG")) {
+		static int hn;
+		if (hn++ < 6) {
+			char hex[3 * 17];
+			int n = (int)strlen(text->text);
+			if (n > 16) n = 16;
+			for (int i = 0; i < n; i++)
+				snprintf(hex + i * 3, 4, "%02x ", (unsigned char)text->text[i]);
+			hex[n ? n * 3 : 0] = '\0';
+			NOTICE("[msghex] no=%d n=%d bytes=%s", no, (int)strlen(text->text), hex);
+		}
+	}
 	if (!text)
 		return;
 	struct string **slot = msgwin_text_slot(no);
@@ -3240,7 +3323,8 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Parts_GetPartsClickable, PE_GetPartsClickable),
 	    HLL_TODO_EXPORT(Parts_GetResetTimerByChangeInputStatus, PartsEngine_Parts_GetResetTimerByChangeInputStatus),
 	    HLL_TODO_EXPORT(Parts_GetPartsDrag, PartsEngine_Parts_GetPartsDrag),
-	    HLL_TODO_EXPORT(Parts_GetParentPartsNumber, PartsEngine_Parts_GetParentPartsNumber),
+	    /* [D312] 删除同名重复登记：本行原为 `HLL_TODO_EXPORT(Parts_GetParentPartsNumber, …)`，
+	    /* 与上方 HLL_EXPORT 重复，覆盖率把它算两次、工具误报 TODO。 */
 	    HLL_EXPORT(Parts_GetInputState, PE_GetInputState),
 	    HLL_TODO_EXPORT(Parts_GetOnCursorShowLinkPartsNumber, PartsEngine_Parts_GetOnCursorShowLinkPartsNumber),
 	    HLL_TODO_EXPORT(Parts_GetSoundNumber, PartsEngine_Parts_GetSoundNumber),
@@ -3265,7 +3349,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Parts_SetUpdateLookAtPos, PE_Noop_Parts_SetUpdateLookAtPos),
 	    HLL_EXPORT(Parts_SetVGaugeReverse, PE_Noop_Parts_SetVGaugeReverse),
 	    HLL_EXPORT(Parts_SetWheelable, PE_Noop_Parts_SetWheelable),
-	    HLL_EXPORT(SetActiveController, PE_Noop_SetActiveController),
+	    HLL_EXPORT(SetActiveController, PE_SetActiveController),
 	    HLL_EXPORT(SetButtonCharSpace, PE_Noop_SetButtonCharSpace),
 	    HLL_EXPORT(SetButtonFlatName, PE_Noop_SetButtonFlatName),
 	    HLL_EXPORT(SetButtonLineSpace, PE_Noop_SetButtonLineSpace),
@@ -3347,6 +3431,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetMessageWindowFlatShowWaitFrameNumber, PE_Noop_SetMessageWindowFlatShowWaitFrameNumber),
 	    HLL_EXPORT(SetMessageWindowInactiveMultipleColor, PE_Noop_SetMessageWindowInactiveMultipleColor),
 	    HLL_EXPORT(SetMessageWindowText, PE_SetMessageWindowText),
+	    HLL_EXPORT(SetMessageWindowTextFont, PE_SetMessageWindowTextFont),
 	    HLL_EXPORT(FixMessageWindowText, PE_FixMessageWindowText),
 	    HLL_EXPORT(IsFixedMessageWindowText, PE_IsFixedMessageWindowText),
 	    HLL_EXPORT(SetMessageWindowTextArea, PE_Noop_SetMessageWindowTextArea),

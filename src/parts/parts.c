@@ -71,6 +71,8 @@ static void parts_init(struct parts *parts)
 	parts->delegate_index = -1;
 	parts->want_save = true;
 	parts->want_save_back_scene = false;
+	/* [D311] 见 parts_internal.h：创建序号，永不复用。 */
+	{ static unsigned next_serial = 1; parts->serial = next_serial++; }
 	parts->on_cursor_sound = -1;
 	parts->on_click_sound = -1;
 	parts->origin_mode = 1;
@@ -162,6 +164,8 @@ struct parts *parts_try_get(int parts_no)
 /* [D174] 定义在下方（parts_exists 之前），parts_get 里要先用。 */
 void parts_cb_drop(int parts_no);
 
+static void ctrl_pending_add(int parts_no);
+
 struct parts *parts_get(int parts_no)
 {
 	struct ht_slot *slot = ht_put_int(parts_table, parts_no, NULL);
@@ -171,6 +175,8 @@ struct parts *parts_get(int parts_no)
 	struct parts *parts = parts_alloc();
 	parts->no = parts_no;
 	parts->controller_no = ctrl_stack.active;
+	/* [D289] Load 期间建的部件先记下来，AddLayer 时迁到新层。 */
+	ctrl_pending_add(parts_no);
 	slot->value = parts;
 	parts_list_insert(parts);
 	/* [D174] 部件号会被回收复用。复选框状态存在旁路表里（见下方实现），
@@ -853,6 +859,30 @@ bool _parts_cg_set(struct parts *parts, struct parts_cg *parts_cg, struct cg *cg
 		return false;
 	gfx_delete_texture(&parts_cg->common.texture);
 	gfx_init_texture_with_cg(&parts_cg->common.texture, cg);
+	/* [D300] 把刚上传的 CG 纹理另存成 PNG —— 判断「纹理内容到底有没有图」
+	 * 的唯一决定性证据。s92–s99 已排除几何/层级/可见性/GL 有效性，
+	 * 若这张 PNG 是空的，问题在解码；若有图，问题在绘制。
+	 * 只在 XSYS4_DUMP_CG_NO 指定的部件上触发一次。 */
+	/* 按尺寸触发而不是按部件号：号段会复用（[PROBE-GATED] 教训），
+	 * 而「全宽 + 高 250..600」正是消息窗口底板/立绘量级。 */
+	if (getenv("XSYS4_DUMP_CG")) {
+		static int dumped;
+		int want = getenv("XSYS4_DUMP_CG_SIZE") ? atoi(getenv("XSYS4_DUMP_CG_SIZE")) : 0;
+		int hit = want ? (cg->metrics.w == want)
+			: (cg->metrics.w >= 1900 && cg->metrics.h >= 250 &&
+			   cg->metrics.h <= 600);
+		if (dumped < 8 && hit) {
+			dumped++;
+			typedef struct texture Texture;
+			extern int gfx_save_texture(Texture *, const char *, enum cg_type);
+			char path[256];
+			snprintf(path, sizeof(path), "/tmp/texdump_%d_%dx%d.png",
+				 parts->no, cg->metrics.w, cg->metrics.h);
+			int ok = gfx_save_texture(&parts_cg->common.texture, path, ALCG_PNG);
+			NOTICE("[texdump] no=%d %dx%d save=%d path=%s", parts->no,
+			       cg->metrics.w, cg->metrics.h, ok, path);
+		}
+	}
 	parts_set_dims(parts, &parts_cg->common, cg->metrics.w, cg->metrics.h);
 	parts_cg->no = cg_no;
 	if (parts_cg->name)
@@ -1578,8 +1608,98 @@ int PE_GetDelegateIndex(int parts_no)
 	return parts ? parts->delegate_index : -1;
 }
 
+/* [D317] 名字前缀比较：AIN 的 CG 名是 SJIS，`display_sjis0` 转 UTF-8 后再比。
+ * 注意它用**单缓冲**（每次调用会 free 上一次），所以只能立即用完就丢。 */
+static bool pe_cg_name_prefix(struct parts_cg *cg, const char *utf8_prefix)
+{
+	if (!cg || !cg->name || !cg->name->text || !*cg->name->text)
+		return false;
+	const char *u = display_sjis0(cg->name->text);
+	if (!u)
+		return false;
+	return strncmp(u, utf8_prefix, strlen(utf8_prefix)) == 0;
+}
+
+/* [D317] 背景换图时，收起同层的「情报地图」覆盖件。
+ *
+ * 事实链（`D316` 追踪 + `cgset` 调用栈）：
+ * ① `400/408/410`（`地图／世界地图基本`、`地图／赫尔曼基本`、`シス／地图框基本`）
+ *    由 AIN 的 `AdvInfoMapCg@InitParts` 创建，是**全屏**情报地图；
+ * ② 与之同时，`413`（`背景／宇航船／通道`）由 `AdvBackground@Create` 创建并显示；
+ * ③ 之后 16 段剧情里，AIN **对 400/408 一次 `SetShow` 都没调**，也不换图、
+ *    不释放、不迁层（`[track]` 只有创建那一条），只反复开关地图层（id=7）——
+ *    而这两件在 ADV 层（id=9），关不到；
+ * ④ `XSYS4_FORCE_HIDE=900000400,900000408` 一隐藏，画面立刻是走廊 + 对话框。
+ *
+ * 也就是说：**背景换到新的 `背景／*` 时，旧的全屏地图覆盖件必须收起**，而这条
+ * 收起在 AIN 侧不存在（它依赖「整层收起」，但两者被放进了同一层）。这里补上
+ * 这条收敛：只在「根级 `背景／*` 部件换图」时触发，只动**同层、可见、
+ * `地图／*` 前缀**的部件，别的什么都不碰。
+ *
+ * `XSYS4_BG_SWEEP_MAP=0` 关闭。 */
+static void pe_sweep_map_overlay(struct parts *bg)
+{
+	static int on = -1;
+	if (on < 0) {
+		const char *e = getenv("XSYS4_BG_SWEEP_MAP");
+		on = !(e && strcmp(e, "0") == 0);
+	}
+	if (!on || !bg || bg->parent)
+		return;
+	if (!parts_state_valid(0) ||
+	    bg->states[0].type != PARTS_CG ||
+	    !pe_cg_name_prefix(&bg->states[0].cg, "背景"))
+		return;
+	/* 收起的是命中部件的**根**，不是它自己。
+	 *
+	 * 实测（`bgT`）：只把 `地图／*` 那 4 个置 0 后画面**仍是地图** —— 地图图像
+	 * 挂在根部件 `900000390` 上（`地图／ベース`，CG 按**序号**设置，`cg.name`
+	 * 为空，名字前缀匹配不到它）。同一层里有两个独立根：
+	 * `391`(z=1500) → 任务信息窗（393..399），`390`(z=4200) → 地图组
+	 * （400/401/…/410/411）。所以按「根」收起，既覆盖到无名的基板，也
+	 * 一点不碰信息窗。 */
+	int hidden = 0;
+	struct parts *p;
+	TAILQ_FOREACH(p, &parts_list, parts_list_entry) {
+		if (p == bg || p->controller_no != bg->controller_no)
+			continue;
+		if (!p->local.show || p->states[0].type != PARTS_CG)
+			continue;
+		if (!pe_cg_name_prefix(&p->states[0].cg, "地图"))
+			continue;
+		struct parts *root = p;
+		while (root->parent)
+			root = root->parent;
+		if (root == bg || !root->local.show)
+			continue;
+		parts_set_show(root, false);
+		hidden++;
+	}
+	if (hidden && getenv("XSYS4_CTRL_DBG"))
+		NOTICE("[bg] 背景换图 -> 收起同层地图覆盖件 %d 个（bg=%d）",
+		       hidden, bg->no);
+}
+
 bool PE_SetPartsCG(int parts_no, struct string *cg_name, int sprite_deform, int state)
 {
+	/* [D315] 全量探针：回答「AIN 到底有没有给某个部件换过图」。
+	 *
+	 * [BG-LAYER] 已确认：`FORCE_HIDE=900000400,900000408` 一隐藏画面就对，
+	 * 说明这两张地图基底 CG 从未被 AIN 收起。剩下的问题是 —— AIN 是**想换图
+	 * 但没换成**，还是**根本没碰过它们**。前者查 `parts_cg_set` 的前置条件，
+	 * 后者要回到活动卸载路径。这两条路的修法完全不同，不能靠猜。 */
+	if (getenv("XSYS4_CGSET_DBG")) {
+		static int n;
+		if (n++ < 600)
+			NOTICE("[cgset] no=%d st=%d name='%s'", parts_no, state,
+			       cg_name && cg_name->text ? display_sjis0(cg_name->text)
+			                                : "(null)");
+		/* [D316] 背景组（390..430）额外打 AIN 调用栈：要回答「切背景那一步
+		 * 是哪个 AIN 函数做的、它前后还调了什么」。只打这一段，否则 213 条
+		 * 每条一栈会把日志冲爆。 */
+		if (parts_no >= 900000390 && parts_no <= 900000430)
+			vm_stack_trace();
+	}
 	if (!parts_state_valid(--state))
 		return false;
 
@@ -1592,7 +1712,10 @@ bool PE_SetPartsCG(int parts_no, struct string *cg_name, int sprite_deform, int 
 	}
 
 	struct parts_cg *cg = parts_get_cg(parts, state);
-	return parts_cg_set(parts, cg, cg_name);
+	bool ok = parts_cg_set(parts, cg, cg_name);
+	if (ok)
+		pe_sweep_map_overlay(parts);
+	return ok;
 }
 
 /* AIN PartsEngine：bool SetPartsCGThread(int Number, string CGName, int State)。
@@ -2226,9 +2349,30 @@ void PE_SetShow(int parts_no, bool show)
 		if (c < 0 || c == PARTS_CONTROLLER_SYSTEM_OVERLAY)
 			return;
 		ctrl_stack.show[c] = show;
-		if (getenv("XSYS4_CTRL_DBG"))
-			NOTICE("[ctrl] layer id=%d idx=%d show=%d fno=%d", parts_no, c,
-			       show, hll_current_fno());
+		if (getenv("XSYS4_CTRL_DBG")) {
+			/* [D311] 这层里到底有哪些部件。
+			 * 起因：剧情要从世界地图切到战舰内部时，AIN 关掉的是
+			 * `idx=3`，可地图那几张 CG（`地图／世界地图基本`、`地图／赫尔曼基本`）
+			 * 实测挂在 `ctrl=4` —— 关的那层和画图的那层不是同一层。
+			 * 只打层号看不出这一点，必须把同层部件号一起打出来。 */
+			char buf[400] = "";
+			size_t off = 0;
+			int n_in_layer = 0, shown_in_layer = 0;
+			struct parts *q;
+			TAILQ_FOREACH(q, &parts_list, parts_list_entry) {
+				if (q->controller_no != c)
+					continue;
+				n_in_layer++;
+				if (q->global.show)
+					shown_in_layer++;
+				if (off < sizeof(buf) - 24 && n_in_layer <= 40)
+					off += snprintf(buf + off, sizeof(buf) - off,
+							" %d", q->no);
+			}
+			NOTICE("[ctrl] layer id=%d idx=%d show=%d fno=%d nr=%d shown_in=%d parts:%s",
+			       parts_no, c, show, hll_current_fno(), n_in_layer,
+			       shown_in_layer, buf);
+		}
 		if (getenv("XSYS4_LAYER_TRACE"))
 			vm_stack_trace();
 		scene_dirty();
@@ -2236,12 +2380,28 @@ void PE_SetShow(int parts_no, bool show)
 	}
 	/* 只记"隐藏"：这是场景切换时图层挂起的动作，量少且正是要看的东西。
 	 * 创建期的 show=1 每部件一条，全打会把日志冲掉。 */
+	/* [D311] 900000390..900000430 这一段是 ADV 的合成层（地图 CG / 背景 / 立绘 /
+	 * 消息框），show 与 hide 都要记：只记 hide 会漏掉「谁又把它显示回来」，
+	 * 而本轮正是卡在「hide 过之后画面里 vis 仍是 1」。 */
+	if (parts_no >= 900000390 && parts_no <= 900000430 &&
+	    getenv("XSYS4_CTRL_DBG")) {
+		static int n2;
+		struct parts *sp2 = parts_try_get(parts_no);
+		if (n2++ < 2000)
+			NOTICE("[ctrl] setshow parts=%d show=%d serial=%u", parts_no,
+			       (int)show, sp2 ? sp2->serial : 0u);
+	}
 	if (!show && getenv("XSYS4_CTRL_DBG")) {
 		/* [D243] 限流从 200 提到 3000：场景切换阶段本身就能打出 200 条以上，
 		 * 旧上限会在战斗装载前耗尽，导致「战斗部件没 hide」这类结论是假阴性。 */
 		static int n;
-		if (n++ < 3000)
-			NOTICE("[ctrl] hide parts=%d", parts_no);
+		if (n++ < 3000) {
+			/* [D311] 带创建序号：号会被复用，只有序号能说明「这次 hide 的
+			 * 是不是后来在画面上那个」。 */
+			struct parts *hp = parts_try_get(parts_no);
+			NOTICE("[ctrl] hide parts=%d serial=%u", parts_no,
+			       hp ? hp->serial : 0u);
+		}
 		else if (n == 3001)
 			NOTICE("[ctrl] hide parts=... (3000 条上限已到，后续不再打印)");
 	}
@@ -2451,6 +2611,29 @@ void PE_SetPartsOriginPosMode(int parts_no, int origin_pos_mode)
 int PE_GetPartsOriginPosMode(int parts_no)
 {
 	return parts_get(parts_no)->origin_mode;
+}
+
+/* [D312] 真实的父部件号查询。
+ *
+ * `PartsEngine.Parts_GetParentPartsNumber` 一直是「恒返回 0」的桩（D80/D81），
+ * 理由是「第一阶段不做父部件追踪」。但父链是 AIN 算**层号**的输入：
+ * `AFL_Parts_GetLayerIDByParts`(7260) 就是沿父链往上找、遇到 0 结束。
+ * 恒返回 0 ⇒ 每个部件都被判成「根」⇒ 算出的层号与实际归属不符，
+ * 于是 AIN 去隐藏 A 层、而部件其实在 B 层（`[BG-LAYER]` 的形状）。
+ *
+ * `parent_parts_no` 的 0 表示「没有父」，与 AIN 的终止约定一致。 */
+int PE_parts_get_parent_parts_number(int parts_no)
+{
+	struct parts *p = parts_try_get(parts_no);
+	if (!p)
+		return 0;
+	if (p->parent)
+		return p->parent->no;
+	/* 挂父是延迟生效的（`pending_parent` 等下次 RefreshGlobalTree 才落地），
+	 * 这期间也要报出「将来会挂到谁」，否则刚 SetParent 完就问的情况全错。 */
+	if (p->pending_parent >= 0)
+		return p->pending_parent;
+	return 0;
 }
 
 void PE_SetParentPartsNumber(int parts_no, int parent_parts_no)
@@ -2671,6 +2854,14 @@ float PE_GetPartsRotateZ(int parts_no)
 void PE_SetPartsAlphaClipperPartsNumber(int parts_no, int alpha_clipper_parts_no)
 {
 	struct parts *parts = parts_get(parts_no);
+	/* [D302] 立绘溢出金框：要用「父件的 alpha 当遮罩」把它裁进圆孔里。
+	 * 先确认 AIN 到底有没有调这个接口。 */
+	if (getenv("XSYS4_ACT_PART_DBG")) {
+		static int n;
+		if (n++ < 20)
+			NOTICE("[clip] SetPartsAlphaClipper no=%d clip=%d",
+			       parts_no, alpha_clipper_parts_no);
+	}
 	parts->local.alpha_clipper_parts_no = alpha_clipper_parts_no;
 	parts_component_dirty(parts);
 	parts_dirty(parts);
@@ -3060,6 +3251,107 @@ void PE_DebugControllerHistogram(const char *tag)
  * （`(0,608) 512x91`），画面上却一个像素都没有。原格式只有 w/h，
  * "有尺寸但没画"的三种原因（alpha=0 / 内容类型不是 CG / 纹理没加载）
  * 一个都区分不出来。 */
+/* [D316] 部件归属追踪：`XSYS4_TRACK_PARTS=900000400,900000408`。
+ *
+ * 只在 (ctrl / local.show / global.show / z / parent) **发生变化**时打一行。
+ * `[BG-LAYER]` 需要回答的是「这个部件一生中归属变了哪些次」，而 `setshow`
+ * 探针只覆盖 show、`pending-move` 只覆盖迁层 —— 两处都可能漏掉「创建时就
+ * 在某层」这一事实。这个探针是唯一能给出完整变迁史的。 */
+void PE_debug_track_parts(void)
+{
+	static int nos[16], n, inited;
+	static struct { int ctrl, lshow, gshow, z, parent; } last[16];
+	if (!inited) {
+		inited = 1;
+		const char *e = getenv("XSYS4_TRACK_PARTS");
+		if (e && *e) {
+			const char *q = e;
+			while (*q && n < 16) {
+				nos[n++] = atoi(q);
+				while (*q && *q != ',') q++;
+				if (*q == ',') q++;
+			}
+		}
+		for (int i = 0; i < n; i++)
+			last[i].ctrl = -999;
+	}
+	for (int i = 0; i < n; i++) {
+		struct parts *p = parts_try_get(nos[i]);
+		int ctrl = p ? p->controller_no : -1;
+		int lshow = p ? p->local.show : -1;
+		int gshow = p ? p->global.show : -1;
+		int z = p ? p->global.z : 0;
+		int par = (p && p->parent) ? p->parent->no : 0;
+		if (ctrl == last[i].ctrl && lshow == last[i].lshow &&
+		    gshow == last[i].gshow && z == last[i].z && par == last[i].parent)
+			continue;
+		NOTICE("[track] no=%d ctrl=%d(id=%d) lshow=%d gshow=%d z=%d parent=%d",
+		       nos[i], ctrl,
+		       (ctrl >= 0 && ctrl < ctrl_stack.nr_controllers) ? ctrl_stack.id[ctrl] : -1,
+		       lshow, gshow, z, par);
+		last[i].ctrl = ctrl; last[i].lshow = lshow; last[i].gshow = gshow;
+		last[i].z = z; last[i].parent = par;
+	}
+}
+
+/* [D314] `XSYS4_FORCE_HIDE=900000400,900000408`：每帧强制隐藏这些部件。
+ *
+ * 唯一用途是**判定性实验**：把「地图 CG 盖住新背景」缩成一句
+ * 「只要隐藏这几个号，画面是否立刻变成新背景」。
+ * 变了 ⇒ 根因是「AIN 从未 hide 它们」，去查切换逻辑；
+ * 没变 ⇒ 还有别的东西在盖，回到合成顺序。默认关。 */
+void PE_debug_force_hide(void)
+{
+	static int nos[16], n_nos, inited;
+	if (!inited) {
+		inited = 1;
+		const char *e = getenv("XSYS4_FORCE_HIDE");
+		if (e && *e) {
+			const char *q = e;
+			while (*q && n_nos < 16) {
+				nos[n_nos++] = atoi(q);
+				while (*q && *q != ',') q++;
+				if (*q == ',') q++;
+			}
+		}
+	}
+	for (int i = 0; i < n_nos; i++) {
+		struct parts *p = parts_try_get(nos[i]);
+		if (p && p->local.show)
+			parts_set_show(p, false);
+	}
+
+	/* [D315] `XSYS4_FORCE_MOVE=900000400:3,900000408:3`：把部件强制改到指定层。
+	 *
+	 * 判定「400/408 是不是**创建时落错了层**」：它们现在在 ADV 层（idx=4），
+	 * 而 AIN 隐藏的是地图层（idx=3）。若把它们挪到 3，AIN 的
+	 * `layer show=0` 就会自动把它们藏住 —— 画面立刻正确即证明归属错了。
+	 * 同样是判定性实验，不是修复。 */
+	{
+		static int inited2, n2;
+		static int mv_no[8], mv_idx[8];
+		if (!inited2) {
+			inited2 = 1;
+			const char *e = getenv("XSYS4_FORCE_MOVE");
+			const char *q = e;
+			while (q && *q && n2 < 8) {
+				mv_no[n2] = atoi(q);
+				while (*q && *q != ':') q++;
+				if (*q == ':') q++;
+				mv_idx[n2] = atoi(q);
+				while (*q && *q != ',') q++;
+				if (*q == ',') q++;
+				n2++;
+			}
+		}
+		for (int i = 0; i < n2; i++) {
+			struct parts *p = parts_try_get(mv_no[i]);
+			if (p && p->controller_no != mv_idx[i])
+				p->controller_no = mv_idx[i];
+		}
+	}
+}
+
 void PE_DebugDumpParts(const char *tag)
 {
 	struct parts *p;
@@ -3071,9 +3363,34 @@ void PE_DebugDumpParts(const char *tag)
 		int ln = snprintf(lbuf, sizeof(lbuf), "[parts] %s layer_show=", tag);
 		for (int c = 0; c < PARTS_CONTROLLER_STACK_MAX && ln < (int)sizeof(lbuf) - 16; c++)
 			ln += snprintf(lbuf + ln, sizeof(lbuf) - ln, "%c", ctrl_stack.show[c] ? '1' : '0');
-		snprintf(lbuf + ln, sizeof(lbuf) - ln, " cover=%d active=%d",
-			 parts_cover_layer, ctrl_stack.active);
+		snprintf(lbuf + ln, sizeof(lbuf) - ln, " cover=%d active=%d nctrl=%d",
+			 parts_cover_layer, ctrl_stack.active, ctrl_stack.nr_controllers);
 		NOTICE("%s", lbuf);
+	}
+	/* [D314] 「孤儿层」统计：`controller_no` 指向**已经不存在的层**的部件。
+	 *
+	 * `parts_is_visible()` 的上界是 `PARTS_CONTROLLER_STACK_MAX`，不是
+	 * `nr_controllers`，所以层被 `RemoveController` 删掉后，留在旧号上的部件
+	 * 仍然读到 `ctrl_stack.show[c]` 的**陈旧值 true** —— 永远可见。
+	 * 这正是「地图 CG 一直盖住新背景、AIN 却从没 hide 过它」的形状：
+	 * 它根本不在 AIN 认为的那一层里。 */
+	{
+		int orphan = 0;
+		char obuf[200] = "";
+		size_t oo = 0;
+		struct parts *q;
+		TAILQ_FOREACH(q, &parts_list, parts_list_entry) {
+			if (q->controller_no < 0 ||
+			    q->controller_no == PARTS_CONTROLLER_SYSTEM_OVERLAY ||
+			    q->controller_no < ctrl_stack.nr_controllers)
+				continue;
+			orphan++;
+			if (oo < sizeof(obuf) - 24 && orphan <= 10)
+				oo += snprintf(obuf + oo, sizeof(obuf) - oo, " %d(c%d)",
+					       q->no, q->controller_no);
+		}
+		if (orphan)
+			NOTICE("[parts] %s ORPHAN-LAYER n=%d parts:%s", tag, orphan, obuf);
 	}
 	/* [D216] 部件表按插入顺序遍历，地图（9000000xx）会先把
 	 * XSYS4_PARTS_DUMP_MAX 的名额吃光，动态号段（9000003xx）一条都打不出
@@ -3111,6 +3428,22 @@ void PE_DebugDumpParts(const char *tag)
 		       parts_is_visible(p) ? 1 : 0,
 		       p->clickable ? 1 : 0, p->pass_cursor ? 1 : 0,
 		       p->uc_object ? p->uc_object : "-");
+		if (p->serial)
+			NOTICE("[parts] %s   serial=%u", tag, p->serial);
+		/* [D310] CG 部件把**当前挂的 CG 名**打出来。
+		 *
+		 * 起因：剧情里旁白已经说「巨型战舰内部」，画面却还停在世界地图。
+		 * 背景部件 `900000413` 是 `1920x1080 → 1798x680`、`vis=1 a=255 tex=1`，
+		 * 从快照看一切正常 —— 但「正常」也可能是**旧图没被换掉**。
+		 * 尺寸相同的新旧背景（`背景／任务／宇航船／通道` 与 `背景／宇航船／通道`
+		 * 都是 1798x680）光看尺寸分不出来，必须看名字。 */
+		if (st->type == PARTS_CG) {
+			NOTICE("[parts] %s   cg no=%d name='%s' no#=%d",
+			       tag, p->no,
+			       st->cg.name && st->cg.name->text
+			               ? display_sjis0(st->cg.name->text) : "(null)",
+			       st->cg.no);
+		}
 		/* [D226] flat 部件的 `tex=` 列永远是 0（flat 不写 common.texture），
 		 * 光看主行分不清「加载成功、只是没有单张纹理」和「flat 根本没装载」
 		 * —— 后者 parts_render_flat() 直接 return，一个像素不画，却仍会被
@@ -3145,23 +3478,215 @@ void PE_DebugDumpParts(const char *tag)
 	}
 }
 
+/* [D289] `Activity@Load` 建出的部件该归到「即将创建的层」。
+ *
+ * 背景见 include/parts.h 的说明。这里只做一件事：Load 期间把新部件号记进
+ * 待迁移表；`PE_AddController` 建新层成功后，把表里的部件 `controller_no`
+ * 改成新层下标并清表。表和层级都是很小的量（一次 Load 最多几百个部件），
+ * 用固定上限即可，超了只告警不崩。 */
+#define CTRL_PENDING_MAX 4096
+static int ctrl_pending_nos[CTRL_PENDING_MAX];
+static int ctrl_pending_n = 0;
+static int ctrl_pending_begin_active = -1;   /* Load 开始时快照的 active */
+static int ctrl_pending_on = -1;
+
+/* [D316] 层身份口径 A/B：`XSYS4_LAYER_IDX=1` 用**栈下标**（上游语义），
+ * 默认用**稳定 id**（D129）。
+ *
+ * 为什么现在要试：`[BG-LAYER]` 的追踪证明 400/408（世界地图基底）创建在
+ * `ctrl=4`(id=9)，而 AIN 收起的是 `ctrl=3`(id=7)。也就是说 AIN 创建它们时
+ * 认为「当前层就是地图层」，而我们给它的当前层是 ADV 层。
+ *
+ * 上游 `PE_AddController` 返回的是**栈下标**（`return no`），`SetActive` /
+ * `Remove` 也都按下标解释、越界时回退到 active；D129 把返回值改成稳定 id，
+ * 之后 AIN 存的值、`GetActiveLayer` 的返回值都跟着换了口径。两条口径各自
+ * 自洽，但 AIN 侧某些地方（例如它自己维护的层列表）可能只对其中一种成立。
+ * 这个开关让两种口径都能跑，用画面做判据。 */
+static bool layer_idx_mode(void)
+{
+	static int on = -1;
+	if (on < 0) {
+		const char *e = getenv("XSYS4_LAYER_IDX");
+		on = (e && strcmp(e, "0") != 0);
+	}
+	return on;
+}
+
+static bool ctrl_pending_enabled(void)
+{
+	if (ctrl_pending_on < 0) {
+		const char *e = getenv("XSYS4_CTRL_PENDING");
+		ctrl_pending_on = (e && !strcmp(e, "0")) ? 0 : 1;
+	}
+	return ctrl_pending_on;
+}
+
+void PE_ControllerPendingBegin(void)
+{
+	if (!ctrl_pending_enabled())
+		return;
+	/* 窗口开到**下一个 AddLayer 消费为止**，不是 Load 返回就关。
+	 * 实测 `SceneStartScreen@0` 里 Activity@Load 之后还有 3 层调用栈才
+	 * 走到 SceneStack@AddLayer（FadeIn → lambda → ...），立即关窗口会
+	 * 把全部部件退回「归上一层」的旧行为（`pending-end 未迁移 3 个`）。 */
+	if (ctrl_pending_n && getenv("XSYS4_CTRL_DBG"))
+		NOTICE("[ctrl] pending-begin 丢弃上一次未消费的 %d 个", ctrl_pending_n);
+	ctrl_pending_n = 0;
+	ctrl_pending_begin_active = ctrl_stack.active;
+	if (getenv("XSYS4_CTRL_DBG"))
+		NOTICE("[ctrl] pending-begin active=%d", ctrl_pending_begin_active);
+}
+
+void PE_ControllerPendingEnd(void)
+{
+	if (!ctrl_pending_enabled())
+		return;
+	/* 不在这里关窗口：真正的消费点是 PE_AddController。 */
+}
+
+/* 部件创建时调用：Load 期间创建的就记下来，等 AddLayer 迁移。 */
+static void ctrl_pending_add(int parts_no)
+{
+	if (!ctrl_pending_enabled() || ctrl_pending_begin_active < 0)
+		return;
+	if (ctrl_pending_n >= CTRL_PENDING_MAX) {
+		static int warned;
+		if (!warned) {
+			warned = 1;
+			WARNING("[ctrl] pending 表满（%d），后续部件不迁移", CTRL_PENDING_MAX);
+		}
+		return;
+	}
+	ctrl_pending_nos[ctrl_pending_n++] = parts_no;
+}
+
+/* [D312] 真正设置「活动层」。
+ *
+ * `PartsEngine.SetActiveController` 一直是 `PE_Noop_SetActiveController` 空实现
+ * （D85 的占位），实测运行期被调用 **5970 次** —— 每建一层、每次切场景都在调。
+ * 它决定 `parts->controller_no = ctrl_stack.active`（新部件落在哪层），
+ * 也是 AIN 判断「这一层现在是不是前台」的依据。空实现 ⇒ 活动层永远是栈顶，
+ * 于是 AIN 想往低层放/隐藏的东西全被放到栈顶，隐藏因此不生效。
+ *
+ * `XSYS4_ACTIVE_CTRL_SET=0` 可回退到空实现做 A/B。 */
+void PE_SetActiveController(int no)
+{
+	static int off = -1;
+	if (off < 0) {
+		const char *e = getenv("XSYS4_ACTIVE_CTRL_SET");
+		off = (e && !strcmp(e, "0"));
+	}
+	if (getenv("XSYS4_CTRL_DBG"))
+		NOTICE("[ctrl] SetActive no=%d (idx 范围 0..%d, 原 active=%d)%s",
+		       no, ctrl_stack.nr_controllers - 1, ctrl_stack.active,
+		       off ? "  [已禁用]" : "");
+	if (off)
+		return;
+	/* 参数是**稳定 id**，不是栈下标。
+	 *
+	 * 实测（`s/h2`）：`SetActive no=2` 而当时只有 `0..1` 两层、`no=9` 而只有
+	 * `0..4` —— 用下标判定会 6739/6741 全部越界丢弃。与 `PE_get_active_controller`
+	 * 对称（它 `return PE_get_controller_id(active)`，D129 起就是 id），
+	 * 所以这里必须按 id 反查下标。 */
+	if (layer_idx_mode()) {
+		/* 上游语义：参数就是栈下标。 */
+		if (no >= 0 && no < ctrl_stack.nr_controllers) {
+			if (getenv("XSYS4_CTRL_DBG") && no != ctrl_stack.active)
+				NOTICE("[ctrl] SetActive idx=%d (直取)", no);
+			ctrl_stack.active = no;
+		} else if (getenv("XSYS4_CTRL_DBG")) {
+			NOTICE("[ctrl] SetActive idx=%d 越界（0..%d），忽略", no,
+			       ctrl_stack.nr_controllers - 1);
+		}
+		return;
+	}
+	for (int i = 0; i < ctrl_stack.nr_controllers; i++) {
+		if (ctrl_stack.id[i] == no) {
+			if (getenv("XSYS4_CTRL_DBG") && i != ctrl_stack.active)
+				NOTICE("[ctrl] SetActive id=%d -> idx=%d", no, i);
+			ctrl_stack.active = i;
+			return;
+		}
+	}
+	if (getenv("XSYS4_CTRL_DBG"))
+		NOTICE("[ctrl] SetActive 未知 id=%d（现有 %d 层），忽略",
+		       no, ctrl_stack.nr_controllers);
+}
+
+/* [D316] 建层前的活动层快照，供 `EraseLayer` 决定「活动层回到哪」。
+ *
+ * 上游 `PE_RemoveController` 弹出后一律 `active = nr-1`（回到栈顶）。但
+ * `[BG-LAYER]` 的追踪显示：AIN 在 `EraseLayer(10)` 之后创建「情报地图」部件时，
+ * 期望活动层是**地图层(7)**，而栈顶已经是我们这边的 ADV 层(9) —— 两边从此错开，
+ * 地图件落进 ADV 层，AIN 之后只开关地图层，永远收不掉它。
+ *
+ * `XSYS4_CTRL_ACTIVE_RESTORE=1` 改成「回到建层前的那一层」做 A/B。 */
+static int ctrl_restore[PARTS_CONTROLLER_STACK_MAX];
+static bool ctrl_active_restore(void)
+{
+	static int on = -1;
+	if (on < 0) {
+		const char *e = getenv("XSYS4_CTRL_ACTIVE_RESTORE");
+		on = (e && strcmp(e, "0") != 0);
+	}
+	return on;
+}
+
 int PE_AddController(int index)
 {
 	if (index != -1)
 		VM_ERROR("index != -1 not supported (got %d)", index);
+	/* [D312] 这条断言原本假设「活动层永远是栈顶」—— 因为当年
+	 * `SetActiveController` 是空实现，active 只可能在 `PE_AddController`
+	 * 里被改，自然恒等于栈顶。
+	 *
+	 * 现在 setter 真的生效了（AIN 的 `parts::detail::SetActiveLayer` 会把
+	 * 活动层切到低层），紧接着再 `AddLayer` 就会命中这里。实测：
+	 * `NetworkConfirmation` 装载后 `AddLayer` 直接 VM_ERROR 退出。
+	 *
+	 * `AddLayer` 自身的契约是「压一层并让它成为活动层」—— 函数末尾本来就会
+	 * `ctrl_stack.active = no`。所以这里不再当作致命错误，只留痕并继续，
+	 * 由函数末尾把 active 归位到新栈顶。 */
 	if (ctrl_stack.nr_controllers > 0 &&
-			ctrl_stack.active != ctrl_stack.nr_controllers - 1)
-		VM_ERROR("active controller is not at the top of the stack");
+			ctrl_stack.active != ctrl_stack.nr_controllers - 1) {
+		if (getenv("XSYS4_CTRL_DBG"))
+			NOTICE("[ctrl] AddLayer 前 active=%d 不在栈顶(%d)，按压栈语义归位",
+			       ctrl_stack.active, ctrl_stack.nr_controllers - 1);
+	}
 	if (ctrl_stack.nr_controllers >= PARTS_CONTROLLER_STACK_MAX)
 		VM_ERROR("controller stack overflow");
 
 	int no = ctrl_stack.nr_controllers++;
+	ctrl_restore[no] = ctrl_stack.active;
 	ctrl_stack.opaque[no] = false;
 	ctrl_stack.show[no] = true;
 	/* [D129] 返回稳定 ID，不是栈下标。AIN 会把它存进
 	 * SceneStack.LayerPartsNumber，之后与 GetActiveLayer() 比较。 */
 	ctrl_stack.id[no] = ctrl_stack.next_id++;
 	ctrl_stack.active = no;
+	/* [D289] 把 Load 期间建出的部件迁到刚建好的这一层。
+	 * 这正是 AIN `Activity@Load → SceneStack@AddLayer` 顺序下想要的归属：
+	 * 部件属于「即将用它的那一层」，而不是「上一层」。
+	 * 之后 AIN 按这层的 LayerPartsNumber 去 EraseLayer 才能真正释放掉。 */
+	if (ctrl_pending_n > 0) {
+		int moved = 0;
+		for (int i = 0; i < ctrl_pending_n; i++) {
+			struct parts *pp = parts_try_get(ctrl_pending_nos[i]);
+			if (!pp)
+				continue;
+			/* [D315] 段内明细：`[BG-LAYER]` 要回答「400 是不是被搬过来的」。
+			 * 只看总数（moved=3/6/1）分不出是谁，必须把 390..430 段点名。 */
+			if (getenv("XSYS4_CTRL_DBG") &&
+			    pp->no >= 900000390 && pp->no <= 900000430)
+				NOTICE("[ctrl] pending-move detail no=%d -> idx=%d", pp->no, no);
+			pp->controller_no = no;
+			moved++;
+		}
+		if (getenv("XSYS4_CTRL_DBG"))
+			NOTICE("[ctrl] pending-move %d 个部件 -> idx=%d id=%d",
+			       moved, no, ctrl_stack.id[no]);
+		ctrl_pending_n = 0;
+	}
 	if (getenv("XSYS4_CTRL_DBG")) {
 		/* [D268] 把「栈下标 ↔ 稳定 id」成对打出来。之前只有直方图，
 		 * 看不出 AIN 手里记的 id 到底对应哪个下标 —— 而本轮的根因正是
@@ -3169,7 +3694,8 @@ int PE_AddController(int index)
 		NOTICE("[ctrl] add idx=%d id=%d", no, ctrl_stack.id[no]);
 		PE_DebugControllerHistogram("add-controller");
 	}
-	return ctrl_stack.id[no];
+	/* [D316] 上游返回栈下标；D129 返回稳定 id。见 layer_idx_mode()。 */
+	return layer_idx_mode() ? no : ctrl_stack.id[no];
 }
 
 // 从栈上移除位置 `index` 处的控制器，释放属于它的所有
@@ -3190,8 +3716,14 @@ void PE_RemoveController(struct page **erase_number_list, int index)
 	if (index == -1) {
 		ctrl_no = ctrl_stack.active;
 	} else {
-		/* [D129] AIN 传的是 AddLayer 返回的稳定 ID，不是栈下标。 */
-		ctrl_no = PE_get_controller_index(index);
+		/* [D129] AIN 传的是 AddLayer 返回的稳定 ID，不是栈下标。
+		 * [D316] `XSYS4_LAYER_IDX=1` 时改按上游语义：参数是下标，
+		 * 越界回退到 active（上游 `PE_RemoveController` 就是这么写的 ——
+		 * `controller_id` 不合法时用 `ctrl_stack.active`）。 */
+		if (layer_idx_mode())
+			ctrl_no = (index >= 0 && index < nr) ? index : ctrl_stack.active;
+		else
+			ctrl_no = PE_get_controller_index(index);
 		if (ctrl_no < 0 || ctrl_no == PARTS_CONTROLLER_SYSTEM_OVERLAY ||
 		    ctrl_no >= nr) {
 			/* 已经弹过的层再 Erase 一次是正常路径（SceneStack@1 会重复调），
@@ -3228,6 +3760,7 @@ void PE_RemoveController(struct page **erase_number_list, int index)
 		ctrl_stack.show[i] = ctrl_stack.show[i + 1];
 		ctrl_stack.opaque[i] = ctrl_stack.opaque[i + 1];
 		ctrl_stack.id[i] = ctrl_stack.id[i + 1];
+		ctrl_restore[i] = ctrl_restore[i + 1];
 	}
 	ctrl_stack.show[ctrl_stack.nr_controllers] = true;
 	ctrl_stack.opaque[ctrl_stack.nr_controllers] = false;
@@ -3242,6 +3775,15 @@ void PE_RemoveController(struct page **erase_number_list, int index)
 
 	if (ctrl_stack.nr_controllers == 0) {
 		PE_AddController(-1);
+	} else if (ctrl_active_restore()) {
+		/* [D316] 回到「建这一层之前活动的那一层」。越界就退回栈顶。 */
+		int r = ctrl_restore[ctrl_no];
+		if (r < 0 || r >= ctrl_stack.nr_controllers)
+			r = ctrl_stack.nr_controllers - 1;
+		if (getenv("XSYS4_CTRL_DBG"))
+			NOTICE("[ctrl] Erase 后恢复 active=%d（栈顶 %d）",
+			       r, ctrl_stack.nr_controllers - 1);
+		ctrl_stack.active = r;
 	} else {
 		ctrl_stack.active = ctrl_stack.nr_controllers - 1;
 	}
@@ -3279,7 +3821,9 @@ int PE_get_active_controller(void)
 			NOTICE("[ctrl] #%d active=%d nctrl=%d", n, a, c);
 		la = a; ln = c;
 	}
-	return PE_get_controller_id(ctrl_stack.active);
+	/* [D316] 与 AddController 的返回口径必须一致，否则 AIN 存的值对不上。 */
+	return layer_idx_mode() ? ctrl_stack.active
+	                        : PE_get_controller_id(ctrl_stack.active);
 }
 
 int PE_get_system_controller(void)
@@ -3295,6 +3839,16 @@ int PE_get_nr_controllers(void)
 void PE_parts_set_want_save(int parts_no, bool want_save)
 {
 	parts_get(parts_no)->want_save = want_save;
+}
+
+/* [D310] `IsWantSaveBackScene` 的读取端。见 PartsEngine.c 里的说明：
+ * 恒返回 false 会让 AIN 以为「没有任何部件属于背景场景」，于是它既不会
+ * 在 SaveBackScene 之后把这些部件收起来，剧情切到新背景时旧画面就留在
+ * 上面（世界地图盖住战舰通道）。 */
+bool PE_parts_get_want_save_back_scene(int parts_no)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	return parts ? parts->want_save_back_scene : false;
 }
 
 void PE_parts_set_want_save_back_scene(int parts_no, bool want)

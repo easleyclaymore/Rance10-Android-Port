@@ -26,6 +26,26 @@ XSYS4_HLL_TRACE_FILTER	收窄 HLL_TRACE：`PartsEngine` 按库名、`27:73` 按�
 XSYS4_HLL_ARGDBG	打印 HLL 调用的实际参数值（排查"参数顺序/位宽错"时用）
 XSYS4_FN_DUMP	函数调用次数统计与慢函数排行
 XSYS4_FN_DUMP_ALL	统计时不做前 N 次闸门，低频函数也全打
+XSYS4_ACTIVE_CTRL_SET	`=0` 把 `PartsEngine.SetActiveController` 退回空实现（D312 前行为）。默认真设置活动层
+XSYS4_PARENT_REAL	`=0` 把 `Parts_GetParentPartsNumber` 退回恒 0 桩（D80/D81 行为）。默认返回真实父号
+XSYS4_HLL_HOT	[诊断] 退出时打印全库 HLL 调用热力表（次数倒序，含是否有 C 实现）。`tools/hll-hotness.py` 吃它排工作队列
+XSYS4_FORCE_MOVE	`=900000400:3`：每帧把部件强制改到指定层（号:层号，逗号分隔）。**判定性实验用**，验证「部件创建时落错了层」（D315）
+XSYS4_CGSET_DBG	[诊断] 打印每次 `SetPartsCG`（部件号 / 状态 / 图名），回答「AIN 到底给谁换过图」
+XSYS4_LAYER_IDX	`=1` 层身份改用**栈下标**（上游语义）；默认用稳定 id（D129）。两种口径的 AddController 返回值 / SetActive / Remove / GetActive 一起切（D316）
+XSYS4_TRACK_PARTS	`=900000400,900000408` 只在 (层 / local.show / global.show / z / 父) 变化时打印，给出部件的完整归属变迁史（D316）
+XSYS4_BG_SWEEP_MAP	`=0` 关闭「根级 `背景／*` 换图时收起同层 `地图／*` 覆盖件的根」。默认开（D317，[BG-LAYER] 的收敛）
+XSYS4_CTRL_ACTIVE_RESTORE	`=1` `EraseLayer` 后把活动层恢复到**建层前那一层**；默认回栈顶（上游语义）。D316 的 A/B，实测不改变 [BG-LAYER] 结果
+XSYS4_FORCE_HIDE	`=900000400,900000408`：每帧强制隐藏这些部件。**判定性实验用**，不是修复手段。用来把「背景不切换」缩成「隐藏这几个号画面是否就对」（D314）
+XSYS4_BACKSCENE_DBG	[诊断] 打印 SetWantSaveBackScene / SaveBackScene / LoadBackScene 的时机与规模（背景场景快照链）
+XSYS4_BACKSCENE_WANT	[诊断] `=1` 让 `IsWantSaveBackScene` 返回真实标记（默认仍恒 false）。实测对开场剧情背景无影响
+XSYS4_DUMP_CG_SIZE	[诊断] 配合 XSYS4_DUMP_CG：只转存该宽度的 CG 纹理（按尺寸触发，避开部件号复用）
+XSYS4_ACTIVE_PARTS	[诊断] `PartsEngine.GetActiveParts` 返回光标指向的部件（默认开，D309）。`=0` 回退到旧桩（恒 0）
+XSYS4_DG_APPEND_DBG	[诊断] 委托追加/丢弃各打一条（obj/fun/dst_nr）。用来分辨「没注册」和「注册被静默丢掉」
+XSYS4_FN_LIST	[诊断] 按名字子串列出 AIN 函数（号 / 地址 / 名字）；`#29096` 按号查名；`*` 导出全表（供 tools/offline/callsite.py 把地址翻成函数名）（反汇编里 CALLMETHOD 的被调号在栈上，只能先认出 `PUSH <号>` 再回查）。`CallDelegate`、`TextButton@Motion` 这类只存在于内存表的函数号，靠它才能上 CALL_TRACE / DUMP_AT
+XSYS4_STRUCT_LIST	[诊断] 按名字子串列出结构体及成员名。查「m7 是委托表还是哈希表」时，成员名比任何猜测都直接
+XSYS4_FN_DUMP_FSSCAN	[诊断] 配合 FN_DUMP：扫描堆里所有 CPartsFunctionSet，打印有点击委托的 parts 号与委托函数名
+XSYS4_FN_DUMP_FSALL	[诊断] 配合 FN_DUMP_FSSCAN：连点击委托为空的 FunctionSet 也打出来
+XSYS4_DG_GC_DBG	[诊断] 委托被 delegate_numof 的 GC 丢弃时打一条（obj/fun/seq）。分辨「没注册」与「注册了又被丢掉」
 XSYS4_FN_DUMP_SKIP	统计时跳过指定函数号
 XSYS4_CENSUS	按函数做调用普查（与 FN_DUMP 互补）
 XSYS4_IP_WATCH	监视指令指针，抓"跑到不该跑的地方"
@@ -106,6 +126,8 @@ XSYS4_NO_AUTO_MOTION	=1 关闭「首次加 motion 自动开表」（D186），�
 XSYS4_ALPHA_DBG	打印 SetComponentAlpha 与 AddMotionAlpha 的 parts/alpha 序列（查部件为何全透明）。[D277] 现在同时打 `fno~` 提示来源；注意该值只是参考（见下条）
 XSYS4_ALPHA_STACK	[诊断] 配合 ALPHA_DBG，在每次 SetAlpha 时打 AIN 调用栈。定位 alpha 被谁写成 0 必须用它 —— `hll_current_fno()` 返回的是上次 HLL 的值、返回后不复原，实测会打出 `fno=107`(CASConstructionProcess@SetSrcX) 这种完全无关的函数
 XSYS4_SWITCH_DBG	[诊断] 按开关号打印 SWITCH 的实参与落点（`[switch] no=.. val=.. -> 0x..`）。查「某个 key 为什么没派发到预期方法」用它：`SWITCH 496` 按 `m_key` 分派到 `Parts@SetX/SetAlpha/…`，只看 case 表不知道实际弹进来的值是多少
+XSYS4_CTRL_PENDING	[D289] 默认开。`Activity@Load` 建出的部件归到「即将由 AddLayer 创建的那一层」，而不是当前 active。AIN 的顺序是 Load→AddLayer，旧行为让部件全落在上一层，之后按新层 ID 的 EraseLayer 必然 `released=0`（旧场景部件永久残留，标题 Logo 跟到战斗里吃点击）。设 0 回退旧行为做 A/B
+XSYS4_HLL_HOT	[诊断] 全库 HLL 调用热力表：进程退出时按次数倒序打印 `[hllhot] 库 函数 次数`。用来决定「544 个未实现里先补哪个」—— 按实际调用排，不按缺口字母顺序。GUIEngine 的 336 个缺口运行期零调用（菜单系统没进过），补它是纯浪费
 XSYS4_CALL_TRACE_TOTAL	[诊断] 退出时汇总 `XSYS4_CALL_TRACE` 各函数的**真实调用次数**（不受"每 fno 8 站点 + 每 200 次一条"的打印限流影响）。**凡是要断言"某函数跑了 N 次"，必须用这个** —— D280/D281 两次把日志条数当次数，把 `View_Update` 的 1504 次误读成 10 次、把 `OnUpdate` 的 150 次误读成 0 次
 XSYS4_NO_CP_ALPHA_FIX	=1 关闭「合成类部件 alpha=0 提升为 255」（卡片立绘 A/B 回退开关）。[D224 收窄] 提升现在只作用于 >=8x8 的真实合成纹理，2x2 全屏淡出遮罩不再被误抬
 # 注意：XSYS4_CP_DBG 是 D116 的结构体深拷贝探针（vm.c），不复用于合成
@@ -138,6 +160,14 @@ XSYS4_MSGWIN_DBG	[诊断] 打印消息窗口配置族 setter 的触达与实参�
 XSYS4_PARTS_DUMP_MIN	[诊断] 只 dump 部件号 >= 此值的部件；部件表按插入序遍历，地图号段会吃光 PARTS_DUMP_MAX 名额，设 900000300 才能看到动态号段
 XSYS4_MSGWIN_FULL	[D217 已转正] EX 消息窗口组件补齐 39px 字体/字色/字距/行距，并用独立 CG 部件装载 种类別情报 的 底板ＣＧ名；默认生效，=0 回退做 A/B
 XSYS4_MOUSE_DBG	[诊断] 打印 SDL 按钮事件（btn / state / clicks / pos / windowID）。用来二分「X 层没把 ButtonPress 交给 SDL」和「SDL 收到了但引擎丢边沿」：同一配方下无 `key:Shift_L` 激活时 `[mouse]` 一条都没有（`s27`），加激活后立即出现并点中 `900000716`（`s26`）
+XSYS4_MSGWIN_TEXT_BASELINE	[诊断] 消息窗口正文 y 补偿一个字号（默认开）。`文本エリア.y` 是「首行顶边距窗口顶」，而文本件的 `origin_offset.y` 已是 `-字形高`，不补偿会高出整一个字，正文上半被名牌盖住（`s126` 的「半个字」）；`=0` 回退
+XSYS4_MSGWIN_FRAME_Z	[诊断] 消息窗口底板 frame 部件的 z 基线（默认 4900）。用来 A/B「底板到底画没画」：设 1 会让它排到地图后面，底部像素会明显变化
+XSYS4_CG_SPRITE_PATH	[诊断] 宽≥1900 且高 250..600 的 CG 改走精灵路径（`gfx_render_texture`）。实测与 parts 着色器路径**结果一致**（`s92` vs `s104` 逐像素几乎相同），说明底板一直在正常绘制，保留供以后遇到真·着色器问题时对照
+XSYS4_CG_SPRITE_DBG	[诊断] 配合 CG_SPRITE_PATH：打印走精灵路径的大矩形（no/di/pr/filt/a）
+XSYS4_DUMP_CG	[诊断] 把刚上传的 CG 纹理另存成 /tmp/texdump_<no>_<w>x<h>.png（最多 8 张，全宽高 250..600）。判断「纹理内容有没有图」的唯一决定性证据
+XSYS4_DUMP_CG_SIZE	[诊断] 配合 DUMP_CG：只转存宽度等于该值的 CG（按尺寸触发，避开号段复用）
+XSYS4_DUMP_GLYPH	[诊断] 把指定文本部件的字形纹理逐个转存成 /tmp/glyph_<no>_<i>.png（最多 6 个）。判断「字被裁」是位图层还是绘制层的唯一硬证据
+XSYS4_TEXT_CHAR_DBG	[诊断] 逐个文本部件打印行数/行高/逐字符 advance 与字形尺寸，用来区分「advance 太小」与「两段文本叠在一起」
 XSYS4_MSGWIN_FRAME_DBG	[诊断] 打印消息窗口底板 CG（1920x300~500）是否进入 parts_render 及其 origin_offset / 准入字段；用来区分「没到渲染」与「画了看不见」
 XSYS4_RELEASE_RECURSIVE	[D219 已转正] PE_ReleaseParts 递归释放整棵部件子树（原 parts_release 只把子部件摘链不释放，对话框关掉后文字层残留，H025/[LAYER-LEAK]）；默认生效，=0 回退做 A/B
 XSYS4_ACT_RELEASE_DGLIST	[D270 已转正] ReleaseActivity 的 EraseNumberList 出参不再丢弃：把被释放部件的 delegate_index 写回 AIN，供 CPartsMessageManager@ReleaseFunctionSetList 销掉消息分发表里的委托（否则释放后的委托仍可命中，号复用时调到上一次活动的处理器）；默认生效，=0 回退做 A/B
@@ -148,3 +178,8 @@ XSYS4_TALT_EXTRA_FORMATS	[D275 已转正] D200 的「LIBL=0 时追加 TALT 图�
 XSYS4_FLAT_LIBS_DBG	[诊断] 打印每个 flat 的 LIBL 声明：库数/每个库的 type 与名字/CG 数据指针，以及 TALT 条目的 offset/size/magic。用来区分「0 个库」「有库但不是 CG」「CG 解码失败」三种完全不同的病因
 XSYS4_SHOT_DIR	[诊断] 指定目录后按 Alt+S 让引擎用 glReadPixels 直接 dump GL main surface 为 shot_NNN.png，绕过 zenity 文件框与 X11 合成；GL 直绘下 x11grab/import 只能拿到全黑 framebuffer，画面判据以此为准（GUIDE 1.13）
 XSYS4_SHOT_PARTS_DUMP	[诊断] 配合 XSYS4_SHOT_DIR：每次引擎自截图时打一次部件快照（layer_show / cover / 每部件 vis）+ 同帧 CG 绘制日志（最近 12 次调用的 alpha / multiply_color / scale / 纹理尺寸、以及两次截图之间的绘制次数）；按截图时刻触发而非全程探针，避免拖慢帧率改变剧情时序；需配 XSYS4_PARTS_DUMP_MIN=900000300 / MAX=1000
+XSYS4_CG_EXIST_DBG	[D292 诊断] 打印 `CGManager.IsExist` 的每次询问与结果；值=1 打全部，值=子串只打含该 UTF-8 子串的名字（如 `=希露`）。用来回答「AIN 到底问过哪个 CG 名、引擎答了什么」——立绘回退成 `立／？？？` 时必须先确认 AIN 问过 `立／希露／基本`
+XSYS4_CG_MISS_DBG	[D292 诊断] 只打印 **未命中** 的 CG 名（`[cgmiss]`，按名字去重）与按名装载/解码失败（`[cgload] LOAD FAILED` / `DECODE FAILED`）。这是定位「立绘缺图」第二条路径的探针：渲染层已经看不到原名，只有这里留着
+XSYS4_CG_MISS_STACK	[D292 诊断] 配合 CG_MISS_DBG，在每个未命中的 CG 名后面打一次 AIN 调用栈；用来抓「是谁在问这个不存在的名字」（占位图 `？？？` 的调用方）
+XSYS4_CG_AREA_DBG	[D292 诊断] 只对面积够大的部件（立绘 1920x1080 量级，w 或 h >= 400）打印纹理尺寸 / 部件 w,h / surface_area / 最终采样 r；用来区分「立绘只画出一部分」是采样区域退化（r.w 或 r.h 为 0）还是纹理本身不对
+XSYS4_SPLIT_DBG	[D292 诊断] 打印 `String.Split` 前 60 次调用的入参（原串 / 分隔符 / contain 标志）与切出的每一段；判据是「切开再拼回是否恒等」——立绘名少一个 `／` 就是这里 contain=1 没生效

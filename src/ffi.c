@@ -92,6 +92,70 @@ static int stub_nr_bt = 0;
 static int stub_replaced = 0;   /* [D110b] 链接期被零值桩接管的导出数 */
 
 static void stub_summary(void);
+static void hll_hot_summary(void);
+
+/* [D286] 全库 HLL 调用热力表（`XSYS4_HLL_HOT=1`）。
+ *
+ * 动机：启动期 544 条 `Unimplemented`，但绝大多数从未被调用过 ——
+ * `GUIEngine` 336 个缺口、运行期零调用（菜单/表单系统没进去）。
+ * 按缺口字母顺序补实现是纯浪费，必须按「跑过的场景里实际调了多少次」排。
+ *
+ * 全量数组而不是哈希：AIN 总共 36 个库、1586 个函数，单库最大 804，
+ * 每格一个 `unsigned` 共 6KB。用固定上限查边界就能兼容任何 AIN 版本。 */
+#define HLL_HOT_MAX_LIBS  64
+#define HLL_HOT_MAX_FUNCS 1024
+static unsigned hll_hot[HLL_HOT_MAX_LIBS][HLL_HOT_MAX_FUNCS];
+static int hll_hot_init = -1;
+
+static int hll_hot_enabled(void)
+{
+	if (hll_hot_init < 0) {
+		const char *e = getenv("XSYS4_HLL_HOT");
+		hll_hot_init = (e && *e && *e != '0') ? 1 : 0;
+		if (hll_hot_init)
+			atexit(hll_hot_summary);
+	}
+	return hll_hot_init;
+}
+
+static void hll_hot_note(int libno, int fno)
+{
+	if (!hll_hot_enabled())
+		return;
+	if (libno < 0 || libno >= HLL_HOT_MAX_LIBS ||
+	    fno < 0 || fno >= HLL_HOT_MAX_FUNCS)
+		return;
+	hll_hot[libno][fno]++;
+}
+
+/* 退出时吐表。每行一个函数，带库名 / 函数名 / 调用次数 / 是否有 C 实现。
+ * 按次数倒序，让 `tools/hll-hotness.py` 能直接当输入吃。 */
+static void hll_hot_summary(void)
+{
+	if (!hll_hot_init || !ain)
+		return;
+	NOTICE("[hllhot] ===== 全库 HLL 调用热力表（次数倒序） =====");
+	/* 不做全量排序（1586 项，简单选择排序够用且无需分配内存） */
+	unsigned last = (unsigned)-1;
+	for (int round = 0; round < 2000; round++) {
+		int bl = -1, bf = -1;
+		unsigned bv = 0;
+		for (int l = 0; l < HLL_HOT_MAX_LIBS && l < ain->nr_libraries; l++) {
+			int nf = ain->libraries[l].nr_functions;
+			for (int f = 0; f < nf && f < HLL_HOT_MAX_FUNCS; f++) {
+				unsigned v = hll_hot[l][f];
+				if (v > bv && v < last) { bv = v; bl = l; bf = f; }
+			}
+		}
+		if (bl < 0)
+			break;
+		last = bv;
+		struct ain_library *lib = &ain->libraries[bl];
+		struct ain_hll_function *fn = &lib->functions[bf];
+		NOTICE("[hllhot] %-20s %-40s %8u", lib->name,
+		       fn->name ? fn->name : "?", bv);
+	}
+}
 
 static FILE *stub_log_file(void)
 {
@@ -499,6 +563,17 @@ static int hll_ref_result_is_single_value(int tag)
 
 void hll_call(int libno, int fno, int result_tag)
 {
+	/* [D286] `XSYS4_HLL_HOT=1`：全库 HLL 调用计数，退出时汇总。
+	 *
+	 * 为什么要它：启动期 544 条 `Unimplemented`，但**大部分从来没被调用过**
+	 * —— `GUIEngine` 336 个缺口、运行期零调用（菜单/表单系统我们还没进去）。
+	 * 按缺口字母顺序补实现是纯浪费；必须按「跑过的场景里实际被调了多少次」排。
+	 *
+	 * 为什么不用 `XSYS4_HLL_HIST`：那个一次只盯一个库、每秒打一次直方图，
+	 * 要扫 36 个库就得跑 36 次（而且限流后的条数不能当次数，见 D280 的教训）。
+	 * 这里一次跑完、进程退出时统一吐表。 */
+	hll_hot_note(libno, fno);
+
 	/* [D110b] 首次 HLL 调用时落一次自检：清单为空时也能区分
 	 * "一路没踩到空桩" 和 "软桩机制根本没生效"。 */
 	if (soft_stub_enabled()) {

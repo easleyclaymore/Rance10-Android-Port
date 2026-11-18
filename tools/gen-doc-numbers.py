@@ -232,6 +232,32 @@ def check_stale_workspace_copies():
     return problems
 
 
+def check_agent_context_file():
+    """[D291] 工作区根必须有 AGENTS.md，且它必须指向状态文档。
+
+    为什么需要这条：Pi（以及同类 agent harness）只把 `AGENTS.md`/`CLAUDE.md`
+    注入**系统提示**；`docs/STATUS.md` 是普通文件，读过才进对话，一压缩
+    上下文就被摘要掉。项目曾多次出现「压缩后忘了核心目标是移植兰斯10」。
+
+    两条判据：①**存在**且指向 docs/STATUS.md（否则等于没接线）；
+    ②**不许变成状态文档副本** —— 卡点的唯一定义在 STATUS §0，AGENTS.md
+    里写一份拷贝必然过期，而照着过期卡点干活是 D264–D269 的原始病因。
+    """
+    p = os.path.join(WS, "AGENTS.md")
+    if not os.path.exists(p):
+        return ["工作区根缺少 AGENTS.md —— 压缩上下文后没有任何东西"
+                "保证模型知道核心目标是移植兰斯10（见 docs/STATUS.md 纪律 7 同源问题）"]
+    txt = read(p)
+    problems = []
+    if "docs/STATUS.md" not in txt:
+        problems.append("工作区根 AGENTS.md 没有指向 docs/STATUS.md"
+                        "（它只该是指针 + 纪律，状态不许复制）")
+    if txt.count("\n") > 120:
+        problems.append(f"工作区根 AGENTS.md 有 {txt.count(chr(10))} 行 —— "
+                        "像状态文档正文又回来了，只应是指针页")
+    return problems
+
+
 def check_status_debt_tag():
     """[D274] STATUS §0「最大卡点」必须挂一个**真实存在**的未结债标签。
 
@@ -452,6 +478,7 @@ def main():
                   f"源码实为 {m['switches']} 个 —— 跑 tools/gen-switches.py")
             ok = False
         for p in (check_stale_workspace_copies()
+                  + check_agent_context_file()
                   + check_status_debt_tag()
                   + check_doc_coverage()
                   + check_doc_structure()):

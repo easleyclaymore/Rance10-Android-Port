@@ -128,6 +128,12 @@ struct parts_text {
 	int line_space;
 	struct { float x; int y; } cursor;
 	struct text_style ts;
+	/* [D294] EX `文本エリア = (x, y, 0, 0)` 的文本起始偏移。
+	 * 消息窗口的文本件自身高度是 0，`parts_render_text()` 原来只用
+	 * `global.pos + origin_offset` 起画 —— 于是正文从 y=1080（屏幕底边）
+	 * 开始画，只露最底一行（`s88` 的「希露：肯来囚的日记。」贴在最底部）。
+	 * EX 明明给了 (337,177) 的排版原点，却从没人用过。 */
+	int area_x, area_y;
 };
 
 struct parts_animation {
@@ -421,6 +427,10 @@ struct parts {
 	bool lock_input_state;
 	bool want_save;
 	bool want_save_back_scene;
+	/* [D311] 创建序号：部件号会被复用，「同一个号在不同时刻是不同部件」
+	 * 已经坑过好几轮（D277 的 alpha 序列、本轮的 show 判定）。
+	 * 序号只在创建时递增，永远不复用，用来在日志里区分实例。 */
+	unsigned serial;
 	bool draggable;
 	int on_cursor_sound;
 	int on_click_sound;
@@ -523,6 +533,8 @@ struct parts *parts_get(int parts_no);
 /* [D128] 场景图层诊断：controller 分布 + 当前显示部件快照。 */
 void PE_DebugControllerHistogram(const char *tag);
 void PE_DebugDumpParts(const char *tag);
+void PE_debug_force_hide(void);
+void PE_debug_track_parts(void);
 struct parts_cg *parts_get_cg(struct parts *parts, int state);
 struct parts_text *parts_get_text(struct parts *parts, int state);
 struct parts_animation *parts_get_animation(struct parts *parts, int state);
@@ -605,6 +617,8 @@ void parts_add_motion(struct parts *parts, struct parts_motion *motion);
 // input.c
 extern bool parts_began_click;
 void parts_input_reset_drag(struct parts *parts);
+/* [D309] 光标当前指向的部件号（0 = 没有）。供 `PartsEngine.GetActiveParts` 使用。 */
+int parts_input_active_parts(void);
 
 // message.c
 enum parts_message_type {

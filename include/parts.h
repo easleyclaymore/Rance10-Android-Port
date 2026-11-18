@@ -95,6 +95,10 @@ int PE_GetPartsUpperLeftPosY(int parts_no, int state);
 void PE_SetPartsOriginPosMode(int parts_no, int origin_pos_mode);
 int PE_GetPartsOriginPosMode(int parts_no);
 void PE_SetParentPartsNumber(int parts_no, int parent_parts_no);
+/* [D312] 父部件号查询（0 = 没有父）。AIN 的 Parts_GetParentPartsNumber 用它算层号。 */
+int PE_parts_get_parent_parts_number(int parts_no);
+/* [D312] 真正设置活动层（决定新部件落在哪一层）。 */
+void PE_SetActiveController(int no);
 void PE_AddChild(int parts_no, int child_no);
 void PE_InsertChild(int parts_no, int child_no, int index);
 void PE_RemoveChild(int parts_no, int child_no);
@@ -149,6 +153,16 @@ bool PE_Load(struct page **buffer);
 bool PE_SaveBackScene(struct page **buffer);
 bool PE_LoadBackScene(struct page **buffer);
 int PE_AddController(int index);
+/* [D289] AIN 的顺序是 `Activity@Load`（建部件）**先于** `SceneStack@AddLayer`
+ * （建层）。部件创建时按 `ctrl_stack.active` 归属，于是 Load 出的部件全部
+ * 落在**上一层**上；之后 AIN 按新层的 `LayerPartsNumber` 去 EraseLayer，
+ * 那个层是空的 —— 实测 `released=0`（`d315`），旧场景部件永久残留。
+ *
+ * AIN 无法改，所以在 Load 前后包一层：`PE_ControllerPendingBegin()` 记下
+ * 「接下来 Load 出来的部件属于尚未创建的层」，`PE_AddController()` 建层时
+ * 把这些部件迁到新层。XSYS4_CTRL_PENDING=0 可整体回退到旧行为（A/B）。 */
+void PE_ControllerPendingBegin(void);
+void PE_ControllerPendingEnd(void);
 void PE_RemoveController(struct page **erase_number_list, int index);
 /* [D129] 图层 ID ↔ 栈下标的边界转换。AIN 侧保存的是 ID，内部渲染/命中
  * 用的是下标；只有跨 HLL 边界（AddLayer/GetActiveLayer/SetActiveLayer/
@@ -168,6 +182,8 @@ int PE_get_system_controller(void);
 int PE_get_nr_controllers(void);
 void PE_parts_set_want_save(int parts_no, bool want_save);
 void PE_parts_set_want_save_back_scene(int parts_no, bool want);
+/* [D310] 读取端：该部件是否属于「背景场景」（SaveBackScene 保存/收起的范围）。 */
+bool PE_parts_get_want_save_back_scene(int parts_no);
 bool PE_save_thumbnail(struct string *filename, int reduction_factor);
 bool PE_init_parts_movie(int parts_no, int width, int height, int bg_r, int bg_g, int bg_b, int state);
 int PE_get_movie_sprite(int parts_no, int state);
@@ -237,6 +253,8 @@ void PE_EndInput(void);
 bool PE_IsInputBegun(void);
 int PE_GetClickPartsNumber(void);
 bool PE_IsCursorIn(int parts_no, int mouse_x, int mouse_y, int state);
+/* [D309] 光标当前指向的部件号（0 = 没有）。AIN 的 PartsEngine.GetActiveParts 用它。 */
+int parts_input_active_parts(void);
 
 // message.c
 void PE_ReleaseMessage(void);
@@ -351,6 +369,8 @@ bool PE_GoFramePartsFlat(int parts_no, int frame_no, int state);
 int PE_GetPartsFlatEndFrame(int parts_no, int state);
 
 // layoutbox.c
+/* [D294] EX `文本エリア` 的文本排版原点（相对部件位置）。 */
+void PE_SetTextArea(int parts_no, int x, int y);
 void PE_SetLayoutBoxLayoutType(int parts_no, int type);
 int PE_GetLayoutBoxLayoutType(int parts_no);
 void PE_SetLayoutBoxReturn(int parts_no, bool return_flag, int return_size);

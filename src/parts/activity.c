@@ -737,6 +737,13 @@ static void parse_part_fields(struct ex_tree *node, struct activity_part *part)
 			part->cg_name = get_string(src, "ＣＧ名");
 		if (!part->cg_name)
 			part->cg_name = get_string(type_info, "ＣＧ名");
+		/* [D292] 消息窗口的 ＣＧ名 到底读到没有 —— 它是「无底板、无正文」的
+		 * 最上游一环，读不到就不用往下查装载了。 */
+		if (part->type == ACT_COMP_MESSAGE_WINDOW && getenv("XSYS4_ACT_DBG"))
+			NOTICE("[act] MW name='%s' cg=%s src=%s ti=%s",
+			       part->name,
+			       (part->cg_name && *part->cg_name) ? "Y" : "EMPTY",
+			       src ? "y" : "n", type_info ? "y" : "n");
 		/* [D119] flat/button parts: フラット名 lives in 一般状态 or 种类別情报 */
 		if (!part->flat_name)
 			part->flat_name = get_string(src, "フラット名");
@@ -1058,7 +1065,30 @@ static int build_part(struct activity_part *part, int parent_no)
 	}
 	int px = (int)part->x;
 	int py = (int)part->y;
-	if (ex_ratio_pos && part->pos_as_ratio) {
+	/* [D292] 比例坐标的第二判据：**对齐模式 + 0..1 的取值**。
+	 *
+	 * `MessageWindow02` 的 `SYS_消息窗口` 是
+	 *     `座標 = (0.000000, 1.000000, 1)`、`原点座標模式 = 7`（底部左对齐）
+	 * 但**没有** `座標を率として認識する` 字段。D216 只看那个字段，于是
+	 * `pos_as_ratio=false` → `py=(int)1.0=1` → 加上 mode 7 的 `-h`，
+	 * 整个消息窗口落在屏幕上方外，正文与立绘都看不见（`s79` 里对话区
+	 * 候选全是 `hb=(0,0,1920,1080)` 的全屏遮罩，没有消息框）。
+	 *
+	 * 判据：对齐模式 ≥4（居中/右/下对齐）且两个坐标都落在 [0,1] 且至少
+	 * 一个非零 —— 像素坐标几乎不会把部件放在 (0,1) 这种角落，
+	 * 而比例坐标在对齐模式下必然是这种形态。`XSYS4_EX_RATIO_HEURISTIC=0` 回退。 */
+	static int ex_ratio_heur = -1;
+	if (ex_ratio_heur < 0) {
+		const char *e = getenv("XSYS4_EX_RATIO_HEURISTIC");
+		ex_ratio_heur = e && !strcmp(e, "0") ? 0 : 1;
+	}
+	bool ratio = part->pos_as_ratio;
+	if (!ratio && ex_ratio_heur && part->origin_mode >= 4 &&
+	    part->x >= 0 && part->x <= 1.0f &&
+	    part->y >= 0 && part->y <= 1.0f &&
+	    (part->x > 0 || part->y > 0))
+		ratio = true;
+	if (ex_ratio_pos && ratio) {
 		px = (int)(part->x * config.view_width);
 		py = (int)(part->y * config.view_height);
 	}
@@ -1085,7 +1115,20 @@ static int build_part(struct activity_part *part, int parent_no)
 		/* 布局盒自己决定子部件的位置 */
 	}
 
-	if (part->cg_name && *part->cg_name && part->type == ACT_COMP_CG) {
+	/* [D292] ＣＧ名 不只有 `ＣＧパーツ` 才有。
+	 *
+	 * `MessageWindow02` 的消息窗口部件类型是 `消息窗口`（ACT_COMP_MESSAGE_WINDOW），
+	 * 但它的 `种类別情报` 里同样有 `ＣＧ名 = シス／ＡＤＶ／事件／提示`。
+	 * 这里原来只放行 `ACT_COMP_CG`，于是消息窗口**从未装载底板图**：
+	 * 尺寸保持 0 → `parts_common_recalculate_hitbox()` 退化到视图尺寸
+	 * （`s79/s80` 候选表里 `hb=(0,0,1920,1080)` 就是它），正文与立绘
+	 * 自然都看不见。面板/表单也是同类（EX 里同样带 ＣＧ名）。
+	 * 按钮不算：它带的是 `フラット名`，走 `set_part_flat()`。 */
+	if (part->cg_name && *part->cg_name &&
+	    (part->type == ACT_COMP_CG ||
+	     part->type == ACT_COMP_MESSAGE_WINDOW ||
+	     part->type == ACT_COMP_PANEL ||
+	     part->type == ACT_COMP_FORM)) {
 		struct string *cg = cstr_to_string(part->cg_name);
 		bool ok = PE_SetPartsCG(part->parts_no, cg, part->deform, 1);
 		ACT_DEBUG("[act] %s parts_no=%d pos=(%d,%d,%d) cg='%s' set=%d size=%dx%d",
@@ -1169,6 +1212,7 @@ static int build_part(struct activity_part *part, int parent_no)
 				part->font_color[1], part->font_color[2], 1);
 		PE_SetTextCharSpace(part->parts_no, part->char_space, 1);
 		PE_SetTextLineSpace(part->parts_no, part->line_space, 1);
+
 		if (part->cg_name && *part->cg_name) {
 			int frame_no = PE_GetFreeNumber();
 			/* 顺序：先定原点模式/位置，再 SetPartsCG —— 后者的
@@ -1176,7 +1220,19 @@ static int build_part(struct activity_part *part, int parent_no)
 			 * 顺序反了 CG 就会落到 (0,1080) 以下的屏幕外。 */
 			PE_SetPartsOriginPosMode(frame_no, part->origin_mode);
 			PE_SetPos(frame_no, px, py);
-			PE_SetZ(frame_no, part->z);
+			/* [D293] 底板 frame 的 z 不能直接用 EX 的 `part->z`(=1)。
+			 * AIN 之后会给**文本件**调 `SetZ(342, 5000)` 把消息窗口
+			 * 提到最上层，但 frame 是我们新分配的号，AIN 根本不知道它，
+			 * 于是它永远停在 z=1 —— 而地图/UI 的 z 在 1500~4349，
+			 * 整块底板被压在最底下（`s83` dump：`no=900000343 z=1`，
+			 * 尺寸/纹理/位置却全对）。这里给一个略低于文字件的基线，
+			 * 保证它盖住地图又不会压住正文。`XSYS4_MSGWIN_FRAME_Z` 可调。 */
+			static int frame_zbase = -1;
+			if (frame_zbase < 0) {
+				const char *e = getenv("XSYS4_MSGWIN_FRAME_Z");
+				frame_zbase = e && *e ? atoi(e) : 4900;
+			}
+			PE_SetZ(frame_no, frame_zbase + part->z);
 			struct string *cg = cstr_to_string(part->cg_name);
 			bool ok = PE_SetPartsCG(frame_no, cg, part->deform, 1);
 			if (ok) {
@@ -1186,6 +1242,31 @@ static int build_part(struct activity_part *part, int parent_no)
 			}
 			ACT_DEBUG("[act] msgwin frame no=%d cg='%s' set=%d",
 				  frame_no, part->cg_name, ok);
+			/* [D294] `文本エリア = (x, y)` 是相对**消息窗口左上角**的，
+			 * 而文本件的 pos 落在底边（y=1080）且自身高度为 0
+			 * （`parts_render_text` 只拿 pos+origin_offset 起画，
+			 * 所以正文整个跑到屏幕外）。这里换算成相对文本件的偏移：
+			 * area_y = y - 底板高度。 */
+			if (ok && part->text_area[1] > 0) {
+				int fh = PE_GetPartsHeight(frame_no, 1);
+				/* [D306] 少补偿一个字号：文本件的 `origin_offset.y`
+				 * 是 `-字形高`（mode 7 底对齐，`s131` 实测 `offy=-39`），
+				 * 而 `文本エリア.y` 给的是「正文第一行**顶边**距窗口顶」。
+				 * 不补偿时 y = 1080 - 39 - 184 = **857**，比应有的
+				 * `panel_top(663) + 233 = 896` 高出整整一个字号，
+				 * 于是正文上半 29px 被名牌（底边 886）盖住，屏幕上只剩
+				 * 最下面约 10 行墨迹（`s126` 的「半个字」）。
+				 * `XSYS4_MSGWIN_TEXT_BASELINE=0` 回退到旧行为。 */
+				static int baseline_fix = -1;
+				if (baseline_fix < 0) {
+					const char *e = getenv("XSYS4_MSGWIN_TEXT_BASELINE");
+					baseline_fix = e && !strcmp(e, "0") ? 0 : 1;
+				}
+				int ay = part->text_area[1] - fh;
+				if (baseline_fix && part->font_size > 0)
+					ay += part->font_size;
+				PE_SetTextArea(part->parts_no, part->text_area[0], ay);
+			}
 			free_string(cg);
 		}
 	}
@@ -1536,7 +1617,14 @@ bool activity_read(struct string *name, struct string *file)
 		activity_release(act->name);
 	}
 
+	/* [D289] 部件创建要归到「即将创建的那一层」，而不是当前 active。
+	 * AIN 的顺序是 Activity@Load（建部件）→ SceneStack@AddLayer（建层），
+	 * 所以这里开一个迁移窗口：这期间建出的部件由 PE_AddController 收走。
+	 * 没有后续 AddLayer 时（比如只是替换同名活动），pending-end 只告警不迁移，
+	 * 行为与旧版一致。 */
+	PE_ControllerPendingBegin();
 	build_part(act->root, -1);
+	PE_ControllerPendingEnd();
 
 	/* 建树时部件还没有父节点，PE_SetPos() 只能算出 global = local，
 	 * 之后父节点是 pending 状态、父链只在 PE_UpdateComponent() 里才挂上，

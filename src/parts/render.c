@@ -18,6 +18,7 @@
 #include <cglm/cglm.h>
 
 #include "system4.h"
+#include "system4/cg.h"
 #include "system4/hashtable.h"
 #include "system4/string.h"
 #include "system4/flat.h"
@@ -169,10 +170,16 @@ static void text_render_probe(struct parts *parts, struct parts_text *t)
 	}
 	if (seen[slot].n++ >= 3)
 		return;
-	NOTICE("[txtr] no=%d pos=(%d,%d) off=(%d,%d) wh=%dx%d lines=%d "
+	NOTICE("[txtr] no=%d size=%d face=%d spz=%d/%d pos=(%d,%d) off=(%d,%d) area=(%d,%d) start=(%d,%d) "
+	       "wh=%dx%d lines=%d "
 	       "state=%d type=%d show=%d a=%d vis=%d mw=%d mwshow=%d uc=-",
-	       parts->no, parts->global.pos.x, parts->global.pos.y,
+	       parts->no, (int)t->ts.size, (int)t->ts.face,
+	       parts->sp.z, parts->sp.z2,
+	       parts->global.pos.x, parts->global.pos.y,
 	       t->common.origin_offset.x, t->common.origin_offset.y,
+	       t->area_x, t->area_y,
+	       parts->global.pos.x + t->common.origin_offset.x + t->area_x,
+	       parts->global.pos.y + t->common.origin_offset.y + t->area_y,
 	       t->common.w, t->common.h, t->nr_lines,
 	       parts->state, parts->states[parts->state].type,
 	       parts->global.show, (int)parts->global.alpha,
@@ -184,14 +191,81 @@ static void text_render_probe(struct parts *parts, struct parts_text *t)
 static void parts_render_text(struct parts *parts, struct parts_text *t)
 {
 	text_render_probe(parts, t);
+	/* [D301] 逐字符几何探针：正文「嗯……」看起来是两个字叠在一起，
+	 * 需要区分「advance 太小」还是「同一段被画了两遍」。 */
+	const char *tcd = getenv("XSYS4_TEXT_CHAR_DBG");
+	/* 值 >=1000 时只跟指定部件号，且不按「每个部件只打一次」限流。 */
+	int tcd_target = tcd ? atoi(tcd) : 0;
+	if (tcd_target >= 1000) {
+		if (parts->no == tcd_target && t->nr_lines) {
+			static int rep;
+			int only = rep < 6;
+			if (only) rep++;
+			for (unsigned i = 0; i < t->nr_lines && i < 4; i++) {
+				struct parts_text_line *ln = &t->lines[i];
+				if (i == 0)
+					NOTICE("[txtc] no=%d lines=%u h=%d space=%d size=%d",
+					       parts->no, t->nr_lines, ln->height,
+					       t->line_space, (int)t->ts.size);
+				for (unsigned j = 0; j < ln->nr_chars && j < 10; j++) {
+					struct parts_text_char *c = &ln->chars[j];
+					NOTICE("[txtc]   j=%u ch=%02x%02x%02x adv=%d t=%dx%d",
+					       j, (unsigned char)c->ch[0], (unsigned char)c->ch[1],
+					       (unsigned char)c->ch[2], c->advance, c->t.w, c->t.h);
+				}
+			}
+			if (!only) {}
+		}
+	} else if (tcd) {
+		static int seen[8], nseen, total;
+		if (t->nr_lines && parts->no >= 900000300 && total < 40) {
+			int known = 0;
+			for (int k = 0; k < nseen; k++)
+				if (seen[k] == parts->no) { known = 1; break; }
+			if (!known && nseen < 8) { seen[nseen++] = parts->no; }
+			if (known) goto skip_char_dump;
+			total++;
+			for (unsigned i = 0; i < t->nr_lines && i < 4; i++) {
+				struct parts_text_line *ln = &t->lines[i];
+				NOTICE("[txtc] no=%d line=%u nr=%u h=%d space=%d",
+				       parts->no, i, ln->nr_chars, ln->height, t->line_space);
+				for (unsigned j = 0; j < ln->nr_chars && j < 8; j++) {
+					struct parts_text_char *c = &ln->chars[j];
+					NOTICE("[txtc]   j=%u ch=%02x%02x%02x%02x adv=%d t=%dx%d",
+					       j, (unsigned char)c->ch[0], (unsigned char)c->ch[1],
+					       (unsigned char)c->ch[2], (unsigned char)c->ch[3],
+					       c->advance, c->t.w, c->t.h);
+				}
+			}
+		}
+		skip_char_dump: ;
+	}
 	if (uc_skip_dup_text(parts, t))
 		return;
-	int x = parts->global.pos.x + t->common.origin_offset.x;
-	int y = parts->global.pos.y + t->common.origin_offset.y;
+	int x = parts->global.pos.x + t->common.origin_offset.x + t->area_x;
+	int y = parts->global.pos.y + t->common.origin_offset.y + t->area_y;
 	for (int i = 0; i < t->nr_lines; i++) {
 		struct parts_text_line *line = &t->lines[i];
 		for (int j = 0; j < line->nr_chars; j++) {
 			struct parts_text_char *ch = &line->chars[j];
+			/* [D305] 把字形纹理本身转存成 PNG：判断「字被裁」是位图层
+			 * 还是绘制层。只在 XSYS4_DUMP_GLYPH 指定部件号时触发。 */
+			if (getenv("XSYS4_DUMP_GLYPH")) {
+				static int gn;
+				int want = atoi(getenv("XSYS4_DUMP_GLYPH"));
+				if (want && parts->no == want && gn < 6) {
+					typedef struct texture Texture;
+					extern int gfx_save_texture(Texture *, const char *, enum cg_type);
+					char gp[128];
+					snprintf(gp, sizeof(gp), "/tmp/glyph_%d_%d.png", parts->no, gn);
+					gfx_save_texture(&ch->t, gp, ALCG_PNG);
+					NOTICE("[glyph] no=%d i=%d ch=%02x%02x wh=%dx%d off=(%d,%d) path=%s",
+					       parts->no, gn, (unsigned char)ch->ch[0],
+					       (unsigned char)ch->ch[1], ch->t.w, ch->t.h,
+					       ch->off.x, ch->off.y, gp);
+					gn++;
+				}
+			}
 			/* 用精灵路径贴字形，而不是 parts 着色器。
 			 *
 			 * parts 着色器采样字形纹理时一个像素都不出——把纹理换成已知
@@ -199,10 +273,25 @@ static void parts_render_text(struct parts *parts, struct parts_text *t)
 			 * 而同一张白纹理走 render_uc_rect() 就能画（见 TECH_DEBT
 			 * [UC-TEXSHADER]，未定位）。精灵路径稳定，先走这条。 */
 			Rectangle pr = RECT(x, y, ch->t.w, ch->t.h);
+			/* [D306] 打印**提交绘制时**的真实矩形。上一轮探针拿到的
+			 * `start=(470,896)` 与屏幕墨迹（y≈884..892）对不上，
+			 * 这里直接量 pr，确认差异出在 x/y 计算还是绘制层。 */
+			const char *tdd = getenv("XSYS4_TEXT_DRAW_DBG");
+			if (tdd && *tdd) {
+				static int dn;
+				int want = atoi(tdd);
+				if (parts->no == want && dn < 8) {
+					NOTICE("[txtd] no=%d j=%d pr=(%d,%d %dx%d) posy=%d offy=%d areay=%d",
+					       parts->no, j, pr.x, pr.y, pr.w, pr.h,
+					       parts->global.pos.y, t->common.origin_offset.y,
+					       t->area_y);
+					dn++;
+				}
+			}
 			gfx_render_texture(&ch->t, &pr);
 			x += ch->advance;
 		}
-		x = parts->global.pos.x + t->common.origin_offset.x;
+		x = parts->global.pos.x + t->common.origin_offset.x + t->area_x;
 		y += line->height + t->line_space;
 	}
 }
@@ -491,6 +580,39 @@ static void parts_render_cg(struct parts *parts, struct parts_common *common){
 		r = (Rectangle) { 0, 0, common->texture.w, common->texture.h };
 	}
 
+	/* [D292] 立绘只画出一部分（用户实测「希露只有头发出现」）的探针。
+	 * 判据不是“画没画”，而是“画的区域和纹理能不能对上”：
+	 *   - surface_area 只箦上一个维度（w=0,h>0）时，上面的 `!r.w && !r.h`
+	 *     两个都为 0 才回退，于是 r={0,0,0,h} → 采样出一根竖条；
+	 *   - surface_area 超出纹理（例如拿 1920x1080 去采样一张小图）→
+	 *     超出的部分采样到钳制的边缘像素，表现为整块色带。
+	 * 只对面积够大的部件打（立绘 1920x1080 量级），默认关。 */
+	if (getenv("XSYS4_CG_AREA_DBG") && common->texture.handle &&
+	    (common->texture.w >= 400 || common->texture.h >= 400)) {
+		static int area_logged;
+		/* [D296] 名额从 80 提到 2000：80 个会被地图的大 CG 先占满，
+		 * 消息窗口底板（1920x330）根本轮不到打印 —— 上一轮据此
+		 * 误判成「parts_render_cg 没被调用」。 */
+		if (area_logged < 2000) {
+			area_logged++;
+			/* [D297] glIsTexture：handle 非 0 不等于纹理有效
+			 * （号复用后旧对象可能已被 delete）。 */
+			NOTICE("[cgarea] no=%d spz=%d/%d ctrl=%d mc=%d glis=%d deform=%d tex=%dx%d "
+			       "w/h=%dx%d area=(%d,%d %dx%d) r=(%d,%d %dx%d)%s",
+			       parts->no, parts->sp.z, parts->sp.z2,
+			       parts->controller_no, parts_multi_controller,
+			       common->texture.handle ?
+					(int)glIsTexture(common->texture.handle) : -1,
+			       parts->sprite_deform,
+			       common->texture.w, common->texture.h,
+			       common->w, common->h,
+			       common->surface_area.x, common->surface_area.y,
+			       common->surface_area.w, common->surface_area.h,
+			       r.x, r.y, r.w, r.h,
+			       (r.w <= 0 || r.h <= 0) ? "  <<< DEGENERATE" : "");
+		}
+	}
+
 	vec3 add_color = {
 		parts->global.add_color.r / 255.0f,
 		parts->global.add_color.g / 255.0f,
@@ -501,6 +623,43 @@ static void parts_render_cg(struct parts *parts, struct parts_common *common){
 		parts->global.multiply_color.g / 255.0f,
 		parts->global.multiply_color.b / 255.0f,
 	};
+	/* [D299] parts 着色器路径对某些纹理「提交了但不出像素」
+	 * （`[UC-TEXSHADER]`；STATUS 契约 19 已记录文字必须走精灵路径）。
+	 * 消息窗口底板 `シス／ＡＤＶ／事件／提示` 正好中招：s92–s99 七项全排除
+	 * （纹理有效 glIsTexture=1、矩形 r=(0,0,1920,330)、vis=1、a=255、
+	 * gz=4901 无遮挡、deform=0、被调 302 次）却看不见。
+	 * 这里提供精灵路径兜底：仅在「无缩放无旋转」时启用（底板/立绘都是），
+	 * 有变换的仍走原路径以免破坏既有画面。XSYS4_CG_SPRITE_PATH=1 开启。 */
+	/* 只卡缩放/旋转：`draw_filter` 与 `alpha` 不该成为判据
+	 * （底板 alpha=255 但 draw_filter 可能非 0，上一版因此整条没进这条路径）。 */
+	/* 范围必须收紧：一刀切让**所有** CG 走精灵路径会把地图大 CG 画黑
+	 * （`s102` 就是），因为原路径还负责 blend/draw_filter。
+	 * 只处理「我们为消息窗口新建的底板」——特征：`di=-1`（不属于任何
+	 * activity）+ 全宽 + 高 250..600（1920x330 / 1920x417 两种）。 */
+	if (getenv("XSYS4_CG_SPRITE_PATH") &&
+	    r.w >= 1900 && r.h >= 250 && r.h <= 600 &&
+	    parts->global.scale.x == 1.0f && parts->global.scale.y == 1.0f &&
+	    parts->local.rotation.z == 0.0f) {
+		if (getenv("XSYS4_CG_SPRITE_DBG")) {
+			static int n;
+			/* 只打底板级（宽 >=1900）的大矩形：名额按到达顺序分配时，
+			 * 一堆小 CG 会先把 40 条占满，目标部件永远打不出来。 */
+			if (r.w >= 1900 && n++ < 500)
+				NOTICE("[cgsp] no=%d di=%d pr=(%d,%d %dx%d) filt=%d a=%d",
+				       parts->no, parts->delegate_index,
+				       (int)(parts->global.pos.x + common->origin_offset.x),
+				       (int)(parts->global.pos.y + common->origin_offset.y),
+				       r.w, r.h, parts->draw_filter,
+				       (int)parts->global.alpha);
+		}
+		Rectangle pr = {
+			(int)(parts->global.pos.x + common->origin_offset.x),
+			(int)(parts->global.pos.y + common->origin_offset.y),
+			r.w, r.h,
+		};
+		gfx_render_texture(&common->texture, &pr);
+		return;
+	}
 	parts_render_texture(&common->texture, mw_transform, &r, parts->global.alpha / 255.0,
 			add_color, multiply_color, parts->draw_filter,
 			parts->global.alpha_clipper_parts_no);
@@ -1001,9 +1160,10 @@ void parts_render(struct parts *parts)
 		struct parts_state *fst = &parts->states[parts->state];
 		if (fst->type == PARTS_CG && fst->common.w >= 1900 &&
 		    fst->common.h >= 300 && fst->common.h <= 500 && fn++ < 12)
-			NOTICE("[frame] no=%d tex=%u pos=(%d,%d) off=(%d,%d) "
+			NOTICE("[frame] no=%d tex=%u(%dx%d) pos=(%d,%d) off=(%d,%d) "
 			       "%dx%d vis=%d mw=%d mwshow=%d link=%d a=%d",
 			       parts->no, fst->common.texture.handle,
+			       fst->common.texture.w, fst->common.texture.h,
 			       parts->global.pos.x, parts->global.pos.y,
 			       fst->common.origin_offset.x,
 			       fst->common.origin_offset.y,
@@ -1106,8 +1266,12 @@ void parts_sprite_render(struct sprite *sp)
 
 static bool pe_dirty = false;
 
+/* [D314] 判定性实验见 parts.c 的 PE_debug_force_hide()。 */
+
 void parts_render_update(void)
 {
+	PE_debug_track_parts();
+	PE_debug_force_hide();
 	/* [D244] 帧率探针。D92 的 hack（每帧把全场部件标脏）在 llvmpipe 下
 	 * 只有 3~8 fps，而战斗演出 / instantTimer / flat 推进全按墙钟走，
 	 * 低帧率会把「点 15 次才到 AP 球」这类现象误判成逻辑卡死。

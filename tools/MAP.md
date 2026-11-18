@@ -14,12 +14,13 @@ tools/
 ├── MAP.md               ← 本文
 ├── lib/common.sh        ← 路径锚点 + 共用函数（die / PY / need_* / find_free_display）
 │
-├── run/                 ← 跑测（8 个）
+├── run/                 ← 跑测（9 个）
 │   ├── run-headless.sh       Xvfb 壳：隔离 + 限内存 + 调 run-live
 │   ├── run-live.sh           动作序列引擎（340 行，核心）
 │   ├── run-local.sh          本机真实窗口（能看到鼠标动）
 │   ├── run-rance10.sh        早期入口，保留兼容
 │   ├── baseline.sh           「全默认配置」基线
+│   ├── matrix.sh             场景矩阵：同组判据扫多个地图节点
 │   ├── storm.sh              地图装载风暴现场
 │   ├── safe_run.sh           兼容层，被 run-local / run-rance10 调
 │   └── safe_run_click.sh     兼容层，被 run-local 调
@@ -41,6 +42,9 @@ tools/
 ├── dev/                 ← 开发辅助（不参与构建/跑测）
 │   ├── ain_arity_check.py    批量校验 AIN 函数 arity
 │   ├── rebuild_hll_table.py  重生成 HLL 表
+│   ├── hll_hotness.py        HLL 热力表 → 工作队列／台账（--todo / --by-lib / --emit）
+│   ├── callsite.py           某个 HLL 函数的调用点 + 上下文（L2 契约判据的入口）
+│   └── loghouse.sh          日志/存档卫生：>2 天压 gz、>30 天删、savedir >7 天删（默认只报告）
 │   └── patches/              历史补丁脚本（**只读参照，不要重跑**）
 │
 ├── check_core_deps.py   ← 门禁（xsys4 check 调）
@@ -62,6 +66,7 @@ xsys4
  └─→ ain_at（离线工具）
 
 baseline.sh    ─→ run/run-headless.sh
+matrix.sh      ─→ run/run-headless.sh ×N（每节点独立 savedir）
 storm.sh       ─→ run/run-headless.sh
 run-local.sh   ─→ safe_run_click.sh ─→ safe_run.sh
 run-rance10.sh ─→ safe_run.sh
@@ -75,6 +80,8 @@ run-rance10.sh ─→ safe_run.sh
 | 跑一次带点击 | `xsys4 seq <tag> "<序列>"` |
 | 在某个指令地址停下看状态 | `xsys4 dump <地址> <tag>` |
 | 确认修改没破坏基线 | `run/baseline.sh` |
+| 一次扫多个场景、出可 diff 的表 | `xsys4 matrix <tag> [节点]` |
+| 决定先补哪个未实现 HLL | `XSYS4_HLL_HOT=1` 跑一次 → `xsys4 hot <日志>` |
 | 复现地图装载风暴 | `run/storm.sh` |
 | 在本机真实窗口里点（要看到鼠标） | `run/run-local.sh` |
 | 编离线工具 | `xsys4 build tools` |

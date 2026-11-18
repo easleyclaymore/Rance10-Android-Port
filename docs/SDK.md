@@ -79,6 +79,35 @@ key:Shift_L;wait:1000;click:650,683;wait:8000"
 采样不到，40 次点击只有 9 次产生 `[inp] EndInput`。已改为 `sleep 0.2`
 （≈3 帧）。判据始终是「有几次 `EndInput`」，不是「我点了多少次」。
 
+## 跑到第一章剧情（真实流程，2026-11-18 复核）
+
+```sh
+RANCE10_LIVE_SEQ="wait:20000;click:646,738;wait:6000;click:960,540;wait:4000;\
+until:MessageWindow02:20000" \
+  xsystem4/tools/run/run-headless.sh ch1 120 /tmp/ch1.png
+```
+
+- `click:646,738` = 标题「从头开始」/ Chapter1（EX 声明坐标，与 `STATUS` 坐标表同源）。
+  **旧版本这里写「已失效」是错的**：2026-11-18 用 `h2/h3/h4/b4` 多次复现都能进。
+- 若先弹出「网络确认」对话，先 `click:963,817` 再点标题。
+- `until:MessageWindow02` 命中即表示第一章 ADV 已装载。
+
+另一条路（跳过剧情直达地图）：
+
+```sh
+XSYS4_AUTO_MAP=1 \
+RANCE10_LIVE_SEQ="wait:26000;key:Shift_L;wait:600;click:995,373;wait:6000;\
+key:Shift_L;wait:500;click:853,471;wait:8000" \
+  xsystem4/tools/run/run-headless.sh ch1 78 /tmp/ch1.png
+```
+
+- `click:995,373` → ハルマン区域（装载 `SceneQuestMap`/`QuestMapFrame`/`QuestInformationPanel`）
+- `click:853,471` → ランク・バル主城节点 → `MessageWindow02` 装载、地图暗化 `a=127`
+
+> `AUTO_MAP` 会跳过背景层初始化，**不能**用它判断背景是否正确；验背景必须走真实流程。
+
+三次点击前都要 `key:Shift_L`（`[D242]`）。标题画面那一步不要指望固定坐标。
+
 ## 渲染后端：默认 Xvfb 是软件，硬件要显式开
 
 `run-headless.sh` 默认起独立 Xvfb，而 **Xvfb 没有 DRI3/GLX 硬件**，于是 Mesa
@@ -261,6 +290,53 @@ XSYS4_AUTO_MAP=1 XSYS4_CALL_TRACE=26394,24290,24301,29658 \
 基线判据（以任务地图为例）：`0 ERROR`、活动数稳定、关键 `[call]` 命中数稳定。
 三个数任何一个变了，先解释清楚再继续。
 
+### 我要一次性扫多个场景（场景矩阵）
+
+单条序列只能证明「这一步没坏」。要看「哪些场景变了」，用矩阵：
+
+```bash
+./tools/xsys4 matrix m1            # 扫节点 1,2,3,4
+./tools/xsys4 matrix m1 1,2,5       # 指定节点
+MATRIX_SECS=100 ./tools/xsys4 matrix m1 1,2
+
+# 与上一份矩阵对比
+ diff ../logs/matrix_a.txt ../logs/matrix_b.txt
+```
+
+每个节点一行，列是**可机器比较**的：`rc / err / core / df / oob / acts / unimpl / black / scenes`。
+`black` 是末帧非黑像素百分比（引擎自截图，不是 X11 抓屏）；`scenes` 列出该节点走到的 `Game/*` 活动。
+
+矩阵会**清掉所有 `XSYS4_*`**，每个节点用独立存档目录 —— 否则格与格不可比。
+节点靠 `XSYS4_NODE_DIGIT` 换 `KeyBase` 末位，其余配方完全相同，
+所以**唯一变量就是那个数字**。
+
+> 实测（`m3`）：节点 1 → 24 个活动、末帧 95.8% 有内容；
+> 节点 2/3 → 73 个活动、61.6% —— 后者走进了战斗，前者没有。
+> 这正是矩阵要回答的问题：「我以为都验过了」到底验了哪几个。
+
+### 我要决定「先补哪个没实现的 HLL」
+
+**别按缺口字母顺序补。** 启动期 544 条 `Unimplemented`，实测运行期
+热缺口 **0 个** —— 它们全在还没走到的模块里。
+
+```bash
+XSYS4_HLL_HOT=1 ./tools/xsys4 run hot1 60 /tmp/hot1.png
+./tools/xsys4 hot ../logs/live_hot1.log
+./tools/xsys4 hot ../logs/live_hot1.log --gaps   # 只看热缺口
+```
+
+输出按「跑过的场景里实际调了多少次」倒序，分四档：
+
+| 档 | 含义 | 该干什么 |
+|---|---|---|
+| `hot` | 被调用但**没有** C 实现 | 立刻补 —— 这些是静默失败点 |
+| `live` | 已实现且在跑 | — |
+| `warm` | 已实现但本次没走到 | 别优化 |
+| `cold` | 没实现也没调用 | 冻结，等对应模块开工 |
+
+「有没有实现」不靠猜：启动期会为**每个**未实现导出打一行
+`Unimplemented library function:`，那个集合就是缺口集合，与热力表取交集。
+
 ### 我要加一个新开关
 
 1. 代码里 `getenv("XSYS4_XXX")`，默认关闭
@@ -307,6 +383,12 @@ clone 仓库的人只有引擎和工具，`debt` 会报"找不到"。同理 `xsy
 **三、不要裸跑。** 不要手写 `timeout ... xvfb-run ... > logs/*.log`：
 曾因 `xvfb-run` fork 的引擎成为孤儿进程、继续写数小时，产生 124 GB 日志。
 统一走 `tools/xsys4 seq` / `run-headless.sh`（自带 Xvfb 与内存上限）。
+
+**四、缺口不等于待办。** 启动期的 `Unimplemented library function` 是**静态**
+清单（544 条），绝大多数永远不会执行 —— 实测跑完第一章 + 战斗第一回合，
+运行期热缺口是 **0**。看到「HLL 覆盖率 73%」不要以为差的是 27% 工作量，
+真正该问的是「跑过的场景里有没有被调用但没实现的」（`xsys4 hot`）。
+按缺口清单补实现，会大比例花在死代码上。
 
 ## 目录职责
 

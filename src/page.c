@@ -1079,6 +1079,14 @@ bool delegate_contains(struct page *dst, int obj, int fun)
 
 struct page *delegate_append(struct page *dst, int obj, int fun)
 {
+	/* [D309] `XSYS4_DG_APPEND_DBG=1`：委托追加/丢弃都打一条。
+	 *
+	 * 「按钮注册了委托却点不动」还有第三种可能：注册调用发生了，但
+	 * 委托的函数号是 0（lambda 没解析出来），在这里被静默丢掉 ——
+	 * 日志里既没有报错也没有痕迹。`fun<1` 这一支必须能看见。 */
+	if (getenv("XSYS4_DG_APPEND_DBG"))
+		NOTICE("[dgadd] obj=%d fun=%d dst_nr=%d%s", obj, fun,
+		       dst ? dst->nr_vars : -1, fun < 1 ? "  <== DROP" : "");
 	if (fun < 1)
 		return dst;
 	if (!dst)
@@ -1106,6 +1114,14 @@ int delegate_numof(struct page *page)
 	// 垃圾回收
 	for (int i = 0; i < page->nr_vars; i += 3) {
 		if (heap_get_seq(page->values[i].i) != page->values[i+2].i) {
+			/* [D307] XSYS4_DG_GC_DBG=1：委托被 GC 掉时打一条。
+			 * 「按钮注册了委托却点不动」的一种可能是：注册成功，但
+			 * 目标对象槽被回收/复用后 seq 对不上，委托被这里静默删掉，
+			 * 于是 FunctionSet 的 `<MouseLClickEvent>` 变成 nr=0。 */
+			if (getenv("XSYS4_DG_GC_DBG"))
+				NOTICE("[dggc] drop obj=%d fun=%d seq=%d(now %d)",
+				       page->values[i].i, page->values[i+1].i,
+				       page->values[i+2].i, heap_get_seq(page->values[i].i));
 			for (int j = i+3; j < page->nr_vars; j += 3) {
 				page->values[j-3].i = page->values[j+0].i;
 				page->values[j-2].i = page->values[j+1].i;
