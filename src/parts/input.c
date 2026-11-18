@@ -299,6 +299,61 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 		}
 	}
 
+	/* [D333] 释放收尾**提前**到这里执行。
+	 *
+	 * 原因：按下被捕获后，抬起那一帧部件可能已经不可见（切场景 / 按钮动画 /
+	 * 活动卸载），而下面 `if (!is_hovered) return;` 与 `!click_eligible return;`
+	 * 两处都会把释放沿整个跳过，`click_down_parts` 于是永远变不成
+	 * `clicked_parts` —— 表现是「按下有反馈、松手没结果」。
+	 *
+	 * 实测（`t9` 的 `[cap]`）：第一次按下帧 `no=900000063 vis=1 hcons=0`
+	 * 完全可捕获，抬起帧同部件已 `vis=0`，点击就此丢失；这也是标题按钮
+	 * 「单次命中率 ~30%」的主因。
+	 *
+	 * 只对「自己就是被按下的那个部件」生效（`click_down_parts == parts->no`），
+	 * 其余部件调用它一律直接返回，所以放在最前面是安全的。 */
+	if (prev_clicking && !cur_clicking && click_down_parts == parts->no) {
+		clicked_parts = parts->no;
+		/* [D114] 每一次捕获到的点击都要排 CLICK/KEY_UP 消息，
+		 * 不只是可点击的部件。AIN 那边在部件消息管理器上注册了
+		 * 「整屏」鼠标委托（AFL_Parts_AddWholeMouseLClickEvent）；
+		 * SceneStack@Join 用其中一个去调 SceneStack@Exit，
+		 * 而那是 IsFinish 唯一的写入者。
+		 * 兰斯10 的开始画面三个部件都是 点击許可=0，
+		 * 用 clickable 门控消息就让 IsFinish 永远为 0：
+		 * WaitForClick 一直在 GetClickNumber 上退出，
+		 * Join 立刻又进等待，Scenes::RunTitle 于是从没真正开始。
+		 * clickable 仍控制按钮音效。 */
+		if (parts->clickable)
+			audio_play_sound(parts->on_click_sound);
+		/* [D115] 用 PARTS_MSG_MOUSE_CLICK（=5）发出去，AIN 的
+		 * CPartsMessageManager@CallDelegate 会落到 CallDelegateMouseDoubleClick
+		 * ——AIN 侧的 switch 编号与 xsystem4 枚举错位，左键点击是 4。
+		 * 实测 4 → CallDelegateMouseClick → SceneStack@RegisterEvent 的 lambda，
+		 * 这是 start screen 唯一能收到点击的入口。 */
+		parts_msg_push(parts, PARTS_MSG_MOUSE_CLICK_AIN,
+				"iii", cur_pos.x, cur_pos.y, click_keycode());
+		parts_msg_push(parts, PARTS_MSG_KEY_UP, "i", VK_LBUTTON);
+		/* [D115] 同一此点击还要以“全屏”身份入队一份：AIN 的
+		 * AFL_Parts_AddWholeMouseLClickEvent 系列把委托注册在 parts_no=0 的
+		 * 函数集上，只有 parts_no==0 的消息才会派发到它们。
+		 * SceneStack@RegisterEvent 注册左键 lambda → SceneStack@Exit →
+		 * IsFinish，是 start screen 推进到标题场景的另一条入口。 */
+		parts_msg_push(NULL, PARTS_MSG_MOUSE_CLICK_AIN,
+				"iii", cur_pos.x, cur_pos.y, click_keycode());
+		/* [D266 受控实验] 子部件被点时向父链冒泡一份 CLICK。
+		 *
+		 * 起因：`s97` 点战况面板的 `900000819 'ButtonClose'`（有委托 di=1860）
+		 * 时 `EndInput` 只记到 1 次、面板没关。System4 里按钮常由一个图标子部件
+		 * 作图、逻辑挂在**父按钮**上，若原版有向上冒泡而引擎没有，
+		 * 就会出现「点中了、消息发了、什么都没发生」。
+		 * 本开关把同一个 CLICK 再发给直接父部件，验证这条链路。 */
+		if (getenv("XSYS4_CLICK_BUBBLE") && parts->parent) {
+			parts_msg_push(parts->parent, PARTS_MSG_MOUSE_CLICK_AIN,
+					"iii", cur_pos.x, cur_pos.y, click_keycode());
+		}
+	}
+
 	if (!is_hovered) {
 		parts_set_state(parts, PARTS_STATE_DEFAULT);
 		return;
@@ -416,47 +471,6 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	 * parts::detail::WaitForClick 会一直轮询 GetClickNumber() > 0。
 	 * 上面只对 click_eligible 的部件设 click_down_parts，
 	 * 所以这里仍然遵守 pass_cursor / 从前到后的消费顺序。 */
-	if (prev_clicking && !cur_clicking && click_down_parts == parts->no) {
-		clicked_parts = parts->no;
-		/* [D114] 每一次捕获到的点击都要排 CLICK/KEY_UP 消息，
-		 * 不只是可点击的部件。AIN 那边在部件消息管理器上注册了
-		 * 「整屏」鼠标委托（AFL_Parts_AddWholeMouseLClickEvent）；
-		 * SceneStack@Join 用其中一个去调 SceneStack@Exit，
-		 * 而那是 IsFinish 唯一的写入者。
-		 * 兰斯10 的开始画面三个部件都是 点击許可=0，
-		 * 用 clickable 门控消息就让 IsFinish 永远为 0：
-		 * WaitForClick 一直在 GetClickNumber 上退出，
-		 * Join 立刻又进等待，Scenes::RunTitle 于是从没真正开始。
-		 * clickable 仍控制按钮音效。 */
-		if (parts->clickable)
-			audio_play_sound(parts->on_click_sound);
-		/* [D115] 用 PARTS_MSG_MOUSE_CLICK（=5）发出去，AIN 的
-		 * CPartsMessageManager@CallDelegate 会落到 CallDelegateMouseDoubleClick
-		 * ——AIN 侧的 switch 编号与 xsystem4 枚举错位，左键点击是 4。
-		 * 实测 4 → CallDelegateMouseClick → SceneStack@RegisterEvent 的 lambda，
-		 * 这是 start screen 唯一能收到点击的入口。 */
-		parts_msg_push(parts, PARTS_MSG_MOUSE_CLICK_AIN,
-				"iii", cur_pos.x, cur_pos.y, click_keycode());
-		parts_msg_push(parts, PARTS_MSG_KEY_UP, "i", VK_LBUTTON);
-		/* [D115] 同一此点击还要以“全屏”身份入队一份：AIN 的
-		 * AFL_Parts_AddWholeMouseLClickEvent 系列把委托注册在 parts_no=0 的
-		 * 函数集上，只有 parts_no==0 的消息才会派发到它们。
-		 * SceneStack@RegisterEvent 注册左键 lambda → SceneStack@Exit →
-		 * IsFinish，是 start screen 推进到标题场景的另一条入口。 */
-		parts_msg_push(NULL, PARTS_MSG_MOUSE_CLICK_AIN,
-				"iii", cur_pos.x, cur_pos.y, click_keycode());
-		/* [D266 受控实验] 子部件被点时向父链冒泡一份 CLICK。
-		 *
-		 * 起因：`s97` 点战况面板的 `900000819 'ButtonClose'`（有委托 di=1860）
-		 * 时 `EndInput` 只记到 1 次、面板没关。System4 里按钮常由一个图标子部件
-		 * 作图、逻辑挂在**父按钮**上，若原版有向上冒泡而引擎没有，
-		 * 就会出现「点中了、消息发了、什么都没发生」。
-		 * 本开关把同一个 CLICK 再发给直接父部件，验证这条链路。 */
-		if (getenv("XSYS4_CLICK_BUBBLE") && parts->parent) {
-			parts_msg_push(parts->parent, PARTS_MSG_MOUSE_CLICK_AIN,
-					"iii", cur_pos.x, cur_pos.y, click_keycode());
-		}
-	}
 }
 
 void PE_UpdateInputState(int passed_time);
