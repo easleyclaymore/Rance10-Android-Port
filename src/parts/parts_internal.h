@@ -534,6 +534,7 @@ struct parts *parts_get(int parts_no);
 void PE_DebugControllerHistogram(const char *tag);
 void PE_DebugDumpParts(const char *tag);
 void PE_debug_force_hide(void);
+void PE_debug_track_parts(void);
 struct parts_cg *parts_get_cg(struct parts *parts, int state);
 struct parts_text *parts_get_text(struct parts *parts, int state);
 struct parts_animation *parts_get_animation(struct parts *parts, int state);

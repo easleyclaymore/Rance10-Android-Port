@@ -1270,6 +1270,7 @@ static bool pe_dirty = false;
 
 void parts_render_update(void)
 {
+	PE_debug_track_parts();
 	PE_debug_force_hide();
 	/* [D244] 帧率探针。D92 的 hack（每帧把全场部件标脏）在 llvmpipe 下
 	 * 只有 3~8 fps，而战斗演出 / instantTimer / flat 推进全按墙钟走，

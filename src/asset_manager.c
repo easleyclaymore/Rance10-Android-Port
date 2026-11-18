@@ -132,10 +132,33 @@ struct cg *asset_cg_load(int id)
 struct cg *asset_cg_load_by_name(const char *name, int *id_out)
 {
 	struct archive_data *data = asset_get_by_name(ASSET_CG, name, id_out);
-	if (!data)
+	if (!data) {
+		/* [D292] CG 按名装载失败是「画不出立绘」的第二条路径：
+		 * AIN 侧 AlternativeImage 问过且命中（存在性为真），到这里却读不出，
+		 * 或者名字根本没进过 AIN 的确认函数（直接 SetCGName）。
+		 * 与 CGManager.IsExist 的 [cgmiss] 探针分开，两边都要看。 */
+		if (getenv("XSYS4_CG_MISS_DBG")) {
+			static int missed;
+			if (missed < 200) {
+				missed++;
+				NOTICE("[cgload] '%s' LOAD FAILED", display_sjis0(name));
+			}
+		}
 		return NULL;
+	}
+	/* [D292] 先取 size：data 归 release 后，archive_free_data 已把
+	 * 结构体放回对象池，再读 data->size 是 use-after-free。 */
+	size_t data_size = data->size;
 	struct cg *cg = cg_load_data(data);
 	archive_free_data(data);
+	if (!cg && getenv("XSYS4_CG_MISS_DBG")) {
+		static int bad;
+		if (bad < 100) {
+			bad++;
+			NOTICE("[cgload] '%s' DECODE FAILED (size=%zu)", display_sjis0(name),
+			       data_size);
+		}
+	}
 	return cg;
 }
 

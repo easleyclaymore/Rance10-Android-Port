@@ -528,18 +528,46 @@ static struct string *String_TrimEndChars(struct string **s, struct string *char
 	return make_string(b, (size_t)(e - b));
 }
 
-/* String.Split(ref string s, string sep, bool keep_empty) -> ref string[]：切分字符串
- * AIN 库30 的 f[35]，Parts@ResolveFlatName 用它切分 flat 资源路径。
- * 这里按字节切是安全的：兰斯10 用的是 ASCII 分隔符（"/"、"\\"），
- * 而负载和 VM 里其他字符串一样保持 GBK 字节。 */
-static struct page *String_Split(struct string **s, struct string *sep, bool keep_empty)
+/* String.Split(ref string self, string Separators, bool ContainSeparator) -> ref string[]
+ * AIN 库30 的 f[35]（声明见引擎侧 libs.x:1527）。
+ *
+ * [D292] 第三个参数**不是** keep_empty，而是 `ContainSeparator`：「每段是否
+ * 把分隔符本身带在段尾」。这条搞错的代价是整个游戏**所有立绘名字都少一个 `／`**：
+ *   `AdvStand::ResolveCgName` 无条件调 `AdvStand::ResolveSaintGirlMonsterCgName`，
+ *   后者 `Split(name, "／", true)` 后用 `S_PLUSA2` 把各段**不带分隔符**拼回去
+ *   （`code.x` fno 23183 / 23186）。只有 Split 保留分隔符，这个「切开再拼上」
+ *   才是恒等变换。丢掉分隔符就得到 `立／希露基本`，`Ａ＿ＣＧ存在确认` 回假，
+ *   `AlternativeImage::GetCg` 回退成 `立／？？？` 占位图 —— 这就是用户看到的
+ *   「立绘只有头发/整块黑」的真因（实测 [cgmiss] '立／希露基本' NOT FOUND）。
+ *
+ * 分隔符仍是**子串**语义（兰斯10 用的都是 "／" "\\" "\n" 这类，多字节也成立）。
+ * 两个方向都有真实调用点，所以这个标志**必须真的被用上**：
+ *   - contain=1：`AdvStand@ResolveSaintGirlMonsterCgName`（fno 23183）Split 后
+ *     逐段 `S_PLUSA2` 拼回 —— 要求「切开再拼」恒等，段尾必须带分隔符；
+ *   - contain=0：`AdvNamePlate@ResolveFaceCgName`（fno 23144）Split 后
+ *     `StringHelper::Join(list, "／")` 拼回 —— 段尾**不能**带分隔符，否则
+ *     拼出 `シス／名卡／希露／／基本`（实测未命中），真正存在的是
+ *     `シス／名卡／希露／基本`。
+ * 第一版只按 contain=1 实现、把标志 `(void)` 掉，等于把 contain=0 的调用方
+ * 全弄坏；`Parts@ResolveFlatName`（fno 29529，`Split(name,"/",0)` 后取 Last）
+ * 只是碰巧不受影响（末尾无分隔符）。 */
+static struct page *String_Split(struct string **s, struct string *sep, bool contain_separator)
 {
-	(void)keep_empty;
 	if (!s || !*s || !sep || !sep->text)
 		return NULL;
 	const char *text = (*s)->text;
-	const char *needle = sep->text;
-	size_t nlen = strlen(needle);
+	/* [D292] 分隔符字节必须先**拷走**再用。实测 contain=0/1 的调用点里，
+	 * 上一轮日志打出的 `sep=` 有时是输入串本身、有时是 `dce3 5605` 这类垃圾：
+	 * `sep` 指向的堆字符串在切分过程中被后续 make_string/heap_string_assign
+	 * 触碰（可写 COW 串的 buffer 复用），直接在循环里边用边引用不稳。
+	 * 拷一份既去掉这个隐患，也让探针能如实打印分隔符字节。 */
+	char sepbuf[64];
+	size_t nlen = strlen(sep->text);
+	if (nlen >= sizeof(sepbuf))
+		nlen = sizeof(sepbuf) - 1;
+	memcpy(sepbuf, sep->text, nlen);
+	sepbuf[nlen] = '\0';
+	const char *needle = sepbuf;
 
 	int n = 1;
 	if (nlen) {
@@ -556,13 +584,44 @@ static struct page *String_Split(struct string **s, struct string *sep, bool kee
 	const char *p = text;
 	while (i < n) {
 		const char *hit = nlen ? strstr(p, needle) : NULL;
-		size_t len = hit ? (size_t)(hit - start) : strlen(start);
+		/* ContainSeparator：段尾是否吞掉分隔符本身。两个方向都有调用方
+		 * 依赖（见函数头注释），不能只实现一边。 */
+		size_t len = hit ? (size_t)(hit - start) + (contain_separator ? nlen : 0)
+				 : strlen(start);
 		heap_string_assign(arr->values[i].i, make_string(start, len));
 		i++;
 		if (!hit)
 			break;
 		p = hit + nlen;
 		start = p;
+	}
+	if (getenv("XSYS4_SPLIT_DBG")) {
+		/* 打 fno 才能定位调用点：`display_sjis0` 只认 SJIS，而兰斯10 的
+		 * 字符串是 GBK，经它输出是乱码，判据改看 **fno + 恒等校验**。
+		 * 分隔符按 sep_len + 十六进制字节打（`%s` 会随堆复用打出垃圾）；
+		 * 再按 contain 语义做一次恒等校验：
+		 *   contain=1: Σlen == strlen(text)                     （段尾自带分隔符）
+		 *   contain=0: Σlen + (n-1)*nlen == strlen(text)        （分隔符被吃掉）
+		 * MISMATCH 就是切分语义/参数语义错了，别去别处找。 */
+		static int logged;
+		if (logged < 120) {
+			logged++;
+			size_t total = 0;
+			for (int k = 0; k < n; k++)
+				total += strlen(heap_get_string(arr->values[k].i)->text);
+			size_t expect = (size_t)strlen(text)
+			                - (contain_separator ? 0 : (size_t)(n - 1) * nlen);
+			char hexbuf[3 * 64];
+			char *hp = hexbuf;
+			for (size_t k = 0; k < nlen; k++)
+				hp += snprintf(hp, 4, "%02x", (unsigned char)sepbuf[k]);
+			NOTICE("[split] fno=%d contain=%d n=%d in=%zu out=%zu sep_len=%zu sep_hex='%s' %s",
+			       hll_current_fno(), contain_separator, n, strlen(text), total,
+			       nlen, hexbuf, total == expect ? "MATCH" : "MISMATCH");
+			for (int k = 0; k < n; k++)
+				NOTICE("[split]   [%d] '%s'", k,
+				       heap_get_string(arr->values[k].i)->text);
+		}
 	}
 	/* [HACK][D119-SPLIT] ret=t79 会落到 ffi.c 的默认分支，那里
 	 * 压的是 C 的原始返回值；而 AIN 是按堆槽寻址页的。所以这里先注册

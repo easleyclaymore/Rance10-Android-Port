@@ -44,6 +44,7 @@ tools/
 │   ├── rebuild_hll_table.py  重生成 HLL 表
 │   ├── hll_hotness.py        HLL 热力表 → 工作队列／台账（--todo / --by-lib / --emit）
 │   ├── callsite.py           某个 HLL 函数的调用点 + 上下文（L2 契约判据的入口）
+│   └── loghouse.sh          日志/存档卫生：>2 天压 gz、>30 天删、savedir >7 天删（默认只报告）
 │   └── patches/              历史补丁脚本（**只读参照，不要重跑**）
 │
 ├── check_core_deps.py   ← 门禁（xsys4 check 调）

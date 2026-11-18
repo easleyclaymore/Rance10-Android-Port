@@ -1608,6 +1608,78 @@ int PE_GetDelegateIndex(int parts_no)
 	return parts ? parts->delegate_index : -1;
 }
 
+/* [D317] 名字前缀比较：AIN 的 CG 名是 SJIS，`display_sjis0` 转 UTF-8 后再比。
+ * 注意它用**单缓冲**（每次调用会 free 上一次），所以只能立即用完就丢。 */
+static bool pe_cg_name_prefix(struct parts_cg *cg, const char *utf8_prefix)
+{
+	if (!cg || !cg->name || !cg->name->text || !*cg->name->text)
+		return false;
+	const char *u = display_sjis0(cg->name->text);
+	if (!u)
+		return false;
+	return strncmp(u, utf8_prefix, strlen(utf8_prefix)) == 0;
+}
+
+/* [D317] 背景换图时，收起同层的「情报地图」覆盖件。
+ *
+ * 事实链（`D316` 追踪 + `cgset` 调用栈）：
+ * ① `400/408/410`（`地图／世界地图基本`、`地图／赫尔曼基本`、`シス／地图框基本`）
+ *    由 AIN 的 `AdvInfoMapCg@InitParts` 创建，是**全屏**情报地图；
+ * ② 与之同时，`413`（`背景／宇航船／通道`）由 `AdvBackground@Create` 创建并显示；
+ * ③ 之后 16 段剧情里，AIN **对 400/408 一次 `SetShow` 都没调**，也不换图、
+ *    不释放、不迁层（`[track]` 只有创建那一条），只反复开关地图层（id=7）——
+ *    而这两件在 ADV 层（id=9），关不到；
+ * ④ `XSYS4_FORCE_HIDE=900000400,900000408` 一隐藏，画面立刻是走廊 + 对话框。
+ *
+ * 也就是说：**背景换到新的 `背景／*` 时，旧的全屏地图覆盖件必须收起**，而这条
+ * 收起在 AIN 侧不存在（它依赖「整层收起」，但两者被放进了同一层）。这里补上
+ * 这条收敛：只在「根级 `背景／*` 部件换图」时触发，只动**同层、可见、
+ * `地图／*` 前缀**的部件，别的什么都不碰。
+ *
+ * `XSYS4_BG_SWEEP_MAP=0` 关闭。 */
+static void pe_sweep_map_overlay(struct parts *bg)
+{
+	static int on = -1;
+	if (on < 0) {
+		const char *e = getenv("XSYS4_BG_SWEEP_MAP");
+		on = !(e && strcmp(e, "0") == 0);
+	}
+	if (!on || !bg || bg->parent)
+		return;
+	if (!parts_state_valid(0) ||
+	    bg->states[0].type != PARTS_CG ||
+	    !pe_cg_name_prefix(&bg->states[0].cg, "背景"))
+		return;
+	/* 收起的是命中部件的**根**，不是它自己。
+	 *
+	 * 实测（`bgT`）：只把 `地图／*` 那 4 个置 0 后画面**仍是地图** —— 地图图像
+	 * 挂在根部件 `900000390` 上（`地图／ベース`，CG 按**序号**设置，`cg.name`
+	 * 为空，名字前缀匹配不到它）。同一层里有两个独立根：
+	 * `391`(z=1500) → 任务信息窗（393..399），`390`(z=4200) → 地图组
+	 * （400/401/…/410/411）。所以按「根」收起，既覆盖到无名的基板，也
+	 * 一点不碰信息窗。 */
+	int hidden = 0;
+	struct parts *p;
+	TAILQ_FOREACH(p, &parts_list, parts_list_entry) {
+		if (p == bg || p->controller_no != bg->controller_no)
+			continue;
+		if (!p->local.show || p->states[0].type != PARTS_CG)
+			continue;
+		if (!pe_cg_name_prefix(&p->states[0].cg, "地图"))
+			continue;
+		struct parts *root = p;
+		while (root->parent)
+			root = root->parent;
+		if (root == bg || !root->local.show)
+			continue;
+		parts_set_show(root, false);
+		hidden++;
+	}
+	if (hidden && getenv("XSYS4_CTRL_DBG"))
+		NOTICE("[bg] 背景换图 -> 收起同层地图覆盖件 %d 个（bg=%d）",
+		       hidden, bg->no);
+}
+
 bool PE_SetPartsCG(int parts_no, struct string *cg_name, int sprite_deform, int state)
 {
 	/* [D315] 全量探针：回答「AIN 到底有没有给某个部件换过图」。
@@ -1622,6 +1694,11 @@ bool PE_SetPartsCG(int parts_no, struct string *cg_name, int sprite_deform, int 
 			NOTICE("[cgset] no=%d st=%d name='%s'", parts_no, state,
 			       cg_name && cg_name->text ? display_sjis0(cg_name->text)
 			                                : "(null)");
+		/* [D316] 背景组（390..430）额外打 AIN 调用栈：要回答「切背景那一步
+		 * 是哪个 AIN 函数做的、它前后还调了什么」。只打这一段，否则 213 条
+		 * 每条一栈会把日志冲爆。 */
+		if (parts_no >= 900000390 && parts_no <= 900000430)
+			vm_stack_trace();
 	}
 	if (!parts_state_valid(--state))
 		return false;
@@ -1635,7 +1712,10 @@ bool PE_SetPartsCG(int parts_no, struct string *cg_name, int sprite_deform, int 
 	}
 
 	struct parts_cg *cg = parts_get_cg(parts, state);
-	return parts_cg_set(parts, cg, cg_name);
+	bool ok = parts_cg_set(parts, cg, cg_name);
+	if (ok)
+		pe_sweep_map_overlay(parts);
+	return ok;
 }
 
 /* AIN PartsEngine：bool SetPartsCGThread(int Number, string CGName, int State)。
@@ -3171,6 +3251,49 @@ void PE_DebugControllerHistogram(const char *tag)
  * （`(0,608) 512x91`），画面上却一个像素都没有。原格式只有 w/h，
  * "有尺寸但没画"的三种原因（alpha=0 / 内容类型不是 CG / 纹理没加载）
  * 一个都区分不出来。 */
+/* [D316] 部件归属追踪：`XSYS4_TRACK_PARTS=900000400,900000408`。
+ *
+ * 只在 (ctrl / local.show / global.show / z / parent) **发生变化**时打一行。
+ * `[BG-LAYER]` 需要回答的是「这个部件一生中归属变了哪些次」，而 `setshow`
+ * 探针只覆盖 show、`pending-move` 只覆盖迁层 —— 两处都可能漏掉「创建时就
+ * 在某层」这一事实。这个探针是唯一能给出完整变迁史的。 */
+void PE_debug_track_parts(void)
+{
+	static int nos[16], n, inited;
+	static struct { int ctrl, lshow, gshow, z, parent; } last[16];
+	if (!inited) {
+		inited = 1;
+		const char *e = getenv("XSYS4_TRACK_PARTS");
+		if (e && *e) {
+			const char *q = e;
+			while (*q && n < 16) {
+				nos[n++] = atoi(q);
+				while (*q && *q != ',') q++;
+				if (*q == ',') q++;
+			}
+		}
+		for (int i = 0; i < n; i++)
+			last[i].ctrl = -999;
+	}
+	for (int i = 0; i < n; i++) {
+		struct parts *p = parts_try_get(nos[i]);
+		int ctrl = p ? p->controller_no : -1;
+		int lshow = p ? p->local.show : -1;
+		int gshow = p ? p->global.show : -1;
+		int z = p ? p->global.z : 0;
+		int par = (p && p->parent) ? p->parent->no : 0;
+		if (ctrl == last[i].ctrl && lshow == last[i].lshow &&
+		    gshow == last[i].gshow && z == last[i].z && par == last[i].parent)
+			continue;
+		NOTICE("[track] no=%d ctrl=%d(id=%d) lshow=%d gshow=%d z=%d parent=%d",
+		       nos[i], ctrl,
+		       (ctrl >= 0 && ctrl < ctrl_stack.nr_controllers) ? ctrl_stack.id[ctrl] : -1,
+		       lshow, gshow, z, par);
+		last[i].ctrl = ctrl; last[i].lshow = lshow; last[i].gshow = gshow;
+		last[i].z = z; last[i].parent = par;
+	}
+}
+
 /* [D314] `XSYS4_FORCE_HIDE=900000400,900000408`：每帧强制隐藏这些部件。
  *
  * 唯一用途是**判定性实验**：把「地图 CG 盖住新背景」缩成一句
@@ -3367,6 +3490,28 @@ static int ctrl_pending_n = 0;
 static int ctrl_pending_begin_active = -1;   /* Load 开始时快照的 active */
 static int ctrl_pending_on = -1;
 
+/* [D316] 层身份口径 A/B：`XSYS4_LAYER_IDX=1` 用**栈下标**（上游语义），
+ * 默认用**稳定 id**（D129）。
+ *
+ * 为什么现在要试：`[BG-LAYER]` 的追踪证明 400/408（世界地图基底）创建在
+ * `ctrl=4`(id=9)，而 AIN 收起的是 `ctrl=3`(id=7)。也就是说 AIN 创建它们时
+ * 认为「当前层就是地图层」，而我们给它的当前层是 ADV 层。
+ *
+ * 上游 `PE_AddController` 返回的是**栈下标**（`return no`），`SetActive` /
+ * `Remove` 也都按下标解释、越界时回退到 active；D129 把返回值改成稳定 id，
+ * 之后 AIN 存的值、`GetActiveLayer` 的返回值都跟着换了口径。两条口径各自
+ * 自洽，但 AIN 侧某些地方（例如它自己维护的层列表）可能只对其中一种成立。
+ * 这个开关让两种口径都能跑，用画面做判据。 */
+static bool layer_idx_mode(void)
+{
+	static int on = -1;
+	if (on < 0) {
+		const char *e = getenv("XSYS4_LAYER_IDX");
+		on = (e && strcmp(e, "0") != 0);
+	}
+	return on;
+}
+
 static bool ctrl_pending_enabled(void)
 {
 	if (ctrl_pending_on < 0) {
@@ -3443,6 +3588,18 @@ void PE_SetActiveController(int no)
 	 * `0..4` —— 用下标判定会 6739/6741 全部越界丢弃。与 `PE_get_active_controller`
 	 * 对称（它 `return PE_get_controller_id(active)`，D129 起就是 id），
 	 * 所以这里必须按 id 反查下标。 */
+	if (layer_idx_mode()) {
+		/* 上游语义：参数就是栈下标。 */
+		if (no >= 0 && no < ctrl_stack.nr_controllers) {
+			if (getenv("XSYS4_CTRL_DBG") && no != ctrl_stack.active)
+				NOTICE("[ctrl] SetActive idx=%d (直取)", no);
+			ctrl_stack.active = no;
+		} else if (getenv("XSYS4_CTRL_DBG")) {
+			NOTICE("[ctrl] SetActive idx=%d 越界（0..%d），忽略", no,
+			       ctrl_stack.nr_controllers - 1);
+		}
+		return;
+	}
 	for (int i = 0; i < ctrl_stack.nr_controllers; i++) {
 		if (ctrl_stack.id[i] == no) {
 			if (getenv("XSYS4_CTRL_DBG") && i != ctrl_stack.active)
@@ -3454,6 +3611,25 @@ void PE_SetActiveController(int no)
 	if (getenv("XSYS4_CTRL_DBG"))
 		NOTICE("[ctrl] SetActive 未知 id=%d（现有 %d 层），忽略",
 		       no, ctrl_stack.nr_controllers);
+}
+
+/* [D316] 建层前的活动层快照，供 `EraseLayer` 决定「活动层回到哪」。
+ *
+ * 上游 `PE_RemoveController` 弹出后一律 `active = nr-1`（回到栈顶）。但
+ * `[BG-LAYER]` 的追踪显示：AIN 在 `EraseLayer(10)` 之后创建「情报地图」部件时，
+ * 期望活动层是**地图层(7)**，而栈顶已经是我们这边的 ADV 层(9) —— 两边从此错开，
+ * 地图件落进 ADV 层，AIN 之后只开关地图层，永远收不掉它。
+ *
+ * `XSYS4_CTRL_ACTIVE_RESTORE=1` 改成「回到建层前的那一层」做 A/B。 */
+static int ctrl_restore[PARTS_CONTROLLER_STACK_MAX];
+static bool ctrl_active_restore(void)
+{
+	static int on = -1;
+	if (on < 0) {
+		const char *e = getenv("XSYS4_CTRL_ACTIVE_RESTORE");
+		on = (e && strcmp(e, "0") != 0);
+	}
+	return on;
 }
 
 int PE_AddController(int index)
@@ -3481,6 +3657,7 @@ int PE_AddController(int index)
 		VM_ERROR("controller stack overflow");
 
 	int no = ctrl_stack.nr_controllers++;
+	ctrl_restore[no] = ctrl_stack.active;
 	ctrl_stack.opaque[no] = false;
 	ctrl_stack.show[no] = true;
 	/* [D129] 返回稳定 ID，不是栈下标。AIN 会把它存进
@@ -3517,7 +3694,8 @@ int PE_AddController(int index)
 		NOTICE("[ctrl] add idx=%d id=%d", no, ctrl_stack.id[no]);
 		PE_DebugControllerHistogram("add-controller");
 	}
-	return ctrl_stack.id[no];
+	/* [D316] 上游返回栈下标；D129 返回稳定 id。见 layer_idx_mode()。 */
+	return layer_idx_mode() ? no : ctrl_stack.id[no];
 }
 
 // 从栈上移除位置 `index` 处的控制器，释放属于它的所有
@@ -3538,8 +3716,14 @@ void PE_RemoveController(struct page **erase_number_list, int index)
 	if (index == -1) {
 		ctrl_no = ctrl_stack.active;
 	} else {
-		/* [D129] AIN 传的是 AddLayer 返回的稳定 ID，不是栈下标。 */
-		ctrl_no = PE_get_controller_index(index);
+		/* [D129] AIN 传的是 AddLayer 返回的稳定 ID，不是栈下标。
+		 * [D316] `XSYS4_LAYER_IDX=1` 时改按上游语义：参数是下标，
+		 * 越界回退到 active（上游 `PE_RemoveController` 就是这么写的 ——
+		 * `controller_id` 不合法时用 `ctrl_stack.active`）。 */
+		if (layer_idx_mode())
+			ctrl_no = (index >= 0 && index < nr) ? index : ctrl_stack.active;
+		else
+			ctrl_no = PE_get_controller_index(index);
 		if (ctrl_no < 0 || ctrl_no == PARTS_CONTROLLER_SYSTEM_OVERLAY ||
 		    ctrl_no >= nr) {
 			/* 已经弹过的层再 Erase 一次是正常路径（SceneStack@1 会重复调），
@@ -3576,6 +3760,7 @@ void PE_RemoveController(struct page **erase_number_list, int index)
 		ctrl_stack.show[i] = ctrl_stack.show[i + 1];
 		ctrl_stack.opaque[i] = ctrl_stack.opaque[i + 1];
 		ctrl_stack.id[i] = ctrl_stack.id[i + 1];
+		ctrl_restore[i] = ctrl_restore[i + 1];
 	}
 	ctrl_stack.show[ctrl_stack.nr_controllers] = true;
 	ctrl_stack.opaque[ctrl_stack.nr_controllers] = false;
@@ -3590,6 +3775,15 @@ void PE_RemoveController(struct page **erase_number_list, int index)
 
 	if (ctrl_stack.nr_controllers == 0) {
 		PE_AddController(-1);
+	} else if (ctrl_active_restore()) {
+		/* [D316] 回到「建这一层之前活动的那一层」。越界就退回栈顶。 */
+		int r = ctrl_restore[ctrl_no];
+		if (r < 0 || r >= ctrl_stack.nr_controllers)
+			r = ctrl_stack.nr_controllers - 1;
+		if (getenv("XSYS4_CTRL_DBG"))
+			NOTICE("[ctrl] Erase 后恢复 active=%d（栈顶 %d）",
+			       r, ctrl_stack.nr_controllers - 1);
+		ctrl_stack.active = r;
 	} else {
 		ctrl_stack.active = ctrl_stack.nr_controllers - 1;
 	}
@@ -3627,7 +3821,9 @@ int PE_get_active_controller(void)
 			NOTICE("[ctrl] #%d active=%d nctrl=%d", n, a, c);
 		la = a; ln = c;
 	}
-	return PE_get_controller_id(ctrl_stack.active);
+	/* [D316] 与 AddController 的返回口径必须一致，否则 AIN 存的值对不上。 */
+	return layer_idx_mode() ? ctrl_stack.active
+	                        : PE_get_controller_id(ctrl_stack.active);
 }
 
 int PE_get_system_controller(void)

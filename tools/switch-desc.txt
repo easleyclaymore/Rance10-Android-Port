@@ -31,6 +31,10 @@ XSYS4_PARENT_REAL	`=0` 把 `Parts_GetParentPartsNumber` 退回恒 0 桩（D80/D8
 XSYS4_HLL_HOT	[诊断] 退出时打印全库 HLL 调用热力表（次数倒序，含是否有 C 实现）。`tools/hll-hotness.py` 吃它排工作队列
 XSYS4_FORCE_MOVE	`=900000400:3`：每帧把部件强制改到指定层（号:层号，逗号分隔）。**判定性实验用**，验证「部件创建时落错了层」（D315）
 XSYS4_CGSET_DBG	[诊断] 打印每次 `SetPartsCG`（部件号 / 状态 / 图名），回答「AIN 到底给谁换过图」
+XSYS4_LAYER_IDX	`=1` 层身份改用**栈下标**（上游语义）；默认用稳定 id（D129）。两种口径的 AddController 返回值 / SetActive / Remove / GetActive 一起切（D316）
+XSYS4_TRACK_PARTS	`=900000400,900000408` 只在 (层 / local.show / global.show / z / 父) 变化时打印，给出部件的完整归属变迁史（D316）
+XSYS4_BG_SWEEP_MAP	`=0` 关闭「根级 `背景／*` 换图时收起同层 `地图／*` 覆盖件的根」。默认开（D317，[BG-LAYER] 的收敛）
+XSYS4_CTRL_ACTIVE_RESTORE	`=1` `EraseLayer` 后把活动层恢复到**建层前那一层**；默认回栈顶（上游语义）。D316 的 A/B，实测不改变 [BG-LAYER] 结果
 XSYS4_FORCE_HIDE	`=900000400,900000408`：每帧强制隐藏这些部件。**判定性实验用**，不是修复手段。用来把「背景不切换」缩成「隐藏这几个号画面是否就对」（D314）
 XSYS4_BACKSCENE_DBG	[诊断] 打印 SetWantSaveBackScene / SaveBackScene / LoadBackScene 的时机与规模（背景场景快照链）
 XSYS4_BACKSCENE_WANT	[诊断] `=1` 让 `IsWantSaveBackScene` 返回真实标记（默认仍恒 false）。实测对开场剧情背景无影响
