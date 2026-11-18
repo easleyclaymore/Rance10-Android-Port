@@ -174,3 +174,64 @@ SDL_Lock/UnlockAudioDevice    →  SDL_LockAudioStream / SDL_UnlockAudioStream�
 
 至于 `[TEXTBUTTON-CLICK]`：上游代码里 `TextButton` / `MouseLClick` / `CallEvent` **一个引用都没有**
 （`git grep` 全空），所以这条卡点**不能指望上游**，只能我们自己查。
+
+---
+
+## 决策三：SDL3 迁移已实施到「能起窗」（分支 `sdl3`）
+
+**决定依据（2026-11-18 用户确认）**：上游明确表示**只维护现有项目修 bug**，
+不会往兰斯10 及之后的作品方向发展，也不提供技术支持。于是「跟上游一致」不再是
+保留 SDL2 的理由 —— 这条前提撤销后，迁移 SDL3 从「不划算」变成「划算」。
+
+**隔离方式**：独立 worktree `../xsystem4-sdl3`（分支 `sdl3`），`main` / `rance10-native` 全程未动。
+
+### 实测进度
+
+| 阶段 | 结果 |
+|---|---|
+| `#include <SDL3/...>` + `dependency('sdl3')` | **179 错误 / 40 目标**（11 秒报完） |
+| 打开 `SDL_ENABLE_OLD_NAMES`（SDL3 自带旧名兼容层） | **99 错误**（mutex 类型一类全消失） |
+| 逐类修完 + 音频改 stream 模型 | **0 错误，链接通过（6.2 MB 二进制）** |
+| 在隔离 Xvfb 里启动 | **成功起窗**，标题画面（字体/立绘/按钮/背景）与 SDL2 版**目视无差异** |
+| 输入等价性 | 同一条跑测序列下，SDL2 与 SDL3 **收到的鼠标事件逐条一致**（`[mouse]` 各 14 条，坐标分布相同） |
+
+### 改了哪 12 个文件（`git show --stat`）
+
+`meson.build`（`sdl3` + `-DSDL_ENABLE_OLD_NAMES` + `-include src/sdl3_compat.h`）、
+`src/sdl3_compat.h`（新增 21 行：补 `math.h`/`stdlib.h`/`ctype.h`）、
+`src/input.c`（92 行改动：`keysym` 拍平、`state`→`down`、窗口事件改区间、
+触摸/手柄成员改名、文本输入包一层）、`src/video.c`（30 行：像素格式 details、
+`CreateWindow` 4 参、`FULLSCREEN`、`GetWindowSizeInPixels`、`MapRGBA` 加 palette）、
+`src/audio_mixer.c`（122 行：**唯一的实质重写**，见下）、
+`include/msgqueue.h` + `src/msgqueue.c`（cond → condition）、
+`include/gfx/private.h`、`include/input.h`、`src/icon.c`、`src/hll/InputString.c`、`src/debugger_dap.c`。
+
+### 音频为什么是唯一「实质」改动（D330）
+
+SDL3 删除了回调式音频：`SDL_LockAudioDevice` / `SDL_UnlockAudioDevice` /
+`SDL_PauseAudioDevice(dev, 0)` / `SDL_AudioSpec.callback` / `.samples` 全部消失。
+映射成 SDL3 的 stream 模型（保持混音线程模型不变，把风险压到最小）：
+
+| SDL2 | SDL3 |
+|---|---|
+| `SDL_OpenAudioDevice(NULL,0,&want,&have,0)` | `SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,&want,cb,NULL)` |
+| `SDL_PauseAudioDevice(dev, 0)` | `SDL_ResumeAudioStreamDevice(stream)` |
+| `SDL_LockAudioDevice` / `UnlockAudioDevice` | `SDL_LockAudioStream` / `UnlockAudioStream`（封装成 `AUDIO_LOCK/UNLOCK`，无设备时空转） |
+| 回调 `(userdata, out, len)` 往缓冲写 | 回调 `(userdata, stream, additional_amount, total_amount)` 里 `SDL_PutAudioStreamData` 推流 |
+
+**未验收**：本机无音频设备，只验证了「不开音频不崩」与「编译链接通过」。
+音色/时序必须在有声环境里听一遍（尤其演出节奏与战斗音效），这是合并前的前置条件。
+
+### 迁移中丢掉的唯一行为（已记录）
+
+`SDL_MULTIGESTURE`（两指位移手势）在 SDL3 被删除，替代品 PINCH 语义是**缩放**不是平移，
+无法直接换算滚轮。影响面只有「Android 上两指滑动滚列表」（滚轮/拖动仍在）。
+补回来需要按 `SDL_EVENT_PINCH_UPDATE` 的 scale 变化重新设计 `SCROLL_GESTURE_SENSITIVITY`。
+
+### 待办（合并前必须做完）
+
+1. **有声环境听音**：开场演出 + 战斗音效，确认没有断续/爆音/时序漂移；
+2. **Android 打包**：`SDL_AndroidSendMessage`（`SystemService.c:336`，仅 1 处）在 SDL3 不存在，需换 JNI 或 `SDL_OpenURL`；
+3. **ADV 端到端**：当前 SDL2/SDL3 两版在同一条过期配方上都到不了 `MessageWindow02`，
+   需先修配方再比对（这不是 SDL3 的回归，两版行为一致）；
+4. 合入策略：等 1–3 做完，把 `sdl3` 压成 2–3 个提交（rename / 音频 / 平台）合进 `rance10-native`。
