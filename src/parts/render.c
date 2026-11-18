@@ -186,8 +186,8 @@ static void parts_render_text(struct parts *parts, struct parts_text *t)
 	text_render_probe(parts, t);
 	if (uc_skip_dup_text(parts, t))
 		return;
-	int x = parts->global.pos.x + t->common.origin_offset.x;
-	int y = parts->global.pos.y + t->common.origin_offset.y;
+	int x = parts->global.pos.x + t->common.origin_offset.x + t->area_x;
+	int y = parts->global.pos.y + t->common.origin_offset.y + t->area_y;
 	for (int i = 0; i < t->nr_lines; i++) {
 		struct parts_text_line *line = &t->lines[i];
 		for (int j = 0; j < line->nr_chars; j++) {
@@ -202,7 +202,7 @@ static void parts_render_text(struct parts *parts, struct parts_text *t)
 			gfx_render_texture(&ch->t, &pr);
 			x += ch->advance;
 		}
-		x = parts->global.pos.x + t->common.origin_offset.x;
+		x = parts->global.pos.x + t->common.origin_offset.x + t->area_x;
 		y += line->height + t->line_space;
 	}
 }
@@ -489,6 +489,29 @@ static void parts_render_cg(struct parts *parts, struct parts_common *common){
 	Rectangle r = common->surface_area;
 	if (!r.w && !r.h) {
 		r = (Rectangle) { 0, 0, common->texture.w, common->texture.h };
+	}
+
+	/* [D292] 立绘只画出一部分（用户实测「希露只有头发出现」）的探针。
+	 * 判据不是“画没画”，而是“画的区域和纹理能不能对上”：
+	 *   - surface_area 只箦上一个维度（w=0,h>0）时，上面的 `!r.w && !r.h`
+	 *     两个都为 0 才回退，于是 r={0,0,0,h} → 采样出一根竖条；
+	 *   - surface_area 超出纹理（例如拿 1920x1080 去采样一张小图）→
+	 *     超出的部分采样到钳制的边缘像素，表现为整块色带。
+	 * 只对面积够大的部件打（立绘 1920x1080 量级），默认关。 */
+	if (getenv("XSYS4_CG_AREA_DBG") && common->texture.handle &&
+	    (common->texture.w >= 400 || common->texture.h >= 400)) {
+		static int area_logged;
+		if (area_logged < 80) {
+			area_logged++;
+			NOTICE("[cgarea] no=%d tex=%dx%d w/h=%dx%d area=(%d,%d %dx%d) "
+			       "r=(%d,%d %dx%d)%s",
+			       parts->no, common->texture.w, common->texture.h,
+			       common->w, common->h,
+			       common->surface_area.x, common->surface_area.y,
+			       common->surface_area.w, common->surface_area.h,
+			       r.x, r.y, r.w, r.h,
+			       (r.w <= 0 || r.h <= 0) ? "  <<< DEGENERATE" : "");
+		}
 	}
 
 	vec3 add_color = {

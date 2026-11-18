@@ -1212,6 +1212,7 @@ static int build_part(struct activity_part *part, int parent_no)
 				part->font_color[1], part->font_color[2], 1);
 		PE_SetTextCharSpace(part->parts_no, part->char_space, 1);
 		PE_SetTextLineSpace(part->parts_no, part->line_space, 1);
+
 		if (part->cg_name && *part->cg_name) {
 			int frame_no = PE_GetFreeNumber();
 			/* 顺序：先定原点模式/位置，再 SetPartsCG —— 后者的
@@ -1241,6 +1242,16 @@ static int build_part(struct activity_part *part, int parent_no)
 			}
 			ACT_DEBUG("[act] msgwin frame no=%d cg='%s' set=%d",
 				  frame_no, part->cg_name, ok);
+			/* [D294] `文本エリア = (x, y)` 是相对**消息窗口左上角**的，
+			 * 而文本件的 pos 落在底边（y=1080）且自身高度为 0
+			 * （`parts_render_text` 只拿 pos+origin_offset 起画，
+			 * 所以正文整个跑到屏幕外）。这里换算成相对文本件的偏移：
+			 * area_y = y - 底板高度。 */
+			if (ok && part->text_area[1] > 0) {
+				int fh = PE_GetPartsHeight(frame_no, 1);
+				PE_SetTextArea(part->parts_no, part->text_area[0],
+						part->text_area[1] - fh);
+			}
 			free_string(cg);
 		}
 	}

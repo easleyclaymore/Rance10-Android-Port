@@ -128,6 +128,12 @@ struct parts_text {
 	int line_space;
 	struct { float x; int y; } cursor;
 	struct text_style ts;
+	/* [D294] EX `文本エリア = (x, y, 0, 0)` 的文本起始偏移。
+	 * 消息窗口的文本件自身高度是 0，`parts_render_text()` 原来只用
+	 * `global.pos + origin_offset` 起画 —— 于是正文从 y=1080（屏幕底边）
+	 * 开始画，只露最底一行（`s88` 的「希露：肯来囚的日记。」贴在最底部）。
+	 * EX 明明给了 (337,177) 的排版原点，却从没人用过。 */
+	int area_x, area_y;
 };
 
 struct parts_animation {

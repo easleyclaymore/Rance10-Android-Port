@@ -361,6 +361,8 @@ bool PE_GoFramePartsFlat(int parts_no, int frame_no, int state);
 int PE_GetPartsFlatEndFrame(int parts_no, int state);
 
 // layoutbox.c
+/* [D294] EX `文本エリア` 的文本排版原点（相对部件位置）。 */
+void PE_SetTextArea(int parts_no, int x, int y);
 void PE_SetLayoutBoxLayoutType(int parts_no, int type);
 int PE_GetLayoutBoxLayoutType(int parts_no);
 void PE_SetLayoutBoxReturn(int parts_no, bool return_flag, int return_size);

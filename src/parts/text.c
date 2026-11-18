@@ -371,6 +371,18 @@ int PE_GetTextLineSpace(int parts_no, int state)
 	return parts->states[state].text.line_space;
 }
 
+/* [D294] 文本排版原点，来自 EX 的 `文本エリア = (x, y, 0, 0)`。 */
+void PE_SetTextArea(int parts_no, int x, int y)
+{
+	struct parts *parts = parts_get(parts_no);
+	if (parts->states[parts->state].type != PARTS_TEXT)
+		return;
+	struct parts_text *t = &parts->states[parts->state].text;
+	t->area_x = x;
+	t->area_y = y;
+	parts_component_dirty(parts);
+}
+
 bool PE_SetTextCharSpace(int parts_no, int char_space, int state)
 {
 	if (!parts_state_valid(--state))
