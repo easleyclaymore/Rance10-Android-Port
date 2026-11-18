@@ -169,10 +169,11 @@ static void text_render_probe(struct parts *parts, struct parts_text *t)
 	}
 	if (seen[slot].n++ >= 3)
 		return;
-	NOTICE("[txtr] no=%d size=%d face=%d bold=%.1f pos=(%d,%d) off=(%d,%d) area=(%d,%d) start=(%d,%d) "
+	NOTICE("[txtr] no=%d size=%d face=%d spz=%d/%d pos=(%d,%d) off=(%d,%d) area=(%d,%d) start=(%d,%d) "
 	       "wh=%dx%d lines=%d "
 	       "state=%d type=%d show=%d a=%d vis=%d mw=%d mwshow=%d uc=-",
-	       parts->no, (int)t->ts.size, (int)t->ts.face, t->ts.bold_width,
+	       parts->no, (int)t->ts.size, (int)t->ts.face,
+	       parts->sp.z, parts->sp.z2,
 	       parts->global.pos.x, parts->global.pos.y,
 	       t->common.origin_offset.x, t->common.origin_offset.y,
 	       t->area_x, t->area_y,
