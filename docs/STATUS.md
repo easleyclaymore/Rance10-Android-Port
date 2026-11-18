@@ -10,7 +10,7 @@
 
 | | |
 |---|---|
-| **阶段** | 第一章 ADV **画面完全正确**（背景随剧情切换已修）；流程仍卡在开场回想对话（`[TEXTBUTTON-CLICK]`）。战斗未进入 |
+| **阶段** | 第一章 ADV **画面完全正确**（D317）；剧情可连续推进到第 37 句并进入开场`ReplayMemoDialog`（回想对话）。卡在该对话框的「過後查看」按钮（`[TEXTBUTTON-CLICK]`）。战斗未进入 |
 | **最大卡点** | `[TEXTBUTTON-CLICK]` 回想对话的「過後查看」点不动（`[BG-LAYER]` 已于 D317 收敛，画面验收通过：走廊背景 + 立绘 + 名牌 + 对话框）。战斗仍未进入 |
 | **本轮做过的** | ① 用 `XSYS4_HLL_HOT` 量化了「HLL 覆盖率」的真实含义（见 `[HLL-QUEUE]`）：源码 1189 个缺口里 **1188 个在本章零调用**，851 个所在库连启动绑定都不出现；补上一直缺失的 `tools/offline/hll_hotness.py`，把工作队列改成按运行期调用次数排序；② 按该队列实现 `Parts_GetParentPartsNumber`（真实父号）与 `SetActiveController`（稳定 id → 栈下标），并删除 1 处同名重复登记（覆盖率虚增）；③ 新增开关 `XSYS4_HLL_HOT` / `XSYS4_PARENT_REAL` / `XSYS4_ACTIVE_CTRL_SET` |
 | **判据** | 画面一律用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S，且 alt+s 前空 ≥1.5s，否则会丢帧）；层/归属看 `[ctrl] SetActive id=N -> idx=M` 与 `[ctrl] layer … parts:` 清单；HLL 进展看 `python3 tools/offline/hll_hotness.py --todo ../logs/live_<tag>.log` 的输出是否为 0 |
@@ -207,7 +207,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **218**（未标注 31）｜ HLL 源码口径 **3301 / 4494（73.5%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 102 / 36** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **219**（未标注 31）｜ HLL 源码口径 **3301 / 4494（73.5%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 103 / 36** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
 <!-- STATS:END -->
 
 最常用的：

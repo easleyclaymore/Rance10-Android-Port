@@ -415,7 +415,12 @@ if [ -n "${RANCE10_LIVE_SEQ:-}" ]; then
         esac
         # [D182] 自动推进的回归跑测不需要逐步截图：ffmpeg x11grab 在 GL 繁忙时
         # 每次要等满 6 秒超时，5 步就是 30 秒。要逐帧对照时设 RANCE10_STEP_SHOT=1。
-        if [ "${RANCE10_STEP_SHOT:-0}" = "1" ] || [ -z "${XSYS4_AUTO_MAP:-}" ]; then
+        # [D319] `RANCE10_NO_STEP_SHOT=1` 关掉逐步截图。
+        # 起因：x11grab 在 GL 繁忙时单次要等满 6 秒超时，40 步的连点序列光截图
+        # 就能吃掉 4 分钟，把「跑到战斗」这件事拖成十几分钟。上面 D182 已经为
+        # AUTO_MAP 路径做过同样的取舍，这里补一个对普通路径的闸。
+        if [ "${RANCE10_NO_STEP_SHOT:-0}" != "1" ] && \
+           { [ "${RANCE10_STEP_SHOT:-0}" = "1" ] || [ -z "${XSYS4_AUTO_MAP:-}" ]; }; then
             shot "$(printf '%s_%02d_%s.png' "${SHOT%.png}" "$IDX" "$act")"
         fi
     done
