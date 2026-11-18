@@ -1610,6 +1610,19 @@ int PE_GetDelegateIndex(int parts_no)
 
 bool PE_SetPartsCG(int parts_no, struct string *cg_name, int sprite_deform, int state)
 {
+	/* [D315] 全量探针：回答「AIN 到底有没有给某个部件换过图」。
+	 *
+	 * [BG-LAYER] 已确认：`FORCE_HIDE=900000400,900000408` 一隐藏画面就对，
+	 * 说明这两张地图基底 CG 从未被 AIN 收起。剩下的问题是 —— AIN 是**想换图
+	 * 但没换成**，还是**根本没碰过它们**。前者查 `parts_cg_set` 的前置条件，
+	 * 后者要回到活动卸载路径。这两条路的修法完全不同，不能靠猜。 */
+	if (getenv("XSYS4_CGSET_DBG")) {
+		static int n;
+		if (n++ < 600)
+			NOTICE("[cgset] no=%d st=%d name='%s'", parts_no, state,
+			       cg_name && cg_name->text ? display_sjis0(cg_name->text)
+			                                : "(null)");
+	}
 	if (!parts_state_valid(--state))
 		return false;
 
@@ -3184,6 +3197,36 @@ void PE_debug_force_hide(void)
 		if (p && p->local.show)
 			parts_set_show(p, false);
 	}
+
+	/* [D315] `XSYS4_FORCE_MOVE=900000400:3,900000408:3`：把部件强制改到指定层。
+	 *
+	 * 判定「400/408 是不是**创建时落错了层**」：它们现在在 ADV 层（idx=4），
+	 * 而 AIN 隐藏的是地图层（idx=3）。若把它们挪到 3，AIN 的
+	 * `layer show=0` 就会自动把它们藏住 —— 画面立刻正确即证明归属错了。
+	 * 同样是判定性实验，不是修复。 */
+	{
+		static int inited2, n2;
+		static int mv_no[8], mv_idx[8];
+		if (!inited2) {
+			inited2 = 1;
+			const char *e = getenv("XSYS4_FORCE_MOVE");
+			const char *q = e;
+			while (q && *q && n2 < 8) {
+				mv_no[n2] = atoi(q);
+				while (*q && *q != ':') q++;
+				if (*q == ':') q++;
+				mv_idx[n2] = atoi(q);
+				while (*q && *q != ',') q++;
+				if (*q == ',') q++;
+				n2++;
+			}
+		}
+		for (int i = 0; i < n2; i++) {
+			struct parts *p = parts_try_get(mv_no[i]);
+			if (p && p->controller_no != mv_idx[i])
+				p->controller_no = mv_idx[i];
+		}
+	}
 }
 
 void PE_DebugDumpParts(const char *tag)
@@ -3454,6 +3497,11 @@ int PE_AddController(int index)
 			struct parts *pp = parts_try_get(ctrl_pending_nos[i]);
 			if (!pp)
 				continue;
+			/* [D315] 段内明细：`[BG-LAYER]` 要回答「400 是不是被搬过来的」。
+			 * 只看总数（moved=3/6/1）分不出是谁，必须把 390..430 段点名。 */
+			if (getenv("XSYS4_CTRL_DBG") &&
+			    pp->no >= 900000390 && pp->no <= 900000430)
+				NOTICE("[ctrl] pending-move detail no=%d -> idx=%d", pp->no, no);
 			pp->controller_no = no;
 			moved++;
 		}

@@ -29,6 +29,8 @@ XSYS4_FN_DUMP_ALL	统计时不做前 N 次闸门，低频函数也全打
 XSYS4_ACTIVE_CTRL_SET	`=0` 把 `PartsEngine.SetActiveController` 退回空实现（D312 前行为）。默认真设置活动层
 XSYS4_PARENT_REAL	`=0` 把 `Parts_GetParentPartsNumber` 退回恒 0 桩（D80/D81 行为）。默认返回真实父号
 XSYS4_HLL_HOT	[诊断] 退出时打印全库 HLL 调用热力表（次数倒序，含是否有 C 实现）。`tools/hll-hotness.py` 吃它排工作队列
+XSYS4_FORCE_MOVE	`=900000400:3`：每帧把部件强制改到指定层（号:层号，逗号分隔）。**判定性实验用**，验证「部件创建时落错了层」（D315）
+XSYS4_CGSET_DBG	[诊断] 打印每次 `SetPartsCG`（部件号 / 状态 / 图名），回答「AIN 到底给谁换过图」
 XSYS4_FORCE_HIDE	`=900000400,900000408`：每帧强制隐藏这些部件。**判定性实验用**，不是修复手段。用来把「背景不切换」缩成「隐藏这几个号画面是否就对」（D314）
 XSYS4_BACKSCENE_DBG	[诊断] 打印 SetWantSaveBackScene / SaveBackScene / LoadBackScene 的时机与规模（背景场景快照链）
 XSYS4_BACKSCENE_WANT	[诊断] `=1` 让 `IsWantSaveBackScene` 返回真实标记（默认仍恒 false）。实测对开场剧情背景无影响
