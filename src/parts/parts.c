@@ -857,6 +857,30 @@ bool _parts_cg_set(struct parts *parts, struct parts_cg *parts_cg, struct cg *cg
 		return false;
 	gfx_delete_texture(&parts_cg->common.texture);
 	gfx_init_texture_with_cg(&parts_cg->common.texture, cg);
+	/* [D300] 把刚上传的 CG 纹理另存成 PNG —— 判断「纹理内容到底有没有图」
+	 * 的唯一决定性证据。s92–s99 已排除几何/层级/可见性/GL 有效性，
+	 * 若这张 PNG 是空的，问题在解码；若有图，问题在绘制。
+	 * 只在 XSYS4_DUMP_CG_NO 指定的部件上触发一次。 */
+	/* 按尺寸触发而不是按部件号：号段会复用（[PROBE-GATED] 教训），
+	 * 而「全宽 + 高 250..600」正是消息窗口底板/立绘量级。 */
+	if (getenv("XSYS4_DUMP_CG")) {
+		static int dumped;
+		int want = getenv("XSYS4_DUMP_CG_SIZE") ? atoi(getenv("XSYS4_DUMP_CG_SIZE")) : 0;
+		int hit = want ? (cg->metrics.w == want)
+			: (cg->metrics.w >= 1900 && cg->metrics.h >= 250 &&
+			   cg->metrics.h <= 600);
+		if (dumped < 8 && hit) {
+			dumped++;
+			typedef struct texture Texture;
+			extern int gfx_save_texture(Texture *, const char *, enum cg_type);
+			char path[256];
+			snprintf(path, sizeof(path), "/tmp/texdump_%d_%dx%d.png",
+				 parts->no, cg->metrics.w, cg->metrics.h);
+			int ok = gfx_save_texture(&parts_cg->common.texture, path, ALCG_PNG);
+			NOTICE("[texdump] no=%d %dx%d save=%d path=%s", parts->no,
+			       cg->metrics.w, cg->metrics.h, ok, path);
+		}
+	}
 	parts_set_dims(parts, &parts_cg->common, cg->metrics.w, cg->metrics.h);
 	parts_cg->no = cg_no;
 	if (parts_cg->name)
@@ -2675,6 +2699,14 @@ float PE_GetPartsRotateZ(int parts_no)
 void PE_SetPartsAlphaClipperPartsNumber(int parts_no, int alpha_clipper_parts_no)
 {
 	struct parts *parts = parts_get(parts_no);
+	/* [D302] 立绘溢出金框：要用「父件的 alpha 当遮罩」把它裁进圆孔里。
+	 * 先确认 AIN 到底有没有调这个接口。 */
+	if (getenv("XSYS4_ACT_PART_DBG")) {
+		static int n;
+		if (n++ < 20)
+			NOTICE("[clip] SetPartsAlphaClipper no=%d clip=%d",
+			       parts_no, alpha_clipper_parts_no);
+	}
 	parts->local.alpha_clipper_parts_no = alpha_clipper_parts_no;
 	parts_component_dirty(parts);
 	parts_dirty(parts);

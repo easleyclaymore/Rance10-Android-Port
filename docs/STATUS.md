@@ -10,9 +10,9 @@
 
 | | |
 |---|---|
-| **阶段** | 第一章 **链路 + 画面全验收**（D214–D224）保持不变；真实流程已推进到**战斗第一回合可交互**：标题→开场 ADV→回想对话框→選択肢→战斗→`Round 1/10`→**AP 球展开**。`H044`/`[SELECTION-STALL]`/D238/D239/D270/D271 全部结清 |
-| **最大卡点** | `[HITTEST-ALPHA]` **已拆解，且不是点击问题**（D290）。D289 修掉层归属后点击已正确送达 `900000701`（AIN 整屏接收器）：`EndInput clicked=701`、`GetClickNumber -> 701`，AIN 也在正常跑消息泵。但**战斗执行链一次都没进入**——`CALL_TRACE_TOTAL` 实测 `SceneBattle@StartRound`/`@OnClickSkill`/`@RunSelectedSkill`/`@OnClickDefence` **全部 0 次**，`@Run` 仅 1 次；同时 60 个活动装载、93.5% 非黑、0 ERROR。⇒ 卡点在「点到 `701` 之后 AIN 该走的分支没走」，怀疑 `701`（`di=642`）上的委托派发。另证伪：`900000705` 在战斗里是 `a=255` 的**正常背景层**，不是幽灵部件 |
-| **本轮做过的** | **D290 把「战斗卡住」从点击问题里摘出来**。四条实测排除：<br>① 点击**已正确送达** —— `EndInput clicked=900000701` 且 `GetClickNumber -> 900000701`；② AIN **在跑** —— `XSYS4_HLL_HIST=27` 稳定看到 `PopMessage`/`GetMessageType`/`GetMessageVariableInt` 消息泵轮询，不是死锁；<br>③ 但战斗执行链 **0 次** —— `CALL_TRACE_TOTAL` 给 `SceneBattle@StartRound`(24883)/`@OnClickSkill`(24897)/`@RunSelectedSkill`(24898)/`@OnClickDefence`(24899) 全部 0，`@Run`(24882) 仅 1；<br>④ **证伪旧表述** —— `900000705` 在战斗里是 `a=255` 的**正常背景层**（`CLICK_SKIP_FLAT` 能排除它，`EndInput` 从 705 变 701，但战斗照旧不动）。<br>方法论教训：`PARTS_DUMP` 行首的活动名**不是部件归属**，号池会复用 —— `900000409` 在同一份日志里先后属于 `NewMarkView`(`a=255`)、`CardApView`(`a=0`)、`BattleInfoView`(`a=255`)。必须**同帧**看父链，否则会把不同部件读成一个 |
+| **阶段** | 第一章剧情**画面全线出图**（用户指定优先级）：标题→`AUTO_MAP`→世界地图→ハルマン→ランク・バル，`MessageWindow02` 装载后**底板 + 正文 + 名牌 + 立绘头像**同屏可见；正文单行/两行换行、翻页推进、日文与中文混排均正常（`s116` 连续 5 屏）。战斗侧 `Round 1/10` + AP 球展开保持不变 |
+| **最大卡点** | `[ADV-FACE-CLIP]` —— 立绘能出图（`シス／ＡＤＶ／名卡／脸` 145x85，纹理转存确认内容正常），但人脸会压到金框圆环上：`Base`(448x102) 与 `Face`(145x85) 是两个独立 CG 部件，Face 纹理四边出血、无内置遮罩，原版靠**父件 alpha 当遮罩**裁进圆孔；而 AIN 全程没调 `SetPartsAlphaClipperPartsNumber`（`[clip]` 计数 0）、EX 的 `クリップ領域` 也是 0 ⇒ 是**按父子层级隐式裁剪**。战斗侧仍挂 `[HITTEST-ALPHA]`（点击已送达 `701`，但 `SceneBattle@StartRound/OnClickSkill` 仍 0 次），按用户优先级暂缓 |
+| **本轮做过的** | <br>**① 结清「底板不显示」** —— 它一直在画。`XSYS4_DUMP_CG` 把底板纹理转存成 PNG，确认是「深绿面板 + 顶部透明渐变 + 两侧纹章」；`s92` vs `s104` 逐像素几乎相同；`XSYS4_MSGWIN_FRAME_Z=1` 把底板压到地图后，底部像素从 `(44,81,27)` 变 `(24,16,12)` ⇒ **反向 A/B 证明它在顶层被绘制**。此前误判是因为面板本身就极暗，被当成了压暗的地图。<br>**② 补 `SetMessageWindowTextFont`**（11 参，转发 6 个 `SetPartsFont*`），日志里 `Unimplemented library function` 归零。<br>**③ 体感验收** —— `s116` 连点 6 次逐屏截图：「希露在纸箱上打开了笔记本。」「希露：普莱因的日记。」「LP7年 5月3日。/ 我们进入巨型战舰后，已经过去了十天。」「战舰里是一处极为奇异的遗迹。」全部字正、行距正常、两行换行正确。<br>**④ 定位 `[ADV-FACE-CLIP]`** —— 见上一行 |
 | **判据** | 几何用 `XSYS4_PARTS_DUMP` 看 `st=11` 的尺寸分布；点击类一律看 `[inp] EndInput clicked=N` 落在预期部件上（**不看**"我点了几次"）；画面用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S），不要用 X11 抓屏（GL 直绘下会拿到空 framebuffer，见 GUIDE 1.13） |
 
 > **卡点必须挂债标签**：§0「最大卡点」里的 `` `[TAG]` `` 必须**逐字存在**于
@@ -207,7 +207,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **185**（未标注 30）｜ HLL 源码口径 **3300 / 4494（73.4%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 94 / 31** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d323`: `acts=36 / err=0 / core=0 / quest_map=1`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **197**（未标注 31）｜ HLL 源码口径 **3301 / 4495（73.4%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 94 / 32** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
 <!-- STATS:END -->
 
 最常用的：

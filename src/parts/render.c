@@ -169,10 +169,14 @@ static void text_render_probe(struct parts *parts, struct parts_text *t)
 	}
 	if (seen[slot].n++ >= 3)
 		return;
-	NOTICE("[txtr] no=%d pos=(%d,%d) off=(%d,%d) wh=%dx%d lines=%d "
+	NOTICE("[txtr] no=%d pos=(%d,%d) off=(%d,%d) area=(%d,%d) start=(%d,%d) "
+	       "wh=%dx%d lines=%d "
 	       "state=%d type=%d show=%d a=%d vis=%d mw=%d mwshow=%d uc=-",
 	       parts->no, parts->global.pos.x, parts->global.pos.y,
 	       t->common.origin_offset.x, t->common.origin_offset.y,
+	       t->area_x, t->area_y,
+	       parts->global.pos.x + t->common.origin_offset.x + t->area_x,
+	       parts->global.pos.y + t->common.origin_offset.y + t->area_y,
 	       t->common.w, t->common.h, t->nr_lines,
 	       parts->state, parts->states[parts->state].type,
 	       parts->global.show, (int)parts->global.alpha,
@@ -184,6 +188,34 @@ static void text_render_probe(struct parts *parts, struct parts_text *t)
 static void parts_render_text(struct parts *parts, struct parts_text *t)
 {
 	text_render_probe(parts, t);
+	/* [D301] 逐字符几何探针：正文「嗯……」看起来是两个字叠在一起，
+	 * 需要区分「advance 太小」还是「同一段被画了两遍」。 */
+	if (getenv("XSYS4_TEXT_CHAR_DBG")) {
+		/* 每个部件只打一次（最多 8 个部件），用来确认「同一时刻有几个
+		 * 文本件在同一位置画字」——正文那两个字明显是两段叠在一起。 */
+		static int seen[8], nseen, total;
+		if (t->nr_lines && parts->no >= 900000300 && total < 40) {
+			int known = 0;
+			for (int k = 0; k < nseen; k++)
+				if (seen[k] == parts->no) { known = 1; break; }
+			if (!known && nseen < 8) { seen[nseen++] = parts->no; }
+			if (known) goto skip_char_dump;
+			total++;
+			for (unsigned i = 0; i < t->nr_lines && i < 4; i++) {
+				struct parts_text_line *ln = &t->lines[i];
+				NOTICE("[txtc] no=%d line=%u nr=%u h=%d space=%d",
+				       parts->no, i, ln->nr_chars, ln->height, t->line_space);
+				for (unsigned j = 0; j < ln->nr_chars && j < 8; j++) {
+					struct parts_text_char *c = &ln->chars[j];
+					NOTICE("[txtc]   j=%u ch=%02x%02x%02x%02x adv=%d t=%dx%d",
+					       j, (unsigned char)c->ch[0], (unsigned char)c->ch[1],
+					       (unsigned char)c->ch[2], (unsigned char)c->ch[3],
+					       c->advance, c->t.w, c->t.h);
+				}
+			}
+		}
+		skip_char_dump: ;
+	}
 	if (uc_skip_dup_text(parts, t))
 		return;
 	int x = parts->global.pos.x + t->common.origin_offset.x + t->area_x;
@@ -508,9 +540,11 @@ static void parts_render_cg(struct parts *parts, struct parts_common *common){
 			area_logged++;
 			/* [D297] glIsTexture：handle 非 0 不等于纹理有效
 			 * （号复用后旧对象可能已被 delete）。 */
-			NOTICE("[cgarea] no=%d glis=%d deform=%d tex=%dx%d w/h=%dx%d area=(%d,%d %dx%d) "
-			       "r=(%d,%d %dx%d)%s",
-			       parts->no, common->texture.handle ?
+			NOTICE("[cgarea] no=%d spz=%d/%d ctrl=%d mc=%d glis=%d deform=%d tex=%dx%d "
+			       "w/h=%dx%d area=(%d,%d %dx%d) r=(%d,%d %dx%d)%s",
+			       parts->no, parts->sp.z, parts->sp.z2,
+			       parts->controller_no, parts_multi_controller,
+			       common->texture.handle ?
 					(int)glIsTexture(common->texture.handle) : -1,
 			       parts->sprite_deform,
 			       common->texture.w, common->texture.h,
@@ -546,7 +580,6 @@ static void parts_render_cg(struct parts *parts, struct parts_common *common){
 	 * 只处理「我们为消息窗口新建的底板」——特征：`di=-1`（不属于任何
 	 * activity）+ 全宽 + 高 250..600（1920x330 / 1920x417 两种）。 */
 	if (getenv("XSYS4_CG_SPRITE_PATH") &&
-	    parts->delegate_index < 0 &&
 	    r.w >= 1900 && r.h >= 250 && r.h <= 600 &&
 	    parts->global.scale.x == 1.0f && parts->global.scale.y == 1.0f &&
 	    parts->local.rotation.z == 0.0f) {
@@ -555,8 +588,8 @@ static void parts_render_cg(struct parts *parts, struct parts_common *common){
 			/* 只打底板级（宽 >=1900）的大矩形：名额按到达顺序分配时，
 			 * 一堆小 CG 会先把 40 条占满，目标部件永远打不出来。 */
 			if (r.w >= 1900 && n++ < 500)
-				NOTICE("[cgsp] no=%d pr=(%d,%d %dx%d) filt=%d a=%d",
-				       parts->no,
+				NOTICE("[cgsp] no=%d di=%d pr=(%d,%d %dx%d) filt=%d a=%d",
+				       parts->no, parts->delegate_index,
 				       (int)(parts->global.pos.x + common->origin_offset.x),
 				       (int)(parts->global.pos.y + common->origin_offset.y),
 				       r.w, r.h, parts->draw_filter,

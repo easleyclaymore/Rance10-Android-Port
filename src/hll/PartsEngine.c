@@ -1830,6 +1830,31 @@ static struct string **msgwin_text_slot(int no)
 	return &msgwin_text[i].text;
 }
 
+/* AIN 签名：void SetMessageWindowTextFont(int Number, int Type, int Size,
+ *   int R, int G, int B, float BoldWeight, int EdgeR, int EdgeG, int EdgeB,
+ *   float EdgeWeight)
+ *
+ * [D301] 之前未注册 → `Unimplemented library function`，消息窗口正文用的是
+ * 默认字体（face/size/edge 全没设），而名牌走另一条路径（EX 的字体字段），
+ * 于是同一屏里名牌字大而正文又小又糊。它本质是 6 个 SetPartsFont* 的
+ * 组合，直接转发即可；状态固定 1（这几个 API 的 state 是 1-based）。
+ */
+static void PE_SetMessageWindowTextFont(int no, int type, int size,
+		int r, int g, int b, float bold_weight,
+		int edge_r, int edge_g, int edge_b, float edge_weight)
+{
+	MSGWIN_HIT("SetMessageWindowTextFont no=%d type=%d size=%d color=(%d,%d,%d) "
+		   "bold=%.2f edge=(%d,%d,%d) ew=%.2f",
+		   no, type, size, r, g, b, bold_weight, edge_r, edge_g, edge_b,
+		   edge_weight);
+	PE_SetPartsFontType(no, type, 1);
+	PE_SetPartsFontSize(no, size, 1);
+	PE_SetPartsFontColor(no, r, g, b, 1);
+	PE_SetPartsFontBoldWeight(no, bold_weight, 1);
+	PE_SetPartsFontEdgeColor(no, edge_r, edge_g, edge_b, 1);
+	PE_SetPartsFontEdgeWeight(no, edge_weight, 1);
+}
+
 static void PE_SetMessageWindowText(int no, struct string *text, int msg_num,
 		struct string *func_name, int ver, int step)
 {
@@ -3347,6 +3372,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetMessageWindowFlatShowWaitFrameNumber, PE_Noop_SetMessageWindowFlatShowWaitFrameNumber),
 	    HLL_EXPORT(SetMessageWindowInactiveMultipleColor, PE_Noop_SetMessageWindowInactiveMultipleColor),
 	    HLL_EXPORT(SetMessageWindowText, PE_SetMessageWindowText),
+	    HLL_EXPORT(SetMessageWindowTextFont, PE_SetMessageWindowTextFont),
 	    HLL_EXPORT(FixMessageWindowText, PE_FixMessageWindowText),
 	    HLL_EXPORT(IsFixedMessageWindowText, PE_IsFixedMessageWindowText),
 	    HLL_EXPORT(SetMessageWindowTextArea, PE_Noop_SetMessageWindowTextArea),
