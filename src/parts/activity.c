@@ -737,6 +737,13 @@ static void parse_part_fields(struct ex_tree *node, struct activity_part *part)
 			part->cg_name = get_string(src, "ＣＧ名");
 		if (!part->cg_name)
 			part->cg_name = get_string(type_info, "ＣＧ名");
+		/* [D292] 消息窗口的 ＣＧ名 到底读到没有 —— 它是「无底板、无正文」的
+		 * 最上游一环，读不到就不用往下查装载了。 */
+		if (part->type == ACT_COMP_MESSAGE_WINDOW && getenv("XSYS4_ACT_DBG"))
+			NOTICE("[act] MW name='%s' cg=%s src=%s ti=%s",
+			       part->name,
+			       (part->cg_name && *part->cg_name) ? "Y" : "EMPTY",
+			       src ? "y" : "n", type_info ? "y" : "n");
 		/* [D119] flat/button parts: フラット名 lives in 一般状态 or 种类別情报 */
 		if (!part->flat_name)
 			part->flat_name = get_string(src, "フラット名");
@@ -1058,7 +1065,30 @@ static int build_part(struct activity_part *part, int parent_no)
 	}
 	int px = (int)part->x;
 	int py = (int)part->y;
-	if (ex_ratio_pos && part->pos_as_ratio) {
+	/* [D292] 比例坐标的第二判据：**对齐模式 + 0..1 的取值**。
+	 *
+	 * `MessageWindow02` 的 `SYS_消息窗口` 是
+	 *     `座標 = (0.000000, 1.000000, 1)`、`原点座標模式 = 7`（底部左对齐）
+	 * 但**没有** `座標を率として認識する` 字段。D216 只看那个字段，于是
+	 * `pos_as_ratio=false` → `py=(int)1.0=1` → 加上 mode 7 的 `-h`，
+	 * 整个消息窗口落在屏幕上方外，正文与立绘都看不见（`s79` 里对话区
+	 * 候选全是 `hb=(0,0,1920,1080)` 的全屏遮罩，没有消息框）。
+	 *
+	 * 判据：对齐模式 ≥4（居中/右/下对齐）且两个坐标都落在 [0,1] 且至少
+	 * 一个非零 —— 像素坐标几乎不会把部件放在 (0,1) 这种角落，
+	 * 而比例坐标在对齐模式下必然是这种形态。`XSYS4_EX_RATIO_HEURISTIC=0` 回退。 */
+	static int ex_ratio_heur = -1;
+	if (ex_ratio_heur < 0) {
+		const char *e = getenv("XSYS4_EX_RATIO_HEURISTIC");
+		ex_ratio_heur = e && !strcmp(e, "0") ? 0 : 1;
+	}
+	bool ratio = part->pos_as_ratio;
+	if (!ratio && ex_ratio_heur && part->origin_mode >= 4 &&
+	    part->x >= 0 && part->x <= 1.0f &&
+	    part->y >= 0 && part->y <= 1.0f &&
+	    (part->x > 0 || part->y > 0))
+		ratio = true;
+	if (ex_ratio_pos && ratio) {
 		px = (int)(part->x * config.view_width);
 		py = (int)(part->y * config.view_height);
 	}
@@ -1085,7 +1115,20 @@ static int build_part(struct activity_part *part, int parent_no)
 		/* 布局盒自己决定子部件的位置 */
 	}
 
-	if (part->cg_name && *part->cg_name && part->type == ACT_COMP_CG) {
+	/* [D292] ＣＧ名 不只有 `ＣＧパーツ` 才有。
+	 *
+	 * `MessageWindow02` 的消息窗口部件类型是 `消息窗口`（ACT_COMP_MESSAGE_WINDOW），
+	 * 但它的 `种类別情报` 里同样有 `ＣＧ名 = シス／ＡＤＶ／事件／提示`。
+	 * 这里原来只放行 `ACT_COMP_CG`，于是消息窗口**从未装载底板图**：
+	 * 尺寸保持 0 → `parts_common_recalculate_hitbox()` 退化到视图尺寸
+	 * （`s79/s80` 候选表里 `hb=(0,0,1920,1080)` 就是它），正文与立绘
+	 * 自然都看不见。面板/表单也是同类（EX 里同样带 ＣＧ名）。
+	 * 按钮不算：它带的是 `フラット名`，走 `set_part_flat()`。 */
+	if (part->cg_name && *part->cg_name &&
+	    (part->type == ACT_COMP_CG ||
+	     part->type == ACT_COMP_MESSAGE_WINDOW ||
+	     part->type == ACT_COMP_PANEL ||
+	     part->type == ACT_COMP_FORM)) {
 		struct string *cg = cstr_to_string(part->cg_name);
 		bool ok = PE_SetPartsCG(part->parts_no, cg, part->deform, 1);
 		ACT_DEBUG("[act] %s parts_no=%d pos=(%d,%d,%d) cg='%s' set=%d size=%dx%d",
