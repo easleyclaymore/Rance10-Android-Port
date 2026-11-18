@@ -794,6 +794,10 @@ static void Array_Insert_(struct page **a, int index, uint64_t value)
 	*a = np;
 }
 
+/* [D313] 下面两个定义在文件后半（ShallowCopy 附近），Copy 要用，先声明。 */
+static int array_ref_fix(void);
+static bool array_elem_owns_ref(struct page *src, int i);
+
 /* AIN v12 暴露了好几个同名不同参数个数的重载。
  * link_static_library 把它们全绑到同一个 C 符号上，所以按
  * 当前函数号（ffi.c）分派，并按下标位置读实参。AArch64 上
@@ -814,8 +818,27 @@ static int Array_Copy_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3, u
 	if (spos < 0) spos = 0;
 	if (count < 0 || spos + count > sp->nr_vars) count = sp->nr_vars - spos;
 	if (count <= 0) return 0;
+	/* [D313] 元素拷贝必须带引用计数。
+	 *
+	 * 这里原来只做 `values[dst] = values[src]`。对 int 没问题，对
+	 * string / array / struct / delegate **会少一次 heap_ref**：
+	 * 源数组被 delete 时把元素对象释放掉，目标数组就握着一个死槽。
+	 * 后面任何人都可能拿它去 heap_unref —— 正是 `[BAD-SLOT-REF]` 里
+	 * `heap_unref(slot=821768443)` 那种越界值的来源。
+	 *
+	 * 顺序：**先 ref 新值，再 unref 旧值**。两者可能是同一槽
+	 * （自拷贝 `Copy(a,0,a,0,n)`），先 unref 会把对象提前回收。
+	 * `XSYS4_ARRAY_REF_FIX=0` 与 ShallowCopy 共用同一个闸。 */
 	for (int i = 0; i < count; i++) {
 		if (dpos + i >= (*dst)->nr_vars) break;
+		int newv = sp->values[spos + i].i;
+		int oldv = (*dst)->values[dpos + i].i;
+		if (array_ref_fix() && array_elem_owns_ref(sp, spos + i)) {
+			if (newv > 0)
+				heap_ref(newv);
+			if (oldv > 0 && oldv != newv)
+				heap_unref(oldv);
+		}
 		(*dst)->values[dpos + i] = sp->values[spos + i];
 	}
 	return count;
@@ -1017,11 +1040,22 @@ static int Array_Find_(uintptr_t p0, uintptr_t p1, uintptr_t p2, uintptr_t p3)
 	if (!a || !*a)
 		return -1;
 	struct page *p = *a;
-	if (ranged && (from < 0 || to > p->nr_vars || to < from)) return -1;
-	int begin = ranged ? from : 0, end = ranged ? to : p->nr_vars;
+	/* [D313] 接口元素占两槽（`[obj, fun]`），必须按**元素**遍历。
+	 *
+	 * 原来按槽遍历：谓词收到的第一个参数是 `[obj,fun]` 对的一半，
+	 * 拿它当真对象去调方法，就会得到 `heap_unref(slot=821768443)`
+	 * 那种越界垃圾值（`[BAD-SLOT-REF]`）。`Array.Where` 早就按
+	 * `arr_is_iface_elems()` 处理过宽度，Find 漏了。
+	 *
+	 * 返回值仍是**元素下标**（与 AIN 声明一致，编队的
+	 * `FindEmptyIndex` 就靠它当下标用）。 */
+	int width = arr_is_iface_elems(p) ? 2 : 1;
+	int nelem = p->nr_vars / width;
+	if (ranged && (from < 0 || to > nelem || to < from)) return -1;
+	int begin = ranged ? from : 0, end = ranged ? to : nelem;
 	for (int i = begin; i < end; i++) {
-		bool hit = pred ? array_predicate_matches(sel, p->values[i])
-		                : elem_eq(p, i, &value);
+		bool hit = pred ? array_predicate_matches(sel, p->values[i * width])
+		                : elem_eq(p, i * width, &value);
 		if (hit) {
 			ARRDBG("[ARR] find p=%p nr=%d %s-> %d", (void*)p, p->nr_vars,
 			       pred ? "(pred) " : "", i);
