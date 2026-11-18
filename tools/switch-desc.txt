@@ -42,6 +42,7 @@ XSYS4_FN_WATCH	`=22908,22909` 按**解析后的函数号**打方法调用（`CAL
 XSYS4_DGA_DROP	[诊断] 只在「DG_ASSIGN 目标是空槽、而源委托里有条目」时打 `[dgadrop]`（D324，实测 0 次 = 没有委托被丢）
 XSYS4_DG_ASSIGN_NULLALLOC	`=1` 让 `DG_ASSIGN` 在目标为空槽时分配新页并写回成员（D324 的 A/B，**已证伪**，默认关）
 XSYS4_DGNEW_DBG	[诊断] 打印每次 `DG_NEW_FROM_METHOD` 的 (obj, fun, ip)。判「某个事件委托到底有没有被建出来」（D325）
+XSYS4_ORIGIN_MODE0_TL	`=1` 把 origin mode 0 与未映射模式按**左上角 `{0,0}`** 处理（上游 77f7f02 语义）。默认保持旧的 `{mode, 3h/4}`（D328 的 A/B）
 XSYS4_FORCE_HIDE	`=900000400,900000408`：每帧强制隐藏这些部件。**判定性实验用**，不是修复手段。用来把「背景不切换」缩成「隐藏这几个号画面是否就对」（D314）
 XSYS4_BACKSCENE_DBG	[诊断] 打印 SetWantSaveBackScene / SaveBackScene / LoadBackScene 的时机与规模（背景场景快照链）
 XSYS4_BACKSCENE_WANT	[诊断] `=1` 让 `IsWantSaveBackScene` 返回真实标记（默认仍恒 false）。实测对开场剧情背景无影响

@@ -511,7 +511,20 @@ static Point calculate_offset(int mode, int w, int h)
 	case 7:  return (Point) {    0, -h   }; // bottom-left
 	case 8:  return (Point) { -w/2, -h   }; // bottom-center
 	case 9:  return (Point) {   -w, -h   }; // bottom-right
-	default: return (Point) { mode, (3*h)/4 }; // why...
+	/* [D328] 上游 `77f7f02`（2026-10-02）把 mode 0 / 未映射模式改成了**左上角
+	 * `{0,0}`**，理由是「`{mode,(3*h)/4}` 是从 `StoatSpriteEngine.c` 抄来的，
+	 * 而 GoatGUIEngine / GUIEngine / PartsEngine 里 mode 0 就是左上角」。
+	 *
+	 * 我们这两行还是抄来的旧逻辑：mode 0 会把部件往下推 `3h/4`（1080 高的部件
+	 * 就是 +810px），并且模式 >9 时把 `mode` 本身当 x 偏移 —— 两者都会让
+	 * origin_offset / hitbox 落错位置。
+	 *
+	 * `XSYS4_ORIGIN_MODE0_TL=1` 切到上游语义做 A/B（默认先保持现状，
+	 * 因为我们的 activity 加载器可能已经自己补偿过）。 */
+	default:
+		if (getenv("XSYS4_ORIGIN_MODE0_TL"))
+			return (Point) { 0, 0 };
+		return (Point) { mode, (3*h)/4 }; // why...
 	}
 }
 
