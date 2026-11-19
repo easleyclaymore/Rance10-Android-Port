@@ -1580,7 +1580,12 @@ static void parts_update_cover_layer(void)
 		 * 判据：只有"能画出不透明像素"的件才算地板。矩形检测件按定义不画，
 		 * 未初始化件更没有图形。flat 仍走下面那段 `paint_alpha` 检查。 */
 		if (st->type == PARTS_RECT_DETECTION ||
-		    st->type == PARTS_UNINITIALIZED)
+		    st->type == PARTS_UNINITIALIZED ||
+		    /* [D343] 布局盒也是纯排版容器，自身不绘制。`d342` 的
+		     * `floor by` 统计里 `900000568 st=12 1920x1080 a=255` 出现 2 次 ——
+		     * 它每次出现都会把 cover_layer 顶到它那一层，让下面整层闪一下。
+		     * 真正的视觉地板应该是 CG / flat 这类能画不透明像素的件。 */
+		    st->type == PARTS_LAYOUT_BOX)
 			continue;
 		/* [D226] 名义 alpha ≠ 画出来的 alpha。flat 的实际不透明度由内部
 		 * key 的 alpha 决定（`ctx.alpha = global.alpha * key.alpha`），
@@ -1600,6 +1605,42 @@ static void parts_update_cover_layer(void)
 		 * 重新露出来。 */
 		if (ctrl_stack.opaque[c])
 			top = c;
+	}
+	/* [D343] **单帧滞回**：`d343b` 的 `floor by` 统计显示 ctrl=7 的
+	 * `900000644`/`900000631`（`st=1` CG、1920×1080、a=255）会偶发出现，
+	 * 让 `cover_layer` 在 4 与 7 之间逐帧跳 —— 7 时 ctrl 3/4/5/6 全不画，
+	 * 于是敌方面板/背景整层闪。它们多半是短命的全屏叠加特效，
+	 * 但真实的全屏不透明件（战斗背景 `900000412`）是**持续**的。
+	 *
+	 * 判据：同一个值连续 3 帧才算生效，单帧尖峰被抹掉。
+	 * 代价是切换延迟约 50ms，人眼不可见。
+	 * `XSYS4_COVER_HYST=0` 关闭做 A/B。 */
+	static int hyst = -1;
+	if (hyst < 0) {
+		const char *e = getenv("XSYS4_COVER_HYST");
+		hyst = !(e && !strcmp(e, "0"));
+	}
+	if (hyst) {
+		static int stable_top = -1, pend = -1, pend_n;
+		if (stable_top < 0)
+			stable_top = top;
+		if (top != stable_top) {
+			if (top == pend) {
+				pend_n++;
+			} else {
+				pend = top;
+				pend_n = 1;
+			}
+			if (pend_n >= 3) {
+				stable_top = top;
+				pend_n = 0;
+			} else {
+				top = stable_top;
+			}
+		} else {
+			pend = top;
+			pend_n = 0;
+		}
 	}
 	parts_cover_layer = top;
 	if (getenv("XSYS4_CTRL_DBG")) {
