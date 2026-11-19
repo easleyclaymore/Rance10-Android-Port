@@ -10,7 +10,7 @@
 
 | | |
 |---|---|
-| **阶段** | **SDL3 分支（`sdl3`）第一章可通到第一场战斗**：标题 → 第一章 ADV（37 句）→ 回想对话 `ReplayMemoDialog`（D337 修好「過後查看」）→ `QuestMapSelectionButton` 选项 → `Game/Battle/*` **战斗画面出图**（Round 1、HP、技能按钮、戦斗结果ルート）。战斗尚未打透 |
+| **阶段** | **主线 `main`（SDL3 后端）第一章可通到第一场战斗**：标题 → 第一章 ADV（37 句）→ 回想对话 `ReplayMemoDialog`（D337 修好「過後查看」）→ `QuestMapSelectionButton` 选项 → `Game/Battle/*` **战斗画面出图**（Round 1、HP、技能按钮、戦斗结果ルート）。战斗尚未打透 |
 | **最大卡点** | `[BATTLE-STALL]` 战斗界面已出、可点，但一回合推进不下去：点击派发（D337）已通，问题在战斗侧自己的点击捕获/技能按钮命中，见台账 A 组 |
 | **本轮做过的** | **D337 修掉 `[TEXTBUTTON-CLICK]`**：反汇编证明点击委托存在 AIN `Parts` 对象字段 7 上（`Parts@SetOnClickEvent`），派发者是 `Parts@OnClick`(29541)，而它在静态 xref 里**一个 AIN 调用点都没有** ⇒ 这一拍本该由引擎回调、移植时整条漏掉了。新增 `vm_request_parts_click()`/`vm_pump_parts_click()`：点击登记、帧泵派发；`TextButton` 走它 `Init` 里生成的 lambda；精确匹配不到时按「点在容器上」取容器内 TextButton（实测点 574 是容器、575 才是按钮）。`XSYS4_PARTS_EVENT=0` 可关 |
 | **判据** | 画面一律用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S，且 alt+s 前空 ≥1.5s，否则会丢帧）；层/归属看 `[ctrl] SetActive id=N -> idx=M` 与 `[ctrl] layer … parts:` 清单；HLL 进展看 `python3 tools/offline/hll_hotness.py --todo ../logs/live_<tag>.log` 的输出是否为 0 |
@@ -262,7 +262,10 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 4. **文档只写结论**：STATUS/TECH_DEBT 单条不超过 3 行排障叙述，过程进 `archive/`。
 5. **重构完成 = 编译通过 + `check_core_deps.py` PASS + 端到端跑一次**；改代码/文档后跑 `gen-switches.py` 与 `gen-doc-numbers.py --check`，数字腐化即失败。
    `--check` 现在覆盖**五类**腐化，不只是数字：① 数字/开关/台账计数漂移；② 文档结构（契约编号重复、孤儿表格行、已结项留在未结区）；③ **卡点挂的债标签是否真实存在且未清偿**（防「卡点过期」）；④ **文档地图是否声明了每个 `.md`**（防「文档悄悄游离在治理之外」）；⑤ **工作区根 `AGENTS.md` 是否存在且指向本文件**（防「压缩上下文后丢核心目标」，D291）。
-6. Core Layer 不得依赖 Linux 头文件、不得写死绝对路径；`main` 是交付分支。
+6. Core Layer 不得依赖 Linux 头文件、不得写死绝对路径。
+7. **分支**：`main` 是唯一主线（SDL3 后端），日常提交与推送都在这里；`sdl3` 只是它的等价指针，
+   `rance10-native` 是 SDL2 时代历史（只读）。**不合并上游**——本 fork 已越过上游覆盖范围，
+   上游改动只在需要查格式语义时参考。切主线前的旧快照链在 `main-archive-20261119`（只读，可回滚）。
 7. **状态文档必须在版本控制内**（D273）。此前 `README.md`/`TECH_DEBT.md` 放在工作区根，
    而根目录不是 git 仓库 —— 项目最重要的两份文档改了无法提交、也没法回滚。
    现在它们是 `docs/STATUS.md` 与 `docs/TECH_DEBT.md`，随仓库走。

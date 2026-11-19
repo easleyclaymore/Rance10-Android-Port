@@ -2,8 +2,8 @@
 
 [nunuhara/xsystem4](https://github.com/nunuhara/xsystem4) 的下游 fork：让《ランス10》
 在 Linux / Android 上**原生**运行，不走 proot / 转译层。上游是 AliceSoft System4 引擎的
-类 Unix 开源实现（C + SDL2 + OpenGL）；**本 fork 已把渲染/输入/音频层迁到 SDL3**
-（`sdl3` 分支，见 `docs/RENDER-BACKEND.md` 决策三）。Rance10 用 **AIN v12** 字节码，在值表示、
+类 Unix 开源实现（C + SDL2 + OpenGL）；**本 fork 的主线已把渲染/输入/音频层迁到 SDL3**
+（`main` 就是这条线，见 `docs/RENDER-BACKEND.md` 决策三）。Rance10 用 **AIN v12** 字节码，在值表示、
 接口派发、泛型容器、存档格式上都有上游未覆盖的语义，本 fork 用字节码与存档文件
 逐条取证补齐。目标交付 arm64 APK（验收设备 realme RMX3700），当前在 Linux 桌面推进。
 
@@ -52,8 +52,9 @@ meson 自动拉取）、chibi-scheme（可选调试器）。完整清单见 `mes
 > `libsdl3-dev` 只在较新的发行版（Debian trixie+ / Ubuntu 25.04+）里有；老系统请按
 > [SDL3 官方说明](https://github.com/libsdl-org/SDL/blob/main/docs/README-cmake.md) 从源码安装，
 > 确保 `pkg-config --modversion sdl3` 有输出（本项目实测 3.4.20）。
-> 上游 xsystem4 仍是 SDL2；本 fork 的 `meson.build` 用 `dependency('sdl3')` +
-> `-DSDL_ENABLE_OLD_NAMES`，所以两边 API 写法一致、易于跟上游。
+> 上游 xsystem4 仍是 SDL2，但**本 fork 已不跟进上游**（移植深度已超出上游覆盖范围，
+> 见下方分支表）。`meson.build` 用 `dependency('sdl3')` + `-DSDL_ENABLE_OLD_NAMES`，
+> 只为降低"照着 SDL2 写法改"的迁移成本，不是为了跟上游合并。
 
 ```bash
 mkdir build && meson build && ninja -C build
@@ -85,10 +86,11 @@ Core Layer = `vm.c` / `page.c` / `heap.c` / `ffi.c` / `pal.c` 及对应头文件
 
 | 分支 | 用途 |
 |---|---|
-| `main` | 远端交付基线（快照提交，**内容与 `sdl3` 同树**）；`git push origin <snapshot-sha>:main` |
-| `sdl3` | **当前交付线**：SDL3 迁移 + 第一章推进，日常提交与推送都在这里 |
-| `rance10-native` | SDL2 时代的完整移植史，保留作对照与回溯（不再推进） |
-| `upstream` | 上游基线，仅用于对照 |
+| `main` | **唯一主线**：SDL3 后端 + 第一章推进，日常提交与推送都在这里 |
+| `sdl3` | 已并入 `main` 的等价指针（同一提交），保留只为旧链接不失效，**不再单独推进** |
+| `rance10-native` | SDL2 时代的完整移植史，只读对照（不再推进） |
+| `main-archive-20261119` | 切主线前的旧快照链存档（只读，可回滚） |
+| `upstream` | 上游基线，**只读参考**：不再合并上游改动（本分支已走到上游前面） |
 
 ## 内容边界
 
@@ -129,6 +131,6 @@ Core Layer = `vm.c` / `page.c` / `heap.c` / `ffi.c` / `pal.c` 及对应头文件
 
 ## 上游与许可
 
-- 上游：[nunuhara/xsystem4](https://github.com/nunuhara/xsystem4)
+- 上游：[nunuhara/xsystem4](https://github.com/nunuhara/xsystem4)（**仅作来源标注**；本 fork 不再跟进上游更新）
 - 许可：**GPL-2.0**（见 `COPYING`）。本 fork 同样以 GPL-2.0 发布。
 - 游戏本体、图像、音频等素材版权归 AliceSoft，**不包含在本仓库内**。

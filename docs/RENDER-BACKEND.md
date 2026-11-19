@@ -117,8 +117,9 @@ SDL_Lock/UnlockAudioDevice    →  SDL_LockAudioStream / SDL_UnlockAudioStream�
 | 2 | 音频改 stream 模型（单提交 + 开关） | 开场演出/点击音/战斗音效听感正常，且 `[BATTLE-FLAT-CLOCK]` 类时序指标不变差 |
 | 3 | Android 打包（prefab/Gradle + JNI 替代 `SDL_AndroidSendMessage`） | arm64 APK 在 realme RMX3700 上起窗、能操作 |
 
-兼容头的价值：**上游仍是 SDL2**，有了这层映射，将来上游改 SDL2 代码时可以低成本跟；
-没有它，62 个文件的 diff 会让每次上游同步都变成手工活。
+兼容头的价值：让"照着 SDL2 写法改"的迁移成本降到最低（62 个文件的 diff 若逐个改 API，
+每处都要查 SDL3 语义）。**注意：本 fork 已不跟进上游**（2026-11-19 定），所以这层的收益
+只剩"降低本仓库内部后续改动的摩擦"，不再是"方便跟上游"。
 
 ## 五、我的判断（什么时候值得做）
 
@@ -183,7 +184,9 @@ SDL_Lock/UnlockAudioDevice    →  SDL_LockAudioStream / SDL_UnlockAudioStream�
 不会往兰斯10 及之后的作品方向发展，也不提供技术支持。于是「跟上游一致」不再是
 保留 SDL2 的理由 —— 这条前提撤销后，迁移 SDL3 从「不划算」变成「划算」。
 
-**隔离方式**：独立 worktree `../xsystem4-sdl3`（分支 `sdl3`），`main` / `rance10-native` 全程未动。
+**隔离方式**：独立 worktree `../xsystem4-sdl3`（当时分支 `sdl3`），`main` / `rance10-native` 全程未动。
+> **2026-11-19 更新**：`sdl3` 已并入 `main` 并成为主线（`main` 直接指向该历史，旧快照链存于
+> `main-archive-20261119`）。下面这段是迁移当天的记录，保留原样。
 
 ### 实测进度
 
@@ -235,7 +238,7 @@ SDL3 删除了回调式音频：`SDL_LockAudioDevice` / `SDL_UnlockAudioDevice` 
 | 有声环境听音（演出 / 战斗音效时序） | **未做** —— 本机无音频设备，仍只有「不开音频不崩」这一条证据 |
 | Android 打包：`SDL_AndroidSendMessage` 没有 SDL3 版本（`SystemService.c:336`，仅 1 处） | **未做**，需换 JNI 或 `SDL_OpenURL` |
 | ADV 端到端 | **已通过**（D332/D333 修点击捕获与释放沿，D337 补上引擎→AIN 按钮对象的派发；第一章能从标题走到第一场战斗） |
-| 合入策略 | **已变更**：不再压提交并回 SDL2 的 `rance10-native`，`sdl3` 直接作为交付线，`main` 用同树快照跟（见 `README.md` 分支表） |
+| 合入策略 | **已变更两次**：① 不再压提交回 SDL2 的 `rance10-native`；② 2026-11-19 起 `main` 直接指向 SDL3 这条历史（不再用同树快照），成为唯一主线（见 `README.md` 分支表） |
 
 累计改动的文件与逐条理由见上方「改了哪 12 个文件」+ `git log --oneline origin/main..origin/sdl3`。
 D331–D337 的排障过程在 `docs/TECH_DEBT.md` / `archive/`，可复用方法论已回流 `docs/GUIDE/`。
