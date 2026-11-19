@@ -119,8 +119,10 @@ union vm_value vm_copy(union vm_value v, enum ain_data_type type);
 
 int vm_execute_ain(struct ain *program);
 void vm_call(int fno, int struct_page);
-/* [D336] 每帧驱动所有 TextButton 实例的 Motion（补 AIN 侧缺失的按钮轮询）。 */
-void vm_tick_text_buttons(void);
+/* [D337] 引擎捕获到点击后，把「部件号」派发给 AIN 侧的按钮对象。
+ * 先 `vm_request_parts_click()` 登记，再由帧泵 `vm_pump_parts_click()` 消费。 */
+void vm_request_parts_click(int parts_no, int x, int y);
+void vm_pump_parts_click(void);
 bool vm_iface_pair(int iface_no, int ref_slot, int *obj, int *offset);
 bool vm_call_hll_func(int fno, union vm_value elem, union vm_value *ret);
 bool vm_call_hll_closure(int fno, const union vm_value *args, int nargs,

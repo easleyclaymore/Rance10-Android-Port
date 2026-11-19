@@ -28,6 +28,8 @@ void PE_UpdateComponent(int passed_time);
 void PE_UpdateParts(int passed_time, bool is_skip, bool message_window_show);
 void PE_SetDelegateIndex(int parts_no, int delegate_index);
 int PE_GetDelegateIndex(int parts_no);
+/* [D337] child_no 是否为 ancestor_no 或其后代（点击落在容器上时用）。 */
+bool PE_PartsIsUnder(int child_no, int ancestor_no);
 bool PE_SetPartsCG(int parts_no, struct string *cg_name, int sprite_deform, int state);
 bool PE_SetPartsCGThread(int parts_no, struct string *cg_name, int state);
 bool PE_IsThreadLoading(int parts_no, int state);

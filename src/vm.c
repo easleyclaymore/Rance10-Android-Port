@@ -1845,117 +1845,245 @@ void vm_dbg_alloc_trace(int struct_no, int slot)
 	}
 }
 
-/* [D336] 每帧驱动 `TextButton@Motion` —— 补上 AIN 侧缺失的「按钮更新循环」。
+/* [D337] 把「引擎捕获到的一次点击」派发给 AIN 侧的按钮对象。
  *
- * 事实链：
- * ① `TextButton@SetOnClickEvent`(22907) 被调用 12 次，委托被存进 TextButton
- *    自己的成员（`[dgadd] obj=75160 fun=36571`）；
- * ② 真正「检查部件是否被点、并派发那个委托」的是 `TextButton@Motion`(22908)，
- *    `XSYS4_FN_WATCH` 实测 **0 次调用**；
- * ③ 唯一可能的调用者 `CADVEngine@ClickUpdateTextButtonEvent`(2109) 也是 0 次，
- *    而 `XSYS4_FN_WATCH_NAME=CADVEngine` 扫描全类也**一个方法都没跑** ——
- *    说明本作根本不实例化那个面板类。
- * ④ 结果：点击被引擎正确捕获（`[inp] EndInput clicked=900000574`），委托也在位，
- *    但没有任何人把它派发出去 —— 就是「点得中、点完没反应」。
+ * 这一拍在原版里由引擎完成，移植时整条漏掉了 —— 它就是 `[TEXTBUTTON-CLICK]`
+ * （回想对话「過后查看」点得中、点完没反应）的根因。
  *
- * 所以这里补一条：每帧遍历堆里所有 `TextButton` 结构体实例，各调一次 `Motion`，
- * 等价于原版由 UI 管理器做的按钮轮询。`XSYS4_TEXTBUTTON_TICK=0` 关闭。
+ * 反汇编证据（全部来自 game/Rance10.ain）：
+ * ① `Parts@SetOnClickEvent`(0x47a33e) 只做两件事：`this.SetShow(1)` 和
+ *    `this.m7.DG_ASSIGN(dg)` —— 点击委托存在 **AIN `Parts` 对象自己的字段 7**
+ *    里，既不进 `CPartsFunctionSet`，也与 `PartsEngine.GetDelegateIndex` 无关；
+ * ② 派发它的是 `Parts@OnClick`(29541)，签名 `OnClick(partsNumber, x, y)`，
+ *    函数体就是 `this.m7.DG_CALL(...)`。`ain_xref call 29541` 得 **0 个 AIN
+ *    调用点**，运行期也从未执行 ⇒ 它本来就该由引擎回调；
+ * ③ `Button@Init`(0x34a7b8) 正是走 ① 注册的
+ *    （`this.m3.SetOnClickEvent(DG_NEW(this.OnClick))`）；
+ * ④ `TextButton` 不走 ①：`TextButton@SetOnClickEvent`(0x34fa94) 把委托存进
+ *    自身 m5，再由 `TextButton@Init` 生成的 lambda 36571 负责
+ *    「if (this.IsClickable()) this.m5.DG_CALL()」；
+ * ⑤ `AFL_Parts_AddMouseLClickEvent`(6892) 那条路（写 `CPartsFunctionSet.m7`）
+ *    在本作运行期 **0 次调用**（只有编辑器 / backlog / config / CSystemButton
+ *    那几处），所以 ADV 按钮的 FS `m7` 本来就该是空的 —— 前几轮一直盯着
+ *    FS 表找缺口，方向是错的。
  *
- * 安全性：Motion 无参数（有参数就跳过并留痕）；用 `in_tick` 防重入，
- * 因为 Motion 可能经 DG_CALL 触发委托，而委托里有 AIN 代码。
+ * 实测对账（`ap1`）：1228 个 AIN `Parts` 实例里只有 1 个 m7 非空；被点的
+ * `900000574` 对应 `slot=91402`，m7 为空。与 ③④ 完全一致：**部件号 → 按钮
+ * 对象**的映射只有 AIN 自己知道，引擎必须自己扫。
+ *
+ * 两条派发互不重叠，各自是 AIN 自己的写法：
+ *  A. `Parts` 实例：`values[0] == 部件号` 且 m7 非空 → 调 `Parts@OnClick`；
+ *  B. `TextButton` 实例：`values[3]` 是 `Parts` 对象页，取它的 `values[0]`
+ *     与部件号比对，命中则跑 lambda 36571（它自带 `IsClickable` 判定）。
+ *
+ * 只在「本帧刚捕获到点击」时登记一次，由帧泵（`vm_frame_pump`）在安全的
+ * 位置消费 —— 与 `AUTO_*` 后门同一套路，避免在 `parts_update_mouse` 里
+ * 直接嵌套执行 AIN（那时 `struct parts *` 随时可能被委托释放）。
+ * `XSYS4_PARTS_EVENT=0` 关闭。
  */
-void vm_tick_text_buttons(void)
+static bool pe_click_want_pending;
+static bool pe_click_on = true, pe_click_init;
+static bool pe_click_reent;
+static int pe_click_parts, pe_click_x, pe_click_y;
+
+void vm_request_parts_click(int parts_no, int x, int y)
 {
-	static int on = -1;
-	static int motion_fno = -2;
-	static int st_index = -2;
-	static bool in_tick;
-
-	if (on < 0) {
-		/* [D336] **默认关**。实测（`tb1`）默认开时，每帧对所有 TextButton
-		 * 无条件跑 Motion 会把游戏推回标题：`msgline` 0、末装载 `SceneTitle`。
-		 * 原因推断：Motion 会检查「本部件是否被点」，而 `clicked_parts` 在
-		 * `EndInput` 之前一直是本帧的捕获值，于是**每一个** TextButton 都
-		 * 认为自己被点了，各自派发委托（返回/关闭/确认），场面立刻崩掉。
-		 * 正确的做法应该是「只让被点的那一个跑」，但那需要知道按钮与部件的
-		 * 对应关系（`TextButton@PartsNumber`），属于下一步工作。 */
-		const char *e = getenv("XSYS4_TEXTBUTTON_TICK");
-		on = (e && strcmp(e, "0") != 0);
+	if (!pe_click_init) {
+		pe_click_init = true;
+		const char *e = getenv("XSYS4_PARTS_EVENT");
+		pe_click_on = !(e && !strcmp(e, "0"));
 	}
-	if (!on || in_tick || !ain)
+	if (!pe_click_on || !ain || parts_no <= 0)
 		return;
-	if (motion_fno == -2) {
-		motion_fno = -1;
-		for (int i = 0; i < ain->nr_functions; i++) {
-			const char *nm = ain->functions[i].name;
-			if (nm && strstr(nm, "TextButton@Motion")) {
-				motion_fno = i;
-				break;
-			}
-		}
-		st_index = -1;
-		for (int i = 0; i < ain->nr_structures; i++) {
-			const char *nm = ain->structures[i].name;
-			if (nm && strstr(nm, "TextButton")) {
-				st_index = i;
-				break;
-			}
-		}
-		if (getenv("XSYS4_DGIDX_DBG"))
-			NOTICE("[tbtn] Motion fno=%d struct=%d", motion_fno, st_index);
-	}
-	if (motion_fno < 0 || st_index < 0)
-		return;
-	if (ain->functions[motion_fno].nr_args != 0)
-		return;   /* 有参数就必须由调用方压栈，别在这里猜 */
+	pe_click_parts = parts_no;
+	pe_click_x = x;
+	pe_click_y = y;
+	pe_click_want_pending = true;
+}
 
-	/* [D336] **只驱动被点的那一个**。
-	 *
-	 * 无条件全量调用（`tb1` 实测）会把游戏推回标题：Motion 判断「本按钮的部件
-	 * 是否被点」用的是本帧的 `clicked_parts`，于是**每一个** TextButton 都认为
-	 * 自己被点了，各自派发委托（返回/关闭/确认）→ 场面立刻崩。
-	 *
-	 * TextButton 的**字段 3 是部件号**（`TextButton@Motion` 反汇编里 `PUSH 3; REF`）。
-	 * 所以只对「字段 3 == 本帧被点部件」的那个实例调 Motion，等价于原版
-	 * 「谁被点，谁更新」。
-	 */
-	int clicked = PE_GetClickPartsNumber();
-	/* 诊断：TextButton 实例的字段 3 是否真是部件号（`XSYS4_DGIDX_DBG`）。 */
-	if (getenv("XSYS4_DGIDX_DBG")) {
-		static int nd;
-		if (nd < 12) {
-			for (size_t i = 1; i < heap_size && nd < 12; i++) {
+static int vm_fno_named(const char *name)
+{
+	for (int i = 0; i < ain->nr_functions; i++) {
+		const char *nm = ain->functions[i].name;
+		if (nm && !strcmp(nm, name))
+			return i;
+	}
+	return -1;
+}
+
+static int vm_struct_named(const char *name)
+{
+	for (int i = 0; i < ain->nr_structures; i++) {
+		const char *nm = ain->structures[i].name;
+		if (nm && !strcmp(nm, name))
+			return i;
+	}
+	return -1;
+}
+
+/* 委托页里是否有条目（三元组 obj/fun/seq）。 */
+static int vm_delegate_count(int slot)
+{
+	if (slot <= 0 || (size_t)slot >= heap_size)
+		return 0;
+	struct page *p = heap[slot].page;
+	if (!p || p->type != DELEGATE_PAGE)
+		return 0;
+	return p->nr_vars / 3;
+}
+
+/* `Parts` 对象页 → 它的部件号（字段 0，`Parts@GetPartsNumber` 就是直接读它）。 */
+static int vm_parts_obj_number(int slot)
+{
+	if (slot <= 0 || (size_t)slot >= heap_size)
+		return -1;
+	struct page *p = heap[slot].page;
+	if (!p || p->type != STRUCT_PAGE || p->nr_vars < 1)
+		return -1;
+	return p->values[0].i;
+}
+
+void vm_pump_parts_click(void)
+{
+	static int parts_st = -2, onclick_fno = -2;
+	static int tbtn_st = -2, tbtn_lambda = -2;
+	static bool logged;
+	static int n_dispatch;
+
+	if (!pe_click_want_pending || pe_click_reent || !ain)
+		return;
+	pe_click_want_pending = false;
+	int no = pe_click_parts, x = pe_click_x, y = pe_click_y;
+
+	if (parts_st == -2) {
+		parts_st = vm_struct_named("Parts");
+		onclick_fno = vm_fno_named("Parts@OnClick");
+		tbtn_st = vm_struct_named("TextButton");
+		tbtn_lambda = vm_fno_named("TextButton@<lambda : TextButton@Init(string)(51, 52)>");
+		const bool dbg = getenv("XSYS4_PARTS_EVENT_DBG") != NULL;
+		if (dbg)
+			NOTICE("[pev] Parts=%d OnClick=%d TextButton=%d lambda=%d",
+			       parts_st, onclick_fno, tbtn_st, tbtn_lambda);
+	}
+
+	/* 先把候选槽号抄下来：vm_call 会分配新页，heap 可能重分配。 */
+	int cand[24];
+	int nc = 0, nparts = 0, ntbtn = 0;
+
+	if (tbtn_st >= 0 && tbtn_lambda >= 0 &&
+	    ain->functions[tbtn_lambda].nr_args == 0) {
+		/* 先精确匹配（按钮部件自己就是被点部件）。 */
+		for (size_t i = 1; i < heap_size && nc < 24; i++) {
+			struct page *p = heap[i].page;
+			if (!p || p->type != STRUCT_PAGE || p->index != tbtn_st)
+				continue;
+			if (p->nr_vars < 6)
+				continue;
+			if (vm_parts_obj_number(p->values[3].i) != no)
+				continue;
+			if (vm_delegate_count(p->values[5].i) <= 0)
+				continue;
+			cand[nc++] = (int)i;
+			ntbtn++;
+		}
+		/* [D337] 精确匹配不到时按**容器**算：Rance10 的按钮部件
+		 * `光标选中透過` 常为 1，点击会穿过按钮落到父容器上，于是
+		 * `clicked_parts` 是容器号（回想对话实测点了 574（容器），
+		 * 而 TextButton 的部件是 575/579…）。此时「点在容器里」等价于
+		 * 点中了容器里的按钮。 */
+		if (!ntbtn) {
+			for (size_t i = 1; i < heap_size && nc < 24; i++) {
 				struct page *p = heap[i].page;
-				if (!p || p->type != STRUCT_PAGE || p->index != st_index)
+				if (!p || p->type != STRUCT_PAGE || p->index != tbtn_st)
 					continue;
-				NOTICE("[tbtn] inst=%zu nr=%d v0=%d v1=%d v2=%d v3=%d "
-				       "v4=%d v5=%d clicked=%d",
-				       i, p->nr_vars, p->values[0].i,
-				       p->nr_vars > 1 ? p->values[1].i : -9,
-				       p->nr_vars > 2 ? p->values[2].i : -9,
-				       p->nr_vars > 3 ? p->values[3].i : -9,
-				       p->nr_vars > 4 ? p->values[4].i : -9,
-				       p->nr_vars > 5 ? p->values[5].i : -9,
-				       clicked);
-				nd++;
+				if (p->nr_vars < 6)
+					continue;
+				int pn = vm_parts_obj_number(p->values[3].i);
+				if (pn <= 0 || pn == no)
+					continue;
+				if (!PE_PartsIsUnder(pn, no))
+					continue;
+				if (vm_delegate_count(p->values[5].i) <= 0)
+					continue;
+				cand[nc++] = (int)i;
+				ntbtn++;
+			}
+			if (ntbtn && getenv("XSYS4_PARTS_EVENT_DBG"))
+				NOTICE("[pev] click=%d 落在容器上 -> 容器内 %d 个 TextButton",
+				       no, ntbtn);
+		}
+	}
+	/* A 组：`Button` 类在 `Parts.m7` 上注册的点击委托。 */
+	if (parts_st >= 0 && onclick_fno >= 0 &&
+	    ain->functions[onclick_fno].nr_args == 3) {
+		for (size_t i = 1; i < heap_size && nc < 24; i++) {
+			struct page *p = heap[i].page;
+			if (!p || p->type != STRUCT_PAGE || p->index != parts_st)
+				continue;
+			if (p->nr_vars < 8 || p->values[0].i != no)
+				continue;
+			if (vm_delegate_count(p->values[7].i) <= 0)
+				continue;
+			cand[nc++] = (int)i;
+			nparts++;
+		}
+	}
+	if (!nc && getenv("XSYS4_PARTS_EVENT_DBG")) {
+		NOTICE("[pev] click=%d 没有匹配的按钮对象（Parts=%d TextButton=%d）",
+		       no, nparts, ntbtn);
+		/* 现场勘查：TextButton 实例的 m3 到底指向什么。 */
+		static int ndump;
+		if (tbtn_st >= 0 && ndump < 3) {
+			ndump++;
+			for (size_t i = 1; i < heap_size; i++) {
+				struct page *p = heap[i].page;
+				if (!p || p->type != STRUCT_PAGE || p->index != tbtn_st)
+					continue;
+				int m3 = p->nr_vars > 3 ? p->values[3].i : -1;
+				struct page *q = (m3 > 0 && (size_t)m3 < heap_size)
+						 ? heap[m3].page : NULL;
+				NOTICE("[pev]   tbtn slot=%zu nr=%d v1=%d m3=%d -> %s idx=%d v0=%d nr=%d m5=%d",
+				       i, p->nr_vars,
+				       p->nr_vars > 1 ? p->values[1].i : -9, m3,
+				       q ? (q->type == STRUCT_PAGE ? "struct" :
+					    q->type == DELEGATE_PAGE ? "dgate" : "other")
+					 : "null",
+				       q ? q->index : -1,
+				       q && q->nr_vars > 0 ? q->values[0].i : -999,
+				       q ? q->nr_vars : -1,
+				       p->nr_vars > 5 ? vm_delegate_count(p->values[5].i) : -9);
 			}
 		}
 	}
-	if (clicked <= 0)
+	if (!nc)
 		return;
 
-	in_tick = true;
-	for (size_t i = 1; i < heap_size; i++) {
-		struct page *p = heap[i].page;
-		if (!p || p->type != STRUCT_PAGE || p->index != st_index)
-			continue;
-		if (p->nr_vars <= 3 || p->values[3].i != clicked)
-			continue;
-		if (getenv("XSYS4_DGIDX_DBG"))
-			NOTICE("[tbtn] Motion this=%zu parts=%d", i, clicked);
-		vm_call(motion_fno, (int)i);
+	if (!logged && getenv("XSYS4_PARTS_EVENT_DBG")) {
+		logged = true;
+		NOTICE("[pev] click=%d -> %d 个候选对象（TextButton %d）",
+		       no, nc, ntbtn);
 	}
-	in_tick = false;
+
+	pe_click_reent = true;
+	for (int k = 0; k < nc; k++) {
+		int slot = cand[k];
+		if (slot <= 0 || (size_t)slot >= heap_size || !heap[slot].page)
+			continue;
+		const bool is_tbtn = heap[slot].page->index == tbtn_st;
+		if (n_dispatch < 40 && getenv("XSYS4_PARTS_EVENT_DBG"))
+			NOTICE("[pev] #%d slot=%d %s", n_dispatch, slot,
+			       is_tbtn ? "TextButton" : "Parts");
+		n_dispatch++;
+		if (is_tbtn) {
+			vm_call(tbtn_lambda, slot);
+		} else {
+			stack_push(no);
+			stack_push(x);
+			stack_push(y);
+			vm_call(onclick_fno, slot);
+		}
+	}
+	pe_click_reent = false;
 }
 
 void vm_call(int fno, int struct_page)
@@ -5300,6 +5428,9 @@ void vm_frame_pump(void)
 	last_tick = now;
 	if (dt > 100)
 		dt = 100;
+	/* [D337] 引擎捕获到的点击在这里派发给 AIN 侧的按钮对象
+	 * （`parts_update_mouse` 只登记，见 vm_request_parts_click）。 */
+	vm_pump_parts_click();
 	/* [MEM] XSYS4_MEM_STAT=1：每约 2 秒打印一次虚拟机堆的构成。
 	 * 只看 RSS 分不清「槽泄漏（堆数组增长）」「页泄漏」「字符串泄漏」，
 	 * 这里遍历堆，把三类分别数出来。开销有上限：

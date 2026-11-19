@@ -1703,6 +1703,24 @@ void PE_SetDelegateIndex(int parts_no, int delegate_index)
 	}
 }
 
+/* [D337] `child_no` 是不是 `ancestor_no` 自己或它的子孙部件。
+ *
+ * 用途：按钮部件常常 `光标选中透過=1`（点击穿过它落到父容器），于是引擎
+ * 捕获到的是**容器**的部件号而不是按钮自己的。派发时要把「点在容器上」
+ * 也算作点中了容器里的按钮。深度上限 12 防环。 */
+bool PE_PartsIsUnder(int child_no, int ancestor_no)
+{
+	if (child_no <= 0 || ancestor_no <= 0)
+		return false;
+	struct parts *p = parts_try_get(child_no);
+	for (int d = 0; p && d < 12; d++) {
+		if (p->no == ancestor_no)
+			return true;
+		p = p->parent;
+	}
+	return false;
+}
+
 int PE_GetDelegateIndex(int parts_no)
 {
 	struct parts *parts = parts_try_get(parts_no);

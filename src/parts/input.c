@@ -672,7 +672,8 @@ void PE_UpdateInputState(int passed_time)
 	 * 且只驱动部件号匹配的那个 TextButton（见 vm_tick_text_buttons）。 */
 	if (g_just_clicked) {
 		g_just_clicked = false;
-		vm_tick_text_buttons();
+		/* [D337] 把这次点击派发给 AIN 侧的按钮对象（帧泵里消费）。 */
+		vm_request_parts_click(clicked_parts, cur_pos.x, cur_pos.y);
 	}
 
 	if (parts_began_click || (prev_clicking && !cur_clicking))

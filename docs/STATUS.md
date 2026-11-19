@@ -10,9 +10,9 @@
 
 | | |
 |---|---|
-| **阶段** | **SDL3 分支（`sdl3`）已可跑**：编译 0 错误、成功起窗、标题画面与 SDL2 版一致。点击捕获已修复（D332/D333），标题按钮**单次即中**；第一章 ADV 能连续播到**第 37 句**，停在开场 `ReplayMemoDialog`（回想对话）的「過後查看」。战斗未进入 |
-| **最大卡点** | `[TEXTBUTTON-CLICK]` `ReplayMemoDialog` 的 TextButton 点不动：点击**已能捕获**（`[inp] EndInput clicked=900000574`），但 `TextButton@Motion` 从不被调用，委托无人派发。`CADVEngine` 全类零调用，即本作不实例化那个面板类；`TextButton` 的部件号是两层（`m3.GetPartsNumber()`），下一步在 C 侧解析它后只驱动匹配按钮（D336） |
-| **本轮做过的** | ① 用 `XSYS4_HLL_HOT` 量化了「HLL 覆盖率」的真实含义（见 `[HLL-QUEUE]`）：源码 1189 个缺口里 **1188 个在本章零调用**，851 个所在库连启动绑定都不出现；补上一直缺失的 `tools/offline/hll_hotness.py`，把工作队列改成按运行期调用次数排序；② 按该队列实现 `Parts_GetParentPartsNumber`（真实父号）与 `SetActiveController`（稳定 id → 栈下标），并删除 1 处同名重复登记（覆盖率虚增）；③ 新增开关 `XSYS4_HLL_HOT` / `XSYS4_PARENT_REAL` / `XSYS4_ACTIVE_CTRL_SET` |
+| **阶段** | **SDL3 分支（`sdl3`）第一章可通到第一场战斗**：标题 → 第一章 ADV（37 句）→ 回想对话 `ReplayMemoDialog`（D337 修好「過後查看」）→ `QuestMapSelectionButton` 选项 → `Game/Battle/*` **战斗画面出图**（Round 1、HP、技能按钮、戦斗结果ルート）。战斗尚未打透 |
+| **最大卡点** | `[BATTLE-STALL]` 战斗界面已出、可点，但一回合推进不下去：点击派发（D337）已通，问题在战斗侧自己的点击捕获/技能按钮命中，见台账 A 组 |
+| **本轮做过的** | **D337 修掉 `[TEXTBUTTON-CLICK]`**：反汇编证明点击委托存在 AIN `Parts` 对象字段 7 上（`Parts@SetOnClickEvent`），派发者是 `Parts@OnClick`(29541)，而它在静态 xref 里**一个 AIN 调用点都没有** ⇒ 这一拍本该由引擎回调、移植时整条漏掉了。新增 `vm_request_parts_click()`/`vm_pump_parts_click()`：点击登记、帧泵派发；`TextButton` 走它 `Init` 里生成的 lambda；精确匹配不到时按「点在容器上」取容器内 TextButton（实测点 574 是容器、575 才是按钮）。`XSYS4_PARTS_EVENT=0` 可关 |
 | **判据** | 画面一律用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S，且 alt+s 前空 ≥1.5s，否则会丢帧）；层/归属看 `[ctrl] SetActive id=N -> idx=M` 与 `[ctrl] layer … parts:` 清单；HLL 进展看 `python3 tools/offline/hll_hotness.py --todo ../logs/live_<tag>.log` 的输出是否为 0 |
 
 > **卡点必须挂债标签**：§0「最大卡点」里的 `` `[TAG]` `` 必须**逐字存在**于
@@ -207,7 +207,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **229**（未标注 31）｜ HLL 源码口径 **3301 / 4494（73.5%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 114 / 36** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **230**（未标注 31）｜ HLL 源码口径 **3301 / 4494（73.5%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 103 / 36** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
 <!-- STATS:END -->
 
 最常用的：
