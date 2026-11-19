@@ -10,9 +10,9 @@
 
 | | |
 |---|---|
-| **阶段** | 第一章 ADV **画面完全正确**（D317）；剧情可连续推进到第 37 句并进入开场`ReplayMemoDialog`（回想对话）。卡在该对话框的「過後查看」按钮（`[TEXTBUTTON-CLICK]`）。战斗未进入 |
-| **最大卡点** | `[TEXTBUTTON-CLICK]` 回想对话的「過後查看」点不动（`[BG-LAYER]` 已于 D317 收敛，画面验收通过：走廊背景 + 立绘 + 名牌 + 对话框）。战斗仍未进入 |
-| **本轮做过的** | ① 用 `XSYS4_HLL_HOT` 量化了「HLL 覆盖率」的真实含义（见 `[HLL-QUEUE]`）：源码 1189 个缺口里 **1188 个在本章零调用**，851 个所在库连启动绑定都不出现；补上一直缺失的 `tools/offline/hll_hotness.py`，把工作队列改成按运行期调用次数排序；② 按该队列实现 `Parts_GetParentPartsNumber`（真实父号）与 `SetActiveController`（稳定 id → 栈下标），并删除 1 处同名重复登记（覆盖率虚增）；③ 新增开关 `XSYS4_HLL_HOT` / `XSYS4_PARENT_REAL` / `XSYS4_ACTIVE_CTRL_SET` |
+| **阶段** | **SDL3 分支（`sdl3`）第一章可通到第一场战斗**：标题 → 第一章 ADV（37 句）→ 回想对话 `ReplayMemoDialog`（D337 修好「過後查看」）→ `QuestMapSelectionButton` 选项 → `Game/Battle/*` **战斗画面出图**（Round 1、HP、技能按钮、戦斗结果ルート）。战斗尚未打透 |
+| **最大卡点** | `[BATTLE-STALL]` 战斗界面已出、可点，但一回合推进不下去：点击派发（D337）已通，问题在战斗侧自己的点击捕获/技能按钮命中，见台账 A 组 |
+| **本轮做过的** | **D337 修掉 `[TEXTBUTTON-CLICK]`**：反汇编证明点击委托存在 AIN `Parts` 对象字段 7 上（`Parts@SetOnClickEvent`），派发者是 `Parts@OnClick`(29541)，而它在静态 xref 里**一个 AIN 调用点都没有** ⇒ 这一拍本该由引擎回调、移植时整条漏掉了。新增 `vm_request_parts_click()`/`vm_pump_parts_click()`：点击登记、帧泵派发；`TextButton` 走它 `Init` 里生成的 lambda；精确匹配不到时按「点在容器上」取容器内 TextButton（实测点 574 是容器、575 才是按钮）。`XSYS4_PARTS_EVENT=0` 可关 |
 | **判据** | 画面一律用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S，且 alt+s 前空 ≥1.5s，否则会丢帧）；层/归属看 `[ctrl] SetActive id=N -> idx=M` 与 `[ctrl] layer … parts:` 清单；HLL 进展看 `python3 tools/offline/hll_hotness.py --todo ../logs/live_<tag>.log` 的输出是否为 0 |
 
 > **卡点必须挂债标签**：§0「最大卡点」里的 `` `[TAG]` `` 必须**逐字存在**于
@@ -201,13 +201,18 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
     见 `[NULL-IFACE-CALL]`；`XSYS4_NULL_METHOD=0` 复现中止。
 35. **带谓词的 HLL 不许"忽略谓词、返回整份拷贝"**。这类 stage-1 桩把"过滤"变成"恒真"，而调用方把它当筛选器用：`Array.Where` 曾因此让 `CompletedTrophy@GetNewCompleted()` 返回**全部**成就，进而叠出 40+ 个全屏模态把编队界面盖住（D158）。实现不了就返回空数组，别返回全集。
 36. **部件号段是版本相关的，别照抄旧引擎**。`PE_GetFreeNumber` 曾沿用 Rance 01 的 `1000001000`，而兰斯10 的 AIN 校验 `1～999999999` → `Parts@Release` 的 `Ｐ＿削除` 每次拒绝删除，单局 213 次部件残留（D161）。**旧日志里的 `100000xxxx` 已作废**，换算 `新号 = 旧号 - 100001000`。
+37. **「部件被点中」≠「按钮被按下」——引擎必须自己把点击派发给 AIN 按钮对象**（D337）。
+    委托存在 AIN `Parts` 对象字段 7（`Parts@SetOnClickEvent`）或 `TextButton` 自身字段 5，
+    派发者是 `Parts@OnClick`(29541)，而它**零个 AIN 调用点** —— 这一拍没有任何 AIN 代码负责。
+    映射只能扫堆：`Parts.m0` / `TextButton.m3.m0` 等于被点部件号。别再去 `CPartsFunctionSet.m7`
+    里找缺口（那条路本作运行期为 0 调用）。点击落在容器上时按 `PE_PartsIsUnder()` 下钻一层。
 
 ---
 
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **226**（未标注 31）｜ HLL 源码口径 **3301 / 4494（73.5%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 109 / 36** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **230**（未标注 31）｜ HLL 源码口径 **3301 / 4494（73.5%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 103 / 36** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
 <!-- STATS:END -->
 
 最常用的：

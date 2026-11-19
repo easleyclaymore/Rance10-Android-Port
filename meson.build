@@ -1,6 +1,11 @@
 project('system4', 'c',
         meson_version: '>= 0.59',
         default_options : ['c_std=c11'])
+
+# SDL3 迁移试验：打开旧名兼容层（rename 类错误一次清零）
+add_project_arguments('-DSDL_ENABLE_OLD_NAMES', language : 'c')
+# [D329] SDL3 的 SDL.h 不再顺带包含 math/stdlib/ctype，统一在兼容头里补。
+add_project_arguments('-include', meson.current_source_dir() / 'src/sdl3_compat.h', language : 'c')
 add_project_arguments('-D_DEFAULT_SOURCE', language : 'c')
 add_project_arguments('-DXSYS4_DEFAULT_DATA_DIR="' + get_option('prefix') / get_option('datadir') / 'xsystem4"', language : 'c')
 
@@ -15,7 +20,7 @@ endif
 
 zlib = dependency('zlib', static : static_libs)
 libm = meson.get_compiler('c').find_library('m', required: false)
-sdl2 = dependency('sdl2', static : static_libs)
+sdl2 = dependency('sdl3', static : static_libs)
 ft2 = dependency('freetype2', static : static_libs)
 # [D131] 可选：GBK 中文版用 fontconfig 动态找 CJK 字体，避免硬编码字体路径。
 # 平台没有 fontconfig 时行为与原来完全一致（回退内置 VL-Gothic）。

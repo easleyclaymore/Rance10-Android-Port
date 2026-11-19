@@ -14,7 +14,7 @@
 #define SYSTEM4_GRAPHICS_H
 
 #include <stdint.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <cglm/types.h>
 
 typedef SDL_Color Color;

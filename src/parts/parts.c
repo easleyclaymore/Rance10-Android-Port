@@ -166,6 +166,61 @@ void parts_cb_drop(int parts_no);
 
 static void ctrl_pending_add(int parts_no);
 
+/* [D335] 「部件还没建就设 delegate_index」的补绑定表。
+ *
+ * 实测（`dg4`，回想对话框「過後查看」）：
+ *   `[dgidx] get parts=900000574 -> -1`      ← 此刻部件不存在
+ *   `[dgidx] set parts=900000574 di=404`     ← 但要绑委托
+ * `SetDelegateIndex` 用的是 `parts_get()`，它**按需创建**：于是 AIN 这一句
+ * 造出一个空壳部件，`di` 写在空壳上；随后活动装载/重建把空壳换掉，
+ * 真正的 574 拿到的是默认 `di`，点击派发自然打空。
+ *
+ * 处置与 `pending_parent` 同思路：部件不在就先记账，等它真的建出来再补。
+ * 容量 64 足够（同一时刻待绑的按钮不会更多）；满了就丢最旧的并留痕，
+ * 不静默溢出。
+ */
+#define PE_PENDING_DI_MAX 64
+static struct {
+	int no;
+	int di;
+} pe_pending_di[PE_PENDING_DI_MAX];
+static int pe_pending_di_n;
+
+static void pe_pending_di_remember(int parts_no, int di)
+{
+	for (int i = 0; i < pe_pending_di_n; i++) {
+		if (pe_pending_di[i].no == parts_no) {
+			pe_pending_di[i].di = di;
+			return;
+		}
+	}
+	if (pe_pending_di_n == PE_PENDING_DI_MAX) {
+		memmove(&pe_pending_di[0], &pe_pending_di[1],
+			sizeof(pe_pending_di[0]) * (PE_PENDING_DI_MAX - 1));
+		pe_pending_di_n--;
+		if (getenv("XSYS4_DGIDX_DBG"))
+			NOTICE("[dgidx] pending 表满，丢弃最旧一条");
+	}
+	pe_pending_di[pe_pending_di_n].no = parts_no;
+	pe_pending_di[pe_pending_di_n].di = di;
+	pe_pending_di_n++;
+}
+
+/* 部件刚建出来时调用：把欠它的 delegate_index 补上。 */
+static void pe_pending_di_apply(struct parts *parts)
+{
+	for (int i = 0; i < pe_pending_di_n; i++) {
+		if (pe_pending_di[i].no != parts->no)
+			continue;
+		parts->delegate_index = pe_pending_di[i].di;
+		if (getenv("XSYS4_DGIDX_DBG"))
+			NOTICE("[dgidx] 补绑定 parts=%d di=%d", parts->no,
+			       parts->delegate_index);
+		pe_pending_di[i] = pe_pending_di[--pe_pending_di_n];
+		return;
+	}
+}
+
 struct parts *parts_get(int parts_no)
 {
 	struct ht_slot *slot = ht_put_int(parts_table, parts_no, NULL);
@@ -181,6 +236,7 @@ struct parts *parts_get(int parts_no)
 	 * 只有「部件被释放后重建」能造成这种结果，而重建会丢掉全部绑定。 */
 	if (getenv("XSYS4_PART_LIFE") && parts_no >= 900000560 && parts_no <= 900000600)
 		NOTICE("[plife] create no=%d ctrl=%d", parts_no, parts->controller_no);
+	pe_pending_di_apply(parts);
 	/* [D289] Load 期间建的部件先记下来，AddLayer 时迁到新层。 */
 	ctrl_pending_add(parts_no);
 	slot->value = parts;
@@ -1627,7 +1683,42 @@ void PE_SetDelegateIndex(int parts_no, int delegate_index)
 	 * 这条日志回答「AIN 到底有没有给 574 绑过 delegate_index」。 */
 	if (getenv("XSYS4_DGIDX_DBG"))
 		NOTICE("[dgidx] set parts=%d di=%d", parts_no, delegate_index);
-	parts_get(parts_no)->delegate_index = delegate_index;
+	/* [D334] 只对回想对话框段打 AIN 调用栈，回答「是谁在配置这些按钮」。
+	 * 限 3 次：一次跑测里这段会被设很多遍，栈会把日志冲爆。 */
+	if (getenv("XSYS4_DGIDX_DBG") && parts_no >= 900000560 &&
+	    parts_no <= 900000600) {
+		static int nstack;
+		if (nstack++ < 3)
+			vm_stack_trace();
+	}
+	/* [D335] 部件不在就记账，别用 parts_get 造空壳（见 pe_pending_di_remember）。 */
+	struct parts *p = parts_try_get(parts_no);
+	if (p) {
+		p->delegate_index = delegate_index;
+	} else {
+		pe_pending_di_remember(parts_no, delegate_index);
+		if (getenv("XSYS4_DGIDX_DBG"))
+			NOTICE("[dgidx] 部件 %d 尚不存在，记账待补 di=%d",
+			       parts_no, delegate_index);
+	}
+}
+
+/* [D337] `child_no` 是不是 `ancestor_no` 自己或它的子孙部件。
+ *
+ * 用途：按钮部件常常 `光标选中透過=1`（点击穿过它落到父容器），于是引擎
+ * 捕获到的是**容器**的部件号而不是按钮自己的。派发时要把「点在容器上」
+ * 也算作点中了容器里的按钮。深度上限 12 防环。 */
+bool PE_PartsIsUnder(int child_no, int ancestor_no)
+{
+	if (child_no <= 0 || ancestor_no <= 0)
+		return false;
+	struct parts *p = parts_try_get(child_no);
+	for (int d = 0; p && d < 12; d++) {
+		if (p->no == ancestor_no)
+			return true;
+		p = p->parent;
+	}
+	return false;
 }
 
 int PE_GetDelegateIndex(int parts_no)

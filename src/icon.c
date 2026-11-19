@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include "system4.h"
 #include "system4/buffer.h"
@@ -577,10 +577,13 @@ static SDL_Surface *read_icon(struct buffer *b, struct resource *res, struct cg 
 		WARNING("invalid bpp: %d", icon.bm_info.bpp);
 		return NULL;
 	}
-	SDL_Surface *s = SDL_CreateRGBSurfaceWithFormatFrom(cg->pixels, cg->metrics.w,
-		cg->metrics.h, 32, cg->metrics.w * 4, SDL_PIXELFORMAT_RGBA32);
+	/* [D329] SDL3：SDL_CreateRGBSurfaceWithFormatFrom 改名为
+	 * SDL_CreateSurfaceFrom，参数顺序变成 (w, h, format, pixels, pitch)，
+	 * 且不再需要 depth（由 format 决定）。 */
+	SDL_Surface *s = SDL_CreateSurfaceFrom(cg->metrics.w, cg->metrics.h,
+		SDL_PIXELFORMAT_RGBA32, cg->pixels, cg->metrics.w * 4);
 	if (!s)
-		ERROR("SDL_CreateRGBSurfaceWithFormatFrom: %s", SDL_GetError());
+		ERROR("SDL_CreateSurfaceFrom: %s", SDL_GetError());
 	*cg_out = cg;
 	return s;
 }

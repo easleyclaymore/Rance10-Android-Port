@@ -2,26 +2,29 @@
 
 [nunuhara/xsystem4](https://github.com/nunuhara/xsystem4) 的下游 fork：让《ランス10》
 在 Linux / Android 上**原生**运行，不走 proot / 转译层。上游是 AliceSoft System4 引擎的
-类 Unix 开源实现（C + SDL2 + OpenGL）。Rance10 用 **AIN v12** 字节码，在值表示、
+类 Unix 开源实现（C + SDL2 + OpenGL）；**本 fork 已把渲染/输入/音频层迁到 SDL3**
+（`sdl3` 分支，见 `docs/RENDER-BACKEND.md` 决策三）。Rance10 用 **AIN v12** 字节码，在值表示、
 接口派发、泛型容器、存档格式上都有上游未覆盖的语义，本 fork 用字节码与存档文件
 逐条取证补齐。目标交付 arm64 APK（验收设备 realme RMX3700），当前在 Linux 桌面推进。
 
 ![第一章 ADV 实机画面](docs/screenshots/ch01-adv.png)
 
-> **第一章开场剧情已经在 Linux 原生构建上跑通。** 上面这张是**未经修图的实机画面**
-> （Xvfb 内 `import -window` 抓的 1920×1080 原始帧，缩放到 1280×720 入库）：
+> **第一章已经能从标题一路走到第一场战斗。** 上面这张是**未经修图的实机画面**
+> （引擎 `glReadPixels` 直接从 GL 主表面 dump 的 1920×1080 原始帧，缩放到 1280×720 入库）：
 > 背景随剧情从「世界地图」切到「宇宙船／通道」，立绘、名牌、消息窗口、
 > 任务信息面板与 SKIP 按钮全部按预期渲染。
 >
-> 之前这里卡了很久：地图那几张 CG 一直盖在新的背景上。根因是 AIN 把**全屏情报地图**
-> （`AdvInfoMapCg`）和 ADV 窗口放进了同一层，收起时只关「地图层」，于是永远关不掉；
-> 现在在背景换图时按「根部件」整组收起（`D317`，见 `docs/` 台账与 `../TECH_DEBT.md`）。
+> 链路依次跑通：标题 → 第一章 ADV（37 句）→ 回想对话 `ReplayMemoDialog` →
+> 选项 `QuestMapSelectionButton` → `Game/Battle/*`。最后一跳是本轮修的：
+> 点击在引擎里被正确捕获，但**没有任何 AIN 代码负责把它派发给按钮对象**
+> （`Parts@OnClick` 静态 xref 为 0），现在由引擎回调（`D337`）。
 >
-> 说明：这是**桌面 x86_64 构建**的画面，arm64 APK 尚未交付；战斗部分仍在攻。
+> 说明：这是**桌面 x86_64 构建**的画面，arm64 APK 尚未交付；战斗画得出、
+> 但指令按钮的命中优先级仍在攻（见 `docs/TECH_DEBT.md` 的 `[BATTLE-STALL]`）。
 
-> **本仓库不维护项目状态。**
-> 现状 / 阶段 / 卡点 / 必读契约 / 技术债的**唯一信息源**是工作区根
-> `../README.md` 与 `../TECH_DEBT.md` —— 它们在 git 仓库之外，单独 clone 本仓库时拿不到。
+> **本文件不维护项目状态。**
+> 现状 / 阶段 / 卡点 / 必读契约的**唯一信息源**是 [`docs/STATUS.md`](docs/STATUS.md)，
+> 未结技术债是 [`docs/TECH_DEBT.md`](docs/TECH_DEBT.md)。
 > 本文件只回答「这个仓库是什么、怎么构建、边界在哪」，其余按下方文档地图找。
 > 开关数 / HLL 覆盖率 / 基线 KPI 等数字以 `docs/STATS.md` 为准（脚本生成，禁止手写）。
 
@@ -40,11 +43,17 @@ git -C subprojects/libsys4 apply ../../patches/0002-libsys4-ajp-metrics.patch
 
 ## 构建
 
-依赖（Debian/Ubuntu 包名）：`meson` `ninja-build`、`libsdl2-dev`、`libglew-dev`、
+依赖（Debian/Ubuntu 包名）：`meson` `ninja-build`、**`libsdl3-dev`（≥ 3.2）**、`libglew-dev`、
 `libfreetype-dev`、`libpng-dev` `libwebp-dev` `libturbojpeg0-dev`、`libsndfile-dev`、
 `libffi-dev` `zlib1g-dev` `libdeflate-dev`、`bison` `flex`、`libcglm-dev`（可缺省，
 meson 自动拉取）、chibi-scheme（可选调试器）。完整清单见 `meson.build`，
 本机备忘见 `tools/env/inst-deps.sh`。
+
+> `libsdl3-dev` 只在较新的发行版（Debian trixie+ / Ubuntu 25.04+）里有；老系统请按
+> [SDL3 官方说明](https://github.com/libsdl-org/SDL/blob/main/docs/README-cmake.md) 从源码安装，
+> 确保 `pkg-config --modversion sdl3` 有输出（本项目实测 3.4.20）。
+> 上游 xsystem4 仍是 SDL2；本 fork 的 `meson.build` 用 `dependency('sdl3')` +
+> `-DSDL_ENABLE_OLD_NAMES`，所以两边 API 写法一致、易于跟上游。
 
 ```bash
 mkdir build && meson build && ninja -C build
@@ -76,9 +85,9 @@ Core Layer = `vm.c` / `page.c` / `heap.c` / `ffi.c` / `pal.c` 及对应头文件
 
 | 分支 | 用途 |
 |---|---|
-| `main` | 远端交付基线（单提交，历史已扁平化）；`git push origin $(git rev-parse public-baseline):main` |
-| `public-baseline` | 本地单提交基线指针 |
-| `rance10-native` | 开发分支，完整移植历史；日常提交与推送都在这里 |
+| `main` | 远端交付基线（快照提交，**内容与 `sdl3` 同树**）；`git push origin <snapshot-sha>:main` |
+| `sdl3` | **当前交付线**：SDL3 迁移 + 第一章推进，日常提交与推送都在这里 |
+| `rance10-native` | SDL2 时代的完整移植史，保留作对照与回溯（不再推进） |
 | `upstream` | 上游基线，仅用于对照 |
 
 ## 内容边界
@@ -104,7 +113,7 @@ Core Layer = `vm.c` / `page.c` / `heap.c` / `ffi.c` / `pal.c` 及对应头文件
 | ② 工作流 | 假设台账 / 变更影响面清单 | `docs/HYPOTHESES.md` / `docs/IMPACT.md` |
 | ② 工作流 | **第一章 121 个 HLL 的 L2/L3 达标计划与台账** | `docs/HLL-L3.md`（台账块由 `hll_hotness.py --emit` 生成） |
 | ③ 知识 | 工具链入口 / 动作序列 / 跑测配方 / 日志前缀 | `docs/SDK.md` |
-| ③ 知识 | 渲染后端决策（含 SDL2→SDL3 迁移评估） | `docs/RENDER-BACKEND.md` |
+| ③ 知识 | 渲染后端决策（SDL2→SDL3 迁移已落地；Vulkan/Web 评估结论） | `docs/RENDER-BACKEND.md` |
 | ③ 知识 | 离线工具参数与模式 / HLL 全量普查方法 | `docs/OFFLINE.md` |
 | ③ 知识 | 引擎移植方法论（对外成书） | `docs/GUIDE/` |
 | ③ 知识 | `tools/` 目录分层 | `tools/MAP.md` |

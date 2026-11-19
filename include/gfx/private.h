@@ -21,12 +21,12 @@
 #define SYSTEM4_GFX_PRIVATE_H
 
 #include <stdbool.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "gfx/gl.h"
 
 struct sdl_private {
 	SDL_Window *window;
-	SDL_PixelFormat *format;
+	const SDL_PixelFormatDetails *format; /* [D329] SDL3：由 SDL 拥有，不要释放 */
 	struct {
 		SDL_GLContext context;
 		GLuint vao;

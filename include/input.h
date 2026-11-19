@@ -151,6 +151,9 @@ void mouse_set_pos(int x, int y);
 void mouse_get_wheel(int *forward, int *back);
 void mouse_clear_wheel(void);
 bool mouse_show_cursor(bool show);
+/* [D329] SDL3 的文本输入接口需要窗口句柄。 */
+void input_start_text_input(void);
+void input_stop_text_input(void);
 void register_input_handler(void(*handler)(const char*));
 void clear_input_handler(void);
 void register_editing_handler(void(*handler)(const char*, int, int));

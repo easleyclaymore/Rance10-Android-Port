@@ -15,7 +15,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/fifo.h>

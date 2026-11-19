@@ -13,7 +13,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <time.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "system4.h"
 #include "queue.h"
 #include "gfx/gfx.h"
@@ -324,11 +324,12 @@ void key_clear_flag(bool no_ctrl)
 
 void mouse_get_pos(int *x, int *y)
 {
-	int wx, wy;
+	/* [D329] SDL3 的 SDL_GetMouseState 收 float*（窗口坐标可以是小数）。 */
+	float wx, wy;
 	SDL_PumpEvents();
 	SDL_GetMouseState(&wx, &wy);
-	*x = (wx - sdl.viewport.x) * sdl.w / sdl.viewport.w;
-	*y = (wy - sdl.viewport.y) * sdl.h / sdl.viewport.h;
+	*x = (int)(wx - sdl.viewport.x) * sdl.w / sdl.viewport.w;
+	*y = (int)(wy - sdl.viewport.y) * sdl.h / sdl.viewport.h;
 }
 
 void mouse_set_pos(int x, int y)
@@ -351,9 +352,23 @@ void mouse_clear_wheel(void)
 	wheel_dir = 0;
 }
 
+/* [D329] SDL3 的 SDL_StartTextInput / SDL_StopTextInput 都要窗口句柄。
+ * 包一层放在 input 模块，让 hll/InputString.c 不必包含 gfx 的私有头。 */
+void input_start_text_input(void)
+{
+	SDL_StartTextInput(sdl.window);
+}
+
+void input_stop_text_input(void)
+{
+	SDL_StopTextInput(sdl.window);
+}
+
 bool mouse_show_cursor(bool show)
 {
-	return SDL_ShowCursor(show ? SDL_ENABLE : SDL_DISABLE) >= 0;
+	/* [D329] SDL3 去掉了 SDL_ENABLE/SDL_DISABLE 与 ShowCursor(bool)，
+	 * 拆成 SDL_ShowCursor() / SDL_HideCursor()，返回 bool。 */
+	return show ? SDL_ShowCursor() : SDL_HideCursor();
 }
 
 static void(*input_handler)(const char*);
@@ -362,7 +377,8 @@ static void(*key_handler)(int);
 
 static void key_event(SDL_KeyboardEvent *e, bool pressed)
 {
-	enum sact_keycode code = sdl_to_sact_key(e->keysym.scancode, e->keysym.mod);
+	/* [D329] SDL3 删除了 SDL_Keysym，字段直接挂在 SDL_KeyboardEvent 上。 */
+	enum sact_keycode code = sdl_to_sact_key(e->scancode, e->mod);
 	if (code) {
 		if (pressed) {
 			key_note_press(code);
@@ -384,17 +400,18 @@ static void mouse_event(SDL_MouseButtonEvent *e)
 	 * `[key] IsDown(1)=1`，说明 XTEST 与焦点是通的。 */
 	if (getenv("XSYS4_MOUSE_DBG"))
 		NOTICE("[mouse] btn=%d state=%d which=%d clicks=%d pos=(%d,%d) win=%u",
-		       e->button, e->state, (int)e->which, e->clicks,
-		       e->x, e->y, (unsigned)e->windowID);
+		       e->button, e->down, (int)e->which, e->clicks,
+		       (int)e->x, (int)e->y, (unsigned)e->windowID);
 	enum sact_keycode code = sdl_to_sact_button(e->button);
-	if (code == VK_LBUTTON && e->state == SDL_PRESSED)
+	/* [D329] SDL3 用 bool down 代替 state == SDL_PRESSED/RELEASED。 */
+	if (code == VK_LBUTTON && e->down)
 		mouse_press_pulse = true;
 	/* [D191] 右键释放脉冲。xdotool 的 rclick 在同一帧内完成 press+release，
 	 * 只读 key_state 会漏掉，必须留一个脉冲给帧泵消费。 */
-	if (code == VK_RBUTTON && e->state == SDL_RELEASED)
+	if (code == VK_RBUTTON && !e->down)
 		mouse_rclick_pulse = true;
 	if (code) {
-		if (e->state == SDL_PRESSED) {
+		if (e->down) {
 			key_note_press(code);
 			key_press_pulse[code] = true;
 		} else {
@@ -402,7 +419,7 @@ static void mouse_event(SDL_MouseButtonEvent *e)
 		}
 	}
 #ifdef DEBUGGER_ENABLED
-	if (e->button == SDL_BUTTON_MIDDLE && e->state == SDL_PRESSED
+	if (e->button == SDL_BUTTON_MIDDLE && e->down
 			&& (dbg_start_in_debugger || dbg_dap))
 		dbg_repl(DBG_STOP_PAUSE, NULL);
 #endif
@@ -410,10 +427,10 @@ static void mouse_event(SDL_MouseButtonEvent *e)
 
 static void synthetic_mouse_event(SDL_MouseButtonEvent *e)
 {
-	if (e->state == SDL_PRESSED) {
+	if (e->down) {
 		mouse_press_pulse = true;
 		// 视口之外的触摸当作右键。
-		SDL_Point p = { .x = e->x, .y = e->y };
+		SDL_Point p = { .x = (int)e->x, .y = (int)e->y };
 		if (SDL_PointInRect(&p, &sdl.viewport)) {
 			key_note_press(VK_LBUTTON);
 			key_press_pulse[VK_LBUTTON] = true;
@@ -652,7 +669,7 @@ static void controller_axis_event(SDL_ControllerAxisEvent *e)
 
 static void controller_button_event(SDL_ControllerButtonEvent *e)
 {
-	joybutton_state[e->button] = e->state == SDL_PRESSED;
+	joybutton_state[e->button] = e->down;
 }
 
 void register_input_handler(void(*handler)(const char*))
@@ -724,7 +741,7 @@ static void fire_deferred_events(void)
 
 static void handle_window_event(SDL_Event *e)
 {
-	switch (e->window.event) {
+	switch (e->window.type) {
 	case SDL_WINDOWEVENT_EXPOSED:
 		gfx_swap();
 		break;
@@ -755,7 +772,9 @@ void handle_window_events(void)
 		case SDL_QUIT:
 			vm_exit(0);
 			break;
-		case SDL_WINDOWEVENT:
+		/* [D329] SDL3 里窗口事件是一个**区间**（SDL_EVENT_WINDOW_FIRST..LAST），
+		 * 不再是单个 SDL_WINDOWEVENT 值；GCC/Clang 的 case 区间语法最贴近原意。 */
+		case SDL_EVENT_WINDOW_FIRST ... SDL_EVENT_WINDOW_LAST:
 			handle_window_event(&e);
 			break;
 		}
@@ -773,19 +792,21 @@ void handle_events(void)
 		case SDL_QUIT:
 			vm_exit(0);
 			break;
-		case SDL_WINDOWEVENT:
+		/* [D329] SDL3 里窗口事件是一个**区间**（SDL_EVENT_WINDOW_FIRST..LAST），
+		 * 不再是单个 SDL_WINDOWEVENT 值；GCC/Clang 的 case 区间语法最贴近原意。 */
+		case SDL_EVENT_WINDOW_FIRST ... SDL_EVENT_WINDOW_LAST:
 			handle_window_event(&e);
 			break;
 		case SDL_APP_DIDENTERFOREGROUND:
 			gfx_swap();
 			break;
 		case SDL_KEYDOWN:
-			if (e.key.keysym.scancode == SDL_SCANCODE_F9) {
+			if (e.key.scancode == SDL_SCANCODE_F9) {
 				vm_stack_trace();
-			} else if (e.key.keysym.scancode == SDL_SCANCODE_F11) {
+			} else if (e.key.scancode == SDL_SCANCODE_F11) {
 				gfx_toggle_fullscreen();
-			} else if (e.key.keysym.scancode == SDL_SCANCODE_S) {
-				if (e.key.keysym.mod & (KMOD_LALT | KMOD_RALT)) {
+			} else if (e.key.scancode == SDL_SCANCODE_S) {
+				if (e.key.mod & (KMOD_LALT | KMOD_RALT)) {
 					screenshot_save();
 				}
 			}
@@ -821,7 +842,11 @@ void handle_events(void)
 			wheel_dir = e.wheel.y;
 			break;
 		case SDL_FINGERDOWN:
-			if (SDL_GetNumTouchFingers(e.tfinger.touchId) >= 2) {
+			/* [D329] SDL3 删除了 SDL_GetNumTouchFingers，改为
+			 * `SDL_GetTouchFingers(id, &count)` 一次取回整张表。 */
+			int nfingers = 0;
+			SDL_GetTouchFingers(e.tfinger.touchID, &nfingers);
+			if (nfingers >= 2) {
 				// 用户即将开始一个多点触控手势。
 				key_state[VK_LBUTTON] = false;
 				key_state[VK_RBUTTON] = false;
@@ -851,26 +876,21 @@ void handle_events(void)
 			long_touch_start_timestamp = 0;
 			key_state[VK_CONTROL] = false;
 			break;
-		case SDL_MULTIGESTURE:
-			if (e.mgesture.numFingers == 2) {
-				if (scroll_gesture_y < 0.0f)
-					scroll_gesture_y = e.mgesture.y;
-				float dy = scroll_gesture_y - e.mgesture.y;
-				if (dy * dy > SCROLL_GESTURE_SENSITIVITY * SCROLL_GESTURE_SENSITIVITY) {
-					wheel_dir = dy < 0 ? 1 : -1;  // Swipe up to scroll down.
-					scroll_gesture_y = e.mgesture.y;
-				}
-			}
+		/* [D329] SDL3 删除了 SDL_MULTIGESTURE（两指位移手势）。
+		 * 替代品是 PINCH 系列，语义是**缩放**而不是平移，无法直接换算成滚轮。
+		 * 这里暂时去掉这条分支：影响面只有「Android 上两指滑动滚列表」，
+		 * 页面上还有滚轮与拖动可用。要补回来需要按 SDL_EVENT_PINCH_UPDATE
+		 * 的 scale 变化重新设计灵敏度常量（见 docs/RENDER-BACKEND.md 待办）。 */
 		case SDL_CONTROLLERDEVICEADDED:
-			if (e.cdevice.which < MAX_CONTROLLERS)
-				controllers[e.cdevice.which] = SDL_GameControllerOpen(e.cdevice.which);
+			if (e.gdevice.which < MAX_CONTROLLERS)
+				controllers[e.gdevice.which] = SDL_OpenGamepad(e.gdevice.which);
 			break;
 		case SDL_CONTROLLERAXISMOTION:
-			controller_axis_event(&e.caxis);
+			controller_axis_event(&e.gaxis);
 			break;
 		case SDL_CONTROLLERBUTTONUP:
 		case SDL_CONTROLLERBUTTONDOWN:
-			controller_button_event(&e.cbutton);
+			controller_button_event(&e.gbutton);
 			break;
 		case SDL_TEXTINPUT:
 			if (!input_handler) {

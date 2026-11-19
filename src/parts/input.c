@@ -27,6 +27,9 @@ bool parts_began_click = false;
 static Point parts_prev_pos = {0};
 // 上次更新时左键是否已经按下
 static bool prev_clicking = false;
+/* [D336] 本帧刚捕获到一次点击（`EndInput` 会把 clicked_parts 清零，
+ * 所以驱动 TextButton 必须紧跟捕获，不能等到帧末）。 */
+static bool g_just_clicked;
 // 最近一次（完整）点击到的部件号
 static int clicked_parts = 0;
 // 本次（部分）点击到的部件号
@@ -178,6 +181,26 @@ void parts_input_reset_drag(struct parts *parts)
 static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clicking,
 		int passed_time, bool *hover_consumed, bool *click_consumed)
 {
+	/* [D331] 点击捕获归因探针（`XSYS4_CAP_DBG=1`）。
+	 *
+	 * 用途单一：回答「按下那一帧，光标下的部件各自是什么状态、为什么没人
+	 * 拿到 click_down_parts」。之前只能靠 `[inp] down=0` 知道"没人捕获"，
+	 * 但捕获链有四级前提（可见 / 命中 / hover 没被吃掉 / 资格判据），
+	 * 没有逐级快照就只能猜。这里把四项一次性打出来，并且**只在按下那帧、
+	 * 且命中盒真的覆盖光标**时打，量很小。 */
+	if (getenv("XSYS4_CAP_DBG") && cur_clicking && !prev_clicking) {
+		Rectangle dbghb = parts_hitbox_at(parts, PARTS_STATE_DEFAULT);
+		if (cur_pos.x >= dbghb.x && cur_pos.x < dbghb.x + dbghb.w &&
+		    cur_pos.y >= dbghb.y && cur_pos.y < dbghb.y + dbghb.h)
+			NOTICE("[cap] no=%d z=%d vis=%d show=%d ck=%d pc=%d "
+			       "hcons=%d began=%d hb=(%d,%d,%d,%d)",
+			       parts->no, parts->global.z,
+			       parts_is_visible(parts) ? 1 : 0, parts->global.show,
+			       parts->clickable, parts->pass_cursor,
+			       *hover_consumed ? 1 : 0, parts_began_click ? 1 : 0,
+			       dbghb.x, dbghb.y, dbghb.w, dbghb.h);
+	}
+
 	// 不管当前显示状态是什么，命中盒一律用 DEFAULT 状态。
 	/* [D128] 隐藏的图层不参与命中（否则旧场景的按钮还挡在新场景前面）。 */
 	bool is_hovered = parts_is_visible(parts)
@@ -243,7 +266,20 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 		parts_dirty(parts_get(parts->linked_from));
 	}
 
-	if (!parts_began_click)
+	/* [D332] **释放沿即使输入窗口已关也必须处理**。
+	 *
+	 * 实测（`t6`，标题菜单「从头开始」按钮 `900000063`）：按下那一帧
+	 * `[cap] ... began=1`（AIN 的 `BeginInput` 窗口开着），抬起那一帧
+	 * `[cap] ... began=0`（AIN 已经 `EndInput`）—— 于是这里 `return` 掉，
+	 * 下面那行 `prev_clicking && !cur_clicking` 的收尾永远跑不到，
+	 * `click_down_parts` 变不成 `clicked_parts`。
+	 *
+	 * 表现正是「按下有反应（hover/pressed 状态切换了）、松手没有结果」，
+	 * 也是 `[TEXTBUTTON-CLICK]` 里「点得中但没反应」的一半。
+	 *
+	 * 只放行**释放沿**：按下沿仍然要求窗口开着（否则会在 AIN 没准备接收时
+	 * 抢走点击）。D120 处理的是相反方向（按下在窗口外），这里是抬起在窗口外。 */
+	if (!parts_began_click && !(prev_clicking && !cur_clicking))
 		return;
 
 	if (is_hovered && !was_hovered) {
@@ -263,6 +299,62 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 		// 悬停时鼠标一动就发 MOUSE_MOVE 消息
 		if (cur_pos.x != parts_prev_pos.x || cur_pos.y != parts_prev_pos.y) {
 			parts_msg_push(parts, PARTS_MSG_MOUSE_MOVE, "ii", cur_pos.x, cur_pos.y);
+		}
+	}
+
+	/* [D333] 释放收尾**提前**到这里执行。
+	 *
+	 * 原因：按下被捕获后，抬起那一帧部件可能已经不可见（切场景 / 按钮动画 /
+	 * 活动卸载），而下面 `if (!is_hovered) return;` 与 `!click_eligible return;`
+	 * 两处都会把释放沿整个跳过，`click_down_parts` 于是永远变不成
+	 * `clicked_parts` —— 表现是「按下有反馈、松手没结果」。
+	 *
+	 * 实测（`t9` 的 `[cap]`）：第一次按下帧 `no=900000063 vis=1 hcons=0`
+	 * 完全可捕获，抬起帧同部件已 `vis=0`，点击就此丢失；这也是标题按钮
+	 * 「单次命中率 ~30%」的主因。
+	 *
+	 * 只对「自己就是被按下的那个部件」生效（`click_down_parts == parts->no`），
+	 * 其余部件调用它一律直接返回，所以放在最前面是安全的。 */
+	if (prev_clicking && !cur_clicking && click_down_parts == parts->no) {
+		clicked_parts = parts->no;
+		g_just_clicked = true;
+		/* [D114] 每一次捕获到的点击都要排 CLICK/KEY_UP 消息，
+		 * 不只是可点击的部件。AIN 那边在部件消息管理器上注册了
+		 * 「整屏」鼠标委托（AFL_Parts_AddWholeMouseLClickEvent）；
+		 * SceneStack@Join 用其中一个去调 SceneStack@Exit，
+		 * 而那是 IsFinish 唯一的写入者。
+		 * 兰斯10 的开始画面三个部件都是 点击許可=0，
+		 * 用 clickable 门控消息就让 IsFinish 永远为 0：
+		 * WaitForClick 一直在 GetClickNumber 上退出，
+		 * Join 立刻又进等待，Scenes::RunTitle 于是从没真正开始。
+		 * clickable 仍控制按钮音效。 */
+		if (parts->clickable)
+			audio_play_sound(parts->on_click_sound);
+		/* [D115] 用 PARTS_MSG_MOUSE_CLICK（=5）发出去，AIN 的
+		 * CPartsMessageManager@CallDelegate 会落到 CallDelegateMouseDoubleClick
+		 * ——AIN 侧的 switch 编号与 xsystem4 枚举错位，左键点击是 4。
+		 * 实测 4 → CallDelegateMouseClick → SceneStack@RegisterEvent 的 lambda，
+		 * 这是 start screen 唯一能收到点击的入口。 */
+		parts_msg_push(parts, PARTS_MSG_MOUSE_CLICK_AIN,
+				"iii", cur_pos.x, cur_pos.y, click_keycode());
+		parts_msg_push(parts, PARTS_MSG_KEY_UP, "i", VK_LBUTTON);
+		/* [D115] 同一此点击还要以“全屏”身份入队一份：AIN 的
+		 * AFL_Parts_AddWholeMouseLClickEvent 系列把委托注册在 parts_no=0 的
+		 * 函数集上，只有 parts_no==0 的消息才会派发到它们。
+		 * SceneStack@RegisterEvent 注册左键 lambda → SceneStack@Exit →
+		 * IsFinish，是 start screen 推进到标题场景的另一条入口。 */
+		parts_msg_push(NULL, PARTS_MSG_MOUSE_CLICK_AIN,
+				"iii", cur_pos.x, cur_pos.y, click_keycode());
+		/* [D266 受控实验] 子部件被点时向父链冒泡一份 CLICK。
+		 *
+		 * 起因：`s97` 点战况面板的 `900000819 'ButtonClose'`（有委托 di=1860）
+		 * 时 `EndInput` 只记到 1 次、面板没关。System4 里按钮常由一个图标子部件
+		 * 作图、逻辑挂在**父按钮**上，若原版有向上冒泡而引擎没有，
+		 * 就会出现「点中了、消息发了、什么都没发生」。
+		 * 本开关把同一个 CLICK 再发给直接父部件，验证这条链路。 */
+		if (getenv("XSYS4_CLICK_BUBBLE") && parts->parent) {
+			parts_msg_push(parts->parent, PARTS_MSG_MOUSE_CLICK_AIN,
+					"iii", cur_pos.x, cur_pos.y, click_keycode());
 		}
 	}
 
@@ -383,47 +475,6 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	 * parts::detail::WaitForClick 会一直轮询 GetClickNumber() > 0。
 	 * 上面只对 click_eligible 的部件设 click_down_parts，
 	 * 所以这里仍然遵守 pass_cursor / 从前到后的消费顺序。 */
-	if (prev_clicking && !cur_clicking && click_down_parts == parts->no) {
-		clicked_parts = parts->no;
-		/* [D114] 每一次捕获到的点击都要排 CLICK/KEY_UP 消息，
-		 * 不只是可点击的部件。AIN 那边在部件消息管理器上注册了
-		 * 「整屏」鼠标委托（AFL_Parts_AddWholeMouseLClickEvent）；
-		 * SceneStack@Join 用其中一个去调 SceneStack@Exit，
-		 * 而那是 IsFinish 唯一的写入者。
-		 * 兰斯10 的开始画面三个部件都是 点击許可=0，
-		 * 用 clickable 门控消息就让 IsFinish 永远为 0：
-		 * WaitForClick 一直在 GetClickNumber 上退出，
-		 * Join 立刻又进等待，Scenes::RunTitle 于是从没真正开始。
-		 * clickable 仍控制按钮音效。 */
-		if (parts->clickable)
-			audio_play_sound(parts->on_click_sound);
-		/* [D115] 用 PARTS_MSG_MOUSE_CLICK（=5）发出去，AIN 的
-		 * CPartsMessageManager@CallDelegate 会落到 CallDelegateMouseDoubleClick
-		 * ——AIN 侧的 switch 编号与 xsystem4 枚举错位，左键点击是 4。
-		 * 实测 4 → CallDelegateMouseClick → SceneStack@RegisterEvent 的 lambda，
-		 * 这是 start screen 唯一能收到点击的入口。 */
-		parts_msg_push(parts, PARTS_MSG_MOUSE_CLICK_AIN,
-				"iii", cur_pos.x, cur_pos.y, click_keycode());
-		parts_msg_push(parts, PARTS_MSG_KEY_UP, "i", VK_LBUTTON);
-		/* [D115] 同一此点击还要以“全屏”身份入队一份：AIN 的
-		 * AFL_Parts_AddWholeMouseLClickEvent 系列把委托注册在 parts_no=0 的
-		 * 函数集上，只有 parts_no==0 的消息才会派发到它们。
-		 * SceneStack@RegisterEvent 注册左键 lambda → SceneStack@Exit →
-		 * IsFinish，是 start screen 推进到标题场景的另一条入口。 */
-		parts_msg_push(NULL, PARTS_MSG_MOUSE_CLICK_AIN,
-				"iii", cur_pos.x, cur_pos.y, click_keycode());
-		/* [D266 受控实验] 子部件被点时向父链冒泡一份 CLICK。
-		 *
-		 * 起因：`s97` 点战况面板的 `900000819 'ButtonClose'`（有委托 di=1860）
-		 * 时 `EndInput` 只记到 1 次、面板没关。System4 里按钮常由一个图标子部件
-		 * 作图、逻辑挂在**父按钮**上，若原版有向上冒泡而引擎没有，
-		 * 就会出现「点中了、消息发了、什么都没发生」。
-		 * 本开关把同一个 CLICK 再发给直接父部件，验证这条链路。 */
-		if (getenv("XSYS4_CLICK_BUBBLE") && parts->parent) {
-			parts_msg_push(parts->parent, PARTS_MSG_MOUSE_CLICK_AIN,
-					"iii", cur_pos.x, cur_pos.y, click_keycode());
-		}
-	}
 }
 
 void PE_UpdateInputState(int passed_time);
@@ -519,6 +570,9 @@ void PE_UpdateInputState(int passed_time)
 			       parts->uc_object ? parts->uc_object : "-");
 		}
 	}
+	if (getenv("XSYS4_CAP_DBG") && cur_clicking && !prev_clicking)
+		NOTICE("[cap] 按下帧 sorted_nr=%d began=%d pos=(%d,%d)",
+		       sorted_nr, parts_began_click, cur_pos.x, cur_pos.y);
 	// z 最高的排前面：排序后的列表是从前到后。
 	for (int si = 0; si < sorted_nr; si++) {
 		parts = sorted[si];
@@ -611,7 +665,18 @@ void PE_UpdateInputState(int passed_time)
 	 * 之外照样把 prev_clicking 更新成"未按下"，抬起沿就被吃掉了，
 	 * clicked_parts 永远不置位 —— 表现正是"点了没反应，但重试几次偶尔能中"。
 	 * 冻结在窗口内的最后状态，边缘检测只在窗口开的时候前进。 */
-	if (parts_began_click)
+	/* [D332] 释放沿那一刻窗口可能已经关了（见上）。若只在窗口开着时推进
+	 * `prev_clicking`，它会永远冻结在"按下"，之后每一次物理按下都不再是
+	 * 上升沿 —— 点击从此全部静默。所以释放沿也推进一次。 */
+	/* [D336] 补上 AIN 侧缺失的按钮轮询：只在「本帧刚捕获到点击」时驱动，
+	 * 且只驱动部件号匹配的那个 TextButton（见 vm_tick_text_buttons）。 */
+	if (g_just_clicked) {
+		g_just_clicked = false;
+		/* [D337] 把这次点击派发给 AIN 侧的按钮对象（帧泵里消费）。 */
+		vm_request_parts_click(clicked_parts, cur_pos.x, cur_pos.y);
+	}
+
+	if (parts_began_click || (prev_clicking && !cur_clicking))
 		prev_clicking = cur_clicking;
 	parts_prev_pos = cur_pos;
 }

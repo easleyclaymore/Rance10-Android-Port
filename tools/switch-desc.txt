@@ -43,6 +43,9 @@ XSYS4_DGA_DROP	[诊断] 只在「DG_ASSIGN 目标是空槽、而源委托里有�
 XSYS4_DG_ASSIGN_NULLALLOC	`=1` 让 `DG_ASSIGN` 在目标为空槽时分配新页并写回成员（D324 的 A/B，**已证伪**，默认关）
 XSYS4_DGNEW_DBG	[诊断] 打印每次 `DG_NEW_FROM_METHOD` 的 (obj, fun, ip)。判「某个事件委托到底有没有被建出来」（D325）
 XSYS4_ORIGIN_MODE0_TL	`=1` 把 origin mode 0 与未映射模式按**左上角 `{0,0}`** 处理（上游 77f7f02 语义）。默认保持旧的 `{mode, 3h/4}`（D328 的 A/B）
+XSYS4_CAP_DBG	[诊断] 点击捕获归因：只在「按下那一帧、且命中盒覆盖光标」时打印每个部件的 vis/show/ck/pc/hover-consumed/began，用来判「为什么没人拿到 click_down_parts」（D332）
+XSYS4_TEXTBUTTON_TICK	`=1` 每帧遍历堆里所有 TextButton 实例各调一次 `TextButton@Motion`（补 AIN 侧缺失的按钮轮询）。**默认关**：实测无条件调用会把游戏推回标题（D336）
+XSYS4_FN_WATCH_NAME	`=CADVEngine` 按**函数名子串**过滤方法调用，每个 fno 只打第一次。用来一次拿到「这个类到底有哪些方法真的在跑」（D334）
 XSYS4_FORCE_HIDE	`=900000400,900000408`：每帧强制隐藏这些部件。**判定性实验用**，不是修复手段。用来把「背景不切换」缩成「隐藏这几个号画面是否就对」（D314）
 XSYS4_BACKSCENE_DBG	[诊断] 打印 SetWantSaveBackScene / SaveBackScene / LoadBackScene 的时机与规模（背景场景快照链）
 XSYS4_BACKSCENE_WANT	[诊断] `=1` 让 `IsWantSaveBackScene` 返回真实标记（默认仍恒 false）。实测对开场剧情背景无影响
@@ -191,3 +194,5 @@ XSYS4_CG_MISS_DBG	[D292 诊断] 只打印 **未命中** 的 CG 名（`[cgmiss]`�
 XSYS4_CG_MISS_STACK	[D292 诊断] 配合 CG_MISS_DBG，在每个未命中的 CG 名后面打一次 AIN 调用栈；用来抓「是谁在问这个不存在的名字」（占位图 `？？？` 的调用方）
 XSYS4_CG_AREA_DBG	[D292 诊断] 只对面积够大的部件（立绘 1920x1080 量级，w 或 h >= 400）打印纹理尺寸 / 部件 w,h / surface_area / 最终采样 r；用来区分「立绘只画出一部分」是采样区域退化（r.w 或 r.h 为 0）还是纹理本身不对
 XSYS4_SPLIT_DBG	[D292 诊断] 打印 `String.Split` 前 60 次调用的入参（原串 / 分隔符 / contain 标志）与切出的每一段；判据是「切开再拼回是否恒等」——立绘名少一个 `／` 就是这里 contain=1 没生效
+XSYS4_PARTS_EVENT	[D337 默认生效] 引擎捕获到点击后，把「部件号」派发给 AIN 侧的按钮对象：AIN `Parts` 实例字段 7 上的委托走 `Parts@OnClick(no,x,y)`，`TextButton` 实例走它自己在 `Init` 里生成的 lambda（自带 IsClickable 判定）；精确匹配不到时按「点在容器上」处理，取容器内的 TextButton。这是原版由引擎完成、移植时整条漏掉的一拍，是 `[TEXTBUTTON-CLICK]` 的根因；=0 关闭做 A/B
+XSYS4_PARTS_EVENT_DBG	[诊断] 打印每次点击派发的候选对象数、TextButton 实例的 m3→部件号映射，以及没有匹配时的现场勘查；用来区分「点击没到」「映射断了」「委托为空」三种情况

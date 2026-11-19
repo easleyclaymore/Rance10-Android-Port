@@ -15,7 +15,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "gfx/gl.h"
 #include "gfx/types.h"
 
