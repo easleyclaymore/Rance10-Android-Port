@@ -11,7 +11,7 @@
 | | |
 |---|---|
 | **阶段** | **SDL3 分支（`sdl3`）已可跑**：编译 0 错误、成功起窗、标题画面与 SDL2 版一致。点击捕获已修复（D332/D333），标题按钮**单次即中**；第一章 ADV 能连续播到**第 37 句**，停在开场 `ReplayMemoDialog`（回想对话）的「過後查看」。战斗未进入 |
-| **最大卡点** | `ReplayMemoDialog` 的 TextButton 点不动：点击**已能捕获**（`[inp] EndInput clicked=900000574`），但 `TextButton@Motion` 从不被调用，委托无人派发。`CADVEngine` 全类零调用，即本作不实例化那个面板类；`TextButton` 的部件号是两层（`m3.GetPartsNumber()`），下一步在 C 侧解析它后只驱动匹配按钮（D336） |
+| **最大卡点** | `[TEXTBUTTON-CLICK]` `ReplayMemoDialog` 的 TextButton 点不动：点击**已能捕获**（`[inp] EndInput clicked=900000574`），但 `TextButton@Motion` 从不被调用，委托无人派发。`CADVEngine` 全类零调用，即本作不实例化那个面板类；`TextButton` 的部件号是两层（`m3.GetPartsNumber()`），下一步在 C 侧解析它后只驱动匹配按钮（D336） |
 | **本轮做过的** | ① 用 `XSYS4_HLL_HOT` 量化了「HLL 覆盖率」的真实含义（见 `[HLL-QUEUE]`）：源码 1189 个缺口里 **1188 个在本章零调用**，851 个所在库连启动绑定都不出现；补上一直缺失的 `tools/offline/hll_hotness.py`，把工作队列改成按运行期调用次数排序；② 按该队列实现 `Parts_GetParentPartsNumber`（真实父号）与 `SetActiveController`（稳定 id → 栈下标），并删除 1 处同名重复登记（覆盖率虚增）；③ 新增开关 `XSYS4_HLL_HOT` / `XSYS4_PARENT_REAL` / `XSYS4_ACTIVE_CTRL_SET` |
 | **判据** | 画面一律用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S，且 alt+s 前空 ≥1.5s，否则会丢帧）；层/归属看 `[ctrl] SetActive id=N -> idx=M` 与 `[ctrl] layer … parts:` 清单；HLL 进展看 `python3 tools/offline/hll_hotness.py --todo ../logs/live_<tag>.log` 的输出是否为 0 |
 
