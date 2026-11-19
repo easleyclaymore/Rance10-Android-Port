@@ -1975,13 +1975,17 @@ void vm_pump_parts_click(void)
 	 * （`ck=0`），而角色卡本体 `900000813` 是 `ck=1` 的矩形检测件、与它重叠。
 	 * 命中判据是全局的（一改波及标题/ADV），所以只在派发端补这一跳。
 	 * `XSYS4_PARTS_EVENT_GEOM=0` 关闭。 */
-	/* **默认关闭**（2026-11-19）：开了以后 `bt25` 的选项点击被改派到
-	 * 别的对象，第一章进不了战斗。先在 `XSYS4_PARTS_EVENT_GEOM=1` 下做 A/B，
-	 * 等命中/释放两条根因修完再考虑。 */
+	/* **默认生效，`=0` 关闭**（2026-11-19 转正）。
+	 *
+	 * `bt25` 曾显示它"让选项点击被改派、进不了战斗"，但那次同批改动里有个
+	 * 变量遮蔽 bug（循环内重声明 `nc/nparts/ntbtn`），派发本来就全程失效 ——
+	 * 修复后 `bt29`/`bt30` 重新 A/B：选项正常、战斗正常，点角色卡时
+	 * 由它把 `900001014`（全屏件）改派到 `900000749`（角色卡，`ck=1`），
+	 * AIN 的 `Parts@OnClick` 于是真的跑起来（技能列表弹出）。 */
 	static int pe_geom = -1;
 	if (pe_geom < 0) {
 		const char *e = getenv("XSYS4_PARTS_EVENT_GEOM");
-		pe_geom = (e && !strcmp(e, "1"));
+		pe_geom = !(e && !strcmp(e, "0"));
 	}
 	for (int pass = 0; pass < 2 && nc == 0; pass++) {
 		if (pass == 1) {

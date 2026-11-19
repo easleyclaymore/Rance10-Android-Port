@@ -225,14 +225,16 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	 * `900001014`（`st=9` flat、`hb=1920x1080`、`a=255` 但隐藏它画面无变化）。
 	 * 判据只用一条渲染事实：`w<=0 || h<=0` 的部件画不出东西，没理由拦光标。
 	 * `XSYS4_CLICK_NEEDS_SHAPE=0` 关闭。 */
-	/* **默认关闭**（2026-11-19）：本轮没能在跑测里稳定证明它带来收益
-	 * （`bt21`/`bt22` 能到战斗但点击仍被回想对话框的布局盒接住；`bt23`
-	 * 排除布局盒后又回归）。先把规则留着，用 `XSYS4_CLICK_NEEDS_SHAPE=1`
-	 * 做 A/B，等"活动释放"那条根因修完再决定是否转正。 */
+	/* **默认生效，`=0` 关闭**（2026-11-19 转正）。
+	 *
+	 * `bt29`/`bt30` 的 A/B：开着它 + 坐标兜底，第一章照常到战斗
+	 * （`Game/Battle` 装载 32 次），而点角色卡能落到真正的按钮件上，
+	 * AIN 随即打开技能选择列表（`bt30`/`bt31` 截图里的「滑落英 / 突击雷击」卡）。
+	 * 关掉时点击永远停在 `900001014` 这类全屏件上，什么都不发生。 */
 	static int pe_needs_shape = -1;
 	if (pe_needs_shape < 0) {
 		const char *e = getenv("XSYS4_CLICK_NEEDS_SHAPE");
-		pe_needs_shape = (e && !strcmp(e, "1"));
+		pe_needs_shape = !(e && !strcmp(e, "0"));
 	}
 	/* `PARTS_UNINITIALIZED`（组件类型从未设过）也一定画不出东西：
 	 * `bt19` 里点 (960,886) 命中的 `900000568` 就是回想对话框的根，
@@ -247,6 +249,22 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	const struct parts_state *pe_st0 = &parts->states[PARTS_STATE_DEFAULT];
 	bool pe_no_shape = pe_st0->type == PARTS_UNINITIALIZED ||
 			   pe_st0->common.w <= 0 || pe_st0->common.h <= 0;
+	/* **整屏布局盒不拦光标**：`PARTS_LAYOUT_BOX` 是纯排版容器（自身从不绘制），
+	 * 而当它的命中盒铺满整个视图时，它就是"整屏容器"，接不住任何具体控件 ——
+	 * `bt22` 里点战斗角色卡命中的正是这样一个 `st=12`、`1920x1080`、
+	 * `a=255`、`ck=0 pc=0` 的全屏布局盒。
+	 * 注意**不能把所有布局盒都排除**（`bt23` 试过：选项按钮的容器也是布局盒，
+	 * 一刀切会让 `QuestMapSelectionButton` 收不到点击，进不了战斗）；
+	 * 局部布局盒仍照常参与。`XSYS4_CLICK_NEEDS_SHAPE=1` 是总闸。 */
+	if (pe_st0->type == PARTS_LAYOUT_BOX) {
+		Rectangle lb = pe_st0->common.hitbox;
+		if (parts->parent) {
+			lb.x += parts->parent->global.pos.x;
+			lb.y += parts->parent->global.pos.y;
+		}
+		if (lb.w >= gfx_view_width() && lb.h >= gfx_view_height())
+			pe_no_shape = true;
+	}
 	if (pe_needs_shape && pe_no_shape)
 		hover_blocking = false;
 	if (getenv("XSYS4_CLICK_ONLY_CLICKABLE"))
