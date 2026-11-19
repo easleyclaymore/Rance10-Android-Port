@@ -3321,7 +3321,10 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Parts_GetPartsFlatEndFrame, PE_GetPartsFlatEndFrame),
 	    HLL_EXPORT(Parts_ExistsFlatFile, PE_ExistsFlatFile),
 	    HLL_TODO_EXPORT(Parts_GetPartsFlatDataInfo, PartsEngine_Parts_GetPartsFlatDataInfo),
-	    HLL_TODO_EXPORT(Parts_ChangeFlatCG, PartsEngine_Parts_ChangeFlatCG),
+	    /* [D342] 技能卡换图（`d342` 在点角色卡后撞上它，VM_ERROR 直接
+	     * 把技能列表打断）。语义与 `SetPartsFlat` 一致：
+	     * `(parts_no, cg_name, state)` 换掉该状态的 flat。 */
+	    HLL_EXPORT(Parts_ChangeFlatCG, PE_SetPartsFlat),
 	    HLL_TODO_EXPORT(Parts_ChangeFlatSound, PartsEngine_Parts_ChangeFlatSound),
 	    HLL_EXPORT(Parts_ClearPartsConstructionProcess, PE_ClearPartsConstructionProcess),
 	    HLL_EXPORT(Parts_AddCreateToPartsConstructionProcess, PE_AddCreateToPartsConstructionProcess),

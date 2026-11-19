@@ -1569,6 +1569,19 @@ static void parts_update_cover_layer(void)
 		struct parts_state *st = &p->states[p->state];
 		if (st->common.w < vw || st->common.h < vh)
 			continue;
+		/* [D342] **纯矩形检测件 / 未初始化件不绘制，不能当"视觉地板"。**
+		 *
+		 * `nc1` 实测：战斗里 ctrl=4 的 `900000405`/`406` 是 `ck=1` 的
+		 * 1920×1080 整屏**点击接收器**（`PARTS_RECT_DETECTION`，一个像素都不画），
+		 * 却被算成 opaque，于是 `parts_cover_layer=4`，把 ctrl=3 整层
+		 * （敌方面板、技能卡、立绘）全部判为不可见 ——
+		 * 关掉 cover（`XSYS4_NO_LAYER_COVER=1`）后这些部件立刻全部显示。
+		 *
+		 * 判据：只有"能画出不透明像素"的件才算地板。矩形检测件按定义不画，
+		 * 未初始化件更没有图形。flat 仍走下面那段 `paint_alpha` 检查。 */
+		if (st->type == PARTS_RECT_DETECTION ||
+		    st->type == PARTS_UNINITIALIZED)
+			continue;
 		/* [D226] 名义 alpha ≠ 画出来的 alpha。flat 的实际不透明度由内部
 		 * key 的 alpha 决定（`ctx.alpha = global.alpha * key.alpha`），
 		 * 而且纹理缺失时一个像素都不出。光看 global.alpha 会把「已经淡到
