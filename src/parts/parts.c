@@ -1703,6 +1703,46 @@ void PE_SetDelegateIndex(int parts_no, int delegate_index)
 	}
 }
 
+/* [D341] 部件 `parts_no` 的命中盒是否覆盖 (x,y)（已经补上父的 global 偏移）。
+ *
+ * 用途：`LargeSkillButton` 的卡片点击区不参与引擎命中（`ck=0`、`pc=1`），
+ * 所以只能用坐标反查「点在哪个技能卡里」。与 `PE_FindClickableAt` 用同一套
+ * 几何口径 —— 两者不一致时会出"改派到了别的件"这种诡异结果。 */
+bool PE_PartsCovers(int parts_no, int x, int y)
+{
+	struct parts *p = parts_try_get(parts_no);
+	if (!p)
+		return false;
+	Rectangle hb = p->states[PARTS_STATE_DEFAULT].common.hitbox;
+	if (p->parent) {
+		hb.x += p->parent->global.pos.x;
+		hb.y += p->parent->global.pos.y;
+	}
+	if (hb.w <= 0 || hb.h <= 0)
+		return false;
+	return x >= hb.x && x < hb.x + hb.w && y >= hb.y && y < hb.y + hb.h;
+}
+
+/* [D341] `root_no` 的**子树**里有没有部件覆盖 (x,y)。
+ *
+ * 技能卡的按钮对象（`LargeSkillButton.m8`）本身是 0×0 的布局盒
+ * （`sk12` 实测 `st=12 w=0 h=0 hb=(740,888,0,0)`），真正有几何的是它的子件，
+ * 所以「点没点中这张卡」只能按子树判断。
+ * 遍历全表但在上溯之前先用便宜的矩形判定过滤，覆盖点通常只有几十个。 */
+bool PE_SubtreeCovers(int root_no, int x, int y)
+{
+	if (root_no <= 0)
+		return false;
+	struct parts *p;
+	PARTS_LIST_FOREACH(p) {
+		if (!PE_PartsCovers(p->no, x, y))
+			continue;
+		if (PE_PartsIsUnder(p->no, root_no))
+			return true;
+	}
+	return false;
+}
+
 /* [D338 诊断] 打印单个部件的输入相关字段（`[pev]` 用）。 */
 void PE_DebugPartsInfo(int parts_no)
 {
@@ -1750,6 +1790,14 @@ int PE_FindClickableAt(int x, int y)
 		    p->states[PARTS_STATE_DEFAULT].common.h <= 0)
 			continue;
 		if (!parts_is_visible(p))
+			continue;
+		/* [D341] 完全透明的件不能当兜底目标。
+		 * `bt10`/`sk8` 实测：点技能卡 (1102,871) 时兜底选中了
+		 * `900000569` —— 那是**回想对话框的面板**（862x226 @ (960,761)），
+		 * 对话早已关闭、`global.alpha=0`（一个像素不画），
+		 * 但 `parts_is_visible()` 只看 show/layer/cover，不看 alpha，
+		 * 于是它挡住了真正的技能卡，派发到它身上后没有任何按钮对象。 */
+		if (p->global.alpha <= 0)
 			continue;
 		Rectangle hb = p->states[PARTS_STATE_DEFAULT].common.hitbox;
 		if (p->parent) {
@@ -2243,6 +2291,45 @@ bool PE_SetHGaugeRate(int parts_no, float numerator, float denominator, int stat
 	return true;
 }
 
+/* [D341] HP/VP 条的分子/分母 getter。
+ *
+ * `struct parts_gauge` 只存了 `rate`（0..1 浮点），原始的分子分母没保存过
+ * （`PE_SetHGaugeRate` 一进来就做除法）。所以这里用固定分母 1000 反推分子：
+ * 比值是对的，绝对值是约定值。AIN 拿它做「条要画多长 / 是否归零」——
+ * 两者都只看比例，不依赖真实 HP 数字（HP 另有 `HpBarEnemy` 那套数据）。
+ * 若将来发现它被用来显示"1200/1200"这种文本，就得给 gauge 补真实字段。 */
+int PE_GetPartsHGaugeNumerator(int parts_no, int state)
+{
+	if (!parts_state_valid(--state))
+		return 0;
+	struct parts *p = parts_get(parts_no);
+	struct parts_gauge *g = parts_get_hgauge(p, state);
+	return (int)(g->rate * 1000.0f + 0.5f);
+}
+
+int PE_GetPartsHGaugeDenominator(int parts_no, int state)
+{
+	if (!parts_state_valid(--state))
+		return 0;
+	return 1000;
+}
+
+int PE_GetPartsVGaugeNumerator(int parts_no, int state)
+{
+	if (!parts_state_valid(--state))
+		return 0;
+	struct parts *p = parts_get(parts_no);
+	struct parts_gauge *g = parts_get_vgauge(p, state);
+	return (int)(g->rate * 1000.0f + 0.5f);
+}
+
+int PE_GetPartsVGaugeDenominator(int parts_no, int state)
+{
+	if (!parts_state_valid(--state))
+		return 0;
+	return 1000;
+}
+
 bool PE_SetHGaugeRate_int(int parts_no, int numerator, int denominator, int state)
 {
 	return PE_SetHGaugeRate(parts_no, numerator, denominator, state);
@@ -2684,6 +2771,13 @@ void PE_SetMultiplyColor(int parts_no, int r, int g, int b)
 	};
 	parts_set_multiply_color(parts_get(parts_no), multiply_color);
 }
+
+/* [D341] 别名：AIN 的 `GetComponentAbsolutePos*` 指的是**含父偏移**的全局坐标，
+ * 而 `PE_GetPartsX/Y/Z` 返回的是 `local.pos`。两者不能混用 ——
+ * 战斗中敌人/技能卡都挂在多层容器下，拿 local 去算会整体偏移。 */
+int PE_GetPartsAbsoluteX(int parts_no) { return parts_get(parts_no)->global.pos.x; }
+int PE_GetPartsAbsoluteY(int parts_no) { return parts_get(parts_no)->global.pos.y; }
+int PE_GetPartsAbsoluteZ(int parts_no) { return parts_get(parts_no)->global.z; }
 
 int PE_GetPartsX(int parts_no)
 {

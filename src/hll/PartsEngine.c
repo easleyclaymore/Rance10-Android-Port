@@ -2741,6 +2741,27 @@ static void PE_SetFlatFPSRate(int parts_no, float rate, int state)
 	parts_flat_fps_rate = rate > 0.0f ? rate : 1.0f;
 }
 
+/* [D341] `PartsEngine.GetFlatFPS`：技能卡放完之后 AIN 要读当前 flat 的帧率
+ * （`sk14` 在 `SceneBattle@ProcessAttack` 之后撞上「Unimplemented HLL」，
+ * 直接打断战斗、画面回标题）。数据本来就在 `flat->hdr.fps`，
+ * 再乘上 `SetFlatFPSRate` 记的倍率即可。
+ *
+ * 签名按 `SetFlatFPSRate(parts_no, rate, state)` 的对应关系取
+ * `(parts_no, state) -> float`；参数个数若与实际不符，
+ * `XSYS4_HLL_TRACE_FILTER=FlatFPS` 的 `nr_args` 会立刻暴露。 */
+static float PE_GetFlatFPS(int parts_no, int state)
+{
+	return (float)PE_GetPartsFlatFPS(parts_no, state) * parts_flat_fps_rate;
+}
+
+/* [D341] `Parts_GetFlatFrame`：技能演算里按帧号推进（`sk15` 在
+ * `SceneBattle@ProcessAttack` 之后撞上它）。与 `GetPartsFlatCurrentFrameNumber`
+ * 同义，只是 AIN 用的是另一个导出名。 */
+static int PE_Parts_GetFlatFrame(int parts_no, int state)
+{
+	return PE_GetPartsFlatCurrentFrameNumber(parts_no, state);
+}
+
 /* AIN v12 声明的是 Parts_GetPartsCGName(parts_no, state) -> string，
  * 而上游绑定是出参形式
  * (parts_no, struct string **out, state)。libffi 把 state 传到了
@@ -3043,8 +3064,12 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_TODO_EXPORT(GetComponentDrawFilter, PartsEngine_GetComponentDrawFilter),
 	    HLL_EXPORT(SetComponentMagX, PE_SetPartsMagX),
 	    HLL_EXPORT(SetComponentMagY, PE_SetPartsMagY),
-	    HLL_TODO_EXPORT(GetComponentMagX, PartsEngine_GetComponentMagX),
-	    HLL_TODO_EXPORT(GetComponentMagY, PartsEngine_GetComponentMagY),
+	    /* [D341] 补上 getter：`SceneBattle@RunSelectedSkill` 放完技能要读
+	     * 组件的缩放值做表现（`sk13` 在这里 VM_ERROR 直接打断战斗）。
+	     * 数据本来就在 `parts->local.scale` 里，`PE_GetPartsMagX/Y` 早就有了，
+	     * 只是库表还挂着 TODO 桩。 */
+	    HLL_EXPORT(GetComponentMagX, PE_GetPartsMagX),
+	    HLL_EXPORT(GetComponentMagY, PE_GetPartsMagY),
 	    HLL_EXPORT(SetComponentRotateX, PE_SetPartsRotateX),
 	    HLL_EXPORT(SetComponentRotateY, PE_SetPartsRotateY),
 	    HLL_EXPORT(SetComponentRotateZ, PE_SetPartsRotateZ),
@@ -3535,7 +3560,20 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(IsExistActivityEndKey, PE_Act_IsExistActivityEndKey),
 	    HLL_EXPORT(NumofActivityEndKey, PE_Act_NumofActivityEndKey),
 	    HLL_EXPORT(GetActivityEndKey, PE_Act_GetActivityEndKey),
-	    HLL_EXPORT(SetFlatFPSRate, PE_SetFlatFPSRate)
+	    HLL_EXPORT(SetFlatFPSRate, PE_SetFlatFPSRate),
+	    HLL_EXPORT(GetFlatFPS, PE_GetFlatFPS),
+	    HLL_EXPORT(Parts_GetFlatFrame, PE_Parts_GetFlatFrame),
+	    /* 战斗演出读绝对坐标/尺寸；`Absolute` 走 global，别用 local 的
+	     * `PE_GetPartsX/Y/Z` 顶替（会整体偏移）。 */
+	    HLL_EXPORT(GetComponentAbsolutePosX, PE_GetPartsAbsoluteX),
+	    HLL_EXPORT(GetComponentAbsolutePosY, PE_GetPartsAbsoluteY),
+	    HLL_EXPORT(GetComponentAbsolutePosZ, PE_GetPartsAbsoluteZ),
+	    HLL_EXPORT(GetComponentWidth, PE_GetPartsWidth),
+	    HLL_EXPORT(GetComponentHeight, PE_GetPartsHeight),
+	    HLL_EXPORT(Parts_GetHGaugeNumerator, PE_GetPartsHGaugeNumerator),
+	    HLL_EXPORT(Parts_GetHGaugeDenominator, PE_GetPartsHGaugeDenominator),
+	    HLL_EXPORT(Parts_GetVGaugeNumerator, PE_GetPartsVGaugeNumerator),
+	    HLL_EXPORT(Parts_GetVGaugeDenominator, PE_GetPartsVGaugeDenominator)
 	    );
 
 static struct ain_hll_function *get_fun(int libno, const char *name)

@@ -34,6 +34,10 @@ bool PE_PartsIsUnder(int child_no, int ancestor_no);
 int PE_FindClickableAt(int x, int y);
 /* [D338 诊断] 打印单个部件的输入相关字段。 */
 void PE_DebugPartsInfo(int parts_no);
+/* [D341] 部件命中盒是否覆盖 (x,y)（补父偏移）。 */
+bool PE_PartsCovers(int parts_no, int x, int y);
+/* [D341] root_no 的子树里有没有部件覆盖 (x,y)。 */
+bool PE_SubtreeCovers(int root_no, int x, int y);
 bool PE_SetPartsCG(int parts_no, struct string *cg_name, int sprite_deform, int state);
 bool PE_SetPartsCGThread(int parts_no, struct string *cg_name, int state);
 bool PE_IsThreadLoading(int parts_no, int state);
@@ -77,6 +81,9 @@ void PE_ReleaseAllParts(void);
 void PE_ReleaseAllPartsWithoutSystem(void);
 void PE_ReleaseAllWithoutSystem(struct page **erase_number_list);
 void PE_SetPos(int parts_no, int x, int y);
+int PE_GetPartsAbsoluteX(int parts_no);
+int PE_GetPartsAbsoluteY(int parts_no);
+int PE_GetPartsAbsoluteZ(int parts_no);
 int PE_GetPartsX(int parts_no);
 /* 视图绝对坐标（含父链）。排障用；渲染与命中都以 global.pos 为准。 */
 int PE_GetPartsGlobalX(int parts_no);
@@ -373,6 +380,13 @@ bool PE_StopPartsFlat(int parts_no, int state);
 bool PE_StartPartsFlat(int parts_no, int state);
 bool PE_GoFramePartsFlat(int parts_no, int frame_no, int state);
 int PE_GetPartsFlatEndFrame(int parts_no, int state);
+/* [D341] flat 的源帧率。 */
+int PE_GetPartsFlatFPS(int parts_no, int state);
+/* [D341] gauge 的分子/分母（分母固定 1000，按 rate 反推分子）。 */
+int PE_GetPartsHGaugeNumerator(int parts_no, int state);
+int PE_GetPartsHGaugeDenominator(int parts_no, int state);
+int PE_GetPartsVGaugeNumerator(int parts_no, int state);
+int PE_GetPartsVGaugeDenominator(int parts_no, int state);
 
 // layoutbox.c
 /* [D294] EX `文本エリア` 的文本排版原点（相对部件位置）。 */

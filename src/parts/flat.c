@@ -1516,6 +1516,17 @@ bool PE_GoFramePartsFlat(int parts_no, int frame_no, int state)
 	return true;
 }
 
+/* [D341] flat 的源帧率（`GetFlatFPS` 用）。AIN 的 state 是 1-based，
+ * 和 `PE_GetPartsFlatEndFrame` 一样要先 `--state`。 */
+int PE_GetPartsFlatFPS(int parts_no, int state)
+{
+	if (!parts_state_valid(--state))
+		return 0;
+	struct parts *parts = parts_get(parts_no);
+	struct parts_flat *f = parts_get_flat(parts, state);
+	return f->flat ? (int)f->flat->hdr.fps : 0;
+}
+
 int PE_GetPartsFlatEndFrame(int parts_no, int state)
 {
 	if (!parts_state_valid(--state))

@@ -1944,10 +1944,54 @@ static int vm_parts_obj_number(int slot)
 	return p->values[0].i;
 }
 
+/* [D341] 诊断：打印所有 `LargeSkillButton` 实例的字段，并标出哪一槽指向 `Parts` 对象。
+ *
+ * 起因：技能卡是 `LargeSkillButton` 活动，它的 `SetOnClickEvent`(25350) 把委托
+ * 存在 **`this.m3`**（不是 `Parts.m7`、也不是 `TextButton.m5`），
+ * 所以 D337 的两类派发都覆盖不到它。要补第三类，先得知道「按钮对象 → 部件号」
+ * 走的是哪个字段 —— 用这个把每个实例的 m0..m9 连同「是不是 Parts 页」一次打全。 */
+static void vm_dbg_lsb(void)
+{
+	static int lsb_st = -2, parts_st = -2;
+	if (lsb_st == -2) {
+		lsb_st = vm_struct_named("LargeSkillButton");
+		parts_st = vm_struct_named("Parts");
+	}
+	if (lsb_st < 0) {
+		NOTICE("[pev]   LargeSkillButton 结构未找到");
+		return;
+	}
+	int n = 0;
+	for (size_t i = 1; i < heap_size && n < 6; i++) {
+		struct page *p = heap[i].page;
+		if (!p || p->type != STRUCT_PAGE || p->index != lsb_st)
+			continue;
+		n++;
+		NOTICE("[pev]   LSB slot=%d nr_vars=%d", (int)i, p->nr_vars);
+		for (int k = 0; k < p->nr_vars && k < 10; k++) {
+			int v = p->values[k].i;
+			const char *tag = "";
+			if (v > 0 && (size_t)v < heap_size && heap[v].page &&
+			    heap[v].page->type == STRUCT_PAGE &&
+			    heap[v].page->index == parts_st)
+				tag = " <-- Parts";
+			NOTICE("[pev]     m%d=%d%s", k, v, tag);
+		}
+		if (p->nr_vars > 8) {
+			int a = vm_parts_obj_number(p->values[7].i);
+			int b = vm_parts_obj_number(p->values[8].i);
+			NOTICE("[pev]     卡片部件号 m7->%d m8->%d", a, b);
+			if (a > 0) PE_DebugPartsInfo(a);
+			if (b > 0) PE_DebugPartsInfo(b);
+		}
+	}
+}
+
 void vm_pump_parts_click(void)
 {
 	static int parts_st = -2, onclick_fno = -2;
 	static int tbtn_st = -2, tbtn_lambda = -2;
+	static int lsb_st = -2, lsb_lambda = -2;
 	static bool logged;
 	static int n_dispatch;
 
@@ -1961,15 +2005,29 @@ void vm_pump_parts_click(void)
 		onclick_fno = vm_fno_named("Parts@OnClick");
 		tbtn_st = vm_struct_named("TextButton");
 		tbtn_lambda = vm_fno_named("TextButton@<lambda : TextButton@Init(string)(51, 52)>");
+		/* [D341] 技能卡是 `LargeSkillButton`：`SetOnClickEvent`(25350) 把委托
+		 * 存在 **`this.m3`**，onclick 由 `InitParts` 生成的 lambda 37029
+		 * (`PUSHSTRUCTPAGE 3 REF / PUSHSTRUCTPAGE 0 REF / DG_CALL 1023`) 派发；
+		 * 卡片区域是 m7/m8 两个 `Parts`。 */
+		lsb_st = vm_struct_named("LargeSkillButton");
+		lsb_lambda = vm_fno_named(
+			"LargeSkillButton@<lambda : LargeSkillButton@InitParts()(125, 51)>");
+		if (lsb_lambda < 0 && ain->nr_functions > 37029) {
+			const char *nm = ain->functions[37029].name;
+			if (nm && strstr(nm, "LargeSkillButton") && strstr(nm, "InitParts"))
+				lsb_lambda = 37029;
+		}
 		const bool dbg = getenv("XSYS4_PARTS_EVENT_DBG") != NULL;
 		if (dbg)
-			NOTICE("[pev] Parts=%d OnClick=%d TextButton=%d lambda=%d",
-			       parts_st, onclick_fno, tbtn_st, tbtn_lambda);
+			NOTICE("[pev] Parts=%d OnClick=%d TextButton=%d lambda=%d "
+			       "LargeSkillButton=%d lambda=%d",
+			       parts_st, onclick_fno, tbtn_st, tbtn_lambda,
+			       lsb_st, lsb_lambda);
 	}
 
 	/* 先把候选槽号抄下来：vm_call 会分配新页，heap 可能重分配。 */
 	int cand[24];
-	int nc = 0, nparts = 0, ntbtn = 0;
+	int nc = 0, nparts = 0, ntbtn = 0, nlsb = 0;
 
 	/* [D338] 命中号找不到按钮对象时，按**点击坐标**兜底再找一次：
 	 * 战斗里点 (740,886) 命中记录的是角色卡内部的透明装饰层 `900000818`
@@ -2060,11 +2118,46 @@ void vm_pump_parts_click(void)
 				nparts++;
 			}
 		}
+		/* C 组：`LargeSkillButton`（技能卡）。它不参与引擎命中
+		 * （`bt10` 快照里卡片区 `ck=0 pc=1`），所以**只能按坐标**判断
+		 * 「点在哪个卡里」：取 m7/m8 两个 `Parts` 的命中盒比对。
+		 * 委托在 m3，派发走 lambda 37029。 */
+		if (lsb_st >= 0 && lsb_lambda >= 0) {
+			for (size_t i = 1; i < heap_size && nc < 24; i++) {
+				struct page *p = heap[i].page;
+				if (!p || p->type != STRUCT_PAGE || p->index != lsb_st)
+					continue;
+				if (p->nr_vars < 9)
+					continue;
+				if (vm_delegate_count(p->values[3].i) <= 0)
+					continue;
+				int ba = vm_parts_obj_number(p->values[7].i);
+				int bb = vm_parts_obj_number(p->values[8].i);
+				bool hit = (ba == no || bb == no ||
+					    PE_PartsIsUnder(ba, no) ||
+					    PE_PartsIsUnder(bb, no) ||
+					    PE_PartsCovers(ba, x, y) ||
+					    PE_PartsCovers(bb, x, y) ||
+					    PE_SubtreeCovers(ba, x, y) ||
+					    PE_SubtreeCovers(bb, x, y));
+				if (!hit)
+					continue;
+				cand[nc++] = (int)i;
+				nlsb++;
+				/* 只派发一个：两张卡的子树会互相重叠（`sk13` 里同一次
+				 * 点击命中 2 个实例，AIN 于是按了两次技能），
+				 * 取最先命中的那个即可。 */
+				break;
+			}
+			if (nlsb && getenv("XSYS4_PARTS_EVENT_DBG"))
+				NOTICE("[pev] click=%d -> %d 个 LargeSkillButton", no, nlsb);
+		}
 
 	}
 	if (!nc && getenv("XSYS4_PARTS_EVENT_DBG")) {
-		NOTICE("[pev] click=%d 没有匹配的按钮对象（Parts=%d TextButton=%d）",
-		       no, nparts, ntbtn);
+		NOTICE("[pev] click=%d 没有匹配的按钮对象（Parts=%d TextButton=%d LSB=%d）",
+		       no, nparts, ntbtn, nlsb);
+		vm_dbg_lsb();
 		PE_DebugPartsInfo(no);
 		{
 			int alt = PE_FindClickableAt(x, y);
@@ -2111,11 +2204,15 @@ void vm_pump_parts_click(void)
 		if (slot <= 0 || (size_t)slot >= heap_size || !heap[slot].page)
 			continue;
 		const bool is_tbtn = heap[slot].page->index == tbtn_st;
+		const bool is_lsb = heap[slot].page->index == lsb_st;
 		if (n_dispatch < 40 && getenv("XSYS4_PARTS_EVENT_DBG"))
 			NOTICE("[pev] #%d slot=%d %s", n_dispatch, slot,
+			       is_lsb ? "LargeSkillButton" :
 			       is_tbtn ? "TextButton" : "Parts");
 		n_dispatch++;
-		if (is_tbtn) {
+		if (is_lsb) {
+			vm_call(lsb_lambda, slot);
+		} else if (is_tbtn) {
 			vm_call(tbtn_lambda, slot);
 		} else {
 			stack_push(no);
