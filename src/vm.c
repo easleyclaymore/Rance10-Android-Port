@@ -1215,6 +1215,27 @@ static void method_call(int nargs, int return_address)
 	 * 但方法是通过 `CALLMETHOD` 走的，函数号**要等对像页的 vtable 解析出来**，
 	 * 静态反汇编里只有方法下标，用 fno 计数根本测不到。这个探针在派发点打，
 	 * 才回答得了「这个方法到底跑了没有」。 */
+	/* [D334] `XSYS4_FN_WATCH_NAME=CADVEngine`：按**函数名子串**过滤，
+	 * 每个函数号**只打第一次**。
+	 *
+	 * 为什么需要：`CADVEngine@Run`/`@Execute`/`@ClickUpdateTextButtonEvent` 这一族
+	 * 用 `XSYS4_FN_WATCH` 逐个试全是 0 命中，但剧情明明在推进 —— 说明我盯错了
+	 * 函数号。按名字过滤能一次拿到「这个类到底有哪些方法真的在跑」，
+	 * 不必再挨个猜 fno。
+	 */
+	if (getenv("XSYS4_FN_WATCH_NAME") && ain && fno > 0 &&
+	    fno < ain->nr_functions) {
+		static char fwn_seen[40000];
+		const char *pat = getenv("XSYS4_FN_WATCH_NAME");
+		const char *nm = ain->functions[fno].name;
+		if (nm && strstr(nm, pat) && fno < (int)sizeof(fwn_seen) &&
+		    !fwn_seen[fno]) {
+			static int nfwn;
+			fwn_seen[fno] = 1;
+			if (nfwn++ < 300)
+				NOTICE("[fwn] fno=%d %s", fno, nm);
+		}
+	}
 	if (getenv("XSYS4_FN_WATCH")) {
 		static int w[16], nw = -1;
 		static int cnt[16];
