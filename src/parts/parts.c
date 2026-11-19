@@ -1738,7 +1738,18 @@ int PE_FindClickableAt(int x, int y)
 {
 	struct parts *p, *best = NULL;
 	PARTS_LIST_FOREACH(p) {
-		if (!p->clickable || !parts_is_visible(p))
+		/* [D339] 候选条件放宽：原来只认 `clickable=1`，但战斗的技能卡
+		 * 并不是 `Parts_SetClickable` 设过的（`bt10` 的部件快照里那块
+		 * 区域 ck 全是 0），于是兜底恒返回 0、点了没反应。
+		 * 现在接受「`clickable=1` 或不透光标（`pass_cursor=0`）」——
+		 * 前者是显式按钮，后者是游戏自己标成"吃掉光标"的可交互件。
+		 * 两者都要求**有图形尺寸**，避免又选中纯检测框/空壳。 */
+		if (!p->clickable && p->pass_cursor)
+			continue;
+		if (p->states[PARTS_STATE_DEFAULT].common.w <= 0 ||
+		    p->states[PARTS_STATE_DEFAULT].common.h <= 0)
+			continue;
+		if (!parts_is_visible(p))
 			continue;
 		Rectangle hb = p->states[PARTS_STATE_DEFAULT].common.hitbox;
 		if (p->parent) {
