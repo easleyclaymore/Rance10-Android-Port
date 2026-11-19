@@ -2089,9 +2089,15 @@ void vm_pump_parts_click(void)
 					if (p->nr_vars < 6)
 						continue;
 					int pn = vm_parts_obj_number(p->values[3].i);
-					if (pn <= 0 || pn == no)
+					if (pn <= 0)
 						continue;
-					if (!PE_PartsIsUnder(pn, no))
+					/* [D341] 精确号失败后，除了「点在容器里」，还要认
+					 * 「点在按钮图形的子树里」—— 防御按钮
+					 * (`DefenceButton@Init` 用 TextButton)
+					 * 的部件号是 0×0 布局盒，几何全在子件上。 */
+					if (pn != no && !PE_PartsIsUnder(pn, no) &&
+					    !PE_PartsCovers(pn, x, y) &&
+					    !PE_SubtreeCovers(pn, x, y))
 						continue;
 					if (vm_delegate_count(p->values[5].i) <= 0)
 						continue;
@@ -2116,6 +2122,24 @@ void vm_pump_parts_click(void)
 					continue;
 				cand[nc++] = (int)i;
 				nparts++;
+			}
+			/* [D341] 精确号失败时按坐标找带委托的 Parts。 */
+			if (!nparts) {
+				for (size_t i = 1; i < heap_size && nc < 24; i++) {
+					struct page *p = heap[i].page;
+					if (!p || p->type != STRUCT_PAGE || p->index != parts_st)
+						continue;
+					if (p->nr_vars < 8 || p->values[0].i <= 0)
+						continue;
+					if (vm_delegate_count(p->values[7].i) <= 0)
+						continue;
+					if (!PE_PartsCovers(p->values[0].i, x, y) &&
+					    !PE_SubtreeCovers(p->values[0].i, x, y))
+						continue;
+					cand[nc++] = (int)i;
+					nparts++;
+					break;
+				}
 			}
 		}
 		/* C 组：`LargeSkillButton`（技能卡）。它不参与引擎命中
