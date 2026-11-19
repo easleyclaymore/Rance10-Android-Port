@@ -27,6 +27,9 @@ bool parts_began_click = false;
 static Point parts_prev_pos = {0};
 // 上次更新时左键是否已经按下
 static bool prev_clicking = false;
+/* [D336] 本帧刚捕获到一次点击（`EndInput` 会把 clicked_parts 清零，
+ * 所以驱动 TextButton 必须紧跟捕获，不能等到帧末）。 */
+static bool g_just_clicked;
 // 最近一次（完整）点击到的部件号
 static int clicked_parts = 0;
 // 本次（部分）点击到的部件号
@@ -314,6 +317,7 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	 * 其余部件调用它一律直接返回，所以放在最前面是安全的。 */
 	if (prev_clicking && !cur_clicking && click_down_parts == parts->no) {
 		clicked_parts = parts->no;
+		g_just_clicked = true;
 		/* [D114] 每一次捕获到的点击都要排 CLICK/KEY_UP 消息，
 		 * 不只是可点击的部件。AIN 那边在部件消息管理器上注册了
 		 * 「整屏」鼠标委托（AFL_Parts_AddWholeMouseLClickEvent）；
@@ -664,6 +668,13 @@ void PE_UpdateInputState(int passed_time)
 	/* [D332] 释放沿那一刻窗口可能已经关了（见上）。若只在窗口开着时推进
 	 * `prev_clicking`，它会永远冻结在"按下"，之后每一次物理按下都不再是
 	 * 上升沿 —— 点击从此全部静默。所以释放沿也推进一次。 */
+	/* [D336] 补上 AIN 侧缺失的按钮轮询：只在「本帧刚捕获到点击」时驱动，
+	 * 且只驱动部件号匹配的那个 TextButton（见 vm_tick_text_buttons）。 */
+	if (g_just_clicked) {
+		g_just_clicked = false;
+		vm_tick_text_buttons();
+	}
+
 	if (parts_began_click || (prev_clicking && !cur_clicking))
 		prev_clicking = cur_clicking;
 	parts_prev_pos = cur_pos;

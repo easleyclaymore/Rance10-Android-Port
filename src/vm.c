@@ -1845,6 +1845,119 @@ void vm_dbg_alloc_trace(int struct_no, int slot)
 	}
 }
 
+/* [D336] 每帧驱动 `TextButton@Motion` —— 补上 AIN 侧缺失的「按钮更新循环」。
+ *
+ * 事实链：
+ * ① `TextButton@SetOnClickEvent`(22907) 被调用 12 次，委托被存进 TextButton
+ *    自己的成员（`[dgadd] obj=75160 fun=36571`）；
+ * ② 真正「检查部件是否被点、并派发那个委托」的是 `TextButton@Motion`(22908)，
+ *    `XSYS4_FN_WATCH` 实测 **0 次调用**；
+ * ③ 唯一可能的调用者 `CADVEngine@ClickUpdateTextButtonEvent`(2109) 也是 0 次，
+ *    而 `XSYS4_FN_WATCH_NAME=CADVEngine` 扫描全类也**一个方法都没跑** ——
+ *    说明本作根本不实例化那个面板类。
+ * ④ 结果：点击被引擎正确捕获（`[inp] EndInput clicked=900000574`），委托也在位，
+ *    但没有任何人把它派发出去 —— 就是「点得中、点完没反应」。
+ *
+ * 所以这里补一条：每帧遍历堆里所有 `TextButton` 结构体实例，各调一次 `Motion`，
+ * 等价于原版由 UI 管理器做的按钮轮询。`XSYS4_TEXTBUTTON_TICK=0` 关闭。
+ *
+ * 安全性：Motion 无参数（有参数就跳过并留痕）；用 `in_tick` 防重入，
+ * 因为 Motion 可能经 DG_CALL 触发委托，而委托里有 AIN 代码。
+ */
+void vm_tick_text_buttons(void)
+{
+	static int on = -1;
+	static int motion_fno = -2;
+	static int st_index = -2;
+	static bool in_tick;
+
+	if (on < 0) {
+		/* [D336] **默认关**。实测（`tb1`）默认开时，每帧对所有 TextButton
+		 * 无条件跑 Motion 会把游戏推回标题：`msgline` 0、末装载 `SceneTitle`。
+		 * 原因推断：Motion 会检查「本部件是否被点」，而 `clicked_parts` 在
+		 * `EndInput` 之前一直是本帧的捕获值，于是**每一个** TextButton 都
+		 * 认为自己被点了，各自派发委托（返回/关闭/确认），场面立刻崩掉。
+		 * 正确的做法应该是「只让被点的那一个跑」，但那需要知道按钮与部件的
+		 * 对应关系（`TextButton@PartsNumber`），属于下一步工作。 */
+		const char *e = getenv("XSYS4_TEXTBUTTON_TICK");
+		on = (e && strcmp(e, "0") != 0);
+	}
+	if (!on || in_tick || !ain)
+		return;
+	if (motion_fno == -2) {
+		motion_fno = -1;
+		for (int i = 0; i < ain->nr_functions; i++) {
+			const char *nm = ain->functions[i].name;
+			if (nm && strstr(nm, "TextButton@Motion")) {
+				motion_fno = i;
+				break;
+			}
+		}
+		st_index = -1;
+		for (int i = 0; i < ain->nr_structures; i++) {
+			const char *nm = ain->structures[i].name;
+			if (nm && strstr(nm, "TextButton")) {
+				st_index = i;
+				break;
+			}
+		}
+		if (getenv("XSYS4_DGIDX_DBG"))
+			NOTICE("[tbtn] Motion fno=%d struct=%d", motion_fno, st_index);
+	}
+	if (motion_fno < 0 || st_index < 0)
+		return;
+	if (ain->functions[motion_fno].nr_args != 0)
+		return;   /* 有参数就必须由调用方压栈，别在这里猜 */
+
+	/* [D336] **只驱动被点的那一个**。
+	 *
+	 * 无条件全量调用（`tb1` 实测）会把游戏推回标题：Motion 判断「本按钮的部件
+	 * 是否被点」用的是本帧的 `clicked_parts`，于是**每一个** TextButton 都认为
+	 * 自己被点了，各自派发委托（返回/关闭/确认）→ 场面立刻崩。
+	 *
+	 * TextButton 的**字段 3 是部件号**（`TextButton@Motion` 反汇编里 `PUSH 3; REF`）。
+	 * 所以只对「字段 3 == 本帧被点部件」的那个实例调 Motion，等价于原版
+	 * 「谁被点，谁更新」。
+	 */
+	int clicked = PE_GetClickPartsNumber();
+	/* 诊断：TextButton 实例的字段 3 是否真是部件号（`XSYS4_DGIDX_DBG`）。 */
+	if (getenv("XSYS4_DGIDX_DBG")) {
+		static int nd;
+		if (nd < 12) {
+			for (size_t i = 1; i < heap_size && nd < 12; i++) {
+				struct page *p = heap[i].page;
+				if (!p || p->type != STRUCT_PAGE || p->index != st_index)
+					continue;
+				NOTICE("[tbtn] inst=%zu nr=%d v0=%d v1=%d v2=%d v3=%d "
+				       "v4=%d v5=%d clicked=%d",
+				       i, p->nr_vars, p->values[0].i,
+				       p->nr_vars > 1 ? p->values[1].i : -9,
+				       p->nr_vars > 2 ? p->values[2].i : -9,
+				       p->nr_vars > 3 ? p->values[3].i : -9,
+				       p->nr_vars > 4 ? p->values[4].i : -9,
+				       p->nr_vars > 5 ? p->values[5].i : -9,
+				       clicked);
+				nd++;
+			}
+		}
+	}
+	if (clicked <= 0)
+		return;
+
+	in_tick = true;
+	for (size_t i = 1; i < heap_size; i++) {
+		struct page *p = heap[i].page;
+		if (!p || p->type != STRUCT_PAGE || p->index != st_index)
+			continue;
+		if (p->nr_vars <= 3 || p->values[3].i != clicked)
+			continue;
+		if (getenv("XSYS4_DGIDX_DBG"))
+			NOTICE("[tbtn] Motion this=%zu parts=%d", i, clicked);
+		vm_call(motion_fno, (int)i);
+	}
+	in_tick = false;
+}
+
 void vm_call(int fno, int struct_page)
 {
 	size_t saved_ip = instr_ptr;
