@@ -228,10 +228,14 @@ SDL3 删除了回调式音频：`SDL_LockAudioDevice` / `SDL_UnlockAudioDevice` 
 无法直接换算滚轮。影响面只有「Android 上两指滑动滚列表」（滚轮/拖动仍在）。
 补回来需要按 `SDL_EVENT_PINCH_UPDATE` 的 scale 变化重新设计 `SCROLL_GESTURE_SENSITIVITY`。
 
-### 待办（合并前必须做完）
+### 落地状态（2026-11-19 更新）
 
-1. **有声环境听音**：开场演出 + 战斗音效，确认没有断续/爆音/时序漂移；
-2. **Android 打包**：`SDL_AndroidSendMessage`（`SystemService.c:336`，仅 1 处）在 SDL3 不存在，需换 JNI 或 `SDL_OpenURL`；
-3. **ADV 端到端**：当前 SDL2/SDL3 两版在同一条过期配方上都到不了 `MessageWindow02`，
-   需先修配方再比对（这不是 SDL3 的回归，两版行为一致）；
-4. 合入策略：等 1–3 做完，把 `sdl3` 压成 2–3 个提交（rename / 音频 / 平台）合进 `rance10-native`。
+| 待办 | 状态 |
+|---|---|
+| 有声环境听音（演出 / 战斗音效时序） | **未做** —— 本机无音频设备，仍只有「不开音频不崩」这一条证据 |
+| Android 打包：`SDL_AndroidSendMessage` 没有 SDL3 版本（`SystemService.c:336`，仅 1 处） | **未做**，需换 JNI 或 `SDL_OpenURL` |
+| ADV 端到端 | **已通过**（D332/D333 修点击捕获与释放沿，D337 补上引擎→AIN 按钮对象的派发；第一章能从标题走到第一场战斗） |
+| 合入策略 | **已变更**：不再压提交并回 SDL2 的 `rance10-native`，`sdl3` 直接作为交付线，`main` 用同树快照跟（见 `README.md` 分支表） |
+
+累计改动的文件与逐条理由见上方「改了哪 12 个文件」+ `git log --oneline origin/main..origin/sdl3`。
+D331–D337 的排障过程在 `docs/TECH_DEBT.md` / `archive/`，可复用方法论已回流 `docs/GUIDE/`。
