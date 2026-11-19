@@ -1107,6 +1107,8 @@ static bool auto_party_want, auto_party_init;
 static bool auto_route_want;
 static int auto_party_page = -1;
 static uint32_t auto_party_delay;
+/* [D344] 见 vm_pump_auto_battle_end() 的注释。 */
+static int auto_battle_page = -1, auto_be_done, auto_be_frames;
 
 /* [D178] XSYS4_AUTO_CARD_CLICK=<idx>：编队界面稳定后直调
  * `SceneParty@OnClickCard(idx)`（fno 24300，1 个 int 参数）。
@@ -1256,6 +1258,17 @@ static void method_call(int nargs, int return_address)
 				return;
 			}
 			VM_ERROR("CALLMETHOD: invalid function index %d", fno);
+		}
+	}
+	/* [D344] 记录 SceneBattle 实例（fno 24880..24960 全属它，结构体号 732）。 */
+	if (auto_battle_page < 0 && fno >= 24880 && fno <= 24960 &&
+	    nargs + 1 <= stack_ptr) {
+		int self = stack_peek(nargs + 1).i;
+		if (self > 0 && (size_t)self < heap_size && heap[self].page &&
+		    heap[self].page->type == STRUCT_PAGE &&
+		    heap[self].page->index == 732) {
+			auto_battle_page = self;
+			NOTICE("[abe] SceneBattle instance = heap slot %d", self);
 		}
 	}
 	/* [AUTO] 记录 SceneQuestMap 场景实例的 `this`（见文件上方 auto_party_page
@@ -1985,6 +1998,36 @@ static void vm_dbg_lsb(void)
 			if (b > 0) PE_DebugPartsInfo(b);
 		}
 	}
+}
+
+/* [D344] `XSYS4_AUTO_BATTLE_END=<frames>`：到点后**直接调**
+ * `SceneBattle@ProcessPostPlayerTurn`(24886)，绕开"角色卡点不中"这个 UI 问题，
+ * 单独验证「回合收尾逻辑本身能不能跑」。
+ *
+ * 为什么需要：`isActionAvailable`(24884) 是 `!CheckActionCountLimit &&
+ * SkillUsingHelper::IsActionAvailable && 全局 UI 状态`，只要还有角色能行动就
+ * 返回 true —— 四人各行动一次才会走到 `ProcessPostPlayerTurn`。
+ * 但角色卡是 `0x0` 布局盒 + 子树几何，靠 xdotool 点命中率很低
+ * （`rc3` 成功、`rc5` 同样坐标就成了别的 TextButton）。
+ * 这与 `XSYS4_AUTO_PARTY` / `XSYS4_AUTO_MAP` 同性质：只为把跑测从
+ * "点得中"变成"确定性"，不改变任何游戏语义，默认关闭。
+ *
+ * `SceneBattle` 实例页号在任一 `SceneBattle@*` 方法被调用时记下
+ * （结构体号 732，见 `[dump] this=... struct=732`）。 */
+void vm_pump_auto_battle_end(void)
+{
+	const char *e = getenv("XSYS4_AUTO_BATTLE_END");
+	if (!e || auto_be_done || auto_battle_page <= 0)
+		return;
+	static int want_frames = -1;
+	if (want_frames < 0)
+		want_frames = *e ? atoi(e) : 300;
+	if (++auto_be_frames < want_frames)
+		return;
+	auto_be_done = 1;
+	NOTICE("[abe] 强制 ProcessPostPlayerTurn(page=%d) after %d frames",
+	       auto_battle_page, auto_be_frames);
+	vm_call(24886, auto_battle_page);
 }
 
 void vm_pump_parts_click(void)
@@ -5593,6 +5636,7 @@ void vm_frame_pump(void)
 	/* [D337] 引擎捕获到的点击在这里派发给 AIN 侧的按钮对象
 	 * （`parts_update_mouse` 只登记，见 vm_request_parts_click）。 */
 	vm_pump_parts_click();
+	vm_pump_auto_battle_end();
 	/* [MEM] XSYS4_MEM_STAT=1：每约 2 秒打印一次虚拟机堆的构成。
 	 * 只看 RSS 分不清「槽泄漏（堆数组增长）」「页泄漏」「字符串泄漏」，
 	 * 这里遍历堆，把三类分别数出来。开销有上限：

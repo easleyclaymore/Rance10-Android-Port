@@ -199,3 +199,4 @@ XSYS4_PARTS_EVENT_DBG	[诊断] 打印每次点击派发的候选对象数、Text
 XSYS4_CLICK_NEEDS_SHAPE	[D338 默认生效，=0 关闭] 让「画不出像素」的部件退出 hover 拦截与点击捕获（w/h<=0 / PARTS_UNINITIALIZED / 铺满全屏的 PARTS_LAYOUT_BOX）。转正依据：bt30/bt31 下第一章照常到战斗，点角色卡能落到真正按钮件上，AIN 随即弹出技能选择列表。注意只排除**全屏**布局盒——一刀切排除布局盒会让选项按钮失效（bt23 进不了战斗）
 XSYS4_PARTS_EVENT_GEOM	[D338 默认生效，=0 关闭] 点击派发时若命中号没有对应按钮对象，按点击坐标 PE_FindClickableAt() 找「覆盖该点的最上层局部 ck=1 件」改派。转正依据：bt30 里把 900001014（全屏件）改派到 900000749（角色卡）后，AIN 的 Parts@OnClick 真的跑起来；bt25 的「改派导致进不了战斗」是当时并存的变量遮蔽 bug，已修
 XSYS4_COVER_HYST	[D343 默认生效，=0 关闭] cover_layer 单帧滞回：同一个值连续 3 帧才生效，抹掉「某层偶发全屏不透明件」造成的整层闪烁（实测变化次数 17→9，且不再在 4/7 之间逐帧跳）
+XSYS4_AUTO_BATTLE_END	[D344 诊断，默认关] 值=帧数。到点后直接调 SceneBattle@ProcessPostPlayerTurn(24886)，绕开「角色卡点不中」，单独验证回合收尾逻辑。abe1 实测：能跑、0 ERROR、画面进入回合切换演出
