@@ -201,6 +201,11 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
     见 `[NULL-IFACE-CALL]`；`XSYS4_NULL_METHOD=0` 复现中止。
 35. **带谓词的 HLL 不许"忽略谓词、返回整份拷贝"**。这类 stage-1 桩把"过滤"变成"恒真"，而调用方把它当筛选器用：`Array.Where` 曾因此让 `CompletedTrophy@GetNewCompleted()` 返回**全部**成就，进而叠出 40+ 个全屏模态把编队界面盖住（D158）。实现不了就返回空数组，别返回全集。
 36. **部件号段是版本相关的，别照抄旧引擎**。`PE_GetFreeNumber` 曾沿用 Rance 01 的 `1000001000`，而兰斯10 的 AIN 校验 `1～999999999` → `Parts@Release` 的 `Ｐ＿削除` 每次拒绝删除，单局 213 次部件残留（D161）。**旧日志里的 `100000xxxx` 已作废**，换算 `新号 = 旧号 - 100001000`。
+37. **「部件被点中」≠「按钮被按下」——引擎必须自己把点击派发给 AIN 按钮对象**（D337）。
+    委托存在 AIN `Parts` 对象字段 7（`Parts@SetOnClickEvent`）或 `TextButton` 自身字段 5，
+    派发者是 `Parts@OnClick`(29541)，而它**零个 AIN 调用点** —— 这一拍没有任何 AIN 代码负责。
+    映射只能扫堆：`Parts.m0` / `TextButton.m3.m0` 等于被点部件号。别再去 `CPartsFunctionSet.m7`
+    里找缺口（那条路本作运行期为 0 调用）。点击落在容器上时按 `PE_PartsIsUnder()` 下钻一层。
 
 ---
 
