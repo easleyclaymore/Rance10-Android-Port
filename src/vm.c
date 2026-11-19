@@ -724,8 +724,57 @@ static int delegate_argument_slots(struct ain_function_type *dg)
 	return slots;
 }
 
+/* [D340] `XSYS4_FN_WATCH` / `XSYS4_FN_WATCH_NAME` 必须挂在**共同入口**上。
+ *
+ * 这两个探针原来打在 `method_call` 里，于是 `CALLFUNC` 路径**一次都测不到**，
+ * 制造出"某函数 0 次调用"的假象 —— 2026-11-19 就是这么误判
+ * `EnemyCreator::Create`(24853) / `BattleInitializer::Init`(24823) 没执行的
+ * （两者都是 `CALLFUNC`），差点把「敌人没被创建」写成结论。
+ * 判据：探针要挂在 CALLFUNC 与 CALLMETHOD 都必经的那一层 —— `_function_call`。
+ */
+static void fn_watch_note(int fno, int nargs, int this_slot)
+{
+	if (!ain || fno <= 0 || fno >= ain->nr_functions)
+		return;
+	if (getenv("XSYS4_FN_WATCH_NAME")) {
+		static char fwn_seen[40000];
+		const char *pat = getenv("XSYS4_FN_WATCH_NAME");
+		const char *nm = ain->functions[fno].name;
+		if (nm && fno < (int)sizeof(fwn_seen) && strstr(nm, pat) &&
+		    !fwn_seen[fno]) {
+			static int nfwn;
+			fwn_seen[fno] = 1;
+			if (nfwn++ < 300)
+				NOTICE("[fwn] fno=%d %s", fno, nm);
+		}
+	}
+	if (getenv("XSYS4_FN_WATCH")) {
+		static int w[16], nw = -1;
+		static int cnt[16];
+		if (nw < 0) {
+			nw = 0;
+			const char *q = getenv("XSYS4_FN_WATCH");
+			while (q && *q && nw < 16) {
+				w[nw++] = atoi(q);
+				while (*q && *q != ',') q++;
+				if (*q == ',') q++;
+			}
+		}
+		for (int i = 0; i < nw; i++) {
+			if (w[i] == fno) {
+				if (cnt[i]++ < 40)
+					NOTICE("[fwatch] fno=%d nargs=%d this=%d",
+					       fno, nargs, this_slot);
+				break;
+			}
+		}
+	}
+}
+
 static int _function_call(int fno, int return_address)
 {
+	fn_watch_note(fno, (ain && fno > 0 && fno < ain->nr_functions)
+				? ain->functions[fno].nr_args : 0, -2);
 	/* [D114] 探针放在这里，而不是 function_call()：delegate_call() 会绕过
 	 * function_call() 直接跳到 _function_call()，所以原来放的位置让每个
 	 * 经 DG_CALL 派发的函数都显得「从没被调用过」。 */
@@ -1207,54 +1256,6 @@ static void method_call(int nargs, int return_address)
 				return;
 			}
 			VM_ERROR("CALLMETHOD: invalid function index %d", fno);
-		}
-	}
-	/* [D323] `XSYS4_FN_WATCH="22907,22908,22909"`：按**解析后的函数号**打方法调用。
-	 *
-	 * 起因：`grep "arg=22908"` 得到 0，看起来 `TextButton@Motion` 从没被调过 ——
-	 * 但方法是通过 `CALLMETHOD` 走的，函数号**要等对像页的 vtable 解析出来**，
-	 * 静态反汇编里只有方法下标，用 fno 计数根本测不到。这个探针在派发点打，
-	 * 才回答得了「这个方法到底跑了没有」。 */
-	/* [D334] `XSYS4_FN_WATCH_NAME=CADVEngine`：按**函数名子串**过滤，
-	 * 每个函数号**只打第一次**。
-	 *
-	 * 为什么需要：`CADVEngine@Run`/`@Execute`/`@ClickUpdateTextButtonEvent` 这一族
-	 * 用 `XSYS4_FN_WATCH` 逐个试全是 0 命中，但剧情明明在推进 —— 说明我盯错了
-	 * 函数号。按名字过滤能一次拿到「这个类到底有哪些方法真的在跑」，
-	 * 不必再挨个猜 fno。
-	 */
-	if (getenv("XSYS4_FN_WATCH_NAME") && ain && fno > 0 &&
-	    fno < ain->nr_functions) {
-		static char fwn_seen[40000];
-		const char *pat = getenv("XSYS4_FN_WATCH_NAME");
-		const char *nm = ain->functions[fno].name;
-		if (nm && strstr(nm, pat) && fno < (int)sizeof(fwn_seen) &&
-		    !fwn_seen[fno]) {
-			static int nfwn;
-			fwn_seen[fno] = 1;
-			if (nfwn++ < 300)
-				NOTICE("[fwn] fno=%d %s", fno, nm);
-		}
-	}
-	if (getenv("XSYS4_FN_WATCH")) {
-		static int w[16], nw = -1;
-		static int cnt[16];
-		if (nw < 0) {
-			nw = 0;
-			const char *q = getenv("XSYS4_FN_WATCH");
-			while (q && *q && nw < 16) {
-				w[nw++] = atoi(q);
-				while (*q && *q != ',') q++;
-				if (*q == ',') q++;
-			}
-		}
-		for (int i = 0; i < nw; i++) {
-			if (w[i] == fno) {
-				if (cnt[i]++ < 40)
-					NOTICE("[fwatch] fno=%d nargs=%d this=%d", fno, nargs,
-					       nargs + 1 <= stack_ptr ? stack_peek(nargs + 1).i : -2);
-				break;
-			}
 		}
 	}
 	/* [AUTO] 记录 SceneQuestMap 场景实例的 `this`（见文件上方 auto_party_page
