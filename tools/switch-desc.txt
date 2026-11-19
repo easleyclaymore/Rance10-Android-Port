@@ -196,3 +196,5 @@ XSYS4_CG_AREA_DBG	[D292 诊断] 只对面积够大的部件（立绘 1920x1080 �
 XSYS4_SPLIT_DBG	[D292 诊断] 打印 `String.Split` 前 60 次调用的入参（原串 / 分隔符 / contain 标志）与切出的每一段；判据是「切开再拼回是否恒等」——立绘名少一个 `／` 就是这里 contain=1 没生效
 XSYS4_PARTS_EVENT	[D337 默认生效] 引擎捕获到点击后，把「部件号」派发给 AIN 侧的按钮对象：AIN `Parts` 实例字段 7 上的委托走 `Parts@OnClick(no,x,y)`，`TextButton` 实例走它自己在 `Init` 里生成的 lambda（自带 IsClickable 判定）；精确匹配不到时按「点在容器上」处理，取容器内的 TextButton。这是原版由引擎完成、移植时整条漏掉的一拍，是 `[TEXTBUTTON-CLICK]` 的根因；=0 关闭做 A/B
 XSYS4_PARTS_EVENT_DBG	[诊断] 打印每次点击派发的候选对象数、TextButton 实例的 m3→部件号映射，以及没有匹配时的现场勘查；用来区分「点击没到」「映射断了」「委托为空」三种情况
+XSYS4_CLICK_NEEDS_SHAPE	[D338 实验，默认关] 让「画不出像素」的部件退出 hover 拦截与点击捕获（w/h<=0 或 PARTS_UNINITIALIZED）。实测对战斗里回想对话框的布局盒无效（它尺寸/alpha 都是满的），而排除 PARTS_LAYOUT_BOX 又会让选项按钮一起失效（bt23 进不了战斗），所以默认关
+XSYS4_PARTS_EVENT_GEOM	[D338 实验，默认关] 点击派发时若命中号没有对应按钮对象，按点击坐标 PE_FindClickableAt() 再找一次「局部 ck=1 件」改派。开了会把选项点击改派到别的对象导致进不了战斗（bt25），默认关

@@ -1970,67 +1970,103 @@ void vm_pump_parts_click(void)
 	int cand[24];
 	int nc = 0, nparts = 0, ntbtn = 0;
 
-	if (tbtn_st >= 0 && tbtn_lambda >= 0 &&
-	    ain->functions[tbtn_lambda].nr_args == 0) {
-		/* 先精确匹配（按钮部件自己就是被点部件）。 */
-		for (size_t i = 1; i < heap_size && nc < 24; i++) {
-			struct page *p = heap[i].page;
-			if (!p || p->type != STRUCT_PAGE || p->index != tbtn_st)
-				continue;
-			if (p->nr_vars < 6)
-				continue;
-			if (vm_parts_obj_number(p->values[3].i) != no)
-				continue;
-			if (vm_delegate_count(p->values[5].i) <= 0)
-				continue;
-			cand[nc++] = (int)i;
-			ntbtn++;
+	/* [D338] 命中号找不到按钮对象时，按**点击坐标**兜底再找一次：
+	 * 战斗里点 (740,886) 命中记录的是角色卡内部的透明装饰层 `900000818`
+	 * （`ck=0`），而角色卡本体 `900000813` 是 `ck=1` 的矩形检测件、与它重叠。
+	 * 命中判据是全局的（一改波及标题/ADV），所以只在派发端补这一跳。
+	 * `XSYS4_PARTS_EVENT_GEOM=0` 关闭。 */
+	/* **默认关闭**（2026-11-19）：开了以后 `bt25` 的选项点击被改派到
+	 * 别的对象，第一章进不了战斗。先在 `XSYS4_PARTS_EVENT_GEOM=1` 下做 A/B，
+	 * 等命中/释放两条根因修完再考虑。 */
+	static int pe_geom = -1;
+	if (pe_geom < 0) {
+		const char *e = getenv("XSYS4_PARTS_EVENT_GEOM");
+		pe_geom = (e && !strcmp(e, "1"));
+	}
+	for (int pass = 0; pass < 2 && nc == 0; pass++) {
+		if (pass == 1) {
+			if (!pe_geom)
+				break;
+			int alt = PE_FindClickableAt(x, y);
+			if (alt <= 0 || alt == no)
+				break;
+			if (getenv("XSYS4_PARTS_EVENT_DBG"))
+				NOTICE("[pev] click=%d 无按钮对象，按坐标改派给 %d", no, alt);
+			no = alt;
 		}
-		/* [D337] 精确匹配不到时按**容器**算：Rance10 的按钮部件
-		 * `光标选中透過` 常为 1，点击会穿过按钮落到父容器上，于是
-		 * `clicked_parts` 是容器号（回想对话实测点了 574（容器），
-		 * 而 TextButton 的部件是 575/579…）。此时「点在容器里」等价于
-		 * 点中了容器里的按钮。 */
-		if (!ntbtn) {
+		/* 注意：这里**不能**重新声明 nc/nparts/ntbtn —— 会遮蔽外层的，
+		 * 扫描结果写进影子变量，外层 nc 恒为 0，派发直接 return
+		 * （2026-11-19 就是这么把回想对话点不动的，bt27 复现）。 */
+		if (tbtn_st >= 0 && tbtn_lambda >= 0 &&
+		    ain->functions[tbtn_lambda].nr_args == 0) {
+			/* 先精确匹配（按钮部件自己就是被点部件）。 */
 			for (size_t i = 1; i < heap_size && nc < 24; i++) {
 				struct page *p = heap[i].page;
 				if (!p || p->type != STRUCT_PAGE || p->index != tbtn_st)
 					continue;
 				if (p->nr_vars < 6)
 					continue;
-				int pn = vm_parts_obj_number(p->values[3].i);
-				if (pn <= 0 || pn == no)
-					continue;
-				if (!PE_PartsIsUnder(pn, no))
+				if (vm_parts_obj_number(p->values[3].i) != no)
 					continue;
 				if (vm_delegate_count(p->values[5].i) <= 0)
 					continue;
 				cand[nc++] = (int)i;
 				ntbtn++;
 			}
-			if (ntbtn && getenv("XSYS4_PARTS_EVENT_DBG"))
-				NOTICE("[pev] click=%d 落在容器上 -> 容器内 %d 个 TextButton",
-				       no, ntbtn);
+			/* [D337] 精确匹配不到时按**容器**算：Rance10 的按钮部件
+			 * `光标选中透過` 常为 1，点击会穿过按钮落到父容器上，于是
+			 * `clicked_parts` 是容器号（回想对话实测点了 574（容器），
+			 * 而 TextButton 的部件是 575/579…）。此时「点在容器里」等价于
+			 * 点中了容器里的按钮。 */
+			if (!ntbtn) {
+				for (size_t i = 1; i < heap_size && nc < 24; i++) {
+					struct page *p = heap[i].page;
+					if (!p || p->type != STRUCT_PAGE || p->index != tbtn_st)
+						continue;
+					if (p->nr_vars < 6)
+						continue;
+					int pn = vm_parts_obj_number(p->values[3].i);
+					if (pn <= 0 || pn == no)
+						continue;
+					if (!PE_PartsIsUnder(pn, no))
+						continue;
+					if (vm_delegate_count(p->values[5].i) <= 0)
+						continue;
+					cand[nc++] = (int)i;
+					ntbtn++;
+				}
+				if (ntbtn && getenv("XSYS4_PARTS_EVENT_DBG"))
+					NOTICE("[pev] click=%d 落在容器上 -> 容器内 %d 个 TextButton",
+					       no, ntbtn);
+			}
 		}
-	}
-	/* A 组：`Button` 类在 `Parts.m7` 上注册的点击委托。 */
-	if (parts_st >= 0 && onclick_fno >= 0 &&
-	    ain->functions[onclick_fno].nr_args == 3) {
-		for (size_t i = 1; i < heap_size && nc < 24; i++) {
-			struct page *p = heap[i].page;
-			if (!p || p->type != STRUCT_PAGE || p->index != parts_st)
-				continue;
-			if (p->nr_vars < 8 || p->values[0].i != no)
-				continue;
-			if (vm_delegate_count(p->values[7].i) <= 0)
-				continue;
-			cand[nc++] = (int)i;
-			nparts++;
+		/* A 组：`Button` 类在 `Parts.m7` 上注册的点击委托。 */
+		if (parts_st >= 0 && onclick_fno >= 0 &&
+		    ain->functions[onclick_fno].nr_args == 3) {
+			for (size_t i = 1; i < heap_size && nc < 24; i++) {
+				struct page *p = heap[i].page;
+				if (!p || p->type != STRUCT_PAGE || p->index != parts_st)
+					continue;
+				if (p->nr_vars < 8 || p->values[0].i != no)
+					continue;
+				if (vm_delegate_count(p->values[7].i) <= 0)
+					continue;
+				cand[nc++] = (int)i;
+				nparts++;
+			}
 		}
+
 	}
 	if (!nc && getenv("XSYS4_PARTS_EVENT_DBG")) {
 		NOTICE("[pev] click=%d 没有匹配的按钮对象（Parts=%d TextButton=%d）",
 		       no, nparts, ntbtn);
+		PE_DebugPartsInfo(no);
+		{
+			int alt = PE_FindClickableAt(x, y);
+			NOTICE("[pev]   坐标兜底 FindClickableAt(%d,%d) = %d", x, y, alt);
+			if (alt > 0)
+				PE_DebugPartsInfo(alt);
+		}
 		/* 现场勘查：TextButton 实例的 m3 到底指向什么。 */
 		static int ndump;
 		if (tbtn_st >= 0 && ndump < 3) {

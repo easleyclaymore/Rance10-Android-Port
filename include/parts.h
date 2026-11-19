@@ -30,6 +30,10 @@ void PE_SetDelegateIndex(int parts_no, int delegate_index);
 int PE_GetDelegateIndex(int parts_no);
 /* [D337] child_no 是否为 ancestor_no 或其后代（点击落在容器上时用）。 */
 bool PE_PartsIsUnder(int child_no, int ancestor_no);
+/* [D338] 覆盖 (x,y) 的最上层局部 clickable 件（0 = 没有）。 */
+int PE_FindClickableAt(int x, int y);
+/* [D338 诊断] 打印单个部件的输入相关字段。 */
+void PE_DebugPartsInfo(int parts_no);
 bool PE_SetPartsCG(int parts_no, struct string *cg_name, int sprite_deform, int state);
 bool PE_SetPartsCGThread(int parts_no, struct string *cg_name, int state);
 bool PE_IsThreadLoading(int parts_no, int state);

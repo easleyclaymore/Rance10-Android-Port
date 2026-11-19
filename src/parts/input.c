@@ -217,6 +217,38 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	 * 在 z 最高处先把 `hover_consumed` 置真，后面 700/701 连
 	 * `is_hovered` 都拿不到，直接 `return` 掉 —— 根本走不到捕获那段。 */
 	bool hover_blocking = !parts->pass_cursor;
+	/* [D338] **没有任何图形尺寸的部件不拦光标、不参与捕获。**
+	 *
+	 * 战斗里点 (960,886) 命中的是 `900000568` —— 那是**回想对话框的全屏根**
+	 * （`st=0`、`w/h=0`、`a=0`、`hb=(0,0,1920,1080)`）：活动结束后它没被释放，
+	 * 一个像素都不画，却把战斗画面整片盖住（`bt19`）。同一族还有
+	 * `900001014`（`st=9` flat、`hb=1920x1080`、`a=255` 但隐藏它画面无变化）。
+	 * 判据只用一条渲染事实：`w<=0 || h<=0` 的部件画不出东西，没理由拦光标。
+	 * `XSYS4_CLICK_NEEDS_SHAPE=0` 关闭。 */
+	/* **默认关闭**（2026-11-19）：本轮没能在跑测里稳定证明它带来收益
+	 * （`bt21`/`bt22` 能到战斗但点击仍被回想对话框的布局盒接住；`bt23`
+	 * 排除布局盒后又回归）。先把规则留着，用 `XSYS4_CLICK_NEEDS_SHAPE=1`
+	 * 做 A/B，等"活动释放"那条根因修完再决定是否转正。 */
+	static int pe_needs_shape = -1;
+	if (pe_needs_shape < 0) {
+		const char *e = getenv("XSYS4_CLICK_NEEDS_SHAPE");
+		pe_needs_shape = (e && !strcmp(e, "1"));
+	}
+	/* `PARTS_UNINITIALIZED`（组件类型从未设过）也一定画不出东西：
+	 * `bt19` 里点 (960,886) 命中的 `900000568` 就是回想对话框的根，
+	 * `st=0`、`a=0`、`hb` 全屏 —— 活动结束后它没被释放，把战斗整片盖住。 */
+	/* `bt22` 看清了 `900000568` 的真身：`st=12(=PARTS_LAYOUT_BOX)`、
+	 * `w/h=1920x1080`、`a=255`、`ck=0 pc=0`、全屏 hb —— 它是回想对话框
+	 * 活动根的**布局盒**，自身不绘制，但尺寸/alpha 都是满的。
+	 * **试过按 `PARTS_LAYOUT_BOX` 一刀切排除，`bt23` 立刻回归**：
+	 * 选项 `QuestMapSelectionButton` 也靠布局盒接收点击，排除后进不了战斗
+	 * （`BattleInfoView` 0 次）。所以这里只保留三条与绘制直接相关的判据，
+	 * 布局盒的问题要回到"活动释放"那一层解决（部件本该被释放）。 */
+	const struct parts_state *pe_st0 = &parts->states[PARTS_STATE_DEFAULT];
+	bool pe_no_shape = pe_st0->type == PARTS_UNINITIALIZED ||
+			   pe_st0->common.w <= 0 || pe_st0->common.h <= 0;
+	if (pe_needs_shape && pe_no_shape)
+		hover_blocking = false;
 	if (getenv("XSYS4_CLICK_ONLY_CLICKABLE"))
 		hover_blocking = parts->clickable;
 	/* `s83` 的 CLICK_PASS 之所以 EndInput=0，也是同一处没跟上：
@@ -364,6 +396,10 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	}
 
 	bool click_eligible = parts->clickable || !parts->pass_cursor;
+	/* [D338] 与 hover 拦截同一判据（见上）。只放 hover 不改这里，
+	 * 仍会被它抢走 `click_down_parts`。 */
+	if (pe_needs_shape && pe_no_shape)
+		click_eligible = false;
 	/* [D247] 实验开关：`clickable=0` 的部件不参与点击捕获。
 	 *
 	 * 现状是 D113 放宽成 `clickable || !pass_cursor` —— 起因是 Rance10 的

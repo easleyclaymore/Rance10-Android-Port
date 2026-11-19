@@ -1703,6 +1703,58 @@ void PE_SetDelegateIndex(int parts_no, int delegate_index)
 	}
 }
 
+/* [D338 诊断] 打印单个部件的输入相关字段（`[pev]` 用）。 */
+void PE_DebugPartsInfo(int parts_no)
+{
+	struct parts *p = parts_try_get(parts_no);
+	if (!p) {
+		NOTICE("[pev]   no=%d <不存在>", parts_no);
+		return;
+	}
+	const struct parts_state *st = &p->states[PARTS_STATE_DEFAULT];
+	Rectangle hb = st->common.hitbox;
+	if (p->parent) {
+		hb.x += p->parent->global.pos.x;
+		hb.y += p->parent->global.pos.y;
+	}
+	NOTICE("[pev]   no=%d st=%d w=%d h=%d a=%d show=%d ck=%d pc=%d "
+	       "z=%d ctrl=%d vis=%d hb=(%d,%d,%d,%d) par=%d",
+	       parts_no, (int)st->type, st->common.w, st->common.h,
+	       (int)p->global.alpha, p->global.show, p->clickable, p->pass_cursor,
+	       p->global.z, p->controller_no, parts_is_visible(p) ? 1 : 0,
+	       hb.x, hb.y, hb.w, hb.h, p->parent ? p->parent->no : -1);
+}
+
+/* [D338] 覆盖 (x,y) 的**最上层局部可点击件**；没有则返回 0。
+ *
+ * 用途：战斗里点 (740,886) 时命中记录的是 `900000818`（角色卡内部一个
+ * 全透明装饰层，`ck=0`），而角色卡本身 `900000813` 是 `ck=1` 的矩形检测件、
+ * 与它几何重叠。命中判据是全局的、影响面大（一改就波及标题/ADV），
+ * 所以不动命中，只在**派发端**按坐标补一次"找真正可点的那个件"。
+ *
+ * 规则：`clickable=1`、可见、命中盒覆盖 (x,y)、且 hb 不是整屏（整屏是
+ * "点空白处"的兜底层），取 `global.z` 最大的那个。 */
+int PE_FindClickableAt(int x, int y)
+{
+	struct parts *p, *best = NULL;
+	PARTS_LIST_FOREACH(p) {
+		if (!p->clickable || !parts_is_visible(p))
+			continue;
+		Rectangle hb = p->states[PARTS_STATE_DEFAULT].common.hitbox;
+		if (p->parent) {
+			hb.x += p->parent->global.pos.x;
+			hb.y += p->parent->global.pos.y;
+		}
+		if (x < hb.x || x >= hb.x + hb.w || y < hb.y || y >= hb.y + hb.h)
+			continue;
+		if (hb.w >= gfx_view_width() && hb.h >= gfx_view_height())
+			continue;
+		if (!best || p->global.z > best->global.z)
+			best = p;
+	}
+	return best ? best->no : 0;
+}
+
 /* [D337] `child_no` 是不是 `ancestor_no` 自己或它的子孙部件。
  *
  * 用途：按钮部件常常 `光标选中透過=1`（点击穿过它落到父容器），于是引擎
