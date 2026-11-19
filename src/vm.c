@@ -2134,13 +2134,15 @@ void vm_pump_parts_click(void)
 					int pn = vm_parts_obj_number(p->values[3].i);
 					if (pn <= 0)
 						continue;
-					/* [D341] 精确号失败后，除了「点在容器里」，还要认
-					 * 「点在按钮图形的子树里」—— 防御按钮
-					 * (`DefenceButton@Init` 用 TextButton)
-					 * 的部件号是 0×0 布局盒，几何全在子件上。 */
+					/* [D345] **不要用 `PE_SubtreeCovers` 做 TextButton 的
+					 * 回退**：它太宽，会抢走角色卡。`rc5` 实测点角色卡
+					 * (716,890) 时，B 组某 TextButton 的子树覆盖了该点，
+					 * 于是 `nc>0`、坐标兜底根本不跑，角色卡永远点不到。
+					 * 容器回退（`PE_PartsIsUnder`）保留 —— 那是 D337 为
+					 * 回想对话按钮加的正确判据；防御按钮那种 0×0 布局盒
+					 * 另想办法（放到 A 组之后按坐标兜底）。 */
 					if (pn != no && !PE_PartsIsUnder(pn, no) &&
-					    !PE_PartsCovers(pn, x, y) &&
-					    !PE_SubtreeCovers(pn, x, y))
+					    !PE_PartsCovers(pn, x, y))
 						continue;
 					if (vm_delegate_count(p->values[5].i) <= 0)
 						continue;
