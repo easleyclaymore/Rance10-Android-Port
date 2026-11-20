@@ -97,20 +97,35 @@ jobs:
             echo "system SDL3: $(pkg-config --modversion sdl3)"
             exit 0
           fi
+          echo "cmake: $(cmake --version | head -1)"
+
+          # 默认钉在 3.2.x（LTS 线，各发行版打包的那条），不跟 latest ——
+          # 一是 3.4.x 对 CMake 版本要求更高（24.04 自带 3.28 可能不够），
+          # 二是「用户机器上装的是 3.2」时，用 3.2 构建出来的兼容性更稳。
+          # 需要换版本就重跑 workflow_dispatch 并填 sdl3_version。
           VER="$SDL3_VERSION_OVERRIDE"
           if [ -z "$VER" ]; then
-            VER=$(curl -fsSL https://api.github.com/repos/libsdl-org/SDL/releases/latest \
-                  | grep -m1 '"tag_name"' | sed -E 's/.*"release-([^"]+)".*/\1/')
+            VER=$(curl -fsSL 'https://api.github.com/repos/libsdl-org/SDL/releases?per_page=30' \
+                  | grep -o '"tag_name": *"release-3\.2\.[0-9]*"' \
+                  | head -1 | sed -E 's/.*release-([0-9.]+).*/\1/')
           fi
-          if [ -z "$VER" ]; then
-            echo "::error::无法从 GitHub API 解析 SDL3 版本；请在 workflow_dispatch 里填 sdl3_version"
-            exit 1
-          fi
+          [ -n "$VER" ] || VER="3.2.28"
           echo "building SDL3 $VER"
+
+          dump() {
+            echo "== $1 failed, last lines: =="
+            tail -60 "$2" 2>/dev/null | while IFS= read -r l; do
+              echo "::error::$l"
+              echo "$l"
+            done
+          }
+
           curl -fsSL -o sdl3.tar.gz \
-            "https://github.com/libsdl-org/SDL/releases/download/release-${VER}/SDL3-${VER}.tar.gz"
+            "https://github.com/libsdl-org/SDL/releases/download/release-${VER}/SDL3-${VER}.tar.gz" \
+            || { echo "::error::SDL3 ${VER} tarball download failed"; exit 1; }
           tar xf sdl3.tar.gz
           cd "SDL3-${VER}"
+
           # CI 跑在无显示的 runner 上，不需要 Wayland；关掉能少一堆系统依赖。
           if ! cmake -S . -B build -G Ninja \
               -DCMAKE_BUILD_TYPE=Release \
@@ -118,13 +133,11 @@ jobs:
               -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF \
               -DSDL_SHARED=ON -DSDL_STATIC=OFF \
               -DSDL_WAYLAND=OFF -DSDL_WERROR=OFF > /tmp/sdl-cfg.log 2>&1; then
-            echo "== cmake configure failed =="
-            tail -60 /tmp/sdl-cfg.log
+            dump "cmake configure" /tmp/sdl-cfg.log
             exit 1
           fi
           if ! cmake --build build > /tmp/sdl-build.log 2>&1; then
-            echo "== cmake build failed =="
-            tail -60 /tmp/sdl-build.log
+            dump "cmake build" /tmp/sdl-build.log
             exit 1
           fi
           sudo cmake --install build
