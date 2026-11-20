@@ -37,6 +37,7 @@ jobs:
   portability-gate:
     name: Core Layer portability gate
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,14 +51,15 @@ jobs:
   build:
     name: Build linux-x86_64
     runs-on: ubuntu-24.04
+    timeout-minutes: 40
     steps:
-      # fetch-depth: 0 + fetch-tags 是为了让 `git describe`（`src/meson.build` 里
-      # 的 vcs_tag）能拿到 tag —— 否则二进制里 `--version` 只会打
-      # 「xsystem4 unknown version」。
+      # 只要 fetch-tags，不要 fetch-depth: 0 —— 第一次跑实测 depth=0 在 checkout
+      # 阶段卡了 9 分钟没动（仓库本身只有 34MB，不是体积问题）。
+      # tag 触发时 HEAD 就是 tag，depth=1 也够 `git describe` 拿到版本号；
+      # 拿不到也只是 `--version` 打印 unknown，不影响功能。
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0
           fetch-tags: true
 
       - name: Apply local libsys4 patches
@@ -165,10 +167,10 @@ jobs:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           fetch-tags: true
 
       - uses: actions/download-artifact@v4
