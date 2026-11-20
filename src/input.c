@@ -43,7 +43,13 @@ bool mouse_consume_press_pulse(void)
 	return p;
 }
 
-/* [D378] 前置声明：`mouse_rclick_pulse` 的定义在本文件靠后（右键脉冲那段）。 */
+/* [D378] 合成点击的「按住」截止时刻。
+ *
+ * 单帧脉冲不够：部件输入层要**连续看到几帧按下态**才会把它算成一次有效点击
+ * （D245 实测 0.12s≈1.5 帧时 40 次点击只有 9 次产生 EndInput，拉到 0.2s 才稳）。
+ * 所以合成点击不是「置一个脉冲」，而是「按住 200ms」—— 由 `key_is_down()` 接管，
+ * 到期自然产生释放沿。 */
+static uint32_t inject_click_until;
 static bool mouse_rclick_pulse;
 
 /* [D378] 引擎内合成一次点击脉冲（左键 `right=0` / 右键 `right=1`）。
@@ -56,10 +62,15 @@ static bool mouse_rclick_pulse;
  * 不经过 X 服务器，也不受窗口几何变化影响。 */
 void mouse_inject_click(bool right)
 {
-	if (right)
+	mouse_press_pulse = true;
+	if (right) {
 		mouse_rclick_pulse = true;
-	else
-		mouse_press_pulse = true;
+	} else {
+		/* 按住 200ms（≈3 帧@60fps / ≈1.5 帧@llvmpipe 13fps）：见上面
+		 * `inject_click_until` 的说明。每次调用都重新计时，所以
+		 * 「每 700ms 一次」的自动点击在时间轴上仍是按下 200ms + 抬起 500ms。 */
+		inject_click_until = SDL_GetTicks() + 200;
+	}
 }
 
 /* [D233] 每个键的一次性「按下脉冲」。
@@ -322,6 +333,11 @@ bool key_is_down(enum sact_keycode code)
 {
 	if (code < 0 || code >= VK_NR_KEYCODES) {
 		return false;
+	}
+	/* [D378] 合成点击的按住窗口（见 mouse_inject_click）。 */
+	if (code == VK_LBUTTON && inject_click_until &&
+	    SDL_GetTicks() < inject_click_until) {
+		return true;
 	}
 	if (key_state[code])
 		key_seen_down[code] = true;   // [D233] 记下「这次按下被读到了」
