@@ -84,7 +84,7 @@ jobs:
             build-essential pkg-config meson ninja-build cmake flex bison \
             libfreetype-dev libffi-dev libpng-dev libsndfile1-dev \
             libturbojpeg0-dev libwebp-dev zlib1g-dev libdeflate-dev \
-            libgl-dev libcglm-dev \
+            libgl-dev libglew-dev libcglm-dev \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
             libxfixes-dev libxss-dev libxkbcommon-dev libwayland-dev \
             libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
