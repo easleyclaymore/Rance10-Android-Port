@@ -249,7 +249,16 @@ static void PartsEngine_add_construction_process(union vm_value *ints,
 		WARNING("AddConstructProcess: MulFilter unimplemented");
 		break;
 	case 18:  // CASConstructionProcess::SetDrawLine
-		WARNING("AddConstructProcess: DrawLine unimplemented");
+		/* [D383] 端点取 (sx,sy)→(dx,dy)（与其它命令的「源/目标」字段一致），
+		 * 颜色取 r,g,b,a。第一版靠实机截图验收：回合播报屏应当出现势力战线。 */
+		if (getenv("XSYS4_CONSTRUCT_DBG")) {
+			static int n;
+			if (n++ < 20)
+				NOTICE("[cproc] draw_line parts=%d (%d,%d)-(%d,%d) rgb=%d,%d,%d a=%d",
+				       parts_no, sx, sy, dx, dy, r, g, b, a);
+		}
+		PE_AddDrawLineToPartsConstructionProcess(parts_no, sx, sy, dx, dy,
+				r, g, b, a, state);
 		break;
 	/* [D184] cmd=29 是 Rance10 的「按 CG 原尺寸绘制」：`d=dx,dy,0,0` 且带
 	 * CG 名（`カード／ランス／基本` 等），尺寸在 CG 本身。实测 171 次，全部

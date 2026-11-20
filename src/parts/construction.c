@@ -35,6 +35,7 @@ void parts_cp_op_free(struct parts_cp_op *op)
 	case PARTS_CP_FILL_AMAP:
 	case PARTS_CP_FILL_WITH_ALPHA:
 	case PARTS_CP_DRAW_RECT:
+	case PARTS_CP_DRAW_LINE:
 	case PARTS_CP_GRAY_FILTER:
 		break;
 	case PARTS_CP_CG:
@@ -191,6 +192,25 @@ bool PE_AddDrawRectToPartsConstructionProcess(int parts_no, int x, int y, int w,
 		.r = r, .g = g, .b = b, .a = 255
 	};
 
+	parts_add_cp_op(cproc, op);
+	return true;
+}
+
+bool PE_AddDrawLineToPartsConstructionProcess(int parts_no, int x0, int y0, int x1, int y1,
+		int r, int g, int b, int a, int state)
+{
+	if (!parts_state_valid(--state))
+		return false;
+
+	struct parts_construction_process *cproc = get_cproc(parts_no, state);
+	if (!cproc)
+		return false;
+	struct parts_cp_op *op = xcalloc(1, sizeof(struct parts_cp_op));
+	op->type = PARTS_CP_DRAW_LINE;
+	op->line = (struct parts_cp_line) {
+		.x0 = x0, .y0 = y0, .x1 = x1, .y1 = y1,
+		.r = r, .g = g, .b = b, .a = a
+	};
 	parts_add_cp_op(cproc, op);
 	return true;
 }
@@ -413,6 +433,17 @@ static bool build_draw_rect(struct parts_construction_process *cproc, struct par
 	return true;
 }
 
+/* [D383] 一条线段。矩形框那套本来也是用 `gfx_draw_line` 画四条边，
+ * 所以这里直接复用，不需要新的渲染原语。 */
+static bool build_draw_line(struct parts_construction_process *cproc, struct parts_cp_line *op)
+{
+	if (!cproc->common.texture.handle)
+		return false;
+	gfx_draw_line(&cproc->common.texture, op->x0, op->y0, op->x1, op->y1,
+		      op->r, op->g, op->b);
+	return true;
+}
+
 static bool build_draw_cut_cg(struct parts_construction_process *cproc, struct parts_cp_cut_cg *op)
 {
 	if (!cproc->common.texture.handle) {
@@ -534,6 +565,10 @@ bool parts_build_construction_process(struct parts *parts,
 			break;
 		case PARTS_CP_DRAW_RECT:
 			if (!build_draw_rect(cproc, &op->fill))
+				return false;
+			break;
+		case PARTS_CP_DRAW_LINE:
+			if (!build_draw_line(cproc, &op->line))
 				return false;
 			break;
 		case PARTS_CP_DRAW_CUT_CG:

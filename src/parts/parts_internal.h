@@ -195,7 +195,10 @@ enum parts_cp_op_type {
 	PARTS_CP_COPY_TEXT,
 	PARTS_CP_GRAY_FILTER,
 	PARTS_CP_FILL_WITH_ALPHA,
-#define PARTS_NR_CP_TYPES (PARTS_CP_FILL_WITH_ALPHA+1)
+	/* [D383] 线段：兰斯10 的「回合播报 / 世界地图战线」全靠它。
+	 * 追加在**末尾**（这个枚举会序列化进存档，只能追加、不能重排）。 */
+	PARTS_CP_DRAW_LINE,
+#define PARTS_NR_CP_TYPES (PARTS_CP_DRAW_LINE+1)
 };
 
 struct parts_cp_create {
@@ -231,6 +234,12 @@ struct parts_cp_filter {
 	bool full_size;
 };
 
+/* [D383] 一条线段（端点 + RGBA）。 */
+struct parts_cp_line {
+	int x0, y0, x1, y1;
+	int r, g, b, a;
+};
+
 struct parts_cp_op {
 	TAILQ_ENTRY(parts_cp_op) entry;
 	enum parts_cp_op_type type;
@@ -238,6 +247,7 @@ struct parts_cp_op {
 		struct parts_cp_create create;
 		struct parts_cp_cg cg;
 		struct parts_cp_fill fill;
+		struct parts_cp_line line;
 		struct parts_cp_cut_cg cut_cg;
 		struct parts_cp_text text;
 		struct parts_cp_filter filter;

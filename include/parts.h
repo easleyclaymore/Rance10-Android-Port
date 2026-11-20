@@ -218,6 +218,10 @@ bool PE_AddFillAlphaColorToPartsConstructionProcess(int parts_no, int x, int y, 
 bool PE_AddFillAMapToPartsConstructionProcess(int parts_no, int x, int y, int w, int h, int a, int state);
 bool PE_AddFillWithAlphaToPartsConstructionProcess(int parts_no, int x, int y, int w, int h,
 		int r, int g, int b, int a, int state);
+/* [D383] 线段原语（`AddConstructProcess` cmd=18 / SetDrawLine）。 */
+bool PE_AddDrawLineToPartsConstructionProcess(int parts_no, int x0, int y0, int x1, int y1,
+		int r, int g, int b, int a, int state);
+
 bool PE_AddDrawRectToPartsConstructionProcess(int parts_no, int x, int y, int w, int h,
 		int r, int g, int b, int state);
 bool PE_AddDrawCutCGToPartsConstructionProcess(int parts_no, struct string *cg_name,

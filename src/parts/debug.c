@@ -108,6 +108,7 @@ static void parts_construction_process_to_json(struct parts_construction_process
 		[PARTS_CP_FILL_AMAP] = "fill_amap",
 		[PARTS_CP_FILL_WITH_ALPHA] = "fill_with_alpha",
 		[PARTS_CP_DRAW_RECT] = "draw_rect",
+		[PARTS_CP_DRAW_LINE] = "draw_line",
 		[PARTS_CP_DRAW_CUT_CG] = "draw_cut_cg",
 		[PARTS_CP_COPY_CUT_CG] = "copy_cut_cg",
 		[PARTS_CP_DRAW_TEXT] = "draw_text",
