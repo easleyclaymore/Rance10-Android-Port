@@ -444,6 +444,17 @@ static bool get_float(struct ex_tree *t, const char *name, float *out)
  *
  * 缺角时退回用能凑出的那两个点算。
  */
+/* [D375] `矩形検出` 是否也按 EX 四角负载定尺寸。见调用处注释。 */
+static int act_ex_rect_det_on(void)
+{
+	static int on = -1;
+	if (on < 0) {
+		const char *e = getenv("XSYS4_EX_RECT_DET_SIZE");
+		on = !(e && !strcmp(e, "0"));
+	}
+	return on;
+}
+
 static void rect_corners_to_size(const float pts[4][2], bool have[4],
 		int *out_w, int *out_h)
 {
@@ -775,7 +786,16 @@ static void parse_part_fields(struct ex_tree *node, struct activity_part *part)
 		/* [D271] 矩形パーツ 的四角 + 模式。先按 src（一般状態）取，
 		 * 取不到再退到 type_info —— D238 的数字/计量负载在 src 里，
 		 * 但不同活动的写位置不完全一致，两处都试一次代价极小。 */
-		if (part->type == ACT_COMP_RECT) {
+		/* [D375] `矩形検出`（ACT_COMP_RECT_DETECTION=25）也要读四角。
+		 *
+		 * 兰斯10 的技能卡命中件（`SmallSkillButton01:0` 的 `Normal/Alter/
+		 * Stack/OnceUsed`）就是这一类，运行期实测 `w=1 h=1`；而 AIN
+		 * 从不调用 `SetRectangleDetectionSize` 给它们设尺寸
+		 * （`XSYS4_FLAT_DBG` 下 `[rect]` 全程 0 条命中它们）。
+		 * 原判据只对 `矩形パーツ`(23) 读负载，于是这些件永远停在 1×1 占位。
+		 * `XSYS4_EX_RECT_DET_SIZE=0` 回退。 */
+		if (part->type == ACT_COMP_RECT ||
+		    (act_ex_rect_det_on() && part->type == ACT_COMP_RECT_DETECTION)) {
 			static const char *const corner_names[4] = {
 				"左上", "右上", "左下", "右下"
 			};
@@ -1027,7 +1047,9 @@ static int build_part(struct activity_part *part, int parent_no)
 	 * 本步只补几何，不动绘制（绘制必须单独 A/B：命中盒已在这条路上
 	 * 生效，不能因为加了绘制而改掉点击行为）。
 	 * `XSYS4_EX_RECT_SIZE=0` 回退做 A/B。 */
-	if (part->type == ACT_COMP_RECT && part->has_rect) {
+	if ((part->type == ACT_COMP_RECT ||
+	     (act_ex_rect_det_on() && part->type == ACT_COMP_RECT_DETECTION)) &&
+	    part->has_rect) {
 		static int ex_rect_size = -1;
 		if (ex_rect_size < 0) {
 			const char *e = getenv("XSYS4_EX_RECT_SIZE");

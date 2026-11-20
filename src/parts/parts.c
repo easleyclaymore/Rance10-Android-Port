@@ -3415,6 +3415,13 @@ int PE_GetComponentType(int parts_no, int state)
  * 内容由控件层绘制）。 */
 bool PE_SetPartsSize(int parts_no, int w, int h, int state)
 {
+	/* [D375] 与 `SetRectangleDetectionSize` 共用同一个探针开关：
+	 * 「这个件的尺寸到底是谁设的」只能靠两条路都留痕才回答得了。 */
+	if (getenv("XSYS4_FLAT_DBG"))
+		NOTICE("[size] SetPartsSize no=%d %dx%d state=%d", parts_no, w, h, state);
+	/* [D375] AIN 自己传 1×1 时把调用栈打出来 —— 「尺寸是谁算的」只能这样回答。 */
+	if (getenv("XSYS4_SIZE_1X1_TRACE") && w <= 1 && h <= 1)
+		vm_stack_trace();
 	if (!parts_state_valid(--state))
 		return false;
 	struct parts *parts = parts_try_get(parts_no);

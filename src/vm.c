@@ -1630,6 +1630,10 @@ static void dg_drift_check(int dg_no)
 	}
 }
 
+/* [D372] 前置声明：`vm_delegate_count()` 定义在文件后半（D337 那段），
+ * 但 `delegate_call` 的调试分支要用。 */
+static int vm_delegate_count(int slot);
+
 static void delegate_call(int dg_no, int return_address)
 {
 	if (dg_no < 0 || dg_no >= ain->nr_delegates)
@@ -1742,6 +1746,18 @@ static void delegate_call(int dg_no, int return_address)
 				nm = ain->functions[fun].name;
 			NOTICE("[dgc] dg_no=%d obj=%d fun=%d %s page=%d idx=%d",
 			       dg_no, obj, fun, nm, dg_page, dg_index);
+			/* [D372] 委托目标对象是 `BattleCardButton` 时，把它
+			 * `m9`（`SetOnClickSkillEvent` 写的 (string,int) 委托）
+			 * 的条目数打出来 —— 用它区分「m9 从没赋值」和
+			 * 「我们派发到的实例不是 CreateButton 造的那批」。 */
+			if (fun == 37011 && obj > 0 && (size_t)obj < heap_size &&
+			    heap[obj].page && heap[obj].page->type == STRUCT_PAGE) {
+				struct page *o = heap[obj].page;
+				NOTICE("[dgc]   BCB obj struct=%d nv=%d m9dg=%d",
+				       o->index, o->nr_vars,
+				       o->nr_vars > 9
+					       ? vm_delegate_count(o->values[9].i) : -1);
+			}
 		}
 		// 弹出上一个返回值
 		for (int rv = 0; rv < return_values; rv++)
@@ -2075,6 +2091,31 @@ void vm_pump_auto_skill(void)
 		return;
 
 	const bool dbg = getenv("XSYS4_PARTS_EVENT_DBG") != NULL;
+	/* [D372] 一次性把 `BattleCardButton` 实例和它们的 `m9`
+	 * （`SetOnClickSkillEvent` 写的 (string,int) 委托）打出来。
+	 * 目的：区分「m9 从来没被赋值」和「我们派发到的那个实例不是
+	 * CreateButton 造的那批」。 */
+	static int bcb_st = -2, bcb_dumped;
+	if (dbg && !bcb_dumped && 0) {
+		if (bcb_st == -2)
+			bcb_st = vm_struct_named("BattleCardButton");
+		if (bcb_st >= 0) {
+			int m = 0;
+			for (size_t i = 1; i < heap_size && m < 12; i++) {
+				struct page *q = heap[i].page;
+				if (!q || q->type != STRUCT_PAGE || q->index != bcb_st)
+					continue;
+				m++;
+				NOTICE("[ask]   BCB slot=%d nv=%d m9dg=%d m0=%d m1=%d",
+				       (int)i, q->nr_vars,
+				       q->nr_vars > 9 ? vm_delegate_count(q->values[9].i) : -1,
+				       q->nr_vars > 0 ? q->values[0].i : -1,
+				       q->nr_vars > 1 ? q->values[1].i : -1);
+			}
+			NOTICE("[ask]   BattleCardButton 实例共 %d 个（结构号 %d）", m, bcb_st);
+		}
+		bcb_dumped = 1;
+	}
 	int n = 0, pick = -1;
 	for (size_t i = 1; i < heap_size; i++) {
 		struct page *p = heap[i].page;
@@ -2103,6 +2144,7 @@ void vm_pump_auto_skill(void)
 				int v = p->values[k].i;
 				const char *ty = "?";
 				const char *txt = "";
+				const char *tstr = "";
 				static char buf[128];
 				buf[0] = 0;
 				if (v > 0 && (size_t)v < heap_size) {
@@ -2125,8 +2167,18 @@ void vm_pump_auto_skill(void)
 						break;
 					default: ty = "val"; break;
 					}
+					if (heap[v].type == VM_PAGE && heap[v].page &&
+					    heap[v].page->type == STRUCT_PAGE &&
+					    ty[0] == 's') {
+						static char sbuf[64];
+						snprintf(sbuf, sizeof(sbuf),
+							 " struct#%d nv=%d",
+							 heap[v].page->index,
+							 heap[v].page->nr_vars);
+						tstr = sbuf;
+					}
 				}
-				NOTICE("[ask]     m%d=%d %s%s", k, v, ty, txt);
+				NOTICE("[ask]     m%d=%d %s%s%s", k, v, ty, txt, tstr);
 			}
 			if (ba > 0)
 				PE_DebugPartsInfo(ba);
@@ -2141,6 +2193,115 @@ void vm_pump_auto_skill(void)
 		if (pick > 0 && (want_x >= 0 || want_idx >= 0))
 			break;
 	}
+	/* [D373] `<frames>:card` —— 确定性驱动：不依赖技能卡命中，直接按
+	 * 「第一个有效卡片」调 `SceneBattle@OnClickSkill(cardId, 0)`。
+	 *
+	 * 为什么需要：技能卡的 AIN 派发链末端 `BattleCardButton.m9` 在运行期
+	 * 是**空委托页**（`e6` 实测 3 个实例全是 `type=4 nv9=0`），
+	 * 而 `SceneBattle@OnClickSkill(cardId, skillIndex)`(24897) 的处理函数
+	 * 明明注册在 `BattleSkillSelector.m4` 上。先用这条确定性路径
+	 * 验证「选技能之后战斗能不能推到回合收尾」，把链路问题和命中问题分开。
+	 */
+	static int want_card = -1;
+	if (want_card < 0) {
+		const char *c = strchr(e, ':');
+		want_card = c && (!strcmp(c + 1, "card") || !strcmp(c + 1, "cards"));
+		static int multi;
+		multi = c && !strcmp(c + 1, "cards");
+		want_card = want_card ? (multi ? 2 : 1) : 0;
+	}
+	if (want_card == 2) {
+		/* [D374] `:cards` —— 轮流让每个有效卡片放一次技能（每 600 帧一次，
+		 * 最多 8 次），用来验证「四人行动完 → 回合收尾 → Round 2」。
+		 * 每次动作都等 `CreateEndTask` 那条异步链跑完再发下一次。 */
+		static unsigned char used[4096];
+		static int next_at, acts;
+		if (acts >= 8) {
+			auto_skill_done = 1;
+			return;
+		}
+		if (auto_skill_frames < next_at)
+			return;
+		static int bcb_st3 = -2, lc_st3 = -2;
+		if (bcb_st3 == -2) {
+			bcb_st3 = vm_struct_named("BattleCardButton");
+			lc_st3 = vm_struct_named("LeaderCard");
+		}
+		int idx = 0, pickb = -1, picklc = -1;
+		for (size_t i = 1; i < heap_size; i++) {
+			struct page *q = heap[i].page;
+			if (!q || q->type != STRUCT_PAGE || q->index != bcb_st3)
+				continue;
+			int lc = q->nr_vars > 1 ? q->values[1].i : -1;
+			if (lc <= 0 || (size_t)lc >= heap_size || !heap[lc].page ||
+			    heap[lc].page->type != STRUCT_PAGE ||
+			    heap[lc].page->index != lc_st3)
+				continue;
+			int cid = heap[lc].page->values[0].i;
+			if (cid <= 0 || (size_t)cid >= heap_size ||
+			    heap[cid].type != VM_STRING)
+				continue;
+			if (idx >= (int)sizeof(used))
+				break;
+			if (used[idx]) {
+				idx++;
+				continue;
+			}
+			pickb = (int)i;
+			picklc = cid;
+			break;
+		}
+		if (pickb < 0 || auto_battle_page <= 0)
+			return;
+		used[idx] = 1;
+		acts++;
+		next_at = auto_skill_frames + 600;
+		NOTICE("[ask] cards 第 %d 次：BCB=%d OnClickSkill(\"%s\", 0)",
+		       acts, pickb,
+		       heap[picklc].s && heap[picklc].s->text
+			       ? display_sjis0(heap[picklc].s->text) : "?");
+		stack_push(picklc);
+		stack_push(0);
+		vm_call(24897, auto_battle_page);
+		return;
+	}
+	if (want_card == 1) {
+		static int bcb_st2 = -2, lc_st2 = -2;
+		if (bcb_st2 == -2) {
+			bcb_st2 = vm_struct_named("BattleCardButton");
+			lc_st2 = vm_struct_named("LeaderCard");
+		}
+		for (size_t i = 1; i < heap_size; i++) {
+			struct page *q = heap[i].page;
+			if (!q || q->type != STRUCT_PAGE || q->index != bcb_st2)
+				continue;
+			int lc = q->nr_vars > 1 ? q->values[1].i : -1;
+			if (lc <= 0 || (size_t)lc >= heap_size || !heap[lc].page ||
+			    heap[lc].page->type != STRUCT_PAGE ||
+			    heap[lc].page->index != lc_st2)
+				continue;
+			int cid = heap[lc].page->values[0].i;
+			if (cid <= 0 || (size_t)cid >= heap_size ||
+			    heap[cid].type != VM_STRING)
+				continue;
+			if (auto_battle_page <= 0)
+				return;
+			NOTICE("[ask] card 模式：BCB=%d leader=%d OnClickSkill(\"%s\", 0)",
+			       (int)i, lc,
+			       heap[cid].s && heap[cid].s->text
+				       ? display_sjis0(heap[cid].s->text) : "?");
+			auto_skill_done = 1;
+			stack_push(cid);
+			stack_push(0);
+			vm_call(24897, auto_battle_page);
+			return;
+		}
+		if (auto_skill_frames > 20000) {
+			auto_skill_done = 1;
+			NOTICE("[ask] card 模式：没有带 LeaderCard 的 BattleCardButton");
+		}
+		return;
+	}
 	if (pick <= 0) {
 		/* 技能卡是异步展开的（`ShowCardButton` 之后还要 FadeIn），
 		 * 固定延时容易太早 ⇒ 等到出现为止，上限 3000 帧。 */
@@ -2152,6 +2313,32 @@ void vm_pump_auto_skill(void)
 	}
 	auto_skill_done = 1;
 	NOTICE("[ask] 派发 LargeSkillButton slot=%d（候选 %d 个）", pick, n);
+	if (dbg) {
+		/* 派发这一刻把所有 `BattleCardButton` 的 m9 打出来 ——
+		 * 只有这一瞬间的现场才能说明「m9 到底赋值给谁了」。 */
+		static int st772 = -2;
+		if (st772 == -2)
+			st772 = vm_struct_named("BattleCardButton");
+		int m = 0;
+		for (size_t i = 1; i < heap_size && m < 16; i++) {
+			struct page *q = heap[i].page;
+			if (!q || q->type != STRUCT_PAGE || q->index != st772)
+				continue;
+			m++;
+			int v9 = q->nr_vars > 9 ? q->values[9].i : -1;
+			int t9 = -1, nv9 = -1;
+			if (v9 > 0 && (size_t)v9 < heap_size && heap[v9].page) {
+				t9 = heap[v9].page->type;
+				nv9 = heap[v9].page->nr_vars;
+			}
+			NOTICE("[ask]   BCB@dispatch slot=%d nv=%d m9=%d type=%d nv9=%d "
+			       "dg=%d m10=%d",
+			       (int)i, q->nr_vars, v9, t9, nv9,
+			       q->nr_vars > 9 ? vm_delegate_count(q->values[9].i) : -1,
+			       q->nr_vars > 10 ? q->values[10].i : -1);
+		}
+		NOTICE("[ask]   BCB@dispatch 共 %d 个", m);
+	}
 
 	/* [D368] 直接调 `SceneBattle@OnClickSkill(cardId, skillIndex)`。
 	 *

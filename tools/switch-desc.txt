@@ -200,7 +200,9 @@ XSYS4_CLICK_NEEDS_SHAPE	[D338 默认生效，=0 关闭] 让「画不出像素」
 XSYS4_PARTS_EVENT_GEOM	[D338 默认生效，=0 关闭] 点击派发时若命中号没有对应按钮对象，按点击坐标 PE_FindClickableAt() 找「覆盖该点的最上层局部 ck=1 件」改派。转正依据：bt30 里把 900001014（全屏件）改派到 900000749（角色卡）后，AIN 的 Parts@OnClick 真的跑起来；bt25 的「改派导致进不了战斗」是当时并存的变量遮蔽 bug，已修
 XSYS4_COVER_HYST	[D343 默认生效，=0 关闭] cover_layer 单帧滞回：同一个值连续 3 帧才生效，抹掉「某层偶发全屏不透明件」造成的整层闪烁（实测变化次数 17→9，且不再在 4/7 之间逐帧跳）
 XSYS4_AUTO_BATTLE_END	[D344 诊断，默认关] 值=帧数。到点后直接调 SceneBattle@ProcessPostPlayerTurn(24886)，绕开「角色卡点不中」，单独验证回合收尾逻辑。abe1 实测：能跑、0 ERROR、画面进入回合切换演出
-XSYS4_AUTO_SKILL	[D349 诊断，默认关] 值=帧数[:索引]。技能卡展开后直接派发第 N 个 LargeSkillButton（调用 lambda 37029），验证选技能链路。rc14 实测能派发（slot=117030），但 RunSelectedSkill 仍 0 —— 委托内容待查
+XSYS4_AUTO_SKILL	[D349/D373 诊断，默认关] 值=`<frames>[:<x>,<y>|:#<index>|:card|:cards]`。到点后派发技能卡：给坐标按子树选卡、`#n` 按序号、`card` 用第一个 BattleCardButton 的 (cardId,skillIndex) 直接调 SceneBattle@OnClickSkill、`cards` 每 600 帧轮流让每个卡放一次（最多 8 次）。用于把「链路问题」和「命中问题」分开验证
 XSYS4_AUTO_SKILL_MODE	[D368 诊断，默认关] =lambda 时 `XSYS4_AUTO_SKILL` 用原来的 lambda 派发（37029）而不是直接调 OnClickSkill，用来 A/B 对比两条路
 XSYS4_EX_RECT_MIN1X1	[D366 默认生效，=0 关闭] 把 `1x1` 的矩形检测件当成"没设过尺寸"，允许套用 EX 的四角矩形负载。兰斯10 的技能卡 `Normal/Alter/Stack` 就是 1x1 占位，原判据只看 `<=0` 于是永远拿不到真实命中盒
 XSYS4_ACT_GEOM	[D360 诊断，默认关] `AFL_Activity_GetPartsNumber` 每查到一个部件号就把它的矩形/可见性打出来 —— 一次跑测即可拿到「按名字找到的部件到底在屏幕哪里」
+XSYS4_SIZE_1X1_TRACE	[D375 诊断，默认关] `SetPartsSize` 收到 w<=1 且 h<=1 时打调用栈 —— 用来回答「这个 1x1 到底是 AIN 算的还是活动数据写死的」
+XSYS4_EX_RECT_DET_SIZE	[D375 默认生效，=0 关闭] `矩形検出`(ACT_COMP_RECT_DETECTION) 也按 EX 的四角负载定尺寸（原来只对 `矩形パーツ` 读）。实测技能卡的 Normal/Alter 没有四角字段，此开关对它无效，但对其它活动可能有用
