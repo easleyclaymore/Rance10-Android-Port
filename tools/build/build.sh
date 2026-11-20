@@ -15,7 +15,8 @@ _d="$(dirname "$(realpath "$0")")"; while [ ! -f "$_d/lib/common.sh" ] && [ "$_d
 HERE="$TOOLS_DIR"
 SYS4="$XSYS4_DIR"
 INC="$SYS4/subprojects/libsys4/include"
-LIB="$SYS4/build/subprojects/libsys4/libsys4.a"
+# [D377] 构建目录可覆盖：本机开发在 build-sdl3/，离线工具不该被迫回到 build/。
+LIB="${XSYS4_LIB_DIR:-$SYS4/build}/subprojects/libsys4/libsys4.a"
 SRC="$TOOLS_DIR/src"
 # 产物落到项目级 tools/bin（与源码分开：源码进 git，二进制不进）
 OUT="$OFFLINE_BIN"
