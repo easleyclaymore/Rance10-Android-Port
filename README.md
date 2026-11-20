@@ -30,9 +30,17 @@
 
 ## 下载预编译二进制
 
-不想自己编译就看 [Releases](../../releases)：每个 `v*` tag 由 GitHub Actions
-构建出 `xsystem4-<tag>-linux-x86_64.tar.gz`（release 构建、已 strip），
-包内自带 SDL3 与 `run.sh`，解压即可跑；Release 正文写了当前进度与已知问题。
+不想自己编译就看 [Releases](../../releases)（当前最新：
+[`v0.1.0-preview.2`](../../releases/tag/v0.1.0-preview.2)）。每个 `v*` tag 由
+GitHub Actions 构建出 `xsystem4-<tag>-linux-x86_64.tar.gz`（release 构建、已 strip），
+包内自带 **SDL3 + GLEW** 与 `run.sh`，解压即可跑：
+
+```sh
+tar xzf xsystem4-*.tar.gz && cd xsystem4-*
+./run.sh /path/to/ランス10        # 目录里要有 AliceStart.ini / Rance10.ain
+```
+
+Release 正文写了当前进度、已修问题与已知问题；包内 `README-RUN.txt` 写依赖与字体设置。
 
 > 早期阶段只发**二进制**，不做 deb / AppImage —— 现在的接口和依赖还会变，
 > 发行版打包只会变成负担。
