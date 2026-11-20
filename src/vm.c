@@ -2071,7 +2071,7 @@ void vm_pump_auto_click(uint32_t now)
 		return;
 
 	static int ms = -1, ax = -1, ay = -1, right;
-	static uint32_t last;
+	static uint32_t last, start_at;
 	static unsigned long n;
 	/* [D378] 支持位置**列表**：`<ms>:x1,y1;x2,y2;...`（最多 8 个），按顺序轮着点。
 	 * 地图这类「点哪个节点才推进」的界面，一次跑测就能把候选位置全试一遍，
@@ -2103,12 +2103,19 @@ void vm_pump_auto_click(uint32_t now)
 			ax = config.view_width / 2;
 			ay = config.view_height / 2;
 		}
-		NOTICE("[aclk] AUTO_CLICK every %dms, %d position(s)%s",
-		       ms, np ? np : 1, right ? " right" : "");
+		/* [D378] `XSYS4_AUTO_CLICK_DELAY=<ms>`：这段时间内不点。
+		 * 标题画面那几步必须靠 `RANCE10_LIVE_SEQ` 的精确点击，自动点击在旁边
+		 * 乱点会把标题菜单开开关关（adv3/adv4 都这么卡死在标题）。 */
+		const char *dly = getenv("XSYS4_AUTO_CLICK_DELAY");
+		start_at = dly && *dly ? (uint32_t)atoi(dly) : 0;
+		NOTICE("[aclk] AUTO_CLICK every %dms, %d position(s), start at %ums%s",
+		       ms, np ? np : 1, start_at, right ? " right" : "");
 		for (int i = 0; i < np; i++)
 			NOTICE("[aclk]   #%d at (%d,%d)", i, px[i], py[i]);
 		last = now;
 	}
+	if (start_at && now < start_at)
+		return;
 	if (now - last < (uint32_t)ms)
 		return;
 	last = now;
