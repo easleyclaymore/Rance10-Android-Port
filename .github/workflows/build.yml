@@ -1,17 +1,37 @@
-name: Rance10 CI
+name: Build & Release
 
-# Dedicated CI for the Rance10 fork. Upstream's Flatpak/Windows jobs are
-# intentionally not used here: the target is a native arm64 Android build,
-# and the intermediate Linux build only has to stay compilable plus pass
-# the Core Layer portability gate.
+# 目标：每次 push 都验证「能编译」，打 tag（v*）时把 **二进制** 发到 GitHub Releases。
+#
+# 刻意不做的：
+#   - 不产出 .deb / AppImage / Flatpak —— 项目还在早期，发行版打包会立刻变成
+#     维护负担，而且这时候用户真正需要的只是「一个能跑起来的可执行文件」。
+#   - 不做 Android APK（还没到那一步，见 Release 说明）。
+#
+# 两个坑写在这里，免得下次再踩：
+#   1. 兰斯10 这个 fork 用的是 **SDL3**，而 ubuntu-24.04 的源里没有 libsdl3-dev，
+#      所以下面先试 apt、失败就自己编 SDL3。
+#   2. `subprojects/libsys4` 是 gitlink（上游 nunuhara/libsys4 的 e2bf438），
+#      但本仓库对它有 4 个文件的本地补丁（gsave v8 / ajp_get_metrics）。
+#      拉下来之后必须按 README「获取源码」那节应用 `patches/000{1,2}-*.patch`，
+#      否则 xsystem4 会在链接期找不到 `ajp_get_metrics`。
+
 on:
   push:
-    branches: [main, rance10-native]
+    branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      sdl3_version:
+        description: 'Force an SDL3 version (e.g. 3.2.28). Empty = auto-detect.'
+        required: false
+        default: ''
 
 permissions:
-  contents: read
+  contents: write
+
+env:
+  SDL3_VERSION_OVERRIDE: ${{ github.event.inputs.sdl3_version }}
 
 jobs:
   portability-gate:
@@ -27,51 +47,142 @@ jobs:
       - name: No Linux-only headers / no hardcoded paths in Core Layer
         run: python3 tools/check_core_deps.py
 
-  linux-build:
-    name: Linux ${{ matrix.arch }} ${{ matrix.buildtype }}
-    runs-on: ${{ matrix.runner }}
-    continue-on-error: ${{ matrix.experimental }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-24.04
-            arch: x86_64
-            buildtype: debug
-            experimental: false
-          - runner: ubuntu-24.04-arm
-            arch: aarch64
-            buildtype: debug
-            experimental: true
+  build:
+    name: Build linux-x86_64
+    runs-on: ubuntu-24.04
     steps:
+      # fetch-depth: 0 + fetch-tags 是为了让 `git describe`（`src/meson.build` 里
+      # 的 vcs_tag）能拿到 tag —— 否则二进制里 `--version` 只会打
+      # 「xsystem4 unknown version」。
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Apply local libsys4 patches
+        run: |
+          git -C subprojects/libsys4 apply -v \
+            "$GITHUB_WORKSPACE/patches/0001-libsys4-gsave-v8.patch" \
+            "$GITHUB_WORKSPACE/patches/0002-libsys4-ajp-metrics.patch"
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            build-essential pkg-config meson ninja-build flex bison \
-            libsdl2-dev libfreetype-dev libffi-dev libpng-dev \
-            libsndfile1-dev libturbojpeg0-dev libwebp-dev zlib1g-dev \
-            libgl-dev libglew-dev libcglm-dev libdeflate-dev
+            build-essential pkg-config meson ninja-build cmake flex bison \
+            libfreetype-dev libffi-dev libpng-dev libsndfile1-dev \
+            libturbojpeg0-dev libwebp-dev zlib1g-dev libdeflate-dev \
+            libgl-dev libcglm-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
+            libxfixes-dev libxss-dev libxkbcommon-dev libwayland-dev \
+            libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
+          # SDL3 在 24.04 的源里通常没有；有就省事，没有就走下面的源码构建。
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libsdl3-dev || true
+
+      - name: Build SDL3 from source (only if missing)
+        run: |
+          if pkg-config --exists sdl3; then
+            echo "system SDL3: $(pkg-config --modversion sdl3)"
+            exit 0
+          fi
+          VER="$SDL3_VERSION_OVERRIDE"
+          if [ -z "$VER" ]; then
+            VER=$(curl -fsSL https://api.github.com/repos/libsdl-org/SDL/releases/latest \
+                  | grep -m1 '"tag_name"' | sed -E 's/.*"release-([^"]+)".*/\1/')
+          fi
+          if [ -z "$VER" ]; then
+            echo "::error::无法从 GitHub API 解析 SDL3 版本；请在 workflow_dispatch 里填 sdl3_version"
+            exit 1
+          fi
+          echo "building SDL3 $VER"
+          curl -fsSL -o sdl3.tar.gz \
+            "https://github.com/libsdl-org/SDL/releases/download/release-${VER}/SDL3-${VER}.tar.gz"
+          tar xf sdl3.tar.gz
+          cd "SDL3-${VER}"
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF -DSDL_SHARED=ON -DSDL_STATIC=OFF
+          cmake --build build
+          sudo cmake --install build
 
       - name: Configure
-        run: meson setup build -Dbuildtype=${{ matrix.buildtype }} -Dopengles=disabled
+        run: meson setup build --buildtype=release -Dopengles=disabled
 
       - name: Build
         run: ninja -C build
 
-      - name: Inspect artifact
+      - name: Smoke test
         run: |
           file build/src/xsystem4
           ls -lh build/src/xsystem4
-          ./build/src/xsystem4 --help 2>&1 | head -8 || true
+          # --version 是受支持的参数，打印后就退出；仍然 unset DISPLAY，
+          # 避免任何情况下真的去起窗口（runner 没有显示服务）。
+          env -u DISPLAY -u WAYLAND_DISPLAY ./build/src/xsystem4 --version
 
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
+      - name: Package
+        id: pkg
+        run: |
+          VER="${{ github.ref_name }}"
+          case "$VER" in
+            v*) ;;
+            *)  VER="v0.0.0-$(echo "${GITHUB_SHA}" | cut -c1-7)" ;;
+          esac
+          ARCH=$(uname -m)
+          NAME="xsystem4-${VER}-linux-${ARCH}"
+          mkdir -p "dist/${NAME}/lib"
+          strip --strip-unneeded build/src/xsystem4
+          cp build/src/xsystem4 "dist/${NAME}/"
+          cp .github/run.sh "dist/${NAME}/run.sh"
+          chmod +x "dist/${NAME}/run.sh"
+          cp .github/README-RUN.txt "dist/${NAME}/"
+          if [ -f LICENSE ]; then cp LICENSE "dist/${NAME}/"; fi
+          # 系统源里通常没有 SDL3，把构建时用的那份一起带走，
+          # 由 run.sh 通过 LD_LIBRARY_PATH 优先加载。
+          SDL_LIBDIR=$(pkg-config --variable=libdir sdl3)
+          cp -a "${SDL_LIBDIR}"/libSDL3.so* "dist/${NAME}/lib/"
+          ls -l "dist/${NAME}/lib/"
+          tar -C dist -czf "dist/${NAME}.tar.gz" "${NAME}"
+          ( cd dist && sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256" )
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+          ls -lh dist/
+
+      - name: Verify package runs standalone
+        run: |
+          cd dist && tar xzf ./*.tar.gz && cd ..
+          env -u DISPLAY -u WAYLAND_DISPLAY ./dist/xsystem4-*/run.sh --version
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: xsystem4-linux-${{ matrix.arch }}-${{ matrix.buildtype }}
-          path: build/src/xsystem4
+          name: ${{ steps.pkg.outputs.name }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
           if-no-files-found: error
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls -lh dist/
+          gh release create "$TAG" dist/*.tar.gz dist/*.sha256 \
+            --title "xsystem4（兰斯10 fork）${TAG} — Linux x86_64 预览版" \
+            --notes-file .github/release-notes.md \
+            --verify-tag

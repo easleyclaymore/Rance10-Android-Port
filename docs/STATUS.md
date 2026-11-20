@@ -300,6 +300,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 | ③ 知识 | `tools/MAP.md` | `tools/` 目录分层与脚本分工 | 加 / 找脚本时 |
 | ③ 知识 | `docs/PROJECT-MANAGEMENT.md` | 工程管理复盘，**面向用户/管理者；AI 会话不读** | 带团队 / 立规矩 / 复盘 |
 | ③ 知识 | `docs/MANUAL-INDEX.md` | 官方手册索引 + 图片陷阱 + 验收判据（**不含当前状态**） | 对照手册验收界面 / 查按键时 |
+| ③ 知识 | `.github/` | CI 与发布资产：`workflows/build.yml`（云编译 + tag 发布）、`release-notes.md`（Release 页正文，随每次发版改）、`README-RUN.txt` / `run.sh`（二进制包内的运行说明与启动包装） | 改 CI / 发版时 |
 | ③ 附件 | `game_compatibility.md` | **上游自带**英文兼容性表，与本项目无关；原位保留、不纳管 | 不读 |
 | ③ 附件 | `notes/` | **上游自带**英文技术笔记（`system4` / `parts-engine` / `language-update`，来自 upstream 提交 `cc199dc Add notes directory`，2023-04）；讲的是 System4/PartsEngine **格式与接口的跨游戏演进**，不是兰斯10 移植结论。原位保留、**不纳管**（不随本项目管理，也不得当作结论引用） | 查格式语义时可参考，**结论一律以 `docs/GUIDE/` 为准** |
 | ③ 附件 | `test/Source/`、`tools/patches/`、`tools/dev/patches/` 下的 `README.md` | **上游自带**占位说明；原位保留、不纳管（`tools/MAP.md` 已说明 `tools/dev/patches` 是「只读参照，不要重跑」） | 不读 |
