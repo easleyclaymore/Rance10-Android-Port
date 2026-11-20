@@ -201,3 +201,6 @@ XSYS4_PARTS_EVENT_GEOM	[D338 默认生效，=0 关闭] 点击派发时若命中�
 XSYS4_COVER_HYST	[D343 默认生效，=0 关闭] cover_layer 单帧滞回：同一个值连续 3 帧才生效，抹掉「某层偶发全屏不透明件」造成的整层闪烁（实测变化次数 17→9，且不再在 4/7 之间逐帧跳）
 XSYS4_AUTO_BATTLE_END	[D344 诊断，默认关] 值=帧数。到点后直接调 SceneBattle@ProcessPostPlayerTurn(24886)，绕开「角色卡点不中」，单独验证回合收尾逻辑。abe1 实测：能跑、0 ERROR、画面进入回合切换演出
 XSYS4_AUTO_SKILL	[D349 诊断，默认关] 值=帧数[:索引]。技能卡展开后直接派发第 N 个 LargeSkillButton（调用 lambda 37029），验证选技能链路。rc14 实测能派发（slot=117030），但 RunSelectedSkill 仍 0 —— 委托内容待查
+XSYS4_AUTO_SKILL_MODE	[D368 诊断，默认关] =lambda 时 `XSYS4_AUTO_SKILL` 用原来的 lambda 派发（37029）而不是直接调 OnClickSkill，用来 A/B 对比两条路
+XSYS4_EX_RECT_MIN1X1	[D366 默认生效，=0 关闭] 把 `1x1` 的矩形检测件当成"没设过尺寸"，允许套用 EX 的四角矩形负载。兰斯10 的技能卡 `Normal/Alter/Stack` 就是 1x1 占位，原判据只看 `<=0` 于是永远拿不到真实命中盒
+XSYS4_ACT_GEOM	[D360 诊断，默认关] `AFL_Activity_GetPartsNumber` 每查到一个部件号就把它的矩形/可见性打出来 —— 一次跑测即可拿到「按名字找到的部件到底在屏幕哪里」

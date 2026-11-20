@@ -1039,8 +1039,25 @@ static int build_part(struct activity_part *part, int parent_no)
 					part->rect_have, &rw, &rh);
 			/* 已被别人设过尺寸时不覆盖：AIN 运行时的
 			 * SetRectangleDetectionSize 比 EX 静态值更可信。 */
-			bool cur_empty = PE_GetPartsWidth(part->parts_no, 1) <= 0 ||
-					 PE_GetPartsHeight(part->parts_no, 1) <= 0;
+			/* [D366] `1×1` 也要当成"没设过"。
+			 *
+			 * 兰斯10 的 `矩形パーツ`（技能卡的 `Normal`/`Alter`/`Stack`/
+			 * `OnceUsed`）在 EX 里没有显式尺寸时，引擎给的是 **1×1 占位**，
+			 * 而不是 0×0。原判据只看 `<= 0`，于是这些件永远拿不到 EX 的
+			 * 四角矩形，命中盒只有 1 个像素 —— 画面上的技能卡看得见、
+			 * 点不中（`d360`：`900000942` `st=11` `w=1 h=1 hb=(636,730,1,1)`，
+			 * 而同组的 `900000938` 底板是 206×147）。
+			 * AIN 运行期的 `SetRectangleDetectionSize` 仍优先（它写的是
+			 * 真值，一般不是 1×1）。`XSYS4_EX_RECT_MIN1X1=0` 回退。 */
+			static int ex_rect_1x1 = -1;
+			if (ex_rect_1x1 < 0) {
+				const char *e1 = getenv("XSYS4_EX_RECT_MIN1X1");
+				ex_rect_1x1 = !(e1 && !strcmp(e1, "0"));
+			}
+			int cw = PE_GetPartsWidth(part->parts_no, 1);
+			int ch = PE_GetPartsHeight(part->parts_no, 1);
+			bool cur_empty = cw <= 0 || ch <= 0 ||
+					 (ex_rect_1x1 && cw <= 1 && ch <= 1);
 			if (rw > 0 && rh > 0 && cur_empty) {
 				PE_SetPartsSize(part->parts_no, rw, rh, 1);
 				ACT_DEBUG("[act] %s 矩形 模式=%d 四角→%dx%d",

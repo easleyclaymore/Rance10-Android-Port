@@ -2041,46 +2041,190 @@ void vm_pump_auto_skill(void)
 	const char *e = getenv("XSYS4_AUTO_SKILL");
 	if (!e || auto_skill_done)
 		return;
-	static int want = -1, want_idx, lsb_st = -2, lsb_lambda = -2;
+	/* 语法：`<frames>[:<x>,<y>]` 或 `<frames>[:#<index>]`
+	 *   x,y   —— 选**子树覆盖该点**的技能卡（与真实点击同一判据，D341 用它成功过）
+	 *   #n    —— 选堆里第 n 个（诊断用，容易选到别的卡上）
+	 * 不给就取第一个。 */
+	static int want = -1, want_idx = -1, want_x = -1, want_y = -1;
+	static int lsb_st = -2, lsb_lambda = -2;
 	if (want < 0) {
-		const char *c = strchr(e, ':');
 		want = atoi(e);
 		if (want <= 0)
 			want = 240;
-		want_idx = c ? atoi(c + 1) : 0;
+		const char *c = strchr(e, ':');
+		if (c) {
+			if (c[1] == '#')
+				want_idx = atoi(c + 2);
+			else if (strchr(c, ',')) {
+				want_x = atoi(c + 1);
+				want_y = atoi(strchr(c, ',') + 1);
+			} else
+				want_idx = atoi(c + 1);
+		}
 		lsb_st = vm_struct_named("LargeSkillButton");
 		lsb_lambda = vm_fno_named(
 			"LargeSkillButton@<lambda : LargeSkillButton@InitParts()(125, 51)>");
 		if (lsb_lambda < 0 && ain->nr_functions > 37029)
 			lsb_lambda = 37029;
+		NOTICE("[ask] AUTO_SKILL frames=%d idx=%d pos=(%d,%d) LSB=%d lambda=%d",
+		       want, want_idx, want_x, want_y, lsb_st, lsb_lambda);
 	}
 	if (lsb_st < 0 || lsb_lambda < 0)
 		return;
 	if (++auto_skill_frames < want)
 		return;
+
+	const bool dbg = getenv("XSYS4_PARTS_EVENT_DBG") != NULL;
 	int n = 0, pick = -1;
 	for (size_t i = 1; i < heap_size; i++) {
 		struct page *p = heap[i].page;
 		if (!p || p->type != STRUCT_PAGE || p->index != lsb_st)
 			continue;
-		if (p->nr_vars < 6 || vm_delegate_count(p->values[3].i) <= 0)
+		if (p->nr_vars < 9)
 			continue;
-		if (n++ == want_idx) {
-			pick = (int)i;
-			break;
+		/* 就绪条件：`m3` 上已有委托（`LargeSkillButton@SetOnClickEvent`
+		 * 由 `BattleCardButton@InitSkillButtonCollection` 在初始化后期设）。
+		 * 没有它 `DG_CALL` 空转 —— `b220c30` 的失败就是这条。 */
+		if (vm_delegate_count(p->values[3].i) <= 0)
+			continue;
+		/* 卡片区域是 m7/m8 两个 0×0 布局盒，几何在子树里。 */
+		int ba = vm_parts_obj_number(p->values[7].i);
+		int bb = vm_parts_obj_number(p->values[8].i);
+		bool hit = false;
+		if (want_x >= 0)
+			hit = PE_PartsCovers(ba, want_x, want_y) ||
+			      PE_PartsCovers(bb, want_x, want_y) ||
+			      PE_SubtreeCovers(ba, want_x, want_y) ||
+			      PE_SubtreeCovers(bb, want_x, want_y);
+		if (dbg) {
+			NOTICE("[ask]   LSB slot=%d m0=%d m7=%d m8=%d hit=%d",
+			       (int)i, p->values[0].i, ba, bb, hit);
+			for (int k = 0; k < p->nr_vars && k < 12; k++) {
+				int v = p->values[k].i;
+				const char *ty = "?";
+				const char *txt = "";
+				static char buf[128];
+				buf[0] = 0;
+				if (v > 0 && (size_t)v < heap_size) {
+					switch (heap[v].type) {
+					case VM_STRING:
+						ty = "str";
+						if (heap[v].s && heap[v].s->text) {
+							snprintf(buf, sizeof(buf), " \"%s\"",
+								 display_sjis0(heap[v].s->text));
+							txt = buf;
+						}
+						break;
+					case VM_PAGE:
+						ty = heap[v].page &&
+						     heap[v].page->type == STRUCT_PAGE
+						     ? "struct" :
+						     (heap[v].page &&
+						      heap[v].page->type == DELEGATE_PAGE
+						      ? "dg" : "page");
+						break;
+					default: ty = "val"; break;
+					}
+				}
+				NOTICE("[ask]     m%d=%d %s%s", k, v, ty, txt);
+			}
+			if (ba > 0)
+				PE_DebugPartsInfo(ba);
+			if (bb > 0)
+				PE_DebugPartsInfo(bb);
 		}
+		if (want_x >= 0 && !hit)
+			continue;
+		if (want_idx >= 0 ? n == want_idx : (pick < 0))
+			pick = (int)i;
+		n++;
+		if (pick > 0 && (want_x >= 0 || want_idx >= 0))
+			break;
 	}
 	if (pick <= 0) {
-		/* 技能卡是异步展开的（`ShowCardButton` 之后还要跑 FadeIn），
-		 * 固定延时容易太早。改成"等到出现为止，上限 3000 帧"。 */
-		if (auto_skill_frames > 3000) {
+		/* 技能卡是异步展开的（`ShowCardButton` 之后还要 FadeIn），
+		 * 固定延时容易太早 ⇒ 等到出现为止，上限 3000 帧。 */
+		if (auto_skill_frames > 20000) {
 			auto_skill_done = 1;
-			NOTICE("[ask] 3000 帧内没有可用的 LargeSkillButton（共 %d 个）", n);
+			NOTICE("[ask] 20000 帧内没有命中的 LargeSkillButton（扫描到 %d 个）", n);
 		}
 		return;
 	}
 	auto_skill_done = 1;
-	NOTICE("[ask] 派发第 %d 个 LargeSkillButton slot=%d", want_idx, pick);
+	NOTICE("[ask] 派发 LargeSkillButton slot=%d（候选 %d 个）", pick, n);
+
+	/* [D368] 直接调 `SceneBattle@OnClickSkill(cardId, skillIndex)`。
+	 *
+	 * AIN 原本的链路是：
+	 *   卡片部件点击 → `ActivityButton` 的 lambda 37568 → `m6` 委托表
+	 *   → LSB 的 lambda 37029（`this.m3.DG_CALL(this.m0)`）
+	 *   → collection 的 37032 → `BattleCardButton` 的 37011
+	 *   → `this.m9.DG_CALL(this.m1.CardId, skillId)`   ← m9 是
+	 *     `SetOnClickSkillEvent`(25256) 写进去的 (string,int) 委托
+	 *   → `SceneBattle@OnClickSkill`(24897)。
+	 *
+	 * 实测（`d356`/`d364`）整条链每一跳都执行，但 24897 始终 0 次 ——
+	 * 说明最后那一跳的 `m9` 委托在运行期是空的（`SetOnClickSkillEvent`
+	 * 只在 `BattleCardButtonCollection@Init` 里被调过一次，之后被清理）。
+	 *
+	 * 与其在这里补一个"引擎自己造委托"，不如按 AIN 自己的语义
+	 * 直接调用同一个方法：`cardId` 取 `LeaderCard.CardId`（成员 0，
+	 * `LeaderCard@CardId::get` 就是 `return this.m0`），`skillIndex`
+	 * 取 LSB 自己的 `m0`（`d367` 实测它是 0/1，正好是卡内技能序号）。
+	 * `XSYS4_AUTO_SKILL_MODE=lambda` 可切回原来的 lambda 派发做 A/B。 */
+	static int use_lambda = -1;
+	if (use_lambda < 0) {
+		const char *m = getenv("XSYS4_AUTO_SKILL_MODE");
+		use_lambda = m && !strcmp(m, "lambda");
+	}
+	/* 找 `LeaderCard`：`LargeSkillButton` 的成员里有它，但槽位在不同
+	 * 版本/构造路径下不固定（`d367` 里 m1 是 struct，但没有 cardId），
+	 * 所以按**结构体号**扫一遍成员，而不是写死下标。 */
+	static int lc_st = -2;
+	if (lc_st == -2)
+		lc_st = vm_struct_named("LeaderCard");
+	int cardid = -1;
+	if (lc_st >= 0) {
+		for (int k = 0; k < heap[pick].page->nr_vars && k < 12; k++) {
+			int lc = heap[pick].page->values[k].i;
+			if (lc <= 0 || (size_t)lc >= heap_size || !heap[lc].page ||
+			    heap[lc].page->type != STRUCT_PAGE ||
+			    heap[lc].page->index != lc_st ||
+			    heap[lc].page->nr_vars < 1)
+				continue;
+			int v = heap[lc].page->values[0].i;
+			if (v > 0 && (size_t)v < heap_size && heap[v].type == VM_STRING) {
+				cardid = v;
+				break;
+			}
+		}
+	}
+	/* 退一步：任何成员里"成员 0 是字符串"的结构体都当 LeaderCard。 */
+	if (cardid < 0) {
+		for (int k = 0; k < heap[pick].page->nr_vars && k < 12 && cardid < 0; k++) {
+			int lc = heap[pick].page->values[k].i;
+			if (lc <= 0 || (size_t)lc >= heap_size || !heap[lc].page ||
+			    heap[lc].page->type != STRUCT_PAGE ||
+			    heap[lc].page->nr_vars < 1)
+				continue;
+			int v = heap[lc].page->values[0].i;
+			if (v > 0 && (size_t)v < heap_size && heap[v].type == VM_STRING &&
+			    heap[v].s && heap[v].s->text &&
+			    isprint(display_sjis0(heap[v].s->text)[0]))
+				cardid = v;
+		}
+	}
+	if (!use_lambda && cardid > 0 && auto_battle_page > 0) {
+		NOTICE("[ask] OnClickSkill(cardId=\"%s\", skillIndex=%d)",
+		       heap[cardid].s && heap[cardid].s->text
+			       ? display_sjis0(heap[cardid].s->text) : "?",
+		       heap[pick].page->values[0].i);
+		stack_push(cardid);
+		stack_push(heap[pick].page->values[0].i);
+		vm_call(24897, auto_battle_page);
+		return;
+	}
+	NOTICE("[ask] 回退到 lambda 派发（cardId 未取到）");
 	vm_call(lsb_lambda, pick);
 }
 

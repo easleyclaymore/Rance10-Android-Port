@@ -2608,6 +2608,12 @@ static int PE_Act_GetActivityPartsNumber(struct string *name, struct string *par
 	if (getenv("XSYS4_PE_DBG"))
 		NOTICE("[pe-act] GetActivityPartsNumber('%s', '%s') = %d",
 		       name->text, parts_name->text, no);
+	/* [D360] `XSYS4_ACT_GEOM=1`：查到的部件号顺手把**画面矩形**打出来。
+	 * 起因：技能卡的绘制位置与部件矩形长期对不上（D348），
+	 * 而 `AFL_Activity_GetPartsNumber` 正是「按名字找部件」的唯一入口，
+	 * 在这里打几何可以一次拿到「这张卡在屏幕上的真实位置」。 */
+	if (no > 0 && getenv("XSYS4_ACT_GEOM"))
+		PE_DebugPartsInfo(no);
 	return no;
 }
 
