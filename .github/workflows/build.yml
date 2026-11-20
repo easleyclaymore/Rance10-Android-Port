@@ -62,14 +62,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      # 只要 fetch-tags，不要 fetch-depth: 0 —— 第一次跑实测 depth=0 在 checkout
-      # 阶段卡了 9 分钟没动（仓库本身只有 34MB，不是体积问题）。
-      # tag 触发时 HEAD 就是 tag，depth=1 也够 `git describe` 拿到版本号；
-      # 拿不到也只是 `--version` 打印 unknown，不影响功能。
+      # 不要 fetch-tags / fetch-depth: 0：
+      #   · depth=0 实测在 checkout 阶段卡了 9 分钟不动（仓库只有 34MB，不是体积问题）；
+      #   · fetch-tags 与「tag 事件」冲突，checkout 会报
+      #     `Cannot fetch both <sha> and refs/tags/<tag>`（run 44709488788 就这么红的）。
+      # tag 触发时 checkout 本来就取的是 tag ref，`git describe` 够用；
+      # 拿不到也只是 `--version` 打 unknown，不影响功能。
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-tags: true
 
       - name: Apply local libsys4 patches
         run: |
@@ -226,8 +227,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-tags: true
 
       - uses: actions/download-artifact@v4
         with:
