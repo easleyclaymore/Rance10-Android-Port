@@ -9,7 +9,7 @@ xsystem4 —— 兰斯10（ランス10）Linux 原生移植 · 运行方法
 --------------------------------------------------------------------------
 * Linux x86_64
 * 显卡驱动支持 OpenGL 3.3 以上（Intel / AMD / NVIDIA 的常规驱动即可）
-* 常见的运行库：
+* 常见的运行库（包内**已带 SDL3 与 GLEW**，这两个不用另装）：
     libfreetype6  libpng16-16  libwebp7  libturbojpeg0  libsndfile1
     libffi8  zlib1g  libdeflate0  libgl1  libstdc++6
   Debian/Ubuntu 一行装完：
@@ -17,7 +17,13 @@ xsystem4 —— 兰斯10（ランス10）Linux 原生移植 · 运行方法
     sudo apt install libfreetype6 libpng16-16 libwebp7 libturbojpeg0 \
                      libsndfile1 libffi8 zlib1g libdeflate0 libgl1
 
-  SDL3 **不用另装**，包里 lib/ 已经带了。
+  Arch / Fedora 等发行版的包名不同（如 freetype2 / libpng / libwebp /
+  libjpeg-turbo / libsndfile / libffi / zlib / libdeflate / mesa），
+  缺哪个就装哪个对应的开发包运行库。
+
+  > 为什么自带 SDL3 + GLEW：系统源里常常没有 SDL3（Ubuntu 24.04 就没有），
+  > 而 GLEW 的 soname 各发行版还不一样（Debian 2.2 / Arch 2.1）。
+  > run.sh 会把包内 lib/ 放到库搜索路径最前面，所以这两个不需要你操心。
 
 --------------------------------------------------------------------------
 二、运行

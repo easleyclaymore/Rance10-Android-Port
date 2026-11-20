@@ -201,6 +201,9 @@ jobs:
           # 由 run.sh 通过 LD_LIBRARY_PATH 优先加载。
           SDL_LIBDIR=$(pkg-config --variable=libdir sdl3)
           cp -a "${SDL_LIBDIR}"/libSDL3.so* "dist/${NAME}/lib/"
+          # GLEW 的 soname 各发行版不一样（Debian/Ubuntu 是 2.2，Arch 是 2.1），
+          # 不带上就会出现「在别人机器上 error while loading shared libraries」。
+          cp -a /usr/lib/x86_64-linux-gnu/libGLEW.so* "dist/${NAME}/lib/" 2>/dev/null || true
           ls -l "dist/${NAME}/lib/"
           tar -C dist -czf "dist/${NAME}.tar.gz" "${NAME}"
           ( cd dist && sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256" )
@@ -239,7 +242,11 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           ls -lh dist/
+          # 带 `-` 的 tag 视为预览版（v0.1.0-preview.1 这种），打上 prerelease 标记，
+          # 免得在 Releases 首页被当成「正式可用版本」。
+          PRE=""
+          case "$TAG" in *-*) PRE="--prerelease" ;; esac
           gh release create "$TAG" dist/*.tar.gz dist/*.sha256 \
             --title "xsystem4（兰斯10 fork）${TAG} — Linux x86_64 预览版" \
             --notes-file .github/release-notes.md \
-            --verify-tag
+            --verify-tag $PRE
