@@ -415,6 +415,28 @@ if [ -n "${RANCE10_LIVE_SEQ:-}" ]; then
                 xdotool "$act" "$arg" >/dev/null 2>&1 || true
                 sleep "$CLICK_SLEEP"
                 ;;
+            # skip:<ms>[:<x>,<y>] —— 按住 Ctrl 快进 ms 毫秒，期间每 2 秒在 (x,y)
+            # 点一次。官方操作表：按住 Ctrl「不论是否已读，强制快进」。
+            # 为什么需要它：`keydown:ctrl;wait:...;keyup:ctrl` 只能纯快进，
+            # 而 ADV/战况播报途中会不停弹出 `ReplayMemoDialog`（图鉴已获得）把它
+            # 挡住，快进就停在那里 —— 必须一边快进一边把弹窗点掉（D386）。
+            skip)
+                ms="${arg%%:*}"
+                rest="${arg#*:}"
+                sxy=""
+                [ "$rest" != "$arg" ] && sxy="$rest"
+                [ -n "$WID" ] && timeout -k 1 2 xdotool windowfocus --sync "$WID" >/dev/null 2>&1 || true
+                timeout -k 1 2 xdotool keydown ctrl >/dev/null 2>&1 || true
+                st=$SECONDS
+                while [ $(( (SECONDS - st) * 1000 )) -lt "$ms" ]; do
+                    if [ -n "$sxy" ]; then
+                        IFS=',' read -r cx cy <<< "$sxy"
+                        timeout -k 1 2 xdotool mousemove "$cx" "$cy" click 1 >/dev/null 2>&1 || true
+                    fi
+                    sleep 2
+                done
+                timeout -k 1 2 xdotool keyup ctrl >/dev/null 2>&1 || true
+                ;;
             *)
                 echo "unknown step: $step" >&2
                 ;;

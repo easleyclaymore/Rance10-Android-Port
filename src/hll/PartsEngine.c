@@ -2828,6 +2828,10 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetPartsCG, PE_SetPartsCG),
 	    HLL_EXPORT(GetPartsCGName, PE_GetPartsCGName),
 	    HLL_EXPORT(SetPartsCGSurfaceArea, PE_SetPartsCGSurfaceArea),
+	    /* [D385] 读 CG 的绘制区域。签名对齐 AIN 的 `ref int` 出参：
+	     * `ffi.c` 会把 `AIN_REF_INT` 实参转成 `&page->values[varno]`，
+	     * 所以 C 侧直接收 `int *` 即可（和 `SetPartsCGSurfaceArea` 是同一族）。 */
+	    HLL_EXPORT(GetPartsCGSurfaceArea, PE_GetPartsCGSurfaceArea),
 	    HLL_EXPORT(SetLoopCG, PE_SetLoopCG),
 	    HLL_EXPORT(SetLoopCGSurfaceArea, PE_SetLoopCGSurfaceArea),
 	    HLL_EXPORT(SetText, PE_SetText),
