@@ -2319,10 +2319,27 @@ void vm_pump_parts_click(void)
 					fun0 = dg->values[1].i;
 			}
 			if (fun0 == 37013 && auto_battle_page > 0) {
+				/* [D347] `OnClickParty`(24900) 打开的是**部队编成**（换人），
+				 * 不是技能选择（`dc776cb` 的失误）。真正的技能列表由
+				 * `BattleSkillSelector@ShowCardButton(val, index)`(25180)
+				 * 驱动，它的调用者是 `Focus`(25177) / `FadeIn` / `SetParent`。
+				 * `BattleSkillSelector` 就是 `SceneBattle.m17`（`InitViewObjects`
+				 * 里 `m17.OnClickPartyEvent::add(...)` 的位置）。
+				 * 先固定 index=0（第一张卡）验证链路；索引映射待补。 */
+				int bs = 0;
+				if (auto_battle_page > 0 &&
+				    heap[auto_battle_page].page->nr_vars > 17)
+					bs = heap[auto_battle_page].page->values[17].i;
 				if (n_dispatch < 40 && getenv("XSYS4_PARTS_EVENT_DBG"))
-					NOTICE("[pev] 角色卡 -> SceneBattle@OnClickParty(page=%d)",
-					       auto_battle_page);
-				vm_call(24900, auto_battle_page);
+					NOTICE("[pev] 角色卡 -> ShowCardButton(bs=%d, page=%d)",
+					       bs, auto_battle_page);
+				if (bs > 0 && (size_t)bs < heap_size && heap[bs].page) {
+					stack_push(1);	/* val = true */
+					stack_push(0);	/* index */
+					vm_call(25180, bs);
+				} else {
+					vm_call(24900, auto_battle_page);
+				}
 			} else {
 				stack_push(no);
 				stack_push(x);
