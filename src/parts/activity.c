@@ -455,6 +455,18 @@ static int act_ex_rect_det_on(void)
 	return on;
 }
 
+/* [D387] `矩形検出` 既没有四角负载、EX 尺寸又只是 `1×1` 占位时，是否按父件铺满。
+ * 见 build_part 尾部的调用处。`XSYS4_EX_RECT_FILL_PARENT=0` 回退。 */
+static int act_ex_rect_fill_parent_on(void)
+{
+	static int on = -1;
+	if (on < 0) {
+		const char *e = getenv("XSYS4_EX_RECT_FILL_PARENT");
+		on = !(e && !strcmp(e, "0"));
+	}
+	return on;
+}
+
 static void rect_corners_to_size(const float pts[4][2], bool have[4],
 		int *out_w, int *out_h)
 {
@@ -1387,6 +1399,33 @@ static int build_part(struct activity_part *part, int parent_no)
 
 	for (int i = 0; i < part->nr_children; i++)
 		build_part(part->children[i], part->parts_no);
+
+	/* [D387] `矩形検出`（`ACT_COMP_RECT_DETECTION`）在 EX 里常常既没有
+	 * 四角负载（`has_rect == false`），`尺寸` 又只是 `1×1` 占位 ——
+	 * AIN 运行期也从不给它 `SetRectangleDetectionSize`，于是命中盒只有
+	 * 一个像素：卡片看得见、点不中（`SmallSkillButton01:0` 的
+	 * `Normal/Alter/Stack/OnceUsed`，D372–D375）。
+	 *
+	 * 语义上 `矩形検出` 就是「这块区域的点击检测」，EX 不给几何时只能是
+	 * 父件的可视区域。所以在**子件都建完之后**（父件尺寸此时已知）按父件
+	 * 铺满。判据：技能卡命中件的 `w/h` 从 `1×1` 变成父件尺寸（底板
+	 * `900000938` 是 `206×147`），点技能卡能走到 `OnClickSkill`。
+	 * `XSYS4_EX_RECT_FILL_PARENT=0` 回退做 A/B。 */
+	if (part->type == ACT_COMP_RECT_DETECTION && parent_no >= 0 &&
+	    act_ex_rect_fill_parent_on()) {
+		int w = PE_GetPartsWidth(part->parts_no, 1);
+		int h = PE_GetPartsHeight(part->parts_no, 1);
+		if (w <= 1 && h <= 1) {
+			int pw = PE_GetPartsWidth(parent_no, 1);
+			int ph = PE_GetPartsHeight(parent_no, 1);
+			if (pw > 1 && ph > 1) {
+				PE_SetPartsSize(part->parts_no, pw, ph, 1);
+				if (getenv("XSYS4_EX_RECT_DBG"))
+					NOTICE("[actrect] %s no=%d 1x1 -> 父件 %dx%d",
+					       part->name, part->parts_no, pw, ph);
+			}
+		}
+	}
 
 	return part->parts_no;
 }

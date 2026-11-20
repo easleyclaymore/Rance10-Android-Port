@@ -210,3 +210,4 @@ XSYS4_BCB_DBG	[D376 诊断，默认关] `DG_ASSIGN` 写 `BattleCardButton` 的�
 XSYS4_FULLSCREEN	[D377 默认关] `=1` 启动即真全屏（无边框/无标题栏），`=0` 强制窗口化（覆盖 .xsys4rc 的 fullscreen）。运行期仍可用 F11 切换
 XSYS4_AUTO_CLICK	[D378 诊断，默认关] `<ms>[:<x>,<y>][:r]` 每隔 ms 在**引擎内**合成一次点击（mouse_inject_click，不经过 xdotool）。位置缺省为视图中心，`:r` 发右键。给「靠点击喂帧」的 ADV/战斗演出用
 XSYS4_AUTO_CLICK_DELAY	[D378 诊断，默认关] `XSYS4_AUTO_CLICK` 的启动延迟（毫秒）；标题那几步必须靠 RANCE10_LIVE_SEQ 精确点击，自动点击在旁边乱点会把标题菜单开开关关
+XSYS4_EX_RECT_FILL_PARENT	[D387 默认开] `矩形検出` 既无 EX 四角负载、尺寸又是 1×1 占位时，按父件尺寸铺满（技能卡命中盒 1×1 → 206×147）；`=0` 回退做 A/B
