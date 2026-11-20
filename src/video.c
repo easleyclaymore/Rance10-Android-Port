@@ -279,7 +279,24 @@ int gfx_init(void)
 	gl_initialize();
 	gfx_draw_init();
 	gfx_set_window_logical_size(config.view_width, config.view_height);
-	init_window_size();
+	/* [D377] 启动即真全屏（无窗口边框、无 WM 标题栏）。
+	 *
+	 * 为什么需要这一条：引擎本来只有 F11（`gfx_toggle_fullscreen`）和游戏内
+	 * `SystemService.ChangeFullScreen` 两个入口，**启动时一律窗口化** ——
+	 * 于是在桌面环境里顶上永远挂着一条标题栏（"<游戏名> - XSystem4"），
+	 * 不是玩家要的全屏。现在 `.xsys4rc` 写 `fullscreen = 1` 就能默认全屏，
+	 * 临时试用则 `XSYS4_FULLSCREEN=1`（`=0` 强制窗口化，覆盖配置文件）。
+	 *
+	 * 全屏时跳过 `init_window_size()`：它按「可用桌面区域」缩窗口并挪位置，
+	 * 与全屏互相打架（会看到一帧窗口化的画面再被全屏盖住）。 */
+	bool want_fullscreen = config.fullscreen;
+	const char *fs_env = getenv("XSYS4_FULLSCREEN");
+	if (fs_env && *fs_env)
+		want_fullscreen = strcmp(fs_env, "0") != 0;
+	if (want_fullscreen)
+		gfx_set_fullscreen(true);
+	else
+		init_window_size();
 	atexit(gfx_fini);
 	gfx_clear();
 	icon_init();
@@ -329,21 +346,83 @@ void gfx_set_window_logical_size(int w, int h)
 	main_surface_init(w, h);
 }
 
+/* [D377] 全屏状态自己记一份，不信 SDL 的 flags。
+ *
+ * 实测（Xvfb `:90`，无窗口管理器）：`SDL_SetWindowFullscreen(SDL_WINDOW_FULLSCREEN)`
+ * 返回 **0（成功）**，但紧接着 `SDL_GetWindowFlags()` 里没有 SDL_WINDOW_FULLSCREEN
+ * —— 因为 X11 后端的全屏靠 `_NET_WM_STATE_FULLSCREEN`，没有 WM 就没人执行它。
+ * 所以判据必须是「回读 flags」，flags 没变就走**无边框铺满**这条等价路线。 */
+static bool fullscreen_active;
+/* 进全屏前的窗口尺寸：退出全屏要还原，否则会留下一块铺满屏幕的窗口。 */
+static int pre_fs_w, pre_fs_h;
+
+/* 无边框铺满：去掉 WM 装饰 + 挪到 (0,0) + 撑到显示器尺寸。
+ * 这条路线在任何环境下都有效（连没有 WM 的 Xvfb 也一样），
+ * 效果与真全屏在视觉上一致 —— 顶上不再有标题栏。 */
+static void window_fill_display(bool on)
+{
+	SDL_DisplayID display = SDL_GetDisplayForWindow(sdl.window);
+	SDL_Rect bounds = { 0, 0, 0, 0 };
+	if (display)
+		SDL_GetDisplayBounds(display, &bounds);
+
+	SDL_SetWindowBordered(sdl.window, on ? false : true);
+	if (on) {
+		if (bounds.w > 0 && bounds.h > 0) {
+			SDL_SetWindowPosition(sdl.window, bounds.x, bounds.y);
+			SDL_SetWindowSize(sdl.window, bounds.w, bounds.h);
+		}
+	}
+	gfx_update_screen_scale();
+}
+
 bool gfx_set_fullscreen(bool enable)
 {
 	/* [D329] SDL3 删除了 SDL_WINDOW_FULLSCREEN_DESKTOP：SDL_WINDOW_FULLSCREEN
 	 * 在 SDL3 里就是「桌面全屏」（不再改显示模式）。 */
-	uint32_t flags = enable ? SDL_WINDOW_FULLSCREEN : 0;
-	if (SDL_SetWindowFullscreen(sdl.window, flags) < 0) {
+	if (SDL_SetWindowFullscreen(sdl.window,
+				    enable ? SDL_WINDOW_FULLSCREEN : 0) < 0)
 		WARNING("Failed to set fullscreen mode: %s", SDL_GetError());
-		return false;
+
+	if (enable && !fullscreen_active) {
+		pre_fs_w = pre_fs_h = 0;
+		SDL_GetWindowSize(sdl.window, &pre_fs_w, &pre_fs_h);
 	}
+
+	bool sdl_fs = (SDL_GetWindowFlags(sdl.window) & SDL_WINDOW_FULLSCREEN) != 0;
+	if (enable && !sdl_fs) {
+		/* SDL 的全屏没生效（见上面的说明）→ 退回无边框铺满。 */
+		window_fill_display(true);
+		fullscreen_active = true;
+		int dw = 0, dh = 0;
+		SDL_GetWindowSizeInPixels(sdl.window, &dw, &dh);
+		NOTICE("[gfx] fullscreen on (SDL 未生效 → 无边框铺满) drawable=%dx%d",
+		       dw, dh);
+		return true;
+	}
+	if (!enable) {
+		window_fill_display(false);
+		/* 还原进全屏前的尺寸（只在确实被放大过时才还原）。 */
+		if (pre_fs_w > 0 && pre_fs_h > 0) {
+			int cw = 0, ch = 0;
+			SDL_GetWindowSize(sdl.window, &cw, &ch);
+			if (cw * ch > pre_fs_w * pre_fs_h)
+				SDL_SetWindowSize(sdl.window, pre_fs_w, pre_fs_h);
+			gfx_update_screen_scale();
+		}
+	}
+
+	fullscreen_active = sdl_fs;
+	int dw = 0, dh = 0;
+	SDL_GetWindowSizeInPixels(sdl.window, &dw, &dh);
+	NOTICE("[gfx] fullscreen %s -> flags_fs=%d drawable=%dx%d",
+	       enable ? "on" : "off", sdl_fs ? 1 : 0, dw, dh);
 	return true;
 }
 
 bool gfx_is_fullscreen(void)
 {
-	return SDL_GetWindowFlags(sdl.window) & SDL_WINDOW_FULLSCREEN;
+	return fullscreen_active;
 }
 
 void gfx_toggle_fullscreen(void)

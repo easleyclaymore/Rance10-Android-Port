@@ -175,6 +175,21 @@ build/src/xsystem4 /path/to/ゲームディレクトリ
 - 想在真实桌面上自己玩：`tools/run/run-local.sh <tag> [秒数]`（复用当前 `DISPLAY`，日志写 `logs/local_<tag>.log`）。
 - 无头跑测（开发 / CI 用）：`tools/run/run-headless.sh`，自建 Xvfb + 3G 内存上限，不碰你的桌面。
 
+### 全屏
+
+默认是**窗口化**，顶上会有一条窗口管理器给的标题栏。三种方式进真全屏（无边框、无标题栏）：
+
+| 方式 | 做法 | 适用 |
+|---|---|---|
+| 启动参数 | `XSYS4_FULLSCREEN=1 ./xsystem4 /path/to/game` | 临时试一次；`=0` 强制窗口化 |
+| 配置文件 | 在 `.xsys4rc`（游戏目录或 `$HOME/.xsystem4/`）写 `fullscreen = 1` | 想默认全屏 |
+| 运行时 | 按 **F11** 切换；游戏内「画面モード」开关走同一个入口 | 随时切 |
+
+实现上先试 SDL 的原生全屏（`SDL_WINDOW_FULLSCREEN`，X11 靠 `_NET_WM_STATE_FULLSCREEN`）。
+**没有窗口管理器时它返回成功但不生效**，引擎会回读 flags 判定，不生效就退回
+「去边框 + 挪到 (0,0) + 撑满显示器」这条等价路线，所以 Xvfb / 无 WM 环境也是真全屏。
+日志里能直接看到走了哪条：`[gfx] fullscreen on ...`（带 `SDL 未生效 → 无边框铺满` 的就是回退路线）。
+
 ## 跑测与门禁
 
 ```sh

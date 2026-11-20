@@ -44,6 +44,10 @@ struct config {
 
 	bool joypad;
 	bool echo;
+	/* [D377] 启动即真全屏。来源优先级：环境变量 `XSYS4_FULLSCREEN`
+	 * > `.xsys4rc` 的 `fullscreen = 1` > 默认窗口化。
+	 * 运行时仍可用 F11 或游戏内「画面モード」切换（`SystemService.ChangeFullScreen`）。 */
+	bool fullscreen;
 	float text_x_scale;
 	bool manual_text_x_scale;
 	enum resume_save_format save_format;

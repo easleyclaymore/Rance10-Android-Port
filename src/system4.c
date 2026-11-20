@@ -229,6 +229,18 @@ static void read_user_config_file(const char *path, const char *basedir)
 				WARNING("Invalid value for encoding in config: \"%s\"",
 						ini_string(&ini[i])->text);
 			}
+		} else if (!strcmp(ini[i].name->text, "fullscreen")) {
+			/* [D377] `fullscreen = 1`：启动就进真全屏（无窗口边框 / 无标题栏）。
+			 * 也接受 `true`。环境变量 `XSYS4_FULLSCREEN` 仍可覆盖（见 video.c）。 */
+			if (ini[i].value.type == INI_BOOLEAN) {
+				config.fullscreen = ini_boolean(&ini[i]);
+			} else if (ini[i].value.type == INI_STRING) {
+				const char *v = ini_string(&ini[i])->text;
+				config.fullscreen = !strcmp(v, "1") || !strcasecmp(v, "true") ||
+						    !strcasecmp(v, "yes");
+			} else {
+				config.fullscreen = ini_integer(&ini[i]) != 0;
+			}
 		}
 		ini_free_entry(&ini[i]);
 	}

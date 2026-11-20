@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **241** 个开关，其中 **31** 个没有就近注释。
+共 **242** 个开关，其中 **31** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -132,8 +132,8 @@
 | 其它 | `XSYS4_CP_DBG` | `src/vm.c:512` | 〔摘〕Parts(1114) 的 m_partsNumber 若在拷贝时还是 0，副本就永远是 0。 |
 | 其它 | `XSYS4_DUMP_CG` | `src/parts/parts.c:943` | [诊断] 把刚上传的 CG 纹理另存成 /tmp/texdump_<no>_<w>x<h>.png（最多 8 张，全宽高 250..600）。判断「纹理内容有没有图」的唯一决定性证据 |
 | 其它 | `XSYS4_DUMP_CG_SIZE` | `src/parts/parts.c:945` | [诊断] 配合 DUMP_CG：只转存宽度等于该值的 CG（按尺寸触发，避开号段复用） |
-| 其它 | `XSYS4_DUMP_EVERY` | `src/video.c:465` | 每隔 N 次执行 dump 一次，用于观察循环里的状态漂移 |
-| 其它 | `XSYS4_DUMP_FRAME` | `src/video.c:461` | 指定帧的完整快照（配合 DUMP_AT 的扩展模式） |
+| 其它 | `XSYS4_DUMP_EVERY` | `src/video.c:544` | 每隔 N 次执行 dump 一次，用于观察循环里的状态漂移 |
+| 其它 | `XSYS4_DUMP_FRAME` | `src/video.c:540` | 指定帧的完整快照（配合 DUMP_AT 的扩展模式） |
 | 其它 | `XSYS4_DUMP_GLYPH` | `src/parts/render.c:253` | [诊断] 把指定文本部件的字形纹理逐个转存成 /tmp/glyph_<no>_<i>.png（最多 6 个）。判断「字被裁」是位图层还是绘制层的唯一硬证据 |
 | 其它 | `XSYS4_DUMP_TOPS` | `src/vm.c:3458` | 〔摘〕「条件是真是假」，而这类「条件永远为假」正是最难查的一类。 |
 | 其它 | `XSYS4_ENV_DBG` | `src/vm.c:4017` | — |
@@ -162,6 +162,7 @@
 | 其它 | `XSYS4_FORCE_HIDE` | `src/parts/parts.c:3672` | `=900000400,900000408`：每帧强制隐藏这些部件。**判定性实验用**，不是修复手段。用来把「背景不切换」缩成「隐藏这几个号画面是否就对」（D314） |
 | 其它 | `XSYS4_FORCE_MOVE` | `src/parts/parts.c:3699` | `=900000400:3`：每帧把部件强制改到指定层（号:层号，逗号分隔）。**判定性实验用**，验证「部件创建时落错了层」（D315） |
 | 其它 | `XSYS4_FPS_DBG` | `src/parts/render.c:1279` | [诊断] 每秒打印一次实际渲染帧数。用来区分「演出推进慢」是逻辑卡死还是 llvmpipe 低帧率（D92 全量标脏） |
+| 其它 | `XSYS4_FULLSCREEN` | `src/video.c:293` | [D377 默认关] `=1` 启动即真全屏（无边框/无标题栏），`=0` 强制窗口化（覆盖 .xsys4rc 的 fullscreen）。运行期仍可用 F11 切换 |
 | 其它 | `XSYS4_G14_WATCH` | `src/vm.c:3931` | [诊断] 只在 global[14] 的值变化时打印 ip/旧值/新值/栈/调用栈（抓单例被覆写） |
 | 其它 | `XSYS4_GL_DBG` | `src/video.c:269` | [诊断] 启动时打印实际 GL vendor/renderer/version —— 判断有没有用上硬件加速的唯一硬证据（llvmpipe=软件，Mesa Intel=硬件） |
 | 其它 | `XSYS4_GSAVE_DBG` | `src/savedata.c:762` | 〔摘〕所以按可打印的类型名分类。 |
@@ -243,7 +244,7 @@
 | 其它 | `XSYS4_STUB_BT` | `src/ffi.c:224` | 软桩命中时附带回溯 |
 | 其它 | `XSYS4_STUB_LOG` | `src/ffi.c:166` | 软桩命中清单写到该文件 |
 | 其它 | `XSYS4_SUBST_BT` | `src/ffi.c:713` | 静态库替换（subst）时打印回溯 |
-| 其它 | `XSYS4_SWAP_LOG` | `src/video.c:451` | 〔摘〕这样启动器可以在第一帧呈现之后立刻冻结进程。 |
+| 其它 | `XSYS4_SWAP_LOG` | `src/video.c:530` | 〔摘〕这样启动器可以在第一帧呈现之后立刻冻结进程。 |
 | 其它 | `XSYS4_SWITCH_DBG` | `src/vm.c:4398` | [诊断] 按开关号打印 SWITCH 的实参与落点（`[switch] no=.. val=.. -> 0x..`）。查「某个 key 为什么没派发到预期方法」用它：`SWITCH 496` 按 `m_key` 分派到 `Parts@SetX/SetAlpha/…`，只看 case 表不知道实际弹进来的值是多少 |
 | 其它 | `XSYS4_TALT_EXTRA_FORMATS` | `src/parts/flat.c:400` | [D275 已转正] D200 的「LIBL=0 时追加 TALT 图集」只认 QNT 魔数，而 `战斗画面/シス／战斗／技能按钮／一般` 的 TALT 是 **AJP**，于是零纹理库、底板一个像素不画。默认改成交给 `cg_check_format()` 判定；=qnt 回退成旧行为做 A/B |
 | 其它 | `XSYS4_TEXT_CHAR_DBG` | `src/parts/render.c:196` | [诊断] 逐个文本部件打印行数/行高/逐字符 advance 与字形尺寸，用来区分「advance 太小」与「两段文本叠在一起」 |
