@@ -10,9 +10,9 @@
 
 | | |
 |---|---|
-| **阶段** | **主线 `main`（SDL3 后端）第一章可通到第一场战斗**：标题 → 第一章 ADV（37 句）→ 回想对话（D337）→ `QuestMapSelectionButton` 选项 → `Game/Battle/*` 完整战斗界面 → 点角色卡展开技能列表 → 伤害结算（敌 HP 9000→8303…）。**技能卡用鼠标点仍不中**（`BattleCardButton.m9` 是空委托页 + 命中矩形 1×1，D372–D375） |
+| **阶段** | **第一章可从头一路点击/快进走到战斗，全程无后门（D386）**：标题 → 序章 37 句 ADV → 图鉴框 → 巨舰遗迹任务 → 战况播报（逐国，需 Ctrl 快进 + 点掉弹出的图鉴框）→ `Game/Battle` 完整界面。战斗内点角色卡可展开技能列表、伤害能结算（敌 HP 9000→8303）。**技能卡用鼠标点仍不中**（`BattleCardButton.m9` 空委托 + 命中矩形 1×1，D372–D375） |
 | **最大卡点** | `[BATTLE-STALL]` 战斗卡在最后一段 UI→AIN：`SceneBattle@OnClickSkill` 之后整条链（`ShowUseApCount → CreateEndTask → RunSelectedSkill → ProcessPlayerAction`）用确定性驱动验证**全部正常**，缺的是「点技能卡」这一下——`m9` 空委托 + 命中件 1×1，见台账 |
-| **本轮做过的** | **D346–D375 把「点技能卡」钉到两个具体字段**：AIN 侧点击链其实完整（`ActivityButton` 37568 → LSB 37029 → collection 37032 → `BattleCardButton` 37011 → `m9.DG_CALL`），断在 `m9` 是**空委托页**（`[dgm] MISS dg_no=1021 nr=0`）；命中件 `SmallSkillButton01:0/Normal` 的矩形是 `1×1`，且 EX 里就没有四角负载（`[actrect]` 0 条）。顺带修掉 `ain_xref` 漏 CALLMETHOD 的盲区（`tools/offline/ain_callers.py`）。<br>**发布**：`.github/workflows/build.yml` 云编译，`v*` tag 自动出二进制并建 Release（`v0.1.0-preview.2`，自带 SDL3+GLEW，解压即用）|
+| **本轮做过的** | **D385–D386 通了「第一章 → 战斗」这条路**：① 新增跑测动作 `skip:<ms>[:x,y]`（按住 Ctrl 快进 + 期间点掉图鉴框），一条命令 10 分钟从标题跑到 `Game/Battle`；② `SetLayoutBoxPadding` 原来是空实现、4 个 `GetLayoutBoxPadding*` 根本没导出（兰斯10 走静态链接，`CALLHLL` 那套 case 分派进不去），已修；③ 导出 `GetPartsCGSurfaceArea`。另记：截图上看着「布局错乱」的画面多数是**动画中间帧**，等 2 秒会自己排好 —— 先等再判。<br>**D346–D375 把「点技能卡」钉到两个具体字段**：AIN 侧点击链其实完整（`ActivityButton` 37568 → LSB 37029 → collection 37032 → `BattleCardButton` 37011 → `m9.DG_CALL`），断在 `m9` 是**空委托页**（`[dgm] MISS dg_no=1021 nr=0`）；命中件 `SmallSkillButton01:0/Normal` 的矩形是 `1×1`，且 EX 里就没有四角负载（`[actrect]` 0 条）。顺带修掉 `ain_xref` 漏 CALLMETHOD 的盲区（`tools/offline/ain_callers.py`）。<br>**发布**：`.github/workflows/build.yml` 云编译，`v*` tag 自动出二进制并建 Release（`v0.1.0-preview.2`，自带 SDL3+GLEW，解压即用）|
 | **判据** | 画面一律用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S，且 alt+s 前空 ≥1.5s，否则会丢帧）；层/归属看 `[ctrl] SetActive id=N -> idx=M` 与 `[ctrl] layer … parts:` 清单；HLL 进展看 `python3 tools/offline/hll_hotness.py --todo ../logs/live_<tag>.log` 的输出是否为 0 |
 
 > **卡点必须挂债标签**：§0「最大卡点」里的 `` `[TAG]` `` 必须**逐字存在**于
@@ -213,7 +213,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **244**（未标注 31）｜ HLL 源码口径 **3320 / 4510（73.6%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 127 / 36** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **244**（未标注 31）｜ HLL 源码口径 **3320 / 4510（73.6%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 129 / 37** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
 <!-- STATS:END -->
 
 最常用的：
