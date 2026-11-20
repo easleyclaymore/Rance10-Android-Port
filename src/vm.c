@@ -2096,7 +2096,9 @@ void vm_pump_auto_skill(void)
 	 * 目的：区分「m9 从来没被赋值」和「我们派发到的那个实例不是
 	 * CreateButton 造的那批」。 */
 	static int bcb_st = -2, bcb_dumped;
-	if (dbg && !bcb_dumped && 0) {
+	/* [D376] 原来这里写死 `&& 0`（D372 留的"先不跑"），等于这段 dump 从没生效过。
+	 * 现在由 `XSYS4_PARTS_EVENT_DBG` 控制：需要看清楚 m9 到底有没有值时打开。 */
+	if (dbg && !bcb_dumped) {
 		if (bcb_st == -2)
 			bcb_st = vm_struct_named("BattleCardButton");
 		if (bcb_st >= 0) {
@@ -5675,6 +5677,29 @@ case SR_ASSIGN: {
 		int dst_i = stack_pop().i;
 		struct page *set = heap_get_delegate_page(set_i);
 		struct page *new_dg = copy_page(set);
+		/* [D376] `XSYS4_BCB_DBG=1`：盯住战斗卡的两个关键委托页
+		 * —— `BattleCardButton.m9`（`SetOnClickSkillEvent` 写入的
+		 * `(string,int)`，lambda 37016）与 `m12`/`m7` 那一族
+		 * （37011 / 37029 / 37568）。只在这张委托确实是它们时才打，
+		 * 所以输出量与跑测长度无关。
+		 *
+		 * 要回答的问题只有一个：**赋值到底有没有落到点下去的那个实例上**。
+		 * 所以同时打 `last_ref_heap`（目标成员所在的堆槽 = 实例页）与
+		 * `last_ref_index`（成员号），和 `[dgm] MISS` 的 `obj0` 一比即可。 */
+		if (getenv("XSYS4_BCB_DBG") && set && set->type == DELEGATE_PAGE) {
+			for (int k = 0; k + 2 < set->nr_vars && k < 60; k += 3) {
+				int f = set->values[k + 1].i;
+				if (f != 37016 && f != 37011 && f != 37029 && f != 37568)
+					continue;
+				static int bcb_n;
+				if (bcb_n++ < 400)
+					NOTICE("[bcb] DG_ASSIGN fun=%d set_i=%d set_nr=%d "
+					       "dst_i=%d owner=%d m%d ip=0x%zX",
+					       f, set_i, set->nr_vars, dst_i,
+					       last_ref_heap, last_ref_index, instr_ptr);
+				break;
+			}
+		}
 		/* [D114] XSYS4_DG_ASSIGN_DBG=1：在源委托被拷进事件注册之前，
 		 * 确认它里面真的装着条目。 */
 		static int dga_dbg_n;

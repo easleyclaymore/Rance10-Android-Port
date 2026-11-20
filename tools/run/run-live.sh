@@ -394,11 +394,17 @@ if [ -n "${RANCE10_LIVE_SEQ:-}" ]; then
             # 不能用 --clearmodifiers，否则组合键里的 Alt 会被清掉。
             # 这是绕开 X11 抓屏假象的权威画面证据，见 GUIDE 1.13。
             engineshot)
+                # [D376] 两条 `--sync` 都要 timeout：无 WM 的 Xvfb 里
+                # `windowfocus --sync` 会**永久阻塞**（和下面 click 分支
+                # 同一个坑），一旦卡住整条动作序列就停在这里 —— `bcb2`/`bcb3`
+                # 都是这样：第一张 shot 之后不再有任何 `[shot-engine]`，
+                # 日志也不再增长，而进程还活着。当时只有 `windowactivate`
+                # 带了 timeout，漏了紧跟着的 `windowfocus` 与 `key alt+s`。
                 [ -n "$WID" ] && timeout -k 1 3 xdotool windowactivate --sync "$WID" >/dev/null 2>&1 || true
-                [ -n "$WID" ] && xdotool windowfocus --sync "$WID" >/dev/null 2>&1 || true
+                [ -n "$WID" ] && timeout -k 1 2 xdotool windowfocus --sync "$WID" >/dev/null 2>&1 || true
                 # 点击后焦点可能已变，先走焦点路径再退回直接投递到窗口
-                xdotool key alt+s >/dev/null 2>&1 || \
-                    xdotool key --window "$WID" alt+s >/dev/null 2>&1 || true
+                timeout -k 1 2 xdotool key alt+s >/dev/null 2>&1 || \
+                    timeout -k 1 2 xdotool key --window "$WID" alt+s >/dev/null 2>&1 || true
                 sleep 2.5
                 ;;
             # keydown:/keyup: 保持按键状态。官方指南 r01：按住 Ctrl

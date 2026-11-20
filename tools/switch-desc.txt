@@ -206,3 +206,4 @@ XSYS4_EX_RECT_MIN1X1	[D366 默认生效，=0 关闭] 把 `1x1` 的矩形检测�
 XSYS4_ACT_GEOM	[D360 诊断，默认关] `AFL_Activity_GetPartsNumber` 每查到一个部件号就把它的矩形/可见性打出来 —— 一次跑测即可拿到「按名字找到的部件到底在屏幕哪里」
 XSYS4_SIZE_1X1_TRACE	[D375 诊断，默认关] `SetPartsSize` 收到 w<=1 且 h<=1 时打调用栈 —— 用来回答「这个 1x1 到底是 AIN 算的还是活动数据写死的」
 XSYS4_EX_RECT_DET_SIZE	[D375 默认生效，=0 关闭] `矩形検出`(ACT_COMP_RECT_DETECTION) 也按 EX 的四角负载定尺寸（原来只对 `矩形パーツ` 读）。实测技能卡的 Normal/Alter 没有四角字段，此开关对它无效，但对其它活动可能有用
+XSYS4_BCB_DBG	[D376 诊断，默认关] `DG_ASSIGN` 写 `BattleCardButton` 的点击委托（37011/37016/37029/37568）时打目标实例页与成员号 —— 回答「赋值有没有落到被点中的那个实例上」
