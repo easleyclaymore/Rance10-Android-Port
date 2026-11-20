@@ -1109,6 +1109,10 @@ static int auto_party_page = -1;
 static uint32_t auto_party_delay;
 /* [D344] 见 vm_pump_auto_battle_end() 的注释。 */
 static int auto_battle_page = -1, auto_be_done, auto_be_frames;
+/* [D349] XSYS4_AUTO_SKILL=<frames>[:<index>]：技能卡展开后直接派发第 index 个
+ * `LargeSkillButton`，验证「选技能」链路（点击卡片这条路已证明走不通，
+ * 见 D348：技能卡的绘制位置与部件矩形不一致）。 */
+static int auto_skill_done, auto_skill_frames;
 
 /* [D178] XSYS4_AUTO_CARD_CLICK=<idx>：编队界面稳定后直调
  * `SceneParty@OnClickCard(idx)`（fno 24300，1 个 int 参数）。
@@ -2028,6 +2032,56 @@ void vm_pump_auto_battle_end(void)
 	NOTICE("[abe] 强制 ProcessPostPlayerTurn(page=%d) after %d frames",
 	       auto_battle_page, auto_be_frames);
 	vm_call(24886, auto_battle_page);
+}
+
+/* [D349] 见上方 auto_skill_* 的注释。判据：`LargeSkillButton` 实例的
+ * `m3` 是非空委托、`m0` 是卡片位置（0/1）。默认关。 */
+void vm_pump_auto_skill(void)
+{
+	const char *e = getenv("XSYS4_AUTO_SKILL");
+	if (!e || auto_skill_done)
+		return;
+	static int want = -1, want_idx, lsb_st = -2, lsb_lambda = -2;
+	if (want < 0) {
+		const char *c = strchr(e, ':');
+		want = atoi(e);
+		if (want <= 0)
+			want = 240;
+		want_idx = c ? atoi(c + 1) : 0;
+		lsb_st = vm_struct_named("LargeSkillButton");
+		lsb_lambda = vm_fno_named(
+			"LargeSkillButton@<lambda : LargeSkillButton@InitParts()(125, 51)>");
+		if (lsb_lambda < 0 && ain->nr_functions > 37029)
+			lsb_lambda = 37029;
+	}
+	if (lsb_st < 0 || lsb_lambda < 0)
+		return;
+	if (++auto_skill_frames < want)
+		return;
+	int n = 0, pick = -1;
+	for (size_t i = 1; i < heap_size; i++) {
+		struct page *p = heap[i].page;
+		if (!p || p->type != STRUCT_PAGE || p->index != lsb_st)
+			continue;
+		if (p->nr_vars < 6 || vm_delegate_count(p->values[3].i) <= 0)
+			continue;
+		if (n++ == want_idx) {
+			pick = (int)i;
+			break;
+		}
+	}
+	if (pick <= 0) {
+		/* 技能卡是异步展开的（`ShowCardButton` 之后还要跑 FadeIn），
+		 * 固定延时容易太早。改成"等到出现为止，上限 3000 帧"。 */
+		if (auto_skill_frames > 3000) {
+			auto_skill_done = 1;
+			NOTICE("[ask] 3000 帧内没有可用的 LargeSkillButton（共 %d 个）", n);
+		}
+		return;
+	}
+	auto_skill_done = 1;
+	NOTICE("[ask] 派发第 %d 个 LargeSkillButton slot=%d", want_idx, pick);
+	vm_call(lsb_lambda, pick);
 }
 
 void vm_pump_parts_click(void)
@@ -5698,6 +5752,7 @@ void vm_frame_pump(void)
 	 * （`parts_update_mouse` 只登记，见 vm_request_parts_click）。 */
 	vm_pump_parts_click();
 	vm_pump_auto_battle_end();
+	vm_pump_auto_skill();
 	/* [MEM] XSYS4_MEM_STAT=1：每约 2 秒打印一次虚拟机堆的构成。
 	 * 只看 RSS 分不清「槽泄漏（堆数组增长）」「页泄漏」「字符串泄漏」，
 	 * 这里遍历堆，把三类分别数出来。开销有上限：
