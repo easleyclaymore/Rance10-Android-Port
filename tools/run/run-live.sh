@@ -415,20 +415,31 @@ if [ -n "${RANCE10_LIVE_SEQ:-}" ]; then
                 xdotool "$act" "$arg" >/dev/null 2>&1 || true
                 sleep "$CLICK_SLEEP"
                 ;;
-            # skip:<ms>[:<x>,<y>] —— 按住 Ctrl 快进 ms 毫秒，期间每 2 秒在 (x,y)
-            # 点一次。官方操作表：按住 Ctrl「不论是否已读，强制快进」。
+            # skip:<ms>[:<x>,<y>[:<pat>]] —— 按住 Ctrl 快进 ms 毫秒，期间每 2 秒在
+            # (x,y) 点一次。官方操作表：按住 Ctrl「不论是否已读，强制快进」。
             # 为什么需要它：`keydown:ctrl;wait:...;keyup:ctrl` 只能纯快进，
             # 而 ADV/战况播报途中会不停弹出 `ReplayMemoDialog`（图鉴已获得）把它
-            # 挡住，快进就停在那里 —— 必须一边快进一边把弹窗点掉（D386）。
+            # 挡住，快进就停在那里 —— 必须一边快进一边把弹窗点掉（D387）。
+            # 第三个参数 `<pat>`：日志里一出现这个字符串就提前结束（用于
+            # 「一直推进到进战斗为止」，不必猜要跑几分钟 —— D387 里猜 600 秒
+            # 有时到、有时不到）。
             skip)
                 ms="${arg%%:*}"
                 rest="${arg#*:}"
                 sxy=""
-                [ "$rest" != "$arg" ] && sxy="$rest"
+                pat=""
+                if [ "$rest" != "$arg" ]; then
+                    sxy="${rest%%:*}"
+                    [ "$sxy" != "$rest" ] && pat="${rest#*:}"
+                fi
                 [ -n "$WID" ] && timeout -k 1 2 xdotool windowfocus --sync "$WID" >/dev/null 2>&1 || true
                 timeout -k 1 2 xdotool keydown ctrl >/dev/null 2>&1 || true
                 st=$SECONDS
                 while [ $(( (SECONDS - st) * 1000 )) -lt "$ms" ]; do
+                    if [ -n "$pat" ] && grep -aqF "$pat" "$LOG"; then
+                        echo "skip: found '$pat', stop early"
+                        break
+                    fi
                     if [ -n "$sxy" ]; then
                         IFS=',' read -r cx cy <<< "$sxy"
                         timeout -k 1 2 xdotool mousemove "$cx" "$cy" click 1 >/dev/null 2>&1 || true
