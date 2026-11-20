@@ -159,7 +159,7 @@ XSYS4_FLATEND_MIN_END	[诊断] 只打印 end_frame >= N 的长演出 flat 的未
 XSYS4_FLATEND_STOP_IS_END	[诊断] 把「flat 停在 stop 键/被 StopPartsFlat 停住」也算作「这段演完了」。用于验证「AIN 等 IsPartsFlatEnd 而 flat 卡在 73/75」的死锁
 XSYS4_FPS_DBG	[诊断] 每秒打印一次实际渲染帧数。用来区分「演出推进慢」是逻辑卡死还是 llvmpipe 低帧率（D92 全量标脏）
 XSYS4_FLAT_FRAME_DBG	[诊断] 轻量 flat 帧探针：打印 no/ctrl/frame/root_state.stopped/fps/passed_time。值=1 打全部，值=部件号只跟一个。用来区分「帧没推进」是 parts_flat.stopped、root_state.stopped（脚本 stop 键）还是 passed_time 为 0
-XSYS4_AUTO_MAP_ROUTE	[后门] 地图稳定后直调 SceneQuestMap@StartMoveRoute(23606)，毫秒=延迟
+XSYS4_AUTO_MAP_ROUTE	[后门] 地图稳定后直调 SceneQuestMap@StartMoveRoute(23606)，毫秒=延迟；写成 `<ms>:<repeat_ms>` 则周期性反复推路线（一章的剧情/战斗都是「地图→移动→事件」，单次只能推一个事件）
 XSYS4_ACT_PART_DBG	打印活动部件的建造解析（名字/类型/尺寸/表示領域/flat 名）与 300 号段之后的 SetPos/SetZ
 XSYS4_EX_DUMP	按部件名 dump 整棵 EX 子树（查「尺寸」「表示領域」写在哪个键上）；值=部件名
 XSYS4_MSGF_FIX	[D204] AIN v12 无 MSGF 段时按函数名把 msgf 解析到 "message"/3（Rance10: fno 6100）；默认开启，=0 关闭做 A/B
@@ -208,3 +208,4 @@ XSYS4_SIZE_1X1_TRACE	[D375 诊断，默认关] `SetPartsSize` 收到 w<=1 且 h<
 XSYS4_EX_RECT_DET_SIZE	[D375 默认生效，=0 关闭] `矩形検出`(ACT_COMP_RECT_DETECTION) 也按 EX 的四角负载定尺寸（原来只对 `矩形パーツ` 读）。实测技能卡的 Normal/Alter 没有四角字段，此开关对它无效，但对其它活动可能有用
 XSYS4_BCB_DBG	[D376 诊断，默认关] `DG_ASSIGN` 写 `BattleCardButton` 的点击委托（37011/37016/37029/37568）时打目标实例页与成员号 —— 回答「赋值有没有落到被点中的那个实例上」
 XSYS4_FULLSCREEN	[D377 默认关] `=1` 启动即真全屏（无边框/无标题栏），`=0` 强制窗口化（覆盖 .xsys4rc 的 fullscreen）。运行期仍可用 F11 切换
+XSYS4_AUTO_CLICK	[D378 诊断，默认关] `<ms>[:<x>,<y>][:r]` 每隔 ms 在**引擎内**合成一次点击（mouse_inject_click，不经过 xdotool）。位置缺省为视图中心，`:r` 发右键。给「靠点击喂帧」的 ADV/战斗演出用

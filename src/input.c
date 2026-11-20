@@ -43,6 +43,25 @@ bool mouse_consume_press_pulse(void)
 	return p;
 }
 
+/* [D378] 前置声明：`mouse_rclick_pulse` 的定义在本文件靠后（右键脉冲那段）。 */
+static bool mouse_rclick_pulse;
+
+/* [D378] 引擎内合成一次点击脉冲（左键 `right=0` / 右键 `right=1`）。
+ *
+ * 给无头跑测用：xdotool 那条路有两个硬伤 ——
+ *   ① 单次点击命中率只有 ~30%（需要 0.2s 按住才能保证被帧采样到，D245）；
+ *   ② 每次点击都要 `xwininfo` + `xdotool getwindowpid` 重新解析窗口，
+ *      150 次点击的序列中途整条卡死过两次（bcbe/bcb5，290s 被强杀）。
+ * 这里直接给输入层一个按下脉冲，等价于「这一帧看到一次鼠标按下」，
+ * 不经过 X 服务器，也不受窗口几何变化影响。 */
+void mouse_inject_click(bool right)
+{
+	if (right)
+		mouse_rclick_pulse = true;
+	else
+		mouse_press_pulse = true;
+}
+
 /* [D233] 每个键的一次性「按下脉冲」。
  *
  * xdotool 的 click / rclick / key 都在**同一帧**里完成 press+release：

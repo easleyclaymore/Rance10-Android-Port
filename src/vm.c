@@ -2052,6 +2052,76 @@ void vm_pump_auto_battle_end(void)
 
 /* [D349] 见上方 auto_skill_* 的注释。判据：`LargeSkillButton` 实例的
  * `m3` 是非空委托、`m0` 是卡片位置（0/1）。默认关。 */
+/* [D378] `XSYS4_AUTO_CLICK=<ms>[:<x>,<y>][:r]`：每隔 ms 在**引擎内**合成一次点击。
+ *
+ * 为什么要它：兰斯10 的 ADV 与战斗演出是「靠点击喂帧」的（`SceneStack@Join` 每点
+ * 一次只刷新一帧），而 xdotool 那条路有两个硬伤 —— 单次命中率 ~30%（D245 靠按住
+ * 0.2s 才压住），每次点击还要 `xwininfo` 重解析窗口，长序列（150 次）中途整条卡死
+ * 过两次（bcbe/bcb5 都是 290s 被强杀，日志停在第 2 张截图之后）。
+ *
+ * 这里直接给输入层一个按下脉冲（`mouse_inject_click`），等价于「这一帧看到一次
+ * 鼠标按下」，不碰 X 服务器，也不受窗口几何变化影响。
+ *
+ * 语法：`<ms>` 间隔；`:<x>,<y>` 点击位置（视图坐标，缺省 = 视图中心）；末尾 `:r` 发右键
+ * （任务选择 / 编队界面的「戻る・決定」是右键，见 D166）。默认关。 */
+void vm_pump_auto_click(uint32_t now)
+{
+	const char *e = getenv("XSYS4_AUTO_CLICK");
+	if (!e || !*e)
+		return;
+
+	static int ms = -1, ax = -1, ay = -1, right;
+	static uint32_t last;
+	static unsigned long n;
+	/* [D378] 支持位置**列表**：`<ms>:x1,y1;x2,y2;...`（最多 8 个），按顺序轮着点。
+	 * 地图这类「点哪个节点才推进」的界面，一次跑测就能把候选位置全试一遍，
+	 * 不用为每个坐标单独跑一轮（一轮 2~4 分钟）。 */
+	static int px[8], py[8], np, pi;
+	if (ms < 0) {
+		ms = atoi(e);
+		if (ms <= 0)
+			ms = 600;
+		const char *c = strchr(e, ':');
+		if (c) {
+			if (strstr(c, ":r"))
+				right = 1;
+			const char *p = c + 1;
+			while (np < 8 && p && *p) {
+				int x = atoi(p);
+				const char *cm = strchr(p, ',');
+				if (!cm)
+					break;
+				px[np] = x;
+				py[np] = atoi(cm + 1);
+				np++;
+				p = strchr(cm, ';');
+				if (p)
+					p++;
+			}
+		}
+		if (np == 0) {
+			ax = config.view_width / 2;
+			ay = config.view_height / 2;
+		}
+		NOTICE("[aclk] AUTO_CLICK every %dms, %d position(s)%s",
+		       ms, np ? np : 1, right ? " right" : "");
+		for (int i = 0; i < np; i++)
+			NOTICE("[aclk]   #%d at (%d,%d)", i, px[i], py[i]);
+		last = now;
+	}
+	if (now - last < (uint32_t)ms)
+		return;
+	last = now;
+	int tx = np ? px[pi] : ax;
+	int ty = np ? py[pi] : ay;
+	if (np)
+		pi = (pi + 1) % np;
+	mouse_set_pos(tx, ty);
+	mouse_inject_click(right != 0);
+	if (n++ < 5 || n % 40 == 0)
+		NOTICE("[aclk] #%lu click (%d,%d)%s", n, tx, ty, right ? " right" : "");
+}
+
 void vm_pump_auto_skill(void)
 {
 	const char *e = getenv("XSYS4_AUTO_SKILL");
@@ -6109,6 +6179,7 @@ void vm_frame_pump(void)
 	vm_pump_parts_click();
 	vm_pump_auto_battle_end();
 	vm_pump_auto_skill();
+	vm_pump_auto_click(now);
 	/* [MEM] XSYS4_MEM_STAT=1：每约 2 秒打印一次虚拟机堆的构成。
 	 * 只看 RSS 分不清「槽泄漏（堆数组增长）」「页泄漏」「字符串泄漏」，
 	 * 这里遍历堆，把三类分别数出来。开销有上限：
@@ -6212,18 +6283,29 @@ void vm_frame_pump(void)
 	{
 		static bool route_done;
 		static uint32_t route_seen_at, route_delay = UINT32_MAX;
+		/* [D378] `XSYS4_AUTO_MAP_ROUTE=<ms>[:<repeat_ms>]`：给了第二段就**周期**调，
+		 * 每 repeat_ms 推一次路线。一章里的剧情/战斗都是「地图 → 移动 → 事件」，
+		 * 单次调用只能推进一个事件，长跑测要反复推才能走到第一场战斗。 */
+		static uint32_t route_repeat, route_last;
 		if (route_delay == UINT32_MAX) {
 			const char *e = getenv("XSYS4_AUTO_MAP_ROUTE");
 			route_delay = (e && *e) ? (uint32_t)atoi(e) : 0;
+			if (e && strchr(e, ':'))
+				route_repeat = (uint32_t)atoi(strchr(e, ':') + 1);
 		}
-		if (route_delay && !route_done && auto_party_page > 0) {
+		if (route_delay && auto_party_page > 0) {
 			if (!route_seen_at)
 				route_seen_at = now ? now : 1;
-			if (now - route_seen_at >= route_delay) {
+			bool fire = !route_done && now - route_seen_at >= route_delay;
+			if (!fire && route_repeat && route_last && now - route_last >= route_repeat)
+				fire = true;
+			if (fire) {
 				route_done = true;
+				route_last = now ? now : 1;
 				NOTICE("[auto] calling SceneQuestMap@StartMoveRoute (fno 23606) "
-				       "on heap slot %d after %ums",
-				       auto_party_page, now - route_seen_at);
+				       "on heap slot %d after %ums%s",
+				       auto_party_page, now - route_seen_at,
+				       route_repeat ? " (repeat)" : "");
 				vm_call(23606, auto_party_page);
 				NOTICE("[auto] returned from StartMoveRoute");
 			}

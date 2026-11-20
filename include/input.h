@@ -139,6 +139,8 @@ bool key_is_down(enum sact_keycode code);
 bool mouse_consume_press_pulse(void);
 /* [D191] 右键释放脉冲（右键在本帧内 press+release 时左键脉冲不会置位）。 */
 bool mouse_consume_rclick_pulse(void);
+/* [D378] 引擎内合成点击脉冲（无头跑测用，绕开 xdotool）。 */
+void mouse_inject_click(bool right);
 
 /* [D233] 该键自上次消费以来是否被按下过（合成点击的边沿，一次性）。 */
 bool key_consume_press_pulse(int code);
