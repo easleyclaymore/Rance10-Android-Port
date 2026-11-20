@@ -2181,6 +2181,22 @@ void vm_pump_parts_click(void)
 					if (!PE_PartsCovers(p->values[0].i, x, y) &&
 					    !PE_SubtreeCovers(p->values[0].i, x, y))
 						continue;
+					if (getenv("XSYS4_PARTS_EVENT_DBG")) {
+						NOTICE("[pev]   A组坐标候选 slot=%d parts=%d",
+						       (int)i, p->values[0].i);
+						int ds = p->values[7].i;
+						struct page *dg = (ds > 0 && (size_t)ds < heap_size)
+								  ? heap[ds].page : NULL;
+						if (dg && dg->type == DELEGATE_PAGE) {
+							for (int k = 0; k < dg->nr_vars / 3 && k < 4; k++)
+								NOTICE("[pev]     dg[%d] obj=%d fun=%d",
+								       k, dg->values[k * 3].i,
+								       dg->values[k * 3 + 1].i);
+						} else {
+							NOTICE("[pev]     m7=%d 不是委托页(type=%d)",
+							       ds, dg ? dg->type : -1);
+						}
+					}
 					cand[nc++] = (int)i;
 					nparts++;
 					break;
@@ -2284,10 +2300,35 @@ void vm_pump_parts_click(void)
 		} else if (is_tbtn) {
 			vm_call(tbtn_lambda, slot);
 		} else {
-			stack_push(no);
-			stack_push(x);
-			stack_push(y);
-			vm_call(onclick_fno, slot);
+			/* [D346] 角色卡（`BattleCardButton`）的点击链在 AIN 侧断了一环：
+			 * `InitClickTarget` 把 lambda **37013** 注册到卡片 Parts 的 m7，
+			 * 而 37013 的函数体是 `this.m15.DG_CALL(this.m8, partsNumber)`；
+			 * `m8` 只能由 `BattleCardButton@SetOnClickCardEvent`(25255) 赋值，
+			 * 但 **25255 静态零调用点、运行期也 0 次** ⇒ m8 恒空，
+			 * DG_CALL 是空转，所以点角色卡什么都不会发生。
+			 * （`OnClickParty`(24900) 就是被 `InitViewObjects` 注册到
+			 *  `BattleSkillSelector.m17` 的那个回调，只是中间这一跳没人接。）
+			 * 判据：m7 委托的 fun == 37013 即角色卡 → 直接补调
+			 * `SceneBattle@OnClickParty`（0 参，实例页号已记录）。 */
+			int fun0 = 0;
+			{
+				int ds = heap[slot].page->values[7].i;
+				struct page *dg = (ds > 0 && (size_t)ds < heap_size)
+						  ? heap[ds].page : NULL;
+				if (dg && dg->type == DELEGATE_PAGE && dg->nr_vars >= 3)
+					fun0 = dg->values[1].i;
+			}
+			if (fun0 == 37013 && auto_battle_page > 0) {
+				if (n_dispatch < 40 && getenv("XSYS4_PARTS_EVENT_DBG"))
+					NOTICE("[pev] 角色卡 -> SceneBattle@OnClickParty(page=%d)",
+					       auto_battle_page);
+				vm_call(24900, auto_battle_page);
+			} else {
+				stack_push(no);
+				stack_push(x);
+				stack_push(y);
+				vm_call(onclick_fno, slot);
+			}
 		}
 	}
 	pe_click_reent = false;
