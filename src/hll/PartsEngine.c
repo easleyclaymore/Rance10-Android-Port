@@ -3276,6 +3276,17 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(GetLayoutBoxReturnSize, PE_GetLayoutBoxReturnSize),
 	    HLL_EXPORT(SetLayoutBoxAlign, PE_SetLayoutBoxAlign),
 	    HLL_EXPORT(GetLayoutBoxAlign, PE_GetLayoutBoxAlign),
+	    /* [D385] 这四个 getter 与 SetLayoutBoxPadding 之前只挂在 CALLHLL 的
+	     * `case 94..98` 分派上，而兰斯10 走的是**静态链接（按名字）**，
+	     * 于是运行期一直报 `Unimplemented library function:
+	     * PartsEngine.GetLayoutBoxPaddingTop`，setter 则绑到了空实现
+	     * （`PE_Noop_SetLayoutBoxPadding`）—— 布局盒的 padding 恒为 0，
+	     * 子控件全挤在父容器原点（战况报告屏三行数字叠在左上就是这么来的）。 */
+	    HLL_EXPORT(SetLayoutBoxPadding, PE_set_layoutbox_padding),
+	    HLL_EXPORT(GetLayoutBoxPaddingTop, PE_get_layoutbox_padding_top),
+	    HLL_EXPORT(GetLayoutBoxPaddingBottom, PE_get_layoutbox_padding_bottom),
+	    HLL_EXPORT(GetLayoutBoxPaddingLeft, PE_get_layoutbox_padding_left),
+	    HLL_EXPORT(GetLayoutBoxPaddingRight, PE_get_layoutbox_padding_right),
 	    HLL_EXPORT(Parts_SetPartsCG, PE_SetPartsCG),
 	    HLL_EXPORT(Parts_SetPartsCGThread, PE_SetPartsCGThread),
 	    HLL_EXPORT(Parts_IsThreadLoading, PE_IsThreadLoading),
@@ -3471,7 +3482,6 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetKeyWaitFlatName, PE_Noop_SetKeyWaitFlatName),
 	    HLL_EXPORT(SetKeyWaitPos, PE_Noop_SetKeyWaitPos),
 	    HLL_EXPORT(SetKeyWaitShow, PE_Noop_SetKeyWaitShow),
-	    HLL_EXPORT(SetLayoutBoxPadding, PE_Noop_SetLayoutBoxPadding),
 	    HLL_EXPORT(SetLayoutBoxReturnSizeForRate, PE_Noop_SetLayoutBoxReturnSizeForRate),
 	    HLL_EXPORT(SetListBoxCharSpace, PE_Noop_SetListBoxCharSpace),
 	    HLL_EXPORT(SetLockInputState, PE_Noop_SetLockInputState),
