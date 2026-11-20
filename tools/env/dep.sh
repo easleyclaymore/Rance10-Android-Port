@@ -7,7 +7,7 @@ MULTIARCH="$(uname -m)-linux-gnu"
 export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/lib/${MULTIARCH}/pkgconfig:/usr/share/pkgconfig"
 
 echo "=== 依赖检查 ==="
-for p in sdl2 freetype2 libpng libwebp libjpeg libsndfile libffi zlib glew cglm; do
+for p in sdl3 freetype2 libpng libwebp libjpeg libsndfile libffi zlib glew cglm; do
   printf "%-12s " "$p"
   if pkg-config --exists "$p" 2>/dev/null; then
     echo "OK $(pkg-config --modversion $p 2>/dev/null)"

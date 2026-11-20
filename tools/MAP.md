@@ -27,11 +27,12 @@ tools/
 │
 ├── build/               ← 构建（2 个）
 │   ├── build.sh              离线工具：src/*.c → bin/
-│   └── build-xsys.sh         从零重建（rm -rf build + meson + ninja）
+│   └── build-xsys.sh         兼容壳 → env/build.sh --clean
 │
-├── env/                 ← 环境（2 个）
-│   ├── dep.sh                查依赖
-│   └── inst-deps.sh          装依赖（Debian 系）
+├── env/                 ← 环境（3 个）
+│   ├── build.sh              **引擎构建唯一入口**（依赖预检 + 补丁 + meson + ninja）
+│   ├── dep.sh                查依赖（pkg-config 一览）
+│   └── inst-deps.sh          装依赖（Debian 系，需 root）
 │
 ├── src/                 ← 离线工具源码（14 个 .c）
 ├── offline/             ← 离线辅助（不在构建链里）
@@ -86,7 +87,7 @@ run-rance10.sh ─→ safe_run.sh
 | 在本机真实窗口里点（要看到鼠标） | `run/run-local.sh` |
 | 编离线工具 | `xsys4 build tools` |
 | 换机器了，先查依赖 | `env/dep.sh` → `env/inst-deps.sh` |
-| 从零重建（连 meson 一起） | `build/build-xsys.sh`（**会 `rm -rf build`**） |
+| 构建引擎（含从零重建） | `env/build.sh`（`--clean` = 先删构建目录；`--check` 只查依赖） |
 | 查某个开关干什么 | `xsys4 switches <关键词>` |
 | 翻译注释 / 看还剩多少英文注释 | `comment-cn.py stats`、`comment-cn.py list <文件>` |
 

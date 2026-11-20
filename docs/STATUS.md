@@ -30,12 +30,12 @@
 ## 1. 快速开始
 
 ```sh
-cd Rance10_Port/xsystem4
-env -u PYTHONPATH -u PYTHONHOME -u PYTHONDONTWRITEBYTECODE ninja -C build   # 构建
+cd Rance10_Port/xsystem4-sdl3
+tools/env/build.sh                 # 构建唯一入口（依赖预检 + 补丁 + meson + ninja）
 python3 tools/check_core_deps.py      # 必须 RESULT: PASS
 ```
 
-不摘 `PYTHONHOME`/`PYTHONPATH` 时 meson 会死在 `ModuleNotFoundError: encodings`。
+构建脚本已内置 `PYTHON*` 环境隔离（不摘时 meson 会死在 `ModuleNotFoundError: encodings`）。
 
 **跑测只有一条入口**（不许在真实桌面跑）：
 
