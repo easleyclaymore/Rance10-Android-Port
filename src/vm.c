@@ -2076,7 +2076,7 @@ void vm_pump_auto_click(uint32_t now)
 	/* [D378] 支持位置**列表**：`<ms>:x1,y1;x2,y2;...`（最多 8 个），按顺序轮着点。
 	 * 地图这类「点哪个节点才推进」的界面，一次跑测就能把候选位置全试一遍，
 	 * 不用为每个坐标单独跑一轮（一轮 2~4 分钟）。 */
-	static int px[8], py[8], np, pi;
+	static int px[64], py[64], np, pi;
 	if (ms < 0) {
 		ms = atoi(e);
 		if (ms <= 0)
@@ -2086,7 +2086,7 @@ void vm_pump_auto_click(uint32_t now)
 			if (strstr(c, ":r"))
 				right = 1;
 			const char *p = c + 1;
-			while (np < 8 && p && *p) {
+			while (np < 64 && p && *p) {
 				int x = atoi(p);
 				const char *cm = strchr(p, ',');
 				if (!cm)
