@@ -166,27 +166,42 @@ else:
     for p in _prob:
         print('  PATCH ' + p)
 fail = bool(core_hits) or bool(script_hits) or bool(_patch_res and _patch_res[0])
+# [D376] `XSYS4_SKIP_DOC_GATE=1`：跳过「文档 / 手册」两项，只保留代码检查。
+#
+# 为什么需要：这两项**依赖开发工作区**——`gen-doc-numbers.py` 要求
+# 仓库父目录里有 `AGENTS.md`（D291 的约定），`gen-manual.py` 要求能看到
+# 游戏目录里的官方手册。CI（单独 clone + 没有游戏素材）里这两条永远不成立，
+# 于是门禁在 CI 里 100% 失败，等于没有门禁。CI 只跑代码可移植性 + 补丁落地，
+# 文档一致性仍然由本地 `python3 tools/check_core_deps.py` 保证。
+import os as _os
+import subprocess
+_skip_docs = _os.environ.get('XSYS4_SKIP_DOC_GATE') == '1'
 # [D208] 文档数字腐化检查（《工程管理》§6 ⑪）：手写数字与生成结果不符即失败。
 # 单独克隆 xsystem4 时脚本自己会 SKIP，不会阻塞外部使用者。
-import subprocess
 _doc = subprocess.run([sys.executable, os.path.join(HERE, 'gen-doc-numbers.py'), '--check'],
                       cwd=ROOT, capture_output=True, text=True)
 _doc_out = _doc.stdout.strip().splitlines()
-print('Doc numbers  : %s' % (_doc_out[-1] if _doc_out else 'no output'))
-if _doc.returncode != 0:
-    for line in _doc_out:
-        print('  DOC ' + line)
-    fail = True
+if _skip_docs:
+    print('Doc numbers  : SKIP (XSYS4_SKIP_DOC_GATE=1，CI 无工作区上下文)')
+else:
+    print('Doc numbers  : %s' % (_doc_out[-1] if _doc_out else 'no output'))
+    if _doc.returncode != 0:
+        for line in _doc_out:
+            print('  DOC ' + line)
+        fail = True
 # [D212] 官方手册生成物校验：md 与 93 张图必须与权威源逐字节一致。
 # 单独 clone 时 gen-manual.py 自己会 SKIP，不阻塞外部使用者。
 _mn = subprocess.run([sys.executable, os.path.join(HERE, 'gen-manual.py'), '--check'],
                      cwd=ROOT, capture_output=True, text=True)
 _mn_out = _mn.stdout.strip().splitlines()
-print('Manual docs  : %s' % (_mn_out[-1] if _mn_out else 'no output'))
-if _mn.returncode != 0:
-    for line in _mn_out:
-        print('  MANUAL ' + line)
-    fail = True
+if _skip_docs:
+    print('Manual docs  : SKIP (XSYS4_SKIP_DOC_GATE=1，CI 无游戏素材)')
+else:
+    print('Manual docs  : %s' % (_mn_out[-1] if _mn_out else 'no output'))
+    if _mn.returncode != 0:
+        for line in _mn_out:
+            print('  MANUAL ' + line)
+        fail = True
 if deg > DEGRADATION_BASELINE:
     print('  CORE new HACK-POC markers: +%d' % (deg - DEGRADATION_BASELINE))
     fail = True

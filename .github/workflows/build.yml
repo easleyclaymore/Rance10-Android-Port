@@ -42,10 +42,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+      - name: Apply local libsys4 patches
+        run: |
+          git -C subprojects/libsys4 apply -v \
+            "$GITHUB_WORKSPACE/patches/0001-libsys4-gsave-v8.patch" \
+            "$GITHUB_WORKSPACE/patches/0002-libsys4-ajp-metrics.patch"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: No Linux-only headers / no hardcoded paths in Core Layer
+        # 文档 / 手册两项依赖开发工作区（父目录 AGENTS.md、游戏目录里的官方手册），
+        # CI 里永远不成立；跳过它们，只跑代码可移植性 + 补丁落地检查。
+        env:
+          XSYS4_SKIP_DOC_GATE: '1'
         run: python3 tools/check_core_deps.py
 
   build:
@@ -102,11 +111,22 @@ jobs:
             "https://github.com/libsdl-org/SDL/releases/download/release-${VER}/SDL3-${VER}.tar.gz"
           tar xf sdl3.tar.gz
           cd "SDL3-${VER}"
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/usr/local \
-            -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF -DSDL_SHARED=ON -DSDL_STATIC=OFF
-          cmake --build build
+          # CI 跑在无显示的 runner 上，不需要 Wayland；关掉能少一堆系统依赖。
+          if ! cmake -S . -B build -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX=/usr/local \
+              -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF \
+              -DSDL_SHARED=ON -DSDL_STATIC=OFF \
+              -DSDL_WAYLAND=OFF -DSDL_WERROR=OFF > /tmp/sdl-cfg.log 2>&1; then
+            echo "== cmake configure failed =="
+            tail -60 /tmp/sdl-cfg.log
+            exit 1
+          fi
+          if ! cmake --build build > /tmp/sdl-build.log 2>&1; then
+            echo "== cmake build failed =="
+            tail -60 /tmp/sdl-build.log
+            exit 1
+          fi
           sudo cmake --install build
 
       - name: Configure
