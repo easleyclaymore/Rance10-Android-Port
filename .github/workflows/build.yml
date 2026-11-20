@@ -150,10 +150,11 @@ jobs:
           echo "sdl3: $(pkg-config --modversion sdl3 2>&1)"
           if ! meson setup build --buildtype=release -Dopengles=disabled > /tmp/meson.log 2>&1; then
             echo "== meson setup failed =="
-            tail -50 /tmp/meson.log | while IFS= read -r l; do
-              echo "::error::$l"
-              echo "$l"
-            done
+            # GitHub 每个 step 只保留 10 条 annotation，所以要挑，不能整段 tail。
+            grep -inE "error|not found|could not|no such|failed|missing|unmet" /tmp/meson.log \
+              | head -8 | while IFS= read -r l; do echo "::error::$l"; done
+            echo "---- full log tail ----"
+            tail -40 /tmp/meson.log
             exit 1
           fi
           tail -20 /tmp/meson.log
