@@ -2242,6 +2242,7 @@ void vm_pump_parts_click(void)
 	if (!nc && getenv("XSYS4_PARTS_EVENT_DBG")) {
 		NOTICE("[pev] click=%d 没有匹配的按钮对象（Parts=%d TextButton=%d LSB=%d）",
 		       no, nparts, ntbtn, nlsb);
+		PE_DebugCovers(x, y);
 		vm_dbg_lsb();
 		PE_DebugPartsInfo(no);
 		{

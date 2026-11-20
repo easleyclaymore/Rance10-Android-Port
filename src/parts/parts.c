@@ -1797,6 +1797,30 @@ bool PE_SubtreeCovers(int root_no, int x, int y)
 	return false;
 }
 
+/* [D347 诊断] 打印所有覆盖 (x,y) 且有图形尺寸的部件（不限可见性）。
+ * 技能卡点不中时用它看"到底有哪些件压在这个点上"。 */
+void PE_DebugCovers(int x, int y)
+{
+	struct parts *p;
+	int n = 0;
+	PARTS_LIST_FOREACH(p) {
+		if (p->states[PARTS_STATE_DEFAULT].common.w <= 0 ||
+		    p->states[PARTS_STATE_DEFAULT].common.h <= 0)
+			continue;
+		if (!PE_PartsCovers(p->no, x, y))
+			continue;
+		if (n++ >= 16)
+			break;
+		NOTICE("[cov] no=%d ctrl=%d z=%d a=%d vis=%d ck=%d pc=%d uc=%s",
+		       p->no, p->controller_no, p->global.z,
+		       (int)p->global.alpha, parts_is_visible(p) ? 1 : 0,
+		       p->clickable, p->pass_cursor,
+		       p->uc_object ? p->uc_object : "-");
+	}
+	if (!n)
+		NOTICE("[cov] (%d,%d) 没有任何有尺寸的件覆盖", x, y);
+}
+
 /* [D338 诊断] 打印单个部件的输入相关字段（`[pev]` 用）。 */
 void PE_DebugPartsInfo(int parts_no)
 {

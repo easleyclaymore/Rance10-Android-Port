@@ -36,6 +36,8 @@ int PE_FindClickableAt(int x, int y);
 void PE_DebugPartsInfo(int parts_no);
 /* [D341] 部件命中盒是否覆盖 (x,y)（补父偏移）。 */
 bool PE_PartsCovers(int parts_no, int x, int y);
+/* [D347 诊断] 打印所有覆盖 (x,y) 的有尺寸部件。 */
+void PE_DebugCovers(int x, int y);
 /* [D341] root_no 的子树里有没有部件覆盖 (x,y)。 */
 bool PE_SubtreeCovers(int root_no, int x, int y);
 bool PE_SetPartsCG(int parts_no, struct string *cg_name, int sprite_deform, int state);
