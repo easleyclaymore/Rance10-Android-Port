@@ -720,6 +720,33 @@ RunBattle() = RunIScene(dg(lambda: new 733))
 所以「战斗结束但两个 case 都没进」这种情况不存在，出现异常只可能是
 `BattleResult.Type` 本身没被写。
 
+## 3.24 `SceneBattle@Run` 的启动序列
+
+`SceneBattle@Run`(24882) 的初始化是「先建视图、再开交互、最后重置卡」：
+
+```
+BattleSkillSelector.FadeIn(dg)            ; 25164
+BattleApView.FadeIn(dg)                   ; 25013
+BattleRoundView.FadeIn(…)                 ; 24835
+BattleHpBar.FadeIn(dg) ×2                 ; 25111
+Overlay.FadeIn(…)                         ; 22639
+BattleSkillSelector.SetControlEnable(1)   ; 25173  ← 先允许操作
+SnapShotSaveManager.Save()                ; 26444
+BattleSkillSelector.ResetCard()           ; 25174  ← 后重置技能卡
+BattleHpBar.ResetBaseValue()              ; 25120
+```
+
+**顺序值得注意**：`SetControlEnable(1)` 在 `ResetCard()` **之前**。
+也就是说「允许操作」这一刻，技能卡还是**上一轮的实例**。在这两者之间点击，
+点到的是旧按钮，委托也可能还是旧的。
+
+这不一定是 bug，但它是「开局第一次点技能没反应」的一条可排除解释 ——
+排查时先确认点击落点时间是不是早于 `ResetCard` 完成。
+
+`BattleSkillSelector.ResetCard`(25174) 本体：清空 → 循环重建 →
+`SelectorFocusCardCollection.Run`(25243) → `waitTime`(29822)。
+真正的按钮实例在 `SelectorFocusCardCollection` 那一侧建。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
