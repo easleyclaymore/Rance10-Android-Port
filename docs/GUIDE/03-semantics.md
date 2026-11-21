@@ -1280,20 +1280,34 @@ PostRandomDown / PostReaction / RankUp / RecoverAp / ShowEnemyInformation / Tran
 上一条链路只到「演出」，真正把血扣掉的是另一条。两条都从
 `RunSelectedSkill` 出发，容易混在一起：
 
+**实测顺序**（`dmg1`：一次点击，8 个 fno 各命中 1 次）：
+
+```
+24906  SceneBattle@ProcessPlayerAction      ← RunSelectedSkill 末尾
+24909  SceneBattle@ProcessAttack
+27256  PlayerAttackProcess@Process
+27257  PlayerAttackProcess@ProcessAttack
+24839  DamageEffect@RunEffect               ← 演出（DamageView@Reset + BattleAcitonEffect）
+26909  DamageCalculator::CalcAttack
+26951  PlayerAttackDamageCalculator@Calc    ← 唯一读 Enemy@Hp 的地方
+24919  SceneBattle@ProcessSkillEffect       ← 23 个 SkillEffectProcess 在这里跑
+```
+
+结构上是：
+
 ```
 SceneBattle@RunSelectedSkill(24898)
-  ├─ DamageEffect@RunEffect(24839)         ← 演出：DamageView@Reset + BattleAcitonEffect@Run/Join
-  └─ SceneBattle@ProcessPlayerAction(24906) ← 结算：
+  └─ SceneBattle@ProcessPlayerAction(24906)
        └─ SceneBattle@ProcessAttack(24909)
-            ├─ DamageEffect@RunEffect        （再来一次演出）
-            ├─ SceneBattle@ShowLogPreReflection
-            ├─ SceneBattle@ShowMiss          ← 未命中走这里
             ├─ PlayerAttackProcess@Process(27256)
             │    └─ PlayerAttackProcess@ProcessAttack(27257)
+            │         ├─ DamageEffect@RunEffect(24839)          ← 先放演出
             │         └─ DamageCalculator::CalcAttack(26909)
             │              └─ DamageCalculator::CalcPlayerAttack(26910)
-            │                   └─ PlayerAttackDamageCalculator@Calc(26951)   ← 唯一读 Enemy@Hp 的地方
-            └─ SceneBattle@ProcessSkillEffect(24919)   ← 23 个 SkillEffectProcess 在这里跑
+            │                   └─ PlayerAttackDamageCalculator@Calc(26951)
+            ├─ SceneBattle@ShowLogPreReflection
+            ├─ SceneBattle@ShowMiss                            ← 未命中走这里
+            └─ SceneBattle@ProcessSkillEffect(24919)
 ```
 
 三条能直接用的判据：
