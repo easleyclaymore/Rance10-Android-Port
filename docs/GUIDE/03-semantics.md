@@ -769,6 +769,29 @@ BattleHpBar.ResetBaseValue()              ; 25120
 这与「赋值被丢弃」（先 -1 后实体化）和「实体化晚于赋值」两种情形都相容。
 要分辨只需要一次针对性观测：在 `DG_ASSIGN` 打到 `m9` 时打印 `dst_i` 的实值。
 
+## 3.26 `Unimplemented library function` 不是调用计数
+
+`ffi.c` 里那行 `WARNING("Unimplemented library function: %s.%s", …)` 位于
+`link_static_library()` 的**绑定阶段**：每个未实现的导出在启动时打**一次**，
+与它后来有没有被调用、被调多少次**毫无关系**。
+
+由此有两个直接后果：
+
+- 把日志里这行名字出现次数当「热度」是错的 —— 那只是「跑过多少轮」；
+- 按缺口字母序补实现是纯浪费。`GUIEngine` 有 336 个缺口（71.9%，全库最高），
+  但运行期**零调用**：兰斯10 走的是 `PartsEngine`，那套老 GUI 控件根本没启用。
+
+要回答「哪些缺失函数真的被调到」，只有一条路：
+
+```
+XSYS4_SOFT_STUB=1 XSYS4_STUB_LOG=/tmp/stub.log
+```
+
+它让未实现函数按返回类型返回零值继续执行，日志末尾给出
+`distinct unimplemented HLL functions hit` 清单，每条带 `lib.func args ret`。
+配合 `XSYS4_HLL_HOT=1`（**已实现**函数的调用次数）一起看，
+才知道该先补谁 —— 前者告诉你「缺什么且真在用」，后者告诉你「热路径在哪」。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
