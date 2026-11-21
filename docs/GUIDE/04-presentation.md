@@ -162,6 +162,31 @@ SceneStack@Join()          ; ← 唯一的阻塞点
 （8309 的直接调用者只有 7221 与 7659）。**不存在「另一个等待把点击抢走」的可能**，
 排查时不必去怀疑并发等待。
 
+### 4.5.3 `WaitForClick` 的三个出口，`Exit` 会打通第二个
+
+循环只有三个出口：
+
+1. `0 < GetClickNumber()` —— 点击。`clicked_parts` 由「按下沿 + `click_eligible`」
+   的 `click_down_parts` 在释放沿转写
+2. `global2 != 0` —— 由 `parts::detail::EndWaitForClick`(8310) 置位
+3. `local1` 分支里的 `CASClick`（`Join` 调用时 `local1 = 0`，整段跳过）
+
+**`SceneStack@Exit` 的完整实现只有三句**：
+
+```
+m7 = true                              ; IsFinish = true
+AFL_Parts_EndWaitForClick(0)           ; → global2 = 1
+return
+```
+
+所以 `Exit` 是「置位 + 打断等待」一体的，理论上 `WaitForClick` 下一次循环检查
+就会从第 2 个出口退出，**不需要玩家再点一次**。
+
+**上一版这里写错了**：我只读了 `Exit` 的前 56 字节，看到 `m7 = true` 就收工，
+漏掉了后面那句 `EndWaitForClick`，于是得出「场景结束还要再点一次」的错误结论。
+判据很直接 —— `EndWaitForClick`(7112) 的调用者列表里就有 `SceneStack@Exit`(29658)。
+读函数要读到 `RETURN`，不能读到「看起来做完的那一句」。
+
 ## 4.6 字符出来了但显示方框：先分码表、再分字体
 
 多字节编码的引擎里，「文字没显示」至少有三层，症状却几乎一样：纹理尺寸正常、
