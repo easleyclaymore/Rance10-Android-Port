@@ -1671,9 +1671,13 @@ SceneBattleInformation@Run
 24886 ProcessPostPlayerTurn   10 次
 24883 StartRound              10 次
 24923 ProcessEnemyAction      10 次   ← 这条链以前一次都没跑到过
-24955 CheckEndBattle          40 次   ← 一回合 4 次，与 3.39 完全一致
 24906 ProcessPlayerAction      1 次   ← 只出手了一次
 ```
+
+**`CheckEndBattle` 的次数这里不写** —— `fwatch` 当时硬限流 40 条，写出来的
+40 是上限而不是真实值。这一条我自己踩过：第一版把「40」当成「4 次/回合 × 10」
+写进结论，理由自洽、数字好看，但它是探针的产物，不是游戏的行为。
+`fwatch` 已改成「前 40 条打细节 + 之后每 100 次打累计」（D474）。
 
 `Game/Battle/EnemyAction/EnemyActionIconBase` 装载了 **43 个实例** ——
 每回合 `SetNewEnemyAction` 为每个敌人建一套行动图标。这是「敌方行动真的跑了」
@@ -1689,6 +1693,96 @@ SceneBattleInformation@Run
 - **`XSYS4_AUTO_BATTLE_END=<frames>[:<maxRounds>]` 现在可重复触发**
   （默认上限 12 回合）。这条开关的意义是「把回合推进从点得中变成确定性」，
   不改变任何游戏语义 —— 用法与 `XSYS4_AUTO_MAP` 同类。
+
+## 3.48 限流探针会把「上限」伪装成「结论」
+
+`jn1` 挂上判定链跑 10 回合，看到的数字是：
+
+```
+24825 BattleProcess@IsEndBattle      40
+24975 getBattleResultType            40
+27291 setBattleResultType            40
+29656 SceneStack@Join                40
+29657 SceneStack@Release             40
+24883 SceneBattle@StartRound         10
+```
+
+五个不同的函数**全是 40** —— 这不是「刚好都相等」，是 `fwatch` 的
+`if (cnt[i]++ < 40)` 在截断。真实次数只可能 ≥40，具体多少未知。
+
+我第一版据此写了「`CheckEndBattle` 一回合 4 次、`Join` 无条件」两条结论，
+两条都建立在错的前提上。**判据：同一批函数出现同一个整数次数，先怀疑限流。**
+
+可靠的做法：
+
+- 只信 `< 上限` 的那些数（`24886=10`、`24883=10`、`24923=10` 是真的）；
+- 需要真实总量时，把上限抬高（`XSYS4_FN_WATCH_MAX=3000`）；
+- 或者看**独立证据**：`EnemyActionIconBase` 装载 43 个实例、敌 HP 变化、
+  场景装载/卸载 —— 这些不受探针限流影响。
+
+**抬高上限后的真实值**（`full5`，同一序列推 26 回合）：
+
+```
+29656 SceneStack@Join          270
+24955 CheckEndBattle           110
+24886 ProcessPostPlayerTurn     26
+24883 StartRound                6
+```
+
+两个能直接读出来的事实：
+
+- **`Join` 远多于 `CheckEndBattle`**（270 vs 110），说明 `Join`
+  不是只在判定里调 —— 演出每推一帧都在用它等输入。
+- **`StartRound` 只有 6 次，而 `ProcessPostPlayerTurn` 有 26 次** ——
+  后 20 次都在中途 `return` 了。`ProcessPostPlayerTurn` 里有 4 个
+  `CheckEndBattle` 出口（3.39），返回真就直接退出，不走 `StartRound`。
+  所以「回合不推进」的正确问法是：**这 4 个出口里哪一个是真**，
+  而不是「循环没转」。
+
+这条债 `[PROBE-GATED]` 早就写过「限流探针的没有输出 ≠ 没有发生」，
+但反方向的坑同样致命：**有输出，而且是上限值，看起来像个结论**。
+
+## 3.49 `CheckEndBattle` 的真身，以及为什么后门推不完整场
+
+`SceneBattle@CheckEndBattle(flag)`(24955) 只有 34 行，结构是一句话：
+
+```
+if (!BattleProcess.IsEndBattle(local0)) return 0;   ← 绝大多数据况走这条
+BattleScenes::RunWinLoseView()
+Overlay.FadeOut(500)
+Overlay.Join()
+SceneStack.Exit()
+```
+
+**`IsEndBattle` 为假时它什么都不做、直接返回 0**，连演出都不播。
+所以「`CheckEndBattle` 被调了很多次」完全不代表「战斗快结束了」——
+大部分调用就是一次纯查询。
+
+`win1` 跑 26 回合的实测（`XSYS4_FN_WATCH_MAX=3000`，都是真值）：
+
+```
+29658 SceneStack@Exit          3275
+24955 CheckEndBattle            112
+25949 BattleScenes::RunWinLoseView  0     ← 一次都没进
+22638 Overlay@Join                  0
+25947 RunBattleResult               0
+24883 StartRound                    6
+```
+
+`CheckEndBattle` 112 次全返回 0（所以 `RunWinLoseView` 0 次），
+而 **`StartRound` 第一句就是 `if (CheckEndBattle(0)) return;`** ——
+按这个链条，26 次 `ProcessPostPlayerTurn` 应该 26 次都走到 `StartRound`，
+实测只有 6 次。
+
+**差的那 20 次是后门自己的副作用。** `XSYS4_AUTO_BATTLE_END` 是直接
+`vm_call(24886, page)` 注入的，而这些函数之间是**互递归**
+（`StartRound → … → ProcessPostPlayerTurn → StartRound`，见 3.35）。
+从外面硬注入会打乱这条递归链：上一次调用的栈还没退干净，下一次就压上去，
+于是后面的调用走不完。
+
+**结论：后门适合验证「某一跳通不通」，不适合长序列推进。**
+要跑满回合必须走真实按钮（`ButtonTurnEnd`），这也是
+`[BATTLE-FULL-RUN]` 下一步必须解决 UI 点击的原因 —— 绕不过去。
 
 ## 3.13 一个提醒
 

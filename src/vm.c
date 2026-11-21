@@ -802,9 +802,26 @@ static void fn_watch_note(int fno, int nargs, int this_slot)
 		}
 		for (int i = 0; i < nw; i++) {
 			if (w[i] == fno) {
-				if (cnt[i]++ < 40)
-					NOTICE("[fwatch] fno=%d nargs=%d this=%d",
-					       fno, nargs, this_slot);
+				/* [D474] 原来是硬限流 40 条，**而且不打总数** ——
+				 * 于是「40」会被误读成真实次数（我就在 3.47/3.48 里
+				 * 把 `CheckEndBattle=40` 当成「4 次/回合 × 10」，
+				 * 其实那 40 就是上限）。这正是债 `[PROBE-GATED]` 说的
+				 * 「限流探针会骗人」。
+				 *
+				 * 现在：前 40 条打细节，之后每 100 次打一条带累计数的
+				 * 汇总。上限可用 `XSYS4_FN_WATCH_MAX` 调。 */
+				static int cap = -1;
+				if (cap < 0) {
+					const char *m = getenv("XSYS4_FN_WATCH_MAX");
+					cap = m && *m ? atoi(m) : 40;
+				}
+				int n = ++cnt[i];
+				if (n <= cap)
+					NOTICE("[fwatch] fno=%d nargs=%d this=%d n=%d",
+					       fno, nargs, this_slot, n);
+				else if (n % 100 == 0)
+					NOTICE("[fwatch] fno=%d 累计 %d 次（限流 %d）",
+					       fno, n, cap);
 				break;
 			}
 		}
