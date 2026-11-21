@@ -10,7 +10,7 @@
 | `HLL_WARN_UNIMPLEMENTED` | 有函数，但**返回写死的默认值** | **高**：`SetXxx` 返回 `false` 等于告诉 AIN「设置失败」，会把它带进降级分支 |
 | `SS_Stub_*` | 手写空桩（D91 时代） | 高（同上，且没人看得出是假的） |
 
-总计 **1319** 个。按文件：
+总计 **1318** 个。按文件：
 
 | 文件 | 总数 | 被调用过 | 其中 TODO / WARN / STUB |
 |---|---|---|---|
@@ -21,7 +21,7 @@
 | `DrawDungeon.c` | 66 | 0 | 64 / 2 / 0 |
 | `StoatSpriteEngine.c` | 42 | 1 | 35 / 7 / 0 |
 | `SACT2.c` | 36 | 0 | 26 / 10 / 0 |
-| `SystemService.c` | 27 | 2 | 5 / 2 / 20 |
+| `SystemService.c` | 26 | 1 | 4 / 2 / 20 |
 | `ChipmunkSpriteEngine.c` | 24 | 1 | 22 / 2 / 0 |
 | `vmGraph.c` | 24 | 0 | 23 / 1 / 0 |
 | `vmArray.c` | 16 | 0 | 16 / 0 / 0 |

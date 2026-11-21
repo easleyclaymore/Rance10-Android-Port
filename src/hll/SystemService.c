@@ -363,9 +363,70 @@ static void SystemService_OpenPlayingManual(void) {
 #endif
 }
 
-//static bool SystemService_IsExistSystemMessage(void);
-HLL_QUIET_UNIMPLEMENTED(false, bool, SystemService, IsExistSystemMessage);
-//static bool SystemService_PopSystemMessage(int *message);
+/* [D395] 系统消息队列。
+ *
+ * 语义：引擎向游戏推送的**系统级事件**（窗口失焦/关闭、音量被系统改、断电告警…），
+ * AIN 侧用 `while (IsExistSystemMessage()) { PopSystemMessage(&m); … }` 轮询。
+ *
+ * 本引擎目前**不产生任何系统消息**（SDL 事件全部自己消费掉，没有映射成
+ * System4 的消息码）—— 所以队列恒空、`IsExist` 恒 false。这不是桩：
+ * 「没有消息」就是事实。队列和 push 接口是真的，将来要把 SDL 的 QUIT /
+ * FOCUS_LOST 之类映射进来时，只需要在引擎事件处调 `ss_push_system_message()`，
+ * AIN 侧不用改。
+ *
+ * 消息码沿用 System4 的约定（1=窗口关闭、2=失焦……），具体码值没有公开文档，
+ * 所以第一版不预先定义常量，push 方按需给。
+ */
+struct ss_sysmsg { int code; char *arg; };
+#define SS_SYSMSG_MAX 64
+static struct ss_sysmsg ss_msgs[SS_SYSMSG_MAX];
+static int ss_msg_head, ss_msg_count;
+
+/* 供引擎事件处调用（当前无调用者，见上面的说明）。 */
+void ss_push_system_message(int code, const char *arg)
+{
+	if (ss_msg_count >= SS_SYSMSG_MAX)
+		return;
+	int i = (ss_msg_head + ss_msg_count) % SS_SYSMSG_MAX;
+	ss_msgs[i].code = code;
+	free(ss_msgs[i].arg);
+	ss_msgs[i].arg = arg ? strdup(arg) : NULL;
+	ss_msg_count++;
+}
+
+static bool SystemService_IsExistSystemMessage(void)
+{
+	return ss_msg_count > 0;
+}
+
+/* `bool PopSystemMessage(int *message)`：取最早一条的码，队列空则返回 false。 */
+static bool SystemService_PopSystemMessage(int *message)
+{
+	if (ss_msg_count <= 0)
+		return false;
+	if (message)
+		*message = ss_msgs[ss_msg_head].code;
+	free(ss_msgs[ss_msg_head].arg);
+	ss_msgs[ss_msg_head].arg = NULL;
+	ss_msg_head = (ss_msg_head + 1) % SS_SYSMSG_MAX;
+	ss_msg_count--;
+	return true;
+}
+
+/* `PopSystemMessageString()`：取最早一条的附加串（队列空返回空串）。
+ * 签名按「无参、返回 string」推断 —— 表里原来连项都没有，没有可对照的注释。 */
+static struct string *SystemService_PopSystemMessageString(void)
+{
+	if (ss_msg_count <= 0)
+		return string_dup(&EMPTY_STRING);
+	const char *arg = ss_msgs[ss_msg_head].arg;
+	struct string *r = arg ? cstr_to_string(arg) : string_dup(&EMPTY_STRING);
+	free(ss_msgs[ss_msg_head].arg);
+	ss_msgs[ss_msg_head].arg = NULL;
+	ss_msg_head = (ss_msg_head + 1) % SS_SYSMSG_MAX;
+	ss_msg_count--;
+	return r;
+}
 
 static void SystemService_RestrainScreensaver(void) { }
 
@@ -820,7 +881,8 @@ HLL_LIBRARY(SystemService,
 	    HLL_EXPORT(OpenPlayingManual, SystemService_OpenPlayingManual),
 	    HLL_EXPORT(IsExistPlayingManual, SystemService_IsExistPlayingManual),
 	    HLL_EXPORT(IsExistSystemMessage, SystemService_IsExistSystemMessage),
-	    HLL_TODO_EXPORT(PopSystemMessage, SystemService_PopSystemMessage),
+	    HLL_EXPORT(PopSystemMessage, SystemService_PopSystemMessage),
+	    HLL_EXPORT(PopSystemMessageString, SystemService_PopSystemMessageString),
 	    HLL_EXPORT(RestrainScreensaver, SystemService_RestrainScreensaver),
 	    HLL_TODO_EXPORT(Debug_GetUseVideoMemorySize, SystemService_Debug_GetUseVideoMemorySize),
 	    HLL_EXPORT(Rance0123456789, SystemService_Rance0123456789),
