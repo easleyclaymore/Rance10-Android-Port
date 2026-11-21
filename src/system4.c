@@ -623,7 +623,7 @@ static void usage(void)
 	puts("        --dump-switch <no>  Dump a switch's case table and exit");
 	puts("        --dump-delegate <no> Dump a delegate type's signature and exit");
 	puts("        --dump-signatures   Dump every AIN function's arity and variable count");
-	puts("        --dump-hll          Dump every AIN HLL declaration (lib, fno, name, ret)");
+	puts("        --dump-hll          Dump every AIN HLL declaration (lib, fno, name, ret, argtypes)");
 	puts("        --dump-structs      Dump the struct table (index, name, nr_members)");
 	puts("        --dump-strings     Dump the string table (index, text)");
 	puts("        --encoding       Specify the game's character encoding. sjis (default) or gbk");
@@ -968,23 +968,30 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
-	/* [D443] `--dump-hll`：AIN 侧**声明**的每个 HLL 函数（库名 / 库内序号 / 名字 /
-	 * 实参个数 / 返回类型）。用途是跟 C 侧导出表做交叉核对：
+	/* [D443] `--dump-hll`：AIN 侧**声明**的每个 HLL 函数（库名 / 库内序号 /
+	 * 名字 / 实参个数 / 返回类型）。用途是跟 C 侧导出表做交叉核对：
 	 *
 	 * `HLL_TODO_EXPORT` 只是"这个名字我没有实现"，它不能区分下面两种完全不同的情况：
 	 *   ① 引擎真的没写这个功能；
 	 *   ② 功能写了，但**导出名和 AIN 里的名字对不上**（D164 的 `Parts_SetNumeral*`
 	 *      就是这样：以为实现的都是死条目，真被调的还在未实现清单里）。
 	 * 有了这份声明表 + `nm`/源码里的导出名，②类可以直接扫出来。
-	 */
+	 *
+	 * [D493] 第 6 列补**参数类型表**（`ain_hll_argument.type`）。第 3 列只有
+	 * 实参个数，分不出 `string` 和 `ref string` —— D459 当年就是因为这个
+	 * 分不清，把 HTTPDownloader 四条编码函数晾着不敢写。声明表里类型是现成的，
+	 * 打出来就不用再猜字节码形状了。 */
 	if (dump_hll) {
 		for (int i = 0; i < ain->nr_libraries; i++) {
 			struct ain_library *lib = &ain->libraries[i];
 			for (int j = 0; j < lib->nr_functions; j++) {
 				struct ain_hll_function *f = &lib->functions[j];
-				printf("%s\t%d\t%d\t%s\t%d\n", lib->name, j,
+				printf("%s\t%d\t%d\t%s\t%d", lib->name, j,
 				       (int)f->nr_arguments, f->name ? f->name : "",
 				       (int)f->return_type.data);
+				for (int k = 0; k < f->nr_arguments; k++)
+					printf("\t%d", (int)f->arguments[k].type.data);
+				putchar('\n');
 			}
 		}
 		ain_free(ain);

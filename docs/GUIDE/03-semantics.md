@@ -1859,6 +1859,44 @@ Parts@Motion(29526) → createMotion(29729) → PartsMotionTask
   直到 `SetOnFinishEvent` 的回调把它停掉。所以「动画只走了一帧就停」
   查的是 `CreateEndTask` 的队列有没有被清空，而不是 key 表。
 
+## 3.52 层号有两套编号，但只有一套账本在 AIN 手里
+
+`[LAYER-LEAK]` 的疑案：「`EraseLayer` 传的层号 3，查出来部件挂在
+`controller_no=2` 上」——乍看像两套编号打架，反汇编钉完发现**这是自洽的**。
+
+AIN 侧的层管理是三层包装，各管一件事：
+
+```
+parts::AddLayer(7231) / EraseLayer(7233) / SetActiveLayer(7234) / GetActiveLayer(7235)
+  → parts::detail:: 同名包装 (8295/8296/8302/8303)
+    → CALLHLL PartsEngine.{Add,Remove,SetActive,GetActive}Controller
+```
+
+关键事实（全部来自反汇编，无需跑测）：
+
+- **`RemoveController` 在整个 AIN 里只有一个调用点**：`EraseLayer(8296)`
+  字节码 0x1f1cac。它传的是 `(擦除名单数组, 层号)`，层号来自调用方——
+  也就是 `AddLayer` 当年**返回**的那个值。
+- **AIN 自己还维护一份层账本**：`parts::NumofLayer(7240)` /
+  `parts::GetLayerID(7239)`。`SceneStack` 加层时先 `GetLayerID(NumofLayer()-1)`
+  取当前栈顶层的 ID，再把**这个 ID 传给 AddLayer**（字节码 0x1d2396-0x1d23aa）。
+  也就是说 AIN 把「AddController 的返回值」当作层的身份证保存、流通、
+  再原样传回 RemoveController。
+- 所以「稳定 ID」不是我们的发明，是 AIN 的使用方式：**返回值被长期保存、
+  跨场景比较（`GetActiveLayer() == LayerPartsNumber`）、再传回来删层**。
+  引擎侧返回栈下标（会被弹出层压缩）必然错位——这正是 D129 的教训。
+
+由此得出两个排障判据：
+
+- **`id=3 ↔ controller_no=2` 不是 bug**：id 是历史计数（`next_id++`），
+  controller_no 是当前位置（栈下标），中间弹过几层就差几。看到两者不等
+  不要修映射，先对一下 `ctrl_stack.id[]` 表。
+- **漏部件的嫌疑在建件时序，不在编号映射**：`released=0` 说明按 ID 映射
+  找到了层、但层里没挂部件。部件在创建时归入"当时的活动层"，而 AIN 的
+  顺序是 `Activity@Load → SceneStack@AddLayer`（先建件后建层，D289 的
+  pending-move 就是为了搬这次）。查漏部件要先问：**建 228 那一刻活动层
+  是谁、pending 窗口有没有接住它**。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。

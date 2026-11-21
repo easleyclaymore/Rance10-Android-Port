@@ -1078,12 +1078,35 @@ static void PE_Noop_Parts_SetRubyCharSpace(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN Parts_SetSoundName：void Parts_SetSoundName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_Parts_SetSoundName(int a0, struct string * a1, int a2)
+/* [D494] Parts_SetSoundName / Parts_GetSoundName：转发 parts.c 的
+ * parts_widget 音效名存储（见那里 [D494] 的签名判据与槽号语义）。 */
+static void PE_Parts_SetSoundName_fwd(int no, struct string *name, int slot)
 {
-	(void)a0;
-	(void)a1;
-	(void)a2;
+	PE_Parts_SetSoundName(no, name, slot);
+}
+
+static struct string *PE_Parts_GetSoundName_hll(int no, int slot)
+{
+	return PE_Parts_GetSoundName(no, slot);
+}
+
+/* [D494] `int PartsEngine.GetSystemOverlayController()`（dump-hll：
+ * args=0 / ret int）。AIN 包装 8297 是纯转发，语义与 PartsFunc
+ * GetSystemOverlayLayer（case 2）相同：返回系统 overlay 层的稳定 ID。 */
+static int PE_GetSystemOverlayController(void)
+{
+	return PE_get_system_controller();
+}
+
+/* [D494] `void PartsEngine.CancelFormClose(int parts)`（dump-hll：
+ * args=1 / ret void）。AIN 调用点在 `parts::detail::CPartsFunctionSet`
+ * 的类型 SWITCH 里，只对部件类型 2（FORM）触发。本引擎没有实现 FORM
+ * 关闭 machinery（SetFormCaptionColor 一族同为 [D85] 占位），"取消一次
+ * 已排定的表单关闭"在此前提下是正确的空操作；XSYS4_PE_DBG=1 时留触达痕。 */
+static void PE_CancelFormClose(int parts)
+{
+	(void)parts;
+	PE_HACK_HIT("CancelFormClose");
 }
 
 /* AIN Parts_SetSwipeType：void Parts_SetSwipeType。[HACK-POC D85] 空实现（setter 占位）。 */
@@ -5454,7 +5477,10 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Parts_SetLockUpdate, PE_Noop_Parts_SetLockUpdate),
 	    HLL_EXPORT(Parts_SetPosForRate, PE_Noop_Parts_SetPosForRate),
 	    HLL_EXPORT(Parts_SetRubyCharSpace, PE_Noop_Parts_SetRubyCharSpace),
-	    HLL_EXPORT(Parts_SetSoundName, PE_Noop_Parts_SetSoundName),
+	    HLL_EXPORT(Parts_SetSoundName, PE_Parts_SetSoundName_fwd),
+	    HLL_EXPORT(Parts_GetSoundName, PE_Parts_GetSoundName_hll),
+	    HLL_EXPORT(GetSystemOverlayController, PE_GetSystemOverlayController),
+	    HLL_EXPORT(CancelFormClose, PE_CancelFormClose),
 	    HLL_EXPORT(Parts_SetSwipeType, PE_Noop_Parts_SetSwipeType),
 	    HLL_EXPORT(Parts_SetTextEnableTag, PE_Noop_Parts_SetTextEnableTag),
 	    HLL_EXPORT(Parts_SetTextPos, PE_Noop_Parts_SetTextPos),

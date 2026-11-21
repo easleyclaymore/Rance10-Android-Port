@@ -423,6 +423,9 @@ struct parts_state {
  * 注意：字体不走这里。字体存在 `struct parts_text.ts`（`text_style`），
  * 已有 `PE_SetPartsFont*` 一族真实现，控件只是转发。
  */
+/* [D494] Parts_SetSoundName 的槽号上限（实证只用到 2/3，留裕量到 4） */
+#define PARTS_SOUND_NAME_SLOTS 4
+
 struct parts_widget {
 	/* --- 通用：底图 / 覆盖图 / flat 名（都是 GBK 字节串） --- */
 	struct string *cg_name;
@@ -488,6 +491,12 @@ struct parts_widget {
 	bool button_mode;
 	bool drag;              /* `SetCheckBoxDrag`：按下拖动也能切换（AIN 侧语义） */
 	int button_width, button_height;
+
+	/* --- 部件音效名（`Parts_SetSoundName`/`Parts_GetSoundName`，[D494]）---
+	 * 下标 = AIN 的槽号参数。反汇编实证只见过 2/3（AIN 包装 7651/7653 的
+	 * 立即数，配对 getter 7652/7654 同槽），容量按 4 留裕量；
+	 * 超界槽忽略并告警。名字不需要持久化（跟复选框状态同理）。 */
+	struct string *sound_name[PARTS_SOUND_NAME_SLOTS];
 
 	/* --- 单选按钮组：成员是子部件号 --- */
 	int *radio_children;

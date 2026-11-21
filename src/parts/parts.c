@@ -341,6 +341,41 @@ bool PE_IsCheckBoxEnable(int parts_no)
 	return w ? w->enabled : false;
 }
 
+/* [D494] 部件音效名（`Parts_SetSoundName`/`Parts_GetSoundName`）。
+ *
+ * AIN 签名（dump-hll 类型表）：`void Parts_SetSoundName(int no, string
+ * name, int slot)` / `string Parts_GetSoundName(int no, int slot)`。
+ * 槽号是 AIN 侧约定：调用点 7651/7653 传立即数 2/3，getter 7652/7654 同槽。
+ * 状态挂 `parts->widget`（[D396] 同款：不进存档序列化，生命周期跟部件走，
+ * 部件号复用无串味问题）。播放接线是另一码事——目前引擎没有消费这个名字
+ * 的路径（AIN 里 getter 的调用者只在部件重建时回填），先存真。
+ */
+void PE_Parts_SetSoundName(int parts_no, struct string *name, int slot)
+{
+	if (slot < 0 || slot >= PARTS_SOUND_NAME_SLOTS) {
+		WARNING("Parts_SetSoundName: slot %d out of range", slot);
+		return;
+	}
+	struct parts_widget *w = PE_widget(parts_no);
+	if (!w)
+		return;
+	if (w->sound_name[slot])
+		free_string(w->sound_name[slot]);
+	w->sound_name[slot] = name ? string_dup(name) : NULL;
+}
+
+struct string *PE_Parts_GetSoundName(int parts_no, int slot)
+{
+	if (slot < 0 || slot >= PARTS_SOUND_NAME_SLOTS) {
+		WARNING("Parts_GetSoundName: slot %d out of range", slot);
+		return make_string("", 0);
+	}
+	struct parts_widget *w = PE_widget_peek(parts_no);
+	if (w && w->sound_name[slot])
+		return string_dup(w->sound_name[slot]);
+	return make_string("", 0);
+}
+
 bool parts_exists(int parts_no)
 {
 	return !!ht_get_int(parts_table, parts_no, NULL);
@@ -1416,6 +1451,10 @@ void PE_widget_free(struct parts_widget *w)
 		free_string(w->override_flat_name);
 	if (w->override_checked_flat_name)
 		free_string(w->override_checked_flat_name);
+	/* [D494] 部件音效名 */
+	for (unsigned i = 0; i < PARTS_SOUND_NAME_SLOTS; i++)
+		if (w->sound_name[i])
+			free_string(w->sound_name[i]);
 	if (w->text)
 		free_string(w->text);
 	if (w->msg_func_name)

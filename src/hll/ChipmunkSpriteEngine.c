@@ -281,6 +281,16 @@ static bool ChipmunkSpriteEngine_SP_IsSuspend(int sp_no)
 //static void ChipmunkSpriteEngine_CombineTexture(void);
 //static void ChipmunkSpriteEngine_ReleaseCombinedTexture(void);
 
+/* [D494] `int ChipmunkSpriteEngine.Debug_GetFillRate()`（dump-hll：
+ * args=0 / ret int）。消费点 `debug::detail::CDebugFillRate@Update(2999)`
+ * 的调试面板读数——统计精灵纹理填充率。本引擎不做该统计，与
+ * SystemService.Debug_GetUseMemorySize 同族口径返回 0。
+ * 唯一调用点在 debug 面板，正常游玩路径碰不到。 */
+static int ChipmunkSpriteEngine_Debug_GetFillRate(void)
+{
+	return 0;
+}
+
 
 HLL_LIBRARY(ChipmunkSpriteEngine,
 	    HLL_EXPORT(_PreLink, ChipmunkSpriteEngine_PreLink),
@@ -412,7 +422,7 @@ HLL_LIBRARY(ChipmunkSpriteEngine,
 	    HLL_EXPORT(SYSTEM_GetInvalidateFrameSkipWhileMessageSkip, StoatSpriteEngine_SYSTEM_GetInvalidateFrameSkipWhileMessageSkip),
 	    HLL_TODO_EXPORT(Debug_GetCurrentAllocatedMemorySize, StoatSpriteEngine_Debug_GetCurrentAllocatedMemorySize),
 	    HLL_TODO_EXPORT(Debug_GetMaxAllocatedMemorySize, StoatSpriteEngine_Debug_GetMaxAllocatedMemorySize),
-	    HLL_TODO_EXPORT(Debug_GetFillRate, StoatSpriteEngine_Debug_GetFillRate),
+	    HLL_EXPORT(Debug_GetFillRate, ChipmunkSpriteEngine_Debug_GetFillRate),
 	    HLL_TODO_EXPORT(MUSIC_ReloadParam, StoatSpriteEngine_MUSIC_ReloadParam),
 	    HLL_EXPORT(SP_Suspend, ChipmunkSpriteEngine_SP_Suspend),
 	    HLL_EXPORT(SP_Resume, ChipmunkSpriteEngine_SP_Resume),

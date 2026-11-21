@@ -28,6 +28,7 @@
 #include "hll.h"
 #include "system4/file.h"
 #include "pal.h"
+#include <SDL3/SDL.h>
 
 /* [D444] `string SystemService.GetOSInfo()`（AIN 库 SystemService f[60]，
  * args=0 / ret=12=AIn_STRING）。
@@ -44,6 +45,74 @@ static struct string *SystemService_GetOSInfo(void)
 	if (!desc)
 		desc = "";
 	return make_string(desc, strlen(desc));
+}
+
+/* [D495] `void SystemService.GetCPUInfo(ref string desc, ref int clock,
+ * ref int cores, ref string detail)`（AIN f[58]，dump-hll 类型表
+ * `(20,18,18,20)` / ret void）。
+ *
+ * 消费点：`pcinfo::GetCPUInfo(16914)` 包装 → `AFL_PCInfo_GetCPUInfo(16909)`
+ * → `enquate::detail::CSystemInfo@SetInfoList` —— 设置菜单"系统信息"页的
+ * CPU 显示行（包装函数返回的是第 4 个出参 `detail`）。
+ * 数据源 /proc/cpuinfo：Linux 桌面常规来源，离线可写。
+ * 形状判据：`ref int` 出参在 C 侧是普通指针（D202 运行期验证先例），
+ * `ref string` 是 `struct string **`（ffi.c 写回 heap 槽）。 */
+static void SystemService_GetCPUInfo(struct string **desc, int *clock_mhz,
+				     int *nr_cores, struct string **detail)
+{
+	*desc = make_string("", 0);
+	*clock_mhz = 0;
+	*nr_cores = 0;
+	*detail = make_string("", 0);
+
+	FILE *fp = fopen("/proc/cpuinfo", "r");
+	if (!fp)
+		return;
+	char model[256] = "";
+	float mhz = 0;
+	int cores = 0;
+	char line[512];
+	while (fgets(line, sizeof(line), fp)) {
+		if (!model[0] && sscanf(line, "model name : %[^\n]", model) == 1)
+			continue;
+		if (mhz == 0 && sscanf(line, "cpu MHz : %f", &mhz) == 1)
+			continue;
+		if (cores == 0 && sscanf(line, "cpu cores : %d", &cores) == 1)
+			continue;
+		if (!cores && sscanf(line, "processor : %d", &cores) == 1)
+			cores++; /* 没列 cores 的平台按 processor 计数兜底 */
+	}
+	fclose(fp);
+
+	if (!model[0])
+		strncpy(model, "unknown CPU", sizeof(model) - 1);
+	if (cores <= 0)
+		cores = 1;
+
+	char buf[512];
+	if (mhz > 0)
+		snprintf(buf, sizeof(buf), "%s x%d @ %.0fMHz", model, cores, mhz);
+	else
+		snprintf(buf, sizeof(buf), "%s x%d", model, cores);
+
+	free_string(*desc);
+	*desc = make_string(model, strlen(model));
+	*clock_mhz = (int)(mhz > 0 ? mhz : 0);
+	*nr_cores = cores;
+	free_string(*detail);
+	*detail = make_string(buf, strlen(buf));
+}
+
+/* [D495] `string SystemService.GetScreenInfo()`（AIN f[61]，args=0 / ret
+ * string）。同页"画面"显示行：桌面显示器分辨率。 */
+static struct string *SystemService_GetScreenInfo(void)
+{
+	SDL_Rect bounds;
+	if (!SDL_GetDisplayBounds(SDL_GetPrimaryDisplay(), &bounds))
+		return make_string("unknown", 7);
+	char buf[64];
+	int n = snprintf(buf, sizeof(buf), "%dx%d", bounds.w, bounds.h);
+	return make_string(buf, n > 0 ? (size_t)n : 7);
 }
 
 static int SystemService_GetMixerName(int n, struct string **name)
@@ -826,11 +895,41 @@ static int SS_Stub_IsHookCloseApp(void)
 	return 0;
 }
 
-/* AIN SystemService f[59] GetMemoryInfo。[HACK-POC D91] Android/SystemService 占位桩。 */
-static void SS_Stub_GetMemoryInfo(float a0, float a1)
+/* AIN SystemService f[59] `void GetMemoryInfo(ref int total, ref int free)`。
+ * [D91] 当年是 `(float,float)` 错形桩 —— dump-hll 类型表 `(18,18)` 实证
+ * 两个都是 ref int（D202：ref int 出参 = C 普通指针）。同一"系统信息"页
+ * 显示行（包装 16915 返回第 1 个出参，单位 MB），照 /proc/meminfo 回填。 */
+static void SystemService_GetMemoryInfo(int *total_mb, int *free_mb)
 {
-	(void)a0;
-	(void)a1;
+	*total_mb = 0;
+	*free_mb = 0;
+	FILE *fp = fopen("/proc/meminfo", "r");
+	if (!fp)
+		return;
+	char line[256];
+	long kb[2] = { 0, 0 };
+	int got = 0;
+	while (got < 2 && fgets(line, sizeof(line), fp)) {
+		long v;
+		if (sscanf(line, "MemTotal: %ld kB", &v) == 1) {
+			kb[0] = v;
+			got++;
+		} else if (sscanf(line, "MemAvailable: %ld kB", &v) == 1) {
+			kb[1] = v;
+			got++;
+		}
+	}
+	fclose(fp);
+	*total_mb = (int)(kb[0] / 1024);
+	*free_mb = (int)(kb[1] / 1024);
+}
+
+/* AIN SystemService f[64] `int Debug_GetUseVideoMemorySize()`。
+ * debug::detail::CDebugVideoMemorySize@Update 的调试面板读数；本引擎不统计
+ * 显存占用，按 Debug_GetUseMemorySize 同族口径返回 0。 */
+static int SystemService_Debug_GetUseVideoMemorySize(void)
+{
+	return 0;
 }
 
 /* AIN SystemService f[63] Debug_GetUseMemorySize。[HACK-POC D91] Android/SystemService 占位桩。 */
@@ -862,6 +961,8 @@ HLL_LIBRARY(SystemService,
 	    HLL_EXPORT(_PreLink, SystemService_PreLink),
 	    HLL_EXPORT(_ModuleInit, SystemService_ModuleInit),
 	    HLL_EXPORT(GetOSInfo, SystemService_GetOSInfo),
+	    HLL_EXPORT(GetCPUInfo, SystemService_GetCPUInfo),
+	    HLL_EXPORT(GetScreenInfo, SystemService_GetScreenInfo),
 	    HLL_EXPORT(GetMixerNumof, mixer_get_numof),
 	    HLL_EXPORT(GetMixerName, SystemService_GetMixerName),
 	    HLL_EXPORT(GetMixerVolume, mixer_get_volume),
@@ -903,7 +1004,7 @@ HLL_LIBRARY(SystemService,
 	    HLL_EXPORT(PopSystemMessage, SystemService_PopSystemMessage),
 	    HLL_EXPORT(PopSystemMessageString, SystemService_PopSystemMessageString),
 	    HLL_EXPORT(RestrainScreensaver, SystemService_RestrainScreensaver),
-	    HLL_TODO_EXPORT(Debug_GetUseVideoMemorySize, SystemService_Debug_GetUseVideoMemorySize),
+	    HLL_EXPORT(Debug_GetUseVideoMemorySize, SystemService_Debug_GetUseVideoMemorySize),
 	    HLL_EXPORT(Rance0123456789, SystemService_Rance0123456789),
 	    HLL_EXPORT(XXXXX01XXXXXXXX, SystemService_XXXXX01XXXXXXXX),
 	    HLL_EXPORT(GetSystemBufferName, SystemService_GetSystemBufferName),
@@ -940,7 +1041,7 @@ HLL_LIBRARY(SystemService,
 	    HLL_EXPORT(SetAndroidViewKeepScreen, SS_Stub_SetAndroidViewKeepScreen),
 	    HLL_EXPORT(SetHookCloseApp, SS_Stub_SetHookCloseApp),
 	    HLL_EXPORT(IsHookCloseApp, SS_Stub_IsHookCloseApp),
-	    HLL_EXPORT(GetMemoryInfo, SS_Stub_GetMemoryInfo),
+	    HLL_EXPORT(GetMemoryInfo, SystemService_GetMemoryInfo),
 	    HLL_EXPORT(Debug_GetUseMemorySize, SS_Stub_Debug_GetUseMemorySize),
 	    HLL_EXPORT(Debug_SetShowMipmapLevel, SS_Stub_Debug_SetShowMipmapLevel),
 	    HLL_EXPORT(Debug_IsShowMipmapLevel, SS_Stub_Debug_IsShowMipmapLevel));

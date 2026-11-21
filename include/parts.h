@@ -288,6 +288,9 @@ void PE_CheckBoxChecked(int parts_no, bool check);
 bool PE_IsCheckBoxChecked(int parts_no);
 void PE_SetCheckBoxEnable(int parts_no, bool enable);
 bool PE_IsCheckBoxEnable(int parts_no);
+/* [D494] 部件音效名（挂 parts_widget，槽号是 AIN 侧约定，实证 2/3） */
+void PE_Parts_SetSoundName(int parts_no, struct string *name, int slot);
+struct string *PE_Parts_GetSoundName(int parts_no, int slot);
 bool PE_GetPartsClickable(int parts_no);
 void PE_SetDrag(int parts_no, bool enable);
 void PE_SetPartsGroupDecideOnCursor(int group_no, bool decide_on_cursor);
