@@ -167,6 +167,30 @@ D182 已砍掉前置耗时：`AUTO_MAP` 时跳过无效的右键循环，序列�
 
 ## 配方
 
+### 打开游戏内设置菜单（CommonMenu / コンフィグ）
+
+标题菜单 8 个按钮全部委托到 `SceneTitle@OnClickMenu`(23448)，按按钮 id 经
+SWITCH 336 分发：**case 6 → `Scenes::RunCommonMenu`**，对应按钮 id=6、
+父命中盒 `(10,982,196,40)` —— 点击坐标 **(108,1002)**。
+
+```bash
+RANCE10_LIVE_SEQ="wait:2000;click:108,1002;wait:12000" \
+    ENGINE_BIN="$PWD/build-sdl3/src/xsystem4" tools/run/run-headless.sh cfgmenu 100
+grep 'CommonMenu' ../logs/live_cfgmenu.log
+```
+
+验收判据（d497b_cfg/cfg2 实测）：`Game/CommonMenu/CommonMenu`(29 parts) +
+`MenuContext` 装载、0 ERROR；`AFBGMMode.asd`/`AFCGMode.asd`/`GameConfig.asd`
+写出。注意两点：
+- **菜单场景是模态的，不能 AUTO_CALL 冷调**——`SceneCommonMenu@Run`
+  在无场景栈状态下会卡死自己的等待环，把启动流饿死（d497b_menu 实测
+  loaded=0）；
+- CommonMenu 装载后**没有再触发 dump**——`XSYS4_DUMP_BTN` 只在点击
+  派发时扫（vm.c:2922），且只列 TextButton；CommonMenu 的复选框是
+  CheckBox 部件（D174 旁路表族），不在清单里。交互深度考古待续。
+
+### 我要知道「这个函数到底有没有被调用」
+
 ### 我要知道「这个函数到底有没有被调用」
 
 ```bash
