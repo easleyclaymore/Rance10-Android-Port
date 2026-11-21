@@ -212,6 +212,25 @@ Parts@Motion(…)               ; 否则启动补间，dg 在动画完成时由 
 `Exit` 已经把两个出口都打开了，剩下的只可能是 `Join` 读的 `m7` 和 `Exit` 写的
 `m7` 不是同一个实例字段。这一层静态分析到此为止。
 
+### 4.5.5 `SceneTurnStart` 的生命周期
+
+| 方法 | 动作 |
+|---|---|
+| `@0(stack)` | `m1 = stack`（构造参数，不是自己 new）；`local1 = GameContext.Turn` |
+| `@Run` | `FadeIn` → `LPYearView.FadeIn` → `instantTimer×2` → **`m1.Join()`** |
+| `@OnFinishFadeIn` | `FadeInButton(dg = OnFadeInButtonFinishEvent)` |
+| `@FadeInButton` | 建三个按钮、各挂委托、启动出现动画（844 字节，D397 改的就是它） |
+| `@OnFadeInButtonFinishEvent` | `ThumbnailCapture.Capture()` + `LocalSave.AutoSave(0)` |
+| 玩家点按钮 → `@FadeOut` | 全屏黑遮罩 + `Overlay.FadeOut(1500, dg = SceneStack@Exit)` |
+| `SceneStack@Exit` | `m7 = true` + `EndWaitForClick(0)` |
+
+**`m1` 是构造时传进来的那个 `SceneStack`**，`Run` 的 `Join` 与 `FadeOut` 的 `dg`
+都绑在它身上 —— 同一个实例，不存在「两个 stack」的错位。
+
+顺带记一条实用事实：跑测里的 `logs/savedir/<tag>/LocalSave5000.asd` 就是这个
+`OnFadeInButtonFinishEvent` 写的 `AutoSave(0)`。它不是定时器产物，
+而是**按钮出现动画播完那一刻** —— 所以有这个文件，就等于「回合开始屏已经完整显示过一次」。
+
 ## 4.6 字符出来了但显示方框：先分码表、再分字体
 
 多字节编码的引擎里，「文字没显示」至少有三层，症状却几乎一样：纹理尺寸正常、
