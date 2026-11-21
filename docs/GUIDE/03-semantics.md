@@ -1440,10 +1440,31 @@ getter 只是回读同一个量 —— 不需要推断任何新语义。
     → 这是一个配对缺口
 ```
 
-2026-11-21 的结果：**59 组配对缺口**，其中 **36 组的 setter 是真实现**
-（剩下的 setter 自己是 `PE_Noop_*` 空桩，补 getter 也没东西可读）。
+2026-11-21 的结果：**59 组配对缺口**，脚本筛出 **36 组「setter 不是 `PE_Noop_`」**
+（剩下 23 组的 setter 自己是空桩，补 getter 也没东西可读）。
 按这个扫法一轮补了 11 条：6 个颜色分量 + draw filter + 旋转 X/Y +
-alpha 裁剪器 + 数字长度。
+alpha 裁剪器 + 数字长度 —— **这 11 条是编译通过 + 跑测回归过的**。
+
+**但这 36 个数字不能当成"36 条都能直接补"。** 原因是这个文件里有一大批
+**宏 + token pasting 生成**的函数：
+
+```c
+#define DEFINE_SCROLLBAR(PREFIX, HEAD, TAIL, UNITS) \
+static void PE_Set##PREFIX##HEAD##UNITS(int no, int v) { ... } \
+static int  PE_Get##PREFIX##HEAD##UNITS(int no) { ... }
+```
+
+`PE_SetHScrollbarFlatName` 这种名字在源码里 **grep 不到**，只能靠 `nm` 看到符号。
+于是两个后果：
+
+- 正则扫出来的"已实现/未实现"可能有偏差 —— 宏生成的 getter 其实早就有了；
+- 判「setter 是不是空桩」不能只看函数名里有没有 `Noop`，要读宏体。
+
+**顺带一个重要发现**：这些控件状态**没有塞进 `struct parts`**，而是走
+`struct parts_widget` 旁路表（`PE_widget(no)` / `PE_widget_peek(no)`
+按部件号取）。这正是 D174 复选框用过的同一套办法。
+所以下面那条"不能加字段到 struct parts"的约束**有现成解法**：
+新状态一律挂到 `parts_widget` 上，不要动 `struct parts`。
 
 **两条必须守住的口径**：
 
@@ -1458,6 +1479,52 @@ alpha 裁剪器 + 数字长度。
 就必须往 `struct parts` 里加字段，而**这个结构是按顺序序列化进存档的**
 （D174 的复选框就是这么踩的，最后用 64 槽旁路表绕开）。凡是"要加字段到
 `struct parts`"的补法，一律先找旁路表，别直接加。
+
+## 3.42 结算屏 `SceneBattleResult`：奖励在**构造函数里**就算完了
+
+`BattleScenes::RunBattleResult`(25947) 只是 `Scenes::RunIScene(-1, dg{ NEW 786 })`，
+786 = `SceneBattleResult`。它的生命周期是：
+
+```
+SceneBattleResult@0（构造函数，8 行调用）
+  ├─ @CalcResult         ← 奖励在这里算完（含随机宝物！）
+  ├─ LoadActivity
+  ├─ @InitCardView
+  └─ @InitResultView
+SceneBattleResult@Run（逐帧）
+  AssistantSelector@PlayMessage → ResultTypeText → SystemSound::Play → Music@Play
+  → BattleResultValueViewGroup@FadeIn → Overlay@FadeIn → ShowExpUpEffect
+  → instantTimer → SceneStack@Join
+```
+
+**关键：`@CalcResult` 在构造函数里跑，不是在 `@Run` 里。** 它做三件事：
+
+```
+BattleResult.GetTotalExp / PlayerCommonParam.TotalExp
+IsForceNoTreasure？                ← 某些战斗强制不出宝箱
+RAND                               ← 宝物是这里摇的
+BattleResult.GetTotalPerTreasure
+PlayerCommonParam.TreasureNotGetCount（读→写）
+AFL_Parts_AddConstructProcess
+```
+
+所以「结算数据不对」要查构造函数，而不是看画面。而且**创建设置就有副作用**
+（摇随机数、改 `TreasureNotGetCount`）—— 排查时不能假设「new 一个场景是纯的」。
+
+`@InitResultView` 才是把数据填进 UI：
+
+```
+BattleResult.BaseExp / GetTotalExp
+BattleResultValueViewGroup@Init ×2
+BattleResult.Bonus → BattleBonusCollection@GetExpList     → SetBonusList
+BattleResult.Bonus → BattleBonusCollection@GetTreasureList → SetBonusList
+SetPos
+```
+
+`BattleBonusCollection` 是**战斗过程中**由 `BattleBonusCalculator::Calc`
+（在 `BattleSceneSetNormal@Process` 里、`RunBattle` 之后）填的，
+结算屏只负责读。所以「奖励为空」要往 `BattleBonusCalculator::Calc` 查，不是这里。
+
 
 ## 3.13 一个提醒
 
