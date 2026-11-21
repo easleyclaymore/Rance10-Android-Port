@@ -1814,6 +1814,38 @@ lambda 36932:
 **判据**：`[fwatch] fno=25048`（Hide）命中 ≥1 次后，点 `(1828,1025)`
 应触发 `24886 ProcessPostPlayerTurn`（TurnEnd 的处理函数）。
 
+## 3.51 部件动画（PartsMotion）的完整执行链
+
+`BattleInfoView@Hide` 的淡出走的是 AIN 侧的动画系统，链路五层：
+
+```
+Parts@Motion(29526) → createMotion(29729) → PartsMotionTask
+  PartsMotionTask@SetAlpha(29707) → SetKey(29705)
+      （SetKey 只是 Array.PushBack 存 key —— key 是纯 AIN 数据）
+  PartsMotionTask@GetHandle(29723)
+      → CASTask@SetEvent(dg{OnUpdate})          ← 第一次取句柄时才排队！
+  CASTask@ExecuteImp(18453)
+      → AFL_Parts_AddBeginUpdateEvent(6966)
+        → parts::detail::AddPartsUpdateEvent(8278) → 存 global[6] 数组
+  PartsMotionTask@OnUpdate(29725)               ← 每帧被队列调
+      → UpdateByKey(29726)
+        → PartsMotionKey@GetValue → Parts@SetAlpha/SetX/SetY/…（29452…）
+```
+
+三条排障判据：
+
+- **`SetMotionData` 不在这条链上。** 它运行期 0 次命中（`mo1` 实测），
+  「AIN 动画经它落地」的假设不成立。AIN 的 `UpdateByKey` 直接调
+  `Parts@SetAlpha` 等 AIN 方法，那些再落到**已实现**的 HLL setter。
+  所以动画不动时不要去修 `SetMotionData` 桩。
+- **动画不启动的第一嫌疑是 `OnUpdate` 没进队列。** 它是靠
+  `GetHandle` 里那句 `CASTask@SetEvent(dg{OnUpdate})` 才排上队的 ——
+  `Parts@Motion()` 之后只要有一次 `GetHandle`，队列就有了；
+  但队列本身要有人每帧 `CASTask@Execute`。
+- **`CreateEndTask` 在 `OnUpdate` 末尾**（自续）：任务每帧把自己重新排队，
+  直到 `SetOnFinishEvent` 的回调把它停掉。所以「动画只走了一帧就停」
+  查的是 `CreateEndTask` 的队列有没有被清空，而不是 key 表。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。

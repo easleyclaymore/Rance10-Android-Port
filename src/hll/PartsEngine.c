@@ -3959,9 +3959,22 @@ static void PE_SetMessageWindowTextSpeed(int no, int speed)
 	MSGWIN_HIT("SetMessageWindowTextSpeed no=%d speed=%d", no, speed);
 }
 
-/* AIN SetMotionData：void SetMotionData。[HACK-POC D85] 空实现（setter 占位）。 */
+/* AIN SetMotionData：void SetMotionData。[HACK-POC D85] 空实现（setter 占位）。
+ *
+ * [D486] **这条桩是「窗口淡出不动」的头号嫌疑**：
+ * `BattleInfoView@Hide` 走 `Parts@Motion → PartsMotionTask@SetAlpha(1,0,…)`
+ * —— 这些全是 **AIN 类**（`SetKey` 只是 `Array.PushBack` 存 key），
+ * AIN 侧每帧算好插值后调这个 HLL 把值写到部件上。桩什么都不做，
+ * alpha 就停在 1，战况窗口淡出永远不发生。
+ * 探针（`XSYS4_MOTION_DBG=1`）确认它到底被调多勤、参数长什么样。 */
 static void PE_Noop_SetMotionData(int a0, struct string * a1, int a2, int a3)
 {
+	if (getenv("XSYS4_MOTION_DBG")) {
+		static int n;
+		if (n++ < 200)
+			NOTICE("[motion] SetMotionData a0=%d a1='%s' a2=%d a3=%d",
+			       a0, a1 ? a1->text : "(null)", a2, a3);
+	}
 	(void)a0;
 	(void)a1;
 	(void)a2;
