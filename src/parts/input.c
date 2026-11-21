@@ -119,6 +119,37 @@ static int parts_input_z_cmp(const void *a, const void *b)
 static struct parts **input_z_sorted;
 static int input_z_cap;
 
+/* [D496] 输入处理参与开关（AIN `SetEnableInputProcess`）的门控判定。
+ *
+ * 契约（离线 xref，见 parts_internal.h 字段注释）：AIN 侧只写不读，
+ * 消费方是原版引擎 C++ 输入处理器。AIN 自己的输入组件过滤
+ * `IsInputPartsActive(7243)` 按**类型 {4,7,11}** 判定——那就是"输入
+ * 组件族"（文本框/组合框/微调框一族），本门控用同一类型集：
+ *   - 只看 `component_type >= 0`（显式设过）的部件，反推值不算；
+ *   - flag=0 时该部件不拦光标、不捕获点击（`is_hovered` 不动——
+ *     D490 的教训：接收事件与捕获点击是两个语义）；
+ *   - clickable 语义原样保留（D165 教训：映射成 clickable 全局生效
+ *     会把活动文件点击許可打开的按钮全关掉，整局卡死在任务地图）。
+ * `XSYS4_EIP_GATE=0` 回退（转正闸，判据：D165 场景回归——活动装载
+ * 107 个、任务地图可进战斗）。 */
+static bool eip_gate(void)
+{
+	static int v = -1;
+	if (v < 0) {
+		const char *e = getenv("XSYS4_EIP_GATE");
+		v = !(e && !strcmp(e, "0"));
+	}
+	return v;
+}
+
+static bool parts_input_disabled(struct parts *parts)
+{
+	if (!eip_gate() || parts->enable_input_process)
+		return false;
+	int ct = parts->states[PARTS_STATE_DEFAULT].component_type;
+	return ct == 4 || ct == 7 || ct == 11;
+}
+
 static struct parts **parts_input_collect(int *out_nr)
 {
 	int nr = 0;
@@ -348,6 +379,10 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	if (getenv("XSYS4_CLICK_SKIP_INVISIBLE") && parts->global.alpha <= 0) {
 		hover_blocking = false;
 	}
+	/* [D496] 输入组件被 AIN 关掉输入处理时不拦光标（与 click_eligible
+	 * 的门控成对——D261 的教训：判据必须成对改）。 */
+	if (parts_input_disabled(parts))
+		hover_blocking = false;
 	if (is_hovered && hover_blocking)
 		*hover_consumed = true;
 	/* [D309] 第一个（z 最高、可见、命中）的部件即「光标指向的部件」，
@@ -458,6 +493,10 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 
 	bool click_eligible = (parts->clickable || !parts->pass_cursor)
 		&& parts->global.alpha > 0;   /* [D490] 淡出件不捕获 */
+	/* [D496] 输入组件被 AIN 关掉输入处理时不捕获点击（与上面的
+	 * hover_blocking 门控成对）。 */
+	if (parts_input_disabled(parts))
+		click_eligible = false;
 	/* [D338] 与 hover 拦截同一判据（见上）。只放 hover 不改这里，
 	 * 仍会被它抢走 `click_down_parts`。 */
 	if (pe_needs_shape && pe_no_shape)

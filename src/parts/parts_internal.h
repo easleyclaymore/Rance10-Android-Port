@@ -498,6 +498,20 @@ struct parts_widget {
 	 * 超界槽忽略并告警。名字不需要持久化（跟复选框状态同理）。 */
 	struct string *sound_name[PARTS_SOUND_NAME_SLOTS];
 
+	/* --- 按键等待指示（キー待ち表示，[D496]）---
+	 * 消息窗一族：AIN `_CMsgKeyWait@_PreCommand` → show(0)（打字中）、
+	 * `_PostCommand` → show(1)（等按键，实测 693 次/章）、6189 → show(0)+清
+	 * 委托（消息窗销毁）。CG 名是**连番动画**（start_no/numof/time_per_cg，
+	 * 来自 SetKeyWaitCGName 的实参布局 = GetKeyWaitCGName 的四个出参）；
+	 * 也可以是 flat。运行期 SetKeyWaitCGName/FlatName/Pos **0 次命中**
+	 * （hllhot 实测）——图形/位置走引擎默认，素材与闪烁节奏不可知，
+	 * 渲染挂钩待证据；先把状态存真、getter 读回。 */
+	struct string *keywait_cg;
+	int keywait_cg_start_no, keywait_cg_numof, keywait_cg_time;
+	struct string *keywait_flat;
+	int keywait_x, keywait_y, keywait_z;
+	bool keywait_show;
+
 	/* --- 单选按钮组：成员是子部件号 --- */
 	int *radio_children;
 	int nr_radio_children, cap_radio_children;
@@ -613,6 +627,18 @@ struct parts {
 	/* [D396] 像素级判定：命中要求该像素不透明（`SetPartsPixelDecide`）。
 	 * 加在 `widget` 之后，同样不参与 `parts/save.c` 的顺序序列化。 */
 	bool pixel_decide;
+	/* [D496] 输入处理参与开关（AIN `SetEnableInputProcess`）。
+	 * 契约（离线 xref）：AIN 侧只写不读——detail::Set(8255) 的调用点
+	 * 全是类方法转发、转发自身 0 静态调用点；IsInputPartsActive(7243)
+	 * 按类型 {4,7,11} 过滤也不读它 ⇒ 消费方是原版引擎 C++ 输入处理器。
+	 * 引擎侧消费：input.c 对**组件类型显式 ∈ {4,7,11}**（文本框/组合框/
+	 * 微调框一族）的部件生效；不碰 clickable（D165 教训：输入处理开关
+	 * ≠ 可点击，全局映射会把活动文件点击許可打开的按钮全关掉）。
+	 * 默认 true：AIN 初始化时统一先关（D165 实测 enable=0 占 238/242），
+	 * "新建即关"会把没被 AIN 显式关过的件也一并关掉。
+	 * 加在 pixel_decide 之后，同样不参与顺序序列化；无需持久化
+	 * （场景重建时 AIN 会重设）。 */
+	bool enable_input_process;
 };
 
 #define PARTS_LIST_FOREACH(iter) TAILQ_FOREACH(iter, &parts_list, parts_list_entry)

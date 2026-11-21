@@ -666,16 +666,21 @@ static int PartsEngine_CreateUserPartsNumber(void)
  * 输入组件过滤）按类型 {4,7,11} 判定、根本不读这个 flag。⇒ 开关的消费
  * 方在**原版引擎的 C++ 输入处理器**里，AIN 只是转存。
  *
- * 修复方向（待实现，见台账 L1）：存旁路表，在引擎输入派发路径对**输入
- * 组件族**（type 4/7/11）生效；不碰 clickable——D165 的教训正是
- * 「输入处理开关 ≠ 可点击」。 */
+ * 修复方向（[D496] 已实现）：flag 存 `parts->enable_input_process`
+ * （默认 true——AIN 初始化时统一先关），input.c 对**组件类型显式
+ * ∈ {4,7,11}** 的部件门控 hover/click——输入组件族之外一律不碰，
+ * clickable 语义原样保留。`XSYS4_EIP_GATE=0` 回退。 */
 static void PartsEngine_SetEnableInputProcess(int parts_no, int enable)
 {
-	if (getenv("XSYS4_DBG_EIP"))
-		NOTICE("[eip] no=%d enable=%d", parts_no, enable);
-	/* 故意不写 parts->clickable，见上面的说明。 */
-	(void)parts_no;
-	(void)enable;
+	PE_set_enable_input_process(parts_no, enable != 0);
+}
+
+/* [D496] `bool IsEnableInputProcess(int parts_no)`（dump-hll：
+ * args=1 / ret bool）。AIN 侧同样只是类方法转发，配对 getter
+ * 原样回读；部件不存在时返回 true（与"新建即开"默认一致）。 */
+static bool PartsEngine_IsEnableInputProcess(int parts_no)
+{
+	return PE_get_enable_input_process(parts_no);
 }
 
 /* AIN f：void Parts_SetPartsTextCountReturn。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
@@ -1630,37 +1635,51 @@ static void PE_Noop_SetHScrollbarOverrideRightFlatName(int a0, struct string * a
 	(void)a1;
 }
 
-/* AIN SetKeyWaitCGName：void SetKeyWaitCGName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetKeyWaitCGName(int a0, struct string * a1, int a2, int a3, int a4)
+/* [D496] 按键等待指示（キー待ち表示）一族：状态存 parts_widget
+ * （见那里 [D496] 注释的调用方证据）。运行期只有 SetKeyWaitShow 被调
+ * （693 次/章），CG/Flat/Pos 三个配置 setter 0 次命中——但照实存，
+ * getter 读回；渲染挂钩待引擎默认图形证据（素材/闪烁节奏不可知，
+ * 不猜）。 */
+static void PE_SetKeyWaitCGName(int no, struct string *name, int start_no,
+		int numof_cg, int time_per_cg)
 {
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
-	(void)a4;
+	struct parts_widget *w = PE_widget(no);
+	if (!w)
+		return;
+	if (w->keywait_cg)
+		free_string(w->keywait_cg);
+	w->keywait_cg = name ? string_dup(name) : NULL;
+	w->keywait_cg_start_no = start_no;
+	w->keywait_cg_numof = numof_cg;
+	w->keywait_cg_time = time_per_cg;
 }
 
-/* AIN SetKeyWaitFlatName：void SetKeyWaitFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetKeyWaitFlatName(int a0, struct string * a1)
+static void PE_SetKeyWaitFlatName(int no, struct string *name)
 {
-	(void)a0;
-	(void)a1;
+	struct parts_widget *w = PE_widget(no);
+	if (!w)
+		return;
+	if (w->keywait_flat)
+		free_string(w->keywait_flat);
+	w->keywait_flat = name ? string_dup(name) : NULL;
 }
 
-/* AIN SetKeyWaitPos：void SetKeyWaitPos。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetKeyWaitPos(int a0, int a1, int a2, int a3)
+static void PE_SetKeyWaitPos(int no, int x, int y, int z)
 {
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
+	struct parts_widget *w = PE_widget(no);
+	if (!w)
+		return;
+	w->keywait_x = x;
+	w->keywait_y = y;
+	w->keywait_z = z;
 }
 
-/* AIN SetKeyWaitShow：void SetKeyWaitShow。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetKeyWaitShow(int a0, int a1)
+static void PE_SetKeyWaitShow(int no, int show)
 {
-	(void)a0;
-	(void)a1;
+	struct parts_widget *w = PE_widget(no);
+	if (!w)
+		return;
+	w->keywait_show = show != 0;
 }
 
 /* AIN SetLayoutBoxPadding：void SetLayoutBoxPadding。[HACK-POC D85] 空实现（setter 占位）。 */
@@ -3723,11 +3742,15 @@ static void PE_GetMessageWindowTextSpace(int no, int *letter, int *line)
 static void PE_GetKeyWaitCGName(int no, struct string **name, int *start_no,
 		int *numof_cg, int *time_per_cg)
 {
-	(void)no;
-	if (name) *name = string_dup(&EMPTY_STRING);
-	if (start_no) *start_no = 0;
-	if (numof_cg) *numof_cg = 0;
-	if (time_per_cg) *time_per_cg = 0;
+	/* [D496] 读真值：与 PE_SetKeyWaitCGName 对称。 */
+	struct parts_widget *w = PE_widget_peek(no);
+	if (name)
+		*name = (w && w->keywait_cg)
+			? string_dup(w->keywait_cg)
+			: string_dup(&EMPTY_STRING);
+	if (start_no) *start_no = w ? w->keywait_cg_start_no : 0;
+	if (numof_cg) *numof_cg = w ? w->keywait_cg_numof : 0;
+	if (time_per_cg) *time_per_cg = w ? w->keywait_cg_time : 0;
 }
 
 static int PE_GetMessageWindowTextOriginPosMode(int no)
@@ -3755,10 +3778,27 @@ static int PE_GetMessageWindowInactiveMultipleColorB(int no)
 	struct parts_widget *w = PE_widget_peek(no);
 	return w ? w->msg_inactive_b : 255;
 }
-static int PE_GetKeyWaitPosX(int no) { (void)no; return 0; }
-static int PE_GetKeyWaitPosY(int no) { (void)no; return 0; }
-static int PE_GetKeyWaitPosZ(int no) { (void)no; return 0; }
-static bool PE_IsKeyWaitShow(int no) { (void)no; return false; }
+static int PE_GetKeyWaitPosX(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->keywait_x : 0;
+}
+static int PE_GetKeyWaitPosY(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->keywait_y : 0;
+}
+static int PE_GetKeyWaitPosZ(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->keywait_z : 0;
+}
+/* [D496] 读真值：与 PE_SetKeyWaitShow 对称。 */
+static bool PE_IsKeyWaitShow(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->keywait_show : false;
+}
 static bool PE_IsComponentMessageWindowEffectLink(int no) { (void)no; return false; }
 
 /* [D396] 消息窗口的底图 / flat 名 getter。
@@ -3787,7 +3827,10 @@ static struct string *PE_GetMessageWindowCGName(int no)
 
 static struct string *PE_GetKeyWaitFlatName(int no)
 {
-	(void)no;
+	/* [D496] 读真值：与 PE_SetKeyWaitFlatName 对称。 */
+	struct parts_widget *w = PE_widget_peek(no);
+	if (w && w->keywait_flat)
+		return string_dup(w->keywait_flat);
 	return string_dup(&EMPTY_STRING);
 }
 
@@ -5488,6 +5531,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_TODO_EXPORT(LoadParts, PartsEngine_LoadParts),
 	    HLL_EXPORT(CreateUserPartsNumber, PartsEngine_CreateUserPartsNumber),
 	    HLL_EXPORT(SetEnableInputProcess, PartsEngine_SetEnableInputProcess),
+	    HLL_EXPORT(IsEnableInputProcess, PartsEngine_IsEnableInputProcess),
 	    HLL_EXPORT(Parts_SetAnchor, PE_Noop_Parts_SetAnchor),
 	    HLL_EXPORT(Parts_SetFlatBeginSeekFrame, PE_Noop_Parts_SetFlatBeginSeekFrame),
 	    HLL_EXPORT(Parts_SetFlatEnableLayer, PE_Noop_Parts_SetFlatEnableLayer),
@@ -5567,10 +5611,10 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetHScrollbarOverrideLeftFlatName, PE_SetHScrollbarOverrideLeftFlatName),
 	    HLL_EXPORT(SetHScrollbarOverrideRightCGName, PE_SetHScrollbarOverrideRightCGName),
 	    HLL_EXPORT(SetHScrollbarOverrideRightFlatName, PE_SetHScrollbarOverrideRightFlatName),
-	    HLL_EXPORT(SetKeyWaitCGName, PE_Noop_SetKeyWaitCGName),
-	    HLL_EXPORT(SetKeyWaitFlatName, PE_Noop_SetKeyWaitFlatName),
-	    HLL_EXPORT(SetKeyWaitPos, PE_Noop_SetKeyWaitPos),
-	    HLL_EXPORT(SetKeyWaitShow, PE_Noop_SetKeyWaitShow),
+	    HLL_EXPORT(SetKeyWaitCGName, PE_SetKeyWaitCGName),
+	    HLL_EXPORT(SetKeyWaitFlatName, PE_SetKeyWaitFlatName),
+	    HLL_EXPORT(SetKeyWaitPos, PE_SetKeyWaitPos),
+	    HLL_EXPORT(SetKeyWaitShow, PE_SetKeyWaitShow),
 	    HLL_EXPORT(SetLayoutBoxReturnSizeForRate, PE_Noop_SetLayoutBoxReturnSizeForRate),
 	    HLL_EXPORT(SetLockInputState, PE_Noop_SetLockInputState),
 	    HLL_EXPORT(SetMessageWindowActive, PE_SetMessageWindowActive),

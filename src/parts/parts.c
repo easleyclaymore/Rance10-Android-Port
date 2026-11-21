@@ -230,6 +230,10 @@ struct parts *parts_get(int parts_no)
 	struct parts *parts = parts_alloc();
 	parts->no = parts_no;
 	parts->controller_no = ctrl_stack.active;
+	/* [D496] 输入处理开关默认开：AIN 初始化时统一先关（enable=0 占
+	 * 238/242，D165 实测），所以必须"新建即开"，否则没被 AIN 显式
+	 * 关过的输入组件也一并失效。 */
+	parts->enable_input_process = true;
 	/* [D320] 部件生命周期探针：`XSYS4_PART_LIFE=1` 时打印 900000560..900000600
 	 * 这一段（回想对话框）的**创建**。起因：AIN 给按钮 574 绑了
 	 * `SetDelegateIndex(574, 404)`，之后 `GetDelegateIndex(574)` 却读回 -1 ——
@@ -374,6 +378,29 @@ struct string *PE_Parts_GetSoundName(int parts_no, int slot)
 	if (w && w->sound_name[slot])
 		return string_dup(w->sound_name[slot]);
 	return make_string("", 0);
+}
+
+/* [D496] 输入处理参与开关的存取（`SetEnableInputProcess` /
+ * `IsEnableInputProcess`）。语义见 parts_internal.h 里字段注释与
+ * input.c 的门控点。用 try_get：对不存在的部件号只记痕，不为设个
+ * flag 就把部件建进表里。 */
+void PE_set_enable_input_process(int parts_no, bool enable)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts) {
+		if (getenv("XSYS4_DBG_EIP"))
+			NOTICE("[eip] set no=%d enable=%d MISS", parts_no, enable);
+		return;
+	}
+	parts->enable_input_process = enable;
+	if (getenv("XSYS4_DBG_EIP"))
+		NOTICE("[eip] set no=%d enable=%d", parts_no, enable);
+}
+
+bool PE_get_enable_input_process(int parts_no)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	return parts ? parts->enable_input_process : true;
 }
 
 bool parts_exists(int parts_no)
@@ -1455,6 +1482,11 @@ void PE_widget_free(struct parts_widget *w)
 	for (unsigned i = 0; i < PARTS_SOUND_NAME_SLOTS; i++)
 		if (w->sound_name[i])
 			free_string(w->sound_name[i]);
+	/* [D496] 按键等待指示 */
+	if (w->keywait_cg)
+		free_string(w->keywait_cg);
+	if (w->keywait_flat)
+		free_string(w->keywait_flat);
 	if (w->text)
 		free_string(w->text);
 	if (w->msg_func_name)
