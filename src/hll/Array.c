@@ -1560,6 +1560,95 @@ static void *Array_Max_(struct page **a, uintptr_t predicate)
 	return array_extreme_(a, predicate, true);
 }
 
+/* [D424] `Array.NV_*`：int 数组的原地标量运算。
+
+ * 签名取自 upstream 注释：`void Array_NV_add(struct page **nArray, int nNum)` ——
+ * 第一个参数是数组引用（原地修改），第二个是 int 标量。
+ * 命名规则：`<元素类型><操作数类型>_<操作>`，N=int / S=string / F=float / V=标量。
+ * Array 库最大的一块缺口（212/253）就是这一族，先补加减乘除与位运算。 */
+static void Array_NV_add(struct page **nArray, int nNum)
+{
+	if (!nArray || !*nArray)
+		return;
+	struct page *a = *nArray;
+	for (int i = 0; i < a->nr_vars; i++)
+		a->values[i].i += nNum;
+}
+
+static void Array_NV_sub(struct page **nArray, int nNum)
+{
+	if (!nArray || !*nArray)
+		return;
+	struct page *a = *nArray;
+	for (int i = 0; i < a->nr_vars; i++)
+		a->values[i].i -= nNum;
+}
+
+static void Array_NV_mul(struct page **nArray, int nNum)
+{
+	if (!nArray || !*nArray)
+		return;
+	struct page *a = *nArray;
+	for (int i = 0; i < a->nr_vars; i++)
+		a->values[i].i *= nNum;
+}
+
+static void Array_NV_and(struct page **nArray, int nNum)
+{
+	if (!nArray || !*nArray)
+		return;
+	struct page *a = *nArray;
+	for (int i = 0; i < a->nr_vars; i++)
+		a->values[i].i &= nNum;
+}
+
+static void Array_NV_or(struct page **nArray, int nNum)
+{
+	if (!nArray || !*nArray)
+		return;
+	struct page *a = *nArray;
+	for (int i = 0; i < a->nr_vars; i++)
+		a->values[i].i |= nNum;
+}
+
+static void Array_NV_xor(struct page **nArray, int nNum)
+{
+	if (!nArray || !*nArray)
+		return;
+	struct page *a = *nArray;
+	for (int i = 0; i < a->nr_vars; i++)
+		a->values[i].i ^= nNum;
+}
+
+static void Array_NV_div(struct page **nArray, int nNum)
+{
+	if (!nArray || !*nArray || nNum == 0)
+		return;
+	struct page *a = *nArray;
+	for (int i = 0; i < a->nr_vars; i++)
+		a->values[i].i /= nNum;
+}
+
+static void Array_NV_min(struct page **nArray, int nNum)
+{
+	if (!nArray || !*nArray)
+		return;
+	struct page *a = *nArray;
+	for (int i = 0; i < a->nr_vars; i++)
+		if (a->values[i].i < nNum)
+			a->values[i].i = nNum;
+}
+
+static void Array_NV_max(struct page **nArray, int nNum)
+{
+	if (!nArray || !*nArray)
+		return;
+	struct page *a = *nArray;
+	for (int i = 0; i < a->nr_vars; i++)
+		if (a->values[i].i > nNum)
+			a->values[i].i = nNum;
+}
+
 HLL_LIBRARY(Array,
 	    HLL_EXPORT(EraseAll, Array_EraseAll_),
 	    HLL_EXPORT(At, Array_At_),
@@ -1591,15 +1680,15 @@ HLL_LIBRARY(Array,
 	    HLL_EXPORT(Numof, Array_Numof_),
 	    HLL_EXPORT(Empty, Array_Empty_),
 	    HLL_TODO_EXPORT(NV_copy, Array_NV_copy),
-	    HLL_TODO_EXPORT(NV_add, Array_NV_add),
-	    HLL_TODO_EXPORT(NV_sub, Array_NV_sub),
-	    HLL_TODO_EXPORT(NV_mul, Array_NV_mul),
-	    HLL_TODO_EXPORT(NV_div, Array_NV_div),
-	    HLL_TODO_EXPORT(NV_and, Array_NV_and),
-	    HLL_TODO_EXPORT(NV_or, Array_NV_or),
-	    HLL_TODO_EXPORT(NV_xor, Array_NV_xor),
-	    HLL_TODO_EXPORT(NV_min, Array_NV_min),
-	    HLL_TODO_EXPORT(NV_max, Array_NV_max),
+	    HLL_EXPORT(NV_add, Array_NV_add),
+	    HLL_EXPORT(NV_sub, Array_NV_sub),
+	    HLL_EXPORT(NV_mul, Array_NV_mul),
+	    HLL_EXPORT(NV_div, Array_NV_div),
+	    HLL_EXPORT(NV_and, Array_NV_and),
+	    HLL_EXPORT(NV_or, Array_NV_or),
+	    HLL_EXPORT(NV_xor, Array_NV_xor),
+	    HLL_EXPORT(NV_min, Array_NV_min),
+	    HLL_EXPORT(NV_max, Array_NV_max),
 	    HLL_TODO_EXPORT(NN_copy, Array_NN_copy),
 	    HLL_TODO_EXPORT(NN_add, Array_NN_add),
 	    HLL_TODO_EXPORT(NN_sub, Array_NN_sub),
