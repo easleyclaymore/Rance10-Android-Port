@@ -253,6 +253,26 @@ task.SetAlpha(0.0, 1.0, 0)         ; 同时淡入
 目前只读到「从某个结构引用偏移 5 取出来」这一层，没有再往下拆 —— 但
 「回调只挂一次」这个结论不依赖它。
 
+### 4.5.7 补间任务体系：谁推进、谁收尾
+
+| 环节 | 事实 |
+|---|---|
+| 取任务 | `TextButton@Motion()` = `this.m3.Motion()` —— 取**锚点部件**的 `PartsMotionTask` |
+| 设起止 | `SetPos(-300,0,0,0,1)` / `SetAlpha(0,1,0)` |
+| 挂回调 | `SetOnFinishEvent(dg)` 只做 `m2 = dg`，它自己**不触发**任何东西 |
+| 推进 | `PartsMotionTask@OnUpdate`：**`m1 == -1` 时直接 return** |
+| 时钟 | `PE_AdvanceMotionClock(dt)` 只在 `vm_frame_pump` 里调；`dt = now - last_tick`，上限 100ms |
+| 收尾 | 两条互不依赖的路：① `m2` 回调（`dg`）；② `PartsMotionTaskList@CheckJoin` → `EndWaitForClick` |
+
+`SceneTurnStart@FadeOut` 只用了 ①：`Overlay.FadeOut(1500, dg = SceneStack@Exit)` 挂的是
+`m2`，由 `CASTask` 的完成事件触发，**不经过 `CheckJoin`**。所以「淡出完成」这件事
+完全落在补间任务的完成事件上，和 `WaitForClick` 的等待机制是两套东西。
+
+**`m1 == -1` 那条判据要记住**：任务的目标部件一旦失效（切场景、部件被释放），
+`OnUpdate` 每帧直接返回，进度永远到不了 1，`m2` 也就永不触发。
+表现出来是「动画停住、回调不来」，而不是报错 —— 这类故障只能从
+「任务有没有绑上一个活着的部件」去查。
+
 ## 4.6 字符出来了但显示方框：先分码表、再分字体
 
 多字节编码的引擎里，「文字没显示」至少有三层，症状却几乎一样：纹理尺寸正常、
