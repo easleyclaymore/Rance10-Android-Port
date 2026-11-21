@@ -332,6 +332,8 @@ void PE_EndMotion(void);
 void PE_SetMotionTime(int t);
 void PE_SeekEndMotion(void);
 void PE_UpdateMotionTime(int time, bool skip);
+/* [D389] motion 帧号：起点恒 0（我们只有一个全局 motion 时钟）。 */
+int PE_GetMotionBeginFrame(void);
 void PE_AdvanceMotionClock(int passed_time);
 bool PE_IsMotion(void);
 int PE_GetMotionEndTime(void);

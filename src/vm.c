@@ -2171,32 +2171,46 @@ void vm_pump_auto_click(uint32_t now)
  * 所以它只在 VM 真的在跑字节码时才涨：标题画面静止等输入时几乎不涨
  * （`ac1` 实测 200 秒只到几百帧，1500 帧没触发）。要用它必须先把游戏点进去。
  * 与其它 AUTO_* 一样是**诊断后门**，默认关。 */
+static int auto_call_fno = -1;
+static int auto_call_done;
+static uint32_t auto_call_want_ms, auto_call_t0;
+
+/* [D388] XSYS4_AUTO_CALL=<fno>[:<ms>] —— 启动后 <ms> 毫秒调一次无参 AIN 函数。
+ *
+ * 原本用「帧泵计数」，`ac1`/`ac2` 实测在标题与 ADV 里涨得极慢
+ * （每 64 条字节码才 +1，而 ADV 大部分时间阻塞在 `WaitForClick`），
+ * 1500/3000 帧跑了几分钟都没到。改用墙上时间（`SDL_GetTicks`）。
+ *
+ * 用途：`Scenes::RunTurnStart`(26415) 是 `Scenes::Run(-1, lambda{new SceneTurnStart})`
+ * 的薄壳、无参，于是「进回合开始屏」不必等 10 分钟的播报。
+ * 诊断后门，默认关。 */
 void vm_pump_auto_call(void)
 {
-	static int frames = -1, want = -1, fno = -1, done;
-	if (fno != -1 || done)
+	static int inited;
+	if (inited)
 		return;
-	if (frames < 0) {
-		const char *e = getenv("XSYS4_AUTO_CALL");
-		frames = 0;
-		if (!e || !*e) {
-			fno = 0;   /* 没设：标记为已处理，别再进这个分支 */
-			return;
-		}
-		fno = atoi(e);
-		const char *c = strchr(e, ':');
-		want = (c && c[1]) ? atoi(c + 1) : 600;
-		if (fno <= 0) {
-			fno = 0;
-			return;
-		}
-		NOTICE("[acall] 将在第 %d 帧调用 fno=%d", want, fno);
-	}
-	if (++frames < want)
+	inited = 1;
+	const char *e = getenv("XSYS4_AUTO_CALL");
+	if (!e || !*e)
 		return;
-	done = 1;
-	NOTICE("[acall] 调用 fno=%d（第 %d 帧）", fno, frames);
-	vm_call(fno, -1);
+	auto_call_fno = atoi(e);
+	if (auto_call_fno <= 0)
+		return;
+	const char *c = strchr(e, ':');
+	auto_call_want_ms = (c && c[1]) ? (uint32_t)atoi(c + 1) : 10000;
+	auto_call_t0 = SDL_GetTicks();
+	NOTICE("[acall] %u ms 后调用 fno=%d", auto_call_want_ms, auto_call_fno);
+}
+
+void vm_pump_auto_call_tick(void)
+{
+	if (auto_call_done || auto_call_fno <= 0)
+		return;
+	if (SDL_GetTicks() - auto_call_t0 < auto_call_want_ms)
+		return;
+	auto_call_done = 1;
+	NOTICE("[acall] 调用 fno=%d", auto_call_fno);
+	vm_call(auto_call_fno, -1);
 	NOTICE("[acall] 返回");
 }
 
@@ -6257,6 +6271,7 @@ void vm_frame_pump(void)
 	vm_pump_parts_click();
 	vm_pump_auto_battle_end();
 	vm_pump_auto_call();
+	vm_pump_auto_call_tick();
 	vm_pump_auto_skill();
 	vm_pump_auto_click(now);
 	/* [MEM] XSYS4_MEM_STAT=1：每约 2 秒打印一次虚拟机堆的构成。

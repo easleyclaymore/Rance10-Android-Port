@@ -2979,6 +2979,12 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(IsMotion, PE_IsMotion),
 	    HLL_EXPORT(SeekEndMotion, PE_SeekEndMotion),
 	    HLL_EXPORT(UpdateMotionTime, PE_UpdateMotionTime),
+	    /* [D389] 这两个一直在未实现清单里（`[TURNSTALL]` 相关）：
+	     * `PartsMotionTask@IsFinish` → `CASTask@IsEndTask` 要判「到没到结束帧」，
+	     * 而 AIN 侧拿帧号的入口就是它们。我们只有一个全局 motion 时钟，
+	     * 起点恒 0、终点是 `motion_end_t`。 */
+	    HLL_EXPORT(GetMotionBeginFrame, PE_GetMotionBeginFrame),
+	    HLL_EXPORT(GetMotionEndFrame, PE_GetMotionEndTime),
 	    HLL_EXPORT(BeginInput, PE_BeginInput),
 	    HLL_EXPORT(EndInput, PE_EndInput),
 	    HLL_EXPORT(GetClickPartsNumber, PE_GetClickPartsNumber),

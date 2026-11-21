@@ -612,6 +612,14 @@ int PE_GetMotionEndTime(void)
 	return motion_end_t;
 }
 
+/* [D389] motion 起点帧。全局 motion 时钟从 0 起，故恒 0。
+ * 与 `PE_GetMotionEndTime` 配对给 `PartsEngine.GetMotionBegin/EndFrame`，
+ * 它们是 AIN 侧 `CASTask@IsEndTask` 判「到没到结束帧」的唯一入口。 */
+int PE_GetMotionBeginFrame(void)
+{
+	return 0;
+}
+
 void PE_PauseMotion(bool pause)
 {
 	if (parts_began_click)
