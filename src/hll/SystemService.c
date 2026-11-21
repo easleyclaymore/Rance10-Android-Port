@@ -11,6 +11,7 @@
  */
 
 #include <string.h>
+#include <stdlib.h>
 #include <assert.h>
 
 #include "system4/ain.h"
@@ -441,11 +442,6 @@ static struct string *SystemService_GetGameVersionByText(void)
 
 /* AIN SystemService.GameVariable_*：第一阶段。移植里没有持久化的
  * 游戏变量，所以 IsExist 恒为 false，Get* 返回默认值（D80）。 */
-static bool SystemService_GameVariable_IsExist(uintptr_t a, uintptr_t b)
-{
-	(void)a; (void)b;
-	return false;
-}
 /* AIN f[50]：void ShowWaitMessage(bool)。这个移植不画等待遮罩。 */
 static void SystemService_ShowWaitMessage(int show)
 {
@@ -531,52 +527,160 @@ static int SS_Stub_GetWaitVSyncMode(void)
 	return 0;
 }
 
-/* AIN SystemService f[35] SystemVariable_IsExist。[HACK-POC D91] Android/SystemService 占位桩。 */
-static int SS_Stub_SystemVariable_IsExist(struct string * a0)
+/* [D393] SystemService 的变量系统（GameVariable / SystemVariable）。
+ *
+ * 现状：D91 时代这两个族全是空桩（`Set` 丢弃写入、`Get`/`GetKey` 干脆没注册），
+ * 于是「写进去再读出来」永远是空 —— 任何依赖它们的 AIN 逻辑都会**静默走错**
+ * （不报错，只是拿不到值），这类缺口比崩溃难查得多。
+ *
+ * 语义（六个函数是一组标准字典 API，从成对调用点推出）：
+ *   Set(key, value)  存
+ *   Get(key)         取；不存在时返回**空串**（AIN 侧直接当字符串用，不能给 NULL）
+ *   GetKey(index)    按**插入序**取第 index 个键（配 NumofKey 做遍历）
+ *   NumofKey()       键数
+ *   Erase(key)       删
+ *   IsExist(key)     判断
+ *
+ * 两套独立：GameVariable 属于当前游戏（将来要随存档走），SystemVariable 属于引擎
+ * （跨存档）。第一版都放内存；GameVariable 的持久化等 gsave 侧接入。
+ * 键值都是 AIN 的 GBK 字节串，按字节比较即可。
+ */
+struct ss_var { char *key; char *value; };
+struct ss_var_table { struct ss_var *e; int n, cap; };
+
+static struct ss_var_table ss_sysvar, ss_gamevar;
+
+static int ss_var_find(struct ss_var_table *t, const char *key)
 {
-	(void)a0;
-	return 0;
+	for (int i = 0; i < t->n; i++)
+		if (!strcmp(t->e[i].key, key))
+			return i;
+	return -1;
 }
+
+static void ss_var_set(struct ss_var_table *t, const char *key, const char *value)
+{
+	if (!key || !*key)
+		return;
+	int i = ss_var_find(t, key);
+	if (i < 0) {
+		if (t->n == t->cap) {
+			t->cap = t->cap ? t->cap * 2 : 16;
+			t->e = xrealloc(t->e, t->cap * sizeof(*t->e));
+		}
+		i = t->n++;
+		t->e[i].key = strdup(key);
+		t->e[i].value = NULL;
+	}
+	free(t->e[i].value);
+	t->e[i].value = strdup(value ? value : "");
+}
+
+static const char *ss_var_get(struct ss_var_table *t, const char *key)
+{
+	if (!key || !*key)
+		return NULL;
+	int i = ss_var_find(t, key);
+	return i < 0 ? NULL : t->e[i].value;
+}
+
+static const char *ss_var_get_key(struct ss_var_table *t, int index)
+{
+	if (index < 0 || index >= t->n)
+		return NULL;
+	return t->e[index].key;
+}
+
+static void ss_var_erase(struct ss_var_table *t, const char *key)
+{
+	int i = (key && *key) ? ss_var_find(t, key) : -1;
+	if (i < 0)
+		return;
+	free(t->e[i].key);
+	free(t->e[i].value);
+	memmove(&t->e[i], &t->e[i + 1], (t->n - i - 1) * sizeof(*t->e));
+	t->n--;
+}
+
+/* --- SystemVariable：引擎级 --- */
+static bool SS_SystemVariable_IsExist(struct string *k)
+{
+	return ss_var_get(&ss_sysvar, k ? k->text : NULL) != NULL;
+}
+
+static void SS_SystemVariable_Set(struct string *k, struct string *v)
+{
+	ss_var_set(&ss_sysvar, k ? k->text : NULL, v ? v->text : "");
+}
+
+static struct string *SS_SystemVariable_Get(struct string *k)
+{
+	const char *v = ss_var_get(&ss_sysvar, k ? k->text : NULL);
+	return v ? cstr_to_string(v) : string_dup(&EMPTY_STRING);
+}
+
+static struct string *SS_SystemVariable_GetKey(int index)
+{
+	const char *k = ss_var_get_key(&ss_sysvar, index);
+	return k ? cstr_to_string(k) : string_dup(&EMPTY_STRING);
+}
+
+static int SS_SystemVariable_NumofKey(void)
+{
+	return ss_sysvar.n;
+}
+
+static void SS_SystemVariable_Erase(struct string *k)
+{
+	ss_var_erase(&ss_sysvar, k ? k->text : NULL);
+}
+
+/* --- GameVariable：当前游戏（将来随存档） --- */
+static bool SS_GameVariable_IsExist(struct string *k)
+{
+	return ss_var_get(&ss_gamevar, k ? k->text : NULL) != NULL;
+}
+
+static void SS_GameVariable_Set(struct string *k, struct string *v)
+{
+	ss_var_set(&ss_gamevar, k ? k->text : NULL, v ? v->text : "");
+}
+
+static struct string *SS_GameVariable_Get(struct string *k)
+{
+	const char *v = ss_var_get(&ss_gamevar, k ? k->text : NULL);
+	return v ? cstr_to_string(v) : string_dup(&EMPTY_STRING);
+}
+
+static struct string *SS_GameVariable_GetKey(int index)
+{
+	const char *k = ss_var_get_key(&ss_gamevar, index);
+	return k ? cstr_to_string(k) : string_dup(&EMPTY_STRING);
+}
+
+static int SS_GameVariable_NumofKey(void)
+{
+	return ss_gamevar.n;
+}
+
+static void SS_GameVariable_Erase(struct string *k)
+{
+	ss_var_erase(&ss_gamevar, k ? k->text : NULL);
+}
+
+/* AIN SystemService f[35] SystemVariable_IsExist。[HACK-POC D91] Android/SystemService 占位桩。 */
 
 /* AIN SystemService f[36] SystemVariable_Set。[HACK-POC D91] Android/SystemService 占位桩。 */
-static void SS_Stub_SystemVariable_Set(struct string * a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
 
 /* AIN SystemService f[38] SystemVariable_NumofKey。[HACK-POC D91] Android/SystemService 占位桩。 */
-static int SS_Stub_SystemVariable_NumofKey(void)
-{
-
-	return 0;
-}
 
 /* AIN SystemService f[40] SystemVariable_Erase。[HACK-POC D91] Android/SystemService 占位桩。 */
-static void SS_Stub_SystemVariable_Erase(struct string * a0)
-{
-	(void)a0;
-}
 
 /* AIN SystemService f[42] GameVariable_Set。[HACK-POC D91] Android/SystemService 占位桩。 */
-static void SS_Stub_GameVariable_Set(struct string * a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
 
 /* AIN SystemService f[44] GameVariable_NumofKey。[HACK-POC D91] Android/SystemService 占位桩。 */
-static int SS_Stub_GameVariable_NumofKey(void)
-{
-
-	return 0;
-}
 
 /* AIN SystemService f[46] GameVariable_Erase。[HACK-POC D91] Android/SystemService 占位桩。 */
-static void SS_Stub_GameVariable_Erase(struct string * a0)
-{
-	(void)a0;
-}
 
 /* AIN SystemService f[47] GetPlatformType。[HACK-POC D91] Android/SystemService 占位桩。 */
 static int SS_Stub_GetPlatformType(void)
@@ -642,7 +746,7 @@ HLL_LIBRARY(SystemService,
 	    HLL_EXPORT(GetGameViewScaleRate, SystemService_GetGameViewScaleRate),
 	    HLL_EXPORT(GetGameVersionByText, SystemService_GetGameVersionByText),
 	    HLL_EXPORT(ShowWaitMessage, SystemService_ShowWaitMessage),
-	    HLL_EXPORT(GameVariable_IsExist, SystemService_GameVariable_IsExist),
+	    HLL_EXPORT(GameVariable_IsExist, SS_GameVariable_IsExist),
 	    HLL_EXPORT(_PreLink, SystemService_PreLink),
 	    HLL_EXPORT(_ModuleInit, SystemService_ModuleInit),
 	    HLL_EXPORT(GetMixerNumof, mixer_get_numof),
@@ -705,13 +809,18 @@ HLL_LIBRARY(SystemService,
 	    HLL_EXPORT(SaveScreenshot, SS_Stub_SaveScreenshot),
 	    HLL_EXPORT(SetWaitVSyncMode, SS_Stub_SetWaitVSyncMode),
 	    HLL_EXPORT(GetWaitVSyncMode, SS_Stub_GetWaitVSyncMode),
-	    HLL_EXPORT(SystemVariable_IsExist, SS_Stub_SystemVariable_IsExist),
-	    HLL_EXPORT(SystemVariable_Set, SS_Stub_SystemVariable_Set),
-	    HLL_EXPORT(SystemVariable_NumofKey, SS_Stub_SystemVariable_NumofKey),
-	    HLL_EXPORT(SystemVariable_Erase, SS_Stub_SystemVariable_Erase),
-	    HLL_EXPORT(GameVariable_Set, SS_Stub_GameVariable_Set),
-	    HLL_EXPORT(GameVariable_NumofKey, SS_Stub_GameVariable_NumofKey),
-	    HLL_EXPORT(GameVariable_Erase, SS_Stub_GameVariable_Erase),
+	    /* [D393] 变量系统：一套字典 API，两套独立命名空间。 */
+	    HLL_EXPORT(SystemVariable_IsExist, SS_SystemVariable_IsExist),
+	    HLL_EXPORT(SystemVariable_Set, SS_SystemVariable_Set),
+	    HLL_EXPORT(SystemVariable_Get, SS_SystemVariable_Get),
+	    HLL_EXPORT(SystemVariable_GetKey, SS_SystemVariable_GetKey),
+	    HLL_EXPORT(SystemVariable_NumofKey, SS_SystemVariable_NumofKey),
+	    HLL_EXPORT(SystemVariable_Erase, SS_SystemVariable_Erase),
+	    HLL_EXPORT(GameVariable_Set, SS_GameVariable_Set),
+	    HLL_EXPORT(GameVariable_Get, SS_GameVariable_Get),
+	    HLL_EXPORT(GameVariable_GetKey, SS_GameVariable_GetKey),
+	    HLL_EXPORT(GameVariable_NumofKey, SS_GameVariable_NumofKey),
+	    HLL_EXPORT(GameVariable_Erase, SS_GameVariable_Erase),
 	    HLL_EXPORT(GetPlatformType, SS_Stub_GetPlatformType),
 	    HLL_EXPORT(SetAndroidViewOrientation, SS_Stub_SetAndroidViewOrientation),
 	    HLL_EXPORT(SetAndroidViewKeepScreen, SS_Stub_SetAndroidViewKeepScreen),
