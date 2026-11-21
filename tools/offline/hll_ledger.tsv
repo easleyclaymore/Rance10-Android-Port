@@ -138,4 +138,4 @@ SystemService.PopSystemMessageString	L2	已实现（D497）：bool Pop(ref strin
 FileOperation.GetFileList	L2	已实现（D497 考古定案）：X_SET（vm.c:4583，数组赋值拷负载）破译后调用点通顺 = localN = 结果 → 按 Split [D119-SPLIT] 槽号约定返回 heap_alloc_page 页；判据待跑测（0 历史命中，跑测时看 GetFolderList 不崩+返回数组长度合理）
 FileOperation.GetFolderList	L2	已实现（D497）：同上；调用点 0xb7912 在 debug 列目录路径（IsDebugMode 门控内），返回值经 X_SET 赋给 local3
 FileOperation.GetFileListWithSubFolder	L2	已实现（D497）：递归变体，此前连 TODO 导出都没有（启动告警三条之一）；判据同上
-EXWriter.全族	L2	已实现（D497）：全族按 AIN 声明顺序重排（h 在前）——旧实现个数对、顺序全错，AddArrayInt 13 次/轮零崩是 h==0 时 key=NULL 空串守卫的侥幸（静默写垃圾键）；AddTableFormat* 按声明第三参 string 解释为列模式声明（schema 行），AddTable* 本体写值。判据待跑测：EXWriter 路径不崩 + Save 产物键值结构合理
+EXWriter.全族	L2	已实现（D497）：全族按 AIN 声明顺序重排（h 在前）——旧实现个数对、顺序全错，AddArrayInt 13 次/轮零崩是 h==0 时 key=NULL 空串守卫的侥幸（静默写垃圾键）；AddTableFormat* 按声明第三参 string 解释为列模式声明（schema 行），AddTable* 本体写值。判据部分落实（d497b_exw，AUTO_CALL ExTable@Save）：CreateHandle→Save(h,path)→ReleaseHandle 全链实走、nr_args=2 新顺序生效、path 为空时优雅告警返回、零崩溃；AddTable*/AddArray* 深写路径未行使（数据填充在章节数据流里），待章节跑测
