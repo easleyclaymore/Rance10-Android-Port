@@ -333,6 +333,28 @@ AFL_View_Update(18716)
 这条链也把两个自旋的关系说清了：`WaitFrame` 与 `WaitForClick` 共用同一个
 `View_Update`，前者靠 `CheckWaitExit` 数 4 帧退出，后者靠点击号退出，互不阻塞。
 
+### 4.5.10 `RunIScene` 的两个委托：建场景 + 收尾
+
+`QuestScenes::RunQuestSelect(type)`(26324) 全文只有一个动作：
+
+```
+RunIScene(f1 = lambda: new SceneQuestSelect(type),
+          f2 = lambda: SceneQuestSelect.GetResult())
+```
+
+`f2` 在场景结束后执行 `GetResult()`，把玩家选中的关卡取出来。
+这正好对上 `RunIScene` 里那两条 foreach：
+
+- `DG_CALL 1034` → `f1`（建场景，内部 `Join` 阻塞）
+- `DG_CALL 1035` → `f2`（收尾，取结果）
+
+**`f2` 是可选的。** `Scenes::RunTurnStart` 只传了一个委托，于是 1035 那条 foreach
+一次都不跑 —— 上一轮把它标成「来源未读透」，现在清楚了：不是没来源，是**这个场景没有**。
+
+顺带一条结构事实：`RunQuestSelect` 之前被我当成「打开选关界面」，实际它只是
+「跑一次 `SceneQuestSelect` 并取回结果」。真正的关卡列表加载在 phase 4 的
+`QuestList.Load(3) + RunMultiQuest` 里，两者是两个阶段。
+
 ## 4.6 字符出来了但显示方框：先分码表、再分字体
 
 多字节编码的引擎里，「文字没显示」至少有三层，症状却几乎一样：纹理尺寸正常、
