@@ -446,9 +446,12 @@ struct parts_widget {
 	int frame_r, frame_g, frame_b; bool frame_set;
 	int select_r, select_g, select_b; bool select_set;
 
-	/* --- 单行文本输入框 / 微调框共用 --- */
+	/* --- 单行 / 多行文本输入框、微调框共用 --- */
 	int max_text_length;
 	bool readonly;
+	/* 多行文本框的滚动条开关与四边内边距（`SetMultiTextBox*`）。 */
+	bool vscroll_show, hscroll_show;
+	int pad_top, pad_bottom, pad_left, pad_right;
 
 	/* --- 列表框 --- */
 	struct string **items;
@@ -489,6 +492,21 @@ struct parts_widget {
 	/* --- 单选按钮组：成员是子部件号 --- */
 	int *radio_children;
 	int nr_radio_children, cap_radio_children;
+
+	/* --- 滚动条（组件类型 2 纵向 / 3 横向）---
+	 * 两者接口完全对称（Up/Down 对 Left/Right），所以共用一份字段。
+	 * `scroll_pos` / `scroll_rate` 是 **float**（0..1 的比率），
+	 * `total` / `view` / `move_by_button` 是整数尺寸。 */
+	struct {
+		int head_size, tail_size;      /* Up/Down 或 Left/Right 的按钮尺寸 */
+		int total_size, view_size;
+		int scroll_pos;        /* 像素位置（`GetVScrollbarScrollPos` 默认返回 PUSH 0） */
+		float scroll_rate;     /* 0..1 比率（默认返回 F_PUSH 0） */
+		int move_size_by_button;
+		struct string *cg_name, *flat_name;
+		struct string *ov_head_cg, *ov_tail_cg, *ov_bar_cg, *ov_bg_cg;
+		struct string *ov_head_flat, *ov_tail_flat, *ov_bar_flat, *ov_bg_flat;
+	} scroll;
 
 	/* --- 消息窗口 ---
 	 * 文本走通用的 `text`；`CGName` / `FlatName` 也复用通用字段。

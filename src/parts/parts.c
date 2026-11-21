@@ -1384,6 +1384,18 @@ void PE_widget_free(struct parts_widget *w)
 		free_string(w->text);
 	if (w->msg_func_name)
 		free_string(w->msg_func_name);
+	{
+		struct string *sl[] = {
+			w->scroll.cg_name, w->scroll.flat_name,
+			w->scroll.ov_head_cg, w->scroll.ov_tail_cg,
+			w->scroll.ov_bar_cg, w->scroll.ov_bg_cg,
+			w->scroll.ov_head_flat, w->scroll.ov_tail_flat,
+			w->scroll.ov_bar_flat, w->scroll.ov_bg_flat,
+		};
+		for (unsigned i = 0; i < sizeof sl / sizeof sl[0]; i++)
+			if (sl[i])
+				free_string(sl[i]);
+	}
 	for (int i = 0; i < w->nr_items; i++)
 		if (w->items[i])
 			free_string(w->items[i]);

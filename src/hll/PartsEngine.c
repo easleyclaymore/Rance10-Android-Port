@@ -1607,9 +1607,477 @@ static void PE_Noop_SetLockInputState(int a0, int a1)
 	(void)a1;
 }
 
+
 /* [D396] 控件字符串槽的读写（定义在下方 TextBox 段）。 */
 static void widget_set_string(struct string **slot, struct string *v);
 static struct string *widget_get_string(struct string **slot);
+
+/* ===== [D396] 控件：多行文本输入框（组件类型 7） =====
+ *
+ * 单行文本框的超集：多出「纵向/横向滚动条开关」与「四边内边距」。
+ * 文本、长度上限、只读、四组颜色、字体、字距、行距与 TextBox 同义，
+ * 直接复用 `parts_widget` 的同一批字段 —— 它们是同一个部件的不同形态，
+ * AIN 也不会同时按两种控件访问同一个部件。
+ */
+static void PE_SetMultiTextBoxSize(int no, int w, int h)
+{
+	PE_SetPartsSize(no, w, h, 1);
+}
+
+static void PE_SetMultiTextBoxFontProperty(int no, int type, int size, int r,
+		int g, int b, float bold_weight, int edge_r, int edge_g, int edge_b,
+		float edge_weight)
+{
+	PE_SetPartsFontType(no, type, 1);
+	PE_SetPartsFontSize(no, size, 1);
+	PE_SetPartsFontColor(no, r, g, b, 1);
+	PE_SetPartsFontBoldWeight(no, bold_weight, 1);
+	PE_SetPartsFontEdgeColor(no, edge_r, edge_g, edge_b, 1);
+	PE_SetPartsFontEdgeWeight(no, edge_weight, 1);
+}
+static void PE_GetMultiTextBoxFontProperty(int no, int *type, int *size, int *r,
+		int *g, int *b, float *bold_weight, int *edge_r, int *edge_g,
+		int *edge_b, float *edge_weight)
+{
+	PE_GetPartsFontType(no, type, 1);
+	PE_GetPartsFontSize(no, size, 1);
+	PE_GetPartsFontColor(no, r, g, b, 1);
+	PE_GetPartsFontBoldWeight(no, bold_weight, 1);
+	PE_GetPartsFontEdgeColor(no, edge_r, edge_g, edge_b, 1);
+	PE_GetPartsFontEdgeWeight(no, edge_weight, 1);
+}
+
+static void PE_SetMultiTextBoxReadOnly(int no, bool ro)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->readonly = ro;
+}
+static bool PE_IsMultiTextBoxReadOnly(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->readonly : false;
+}
+
+static void PE_SetMultiTextBoxText(int no, struct string *text)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->text, text);
+}
+static struct string *PE_GetMultiTextBoxText(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->text) : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetMultiTextBoxMaxTextLength(int no, int len)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->max_text_length = len;
+}
+static int PE_GetMultiTextBoxMaxTextLength(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->max_text_length : 0;
+}
+
+static void PE_SetMultiTextBoxBGColor(int no, int r, int g, int b)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) { w->bg_r = r; w->bg_g = g; w->bg_b = b; w->bg_set = true; }
+}
+static int PE_GetMultiTextBoxBGR(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->bg_set) ? w->bg_r : 255;
+}
+static int PE_GetMultiTextBoxBGG(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->bg_set) ? w->bg_g : 255;
+}
+static int PE_GetMultiTextBoxBGB(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->bg_set) ? w->bg_b : 255;
+}
+
+static void PE_SetMultiTextBoxReadOnlyBGColor(int no, int r, int g, int b)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) { w->ro_bg_r = r; w->ro_bg_g = g; w->ro_bg_b = b; w->ro_bg_set = true; }
+}
+static int PE_GetMultiTextBoxReadOnlyBGR(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->ro_bg_set) ? w->ro_bg_r : 192;
+}
+static int PE_GetMultiTextBoxReadOnlyBGG(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->ro_bg_set) ? w->ro_bg_g : 192;
+}
+static int PE_GetMultiTextBoxReadOnlyBGB(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->ro_bg_set) ? w->ro_bg_b : 192;
+}
+
+static void PE_SetMultiTextBoxFrameColor(int no, int r, int g, int b)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) { w->frame_r = r; w->frame_g = g; w->frame_b = b; w->frame_set = true; }
+}
+static int PE_GetMultiTextBoxFrameR(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->frame_set) ? w->frame_r : 0;
+}
+static int PE_GetMultiTextBoxFrameG(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->frame_set) ? w->frame_g : 0;
+}
+static int PE_GetMultiTextBoxFrameB(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->frame_set) ? w->frame_b : 0;
+}
+
+static void PE_SetMultiTextBoxSelectColor(int no, int r, int g, int b)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) { w->select_r = r; w->select_g = g; w->select_b = b; w->select_set = true; }
+}
+static int PE_GetMultiTextBoxSelectR(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->select_set) ? w->select_r : 0;
+}
+static int PE_GetMultiTextBoxSelectG(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->select_set) ? w->select_g : 0;
+}
+static int PE_GetMultiTextBoxSelectB(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->select_set) ? w->select_b : 0;
+}
+
+static void PE_SetMultiTextBoxVScrollShow(int no, bool show)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->vscroll_show = show;
+}
+static void PE_SetMultiTextBoxHScrollShow(int no, bool show)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->hscroll_show = show;
+}
+static bool PE_IsMultiTextBoxVScrollShow(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->vscroll_show : false;
+}
+static bool PE_IsMultiTextBoxHScrollShow(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->hscroll_show : false;
+}
+
+static void PE_SetMultiTextBoxCGName(int no, struct string *name)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->cg_name, name);
+}
+static struct string *PE_GetMultiTextBoxCGName(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->cg_name) : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetMultiTextBoxCharSpace(int no, int space)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->char_space = space;
+}
+static int PE_GetMultiTextBoxCharSpace(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->char_space : 0;
+}
+
+static void PE_SetMultiTextBoxLineSpace(int no, int space)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->line_space = space;
+}
+static int PE_GetMultiTextBoxLineSpace(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->line_space : 0;
+}
+
+static void PE_SetMultiTextBoxPadding(int no, int top, int bottom, int left,
+		int right)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (!w)
+		return;
+	w->pad_top = top;
+	w->pad_bottom = bottom;
+	w->pad_left = left;
+	w->pad_right = right;
+}
+static int PE_GetMultiTextBoxPaddingTop(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->pad_top : 0;
+}
+static int PE_GetMultiTextBoxPaddingBottom(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->pad_bottom : 0;
+}
+static int PE_GetMultiTextBoxPaddingLeft(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->pad_left : 0;
+}
+static int PE_GetMultiTextBoxPaddingRight(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->pad_right : 0;
+}
+
+/* ===== [D396] 控件：滚动条（组件类型 2 纵向 / 3 横向） =====
+ *
+ * 纵向与横向的接口**完全对称**（Up/Down ↔ Left/Right），所以字段共用一份、
+ * 函数体用宏生成两套 —— 手抄 70 个几乎相同的函数只会引入拼写错误。
+ *
+ * 类型依据（AIN 包装类的默认返回字节码）：
+ *   `Get*ScrollPos`  → `PUSH 0`   ⇒ int（像素位置）
+ *   `Get*ScrollRate` → `F_PUSH 0` ⇒ float（0..1 比率）
+ */
+#define DEFINE_SCROLLBAR(PREFIX, HEAD, TAIL, UNITS) \
+static void PE_Set##PREFIX##Size(int no, int w, int h) \
+{ \
+	PE_SetPartsSize(no, w, h, 1); \
+} \
+static void PE_Set##PREFIX##HEAD##UNITS(int no, int v) \
+{ \
+	struct parts_widget *w = PE_widget(no); \
+	if (w) \
+		w->scroll.head_size = v; \
+} \
+static void PE_Set##PREFIX##TAIL##UNITS(int no, int v) \
+{ \
+	struct parts_widget *w = PE_widget(no); \
+	if (w) \
+		w->scroll.tail_size = v; \
+} \
+static int PE_Get##PREFIX##HEAD##UNITS(int no) \
+{ \
+	struct parts_widget *w = PE_widget_peek(no); \
+	return w ? w->scroll.head_size : 0; \
+} \
+static int PE_Get##PREFIX##TAIL##UNITS(int no) \
+{ \
+	struct parts_widget *w = PE_widget_peek(no); \
+	return w ? w->scroll.tail_size : 0; \
+} \
+static void PE_Set##PREFIX##TotalSize(int no, int v) \
+{ \
+	struct parts_widget *w = PE_widget(no); \
+	if (w) \
+		w->scroll.total_size = v; \
+} \
+static void PE_Set##PREFIX##ViewSize(int no, int v) \
+{ \
+	struct parts_widget *w = PE_widget(no); \
+	if (w) \
+		w->scroll.view_size = v; \
+} \
+static void PE_Set##PREFIX##ScrollPos(int no, int v) \
+{ \
+	struct parts_widget *w = PE_widget(no); \
+	if (w) \
+		w->scroll.scroll_pos = v; \
+} \
+static void PE_Set##PREFIX##ScrollRate(int no, float v) \
+{ \
+	struct parts_widget *w = PE_widget(no); \
+	if (w) \
+		w->scroll.scroll_rate = v; \
+} \
+static void PE_Set##PREFIX##MoveSizeByButton(int no, int v) \
+{ \
+	struct parts_widget *w = PE_widget(no); \
+	if (w) \
+		w->scroll.move_size_by_button = v; \
+} \
+static int PE_Get##PREFIX##TotalSize(int no) \
+{ \
+	struct parts_widget *w = PE_widget_peek(no); \
+	return w ? w->scroll.total_size : 0; \
+} \
+static int PE_Get##PREFIX##ViewSize(int no) \
+{ \
+	struct parts_widget *w = PE_widget_peek(no); \
+	return w ? w->scroll.view_size : 0; \
+} \
+static int PE_Get##PREFIX##ScrollPos(int no) \
+{ \
+	struct parts_widget *w = PE_widget_peek(no); \
+	return w ? w->scroll.scroll_pos : 0; \
+} \
+static float PE_Get##PREFIX##ScrollRate(int no) \
+{ \
+	struct parts_widget *w = PE_widget_peek(no); \
+	return w ? w->scroll.scroll_rate : 0.0f; \
+} \
+static int PE_Get##PREFIX##MoveSizeByButton(int no) \
+{ \
+	struct parts_widget *w = PE_widget_peek(no); \
+	return w ? w->scroll.move_size_by_button : 0; \
+} \
+static void PE_Set##PREFIX##CGName(int no, struct string *v) \
+{ \
+	struct parts_widget *w = PE_widget(no); \
+	if (w) \
+		widget_set_string(&w->scroll.cg_name, v); \
+} \
+static struct string *PE_Get##PREFIX##CGName(int no) \
+{ \
+	struct parts_widget *w = PE_widget_peek(no); \
+	return w ? widget_get_string(&w->scroll.cg_name) : string_dup(&EMPTY_STRING); \
+} \
+static void PE_Set##PREFIX##FlatName(int no, struct string *v) \
+{ \
+	struct parts_widget *w = PE_widget(no); \
+	if (w) \
+		widget_set_string(&w->scroll.flat_name, v); \
+} \
+static struct string *PE_Get##PREFIX##FlatName(int no) \
+{ \
+	struct parts_widget *w = PE_widget_peek(no); \
+	return w ? widget_get_string(&w->scroll.flat_name) : string_dup(&EMPTY_STRING); \
+} \
+static void PE_Set##PREFIX##Override##HEAD##CGName(int no, struct string *v) \
+{ \
+	struct parts_widget *w = PE_widget(no); \
+	if (w) \
+		widget_set_string(&w->scroll.ov_head_cg, v); \
+} \
+static struct string *PE_Get##PREFIX##Override##HEAD##CGName(int no) \
+{ \
+	struct parts_widget *w = PE_widget_peek(no); \
+	return w ? widget_get_string(&w->scroll.ov_head_cg) : string_dup(&EMPTY_STRING); \
+} \
+static void PE_Set##PREFIX##Override##TAIL##CGName(int no, struct string *v) \
+{ \
+	struct parts_widget *w = PE_widget(no); \
+	if (w) \
+		widget_set_string(&w->scroll.ov_tail_cg, v); \
+} \
+static struct string *PE_Get##PREFIX##Override##TAIL##CGName(int no) \
+{ \
+	struct parts_widget *w = PE_widget_peek(no); \
+	return w ? widget_get_string(&w->scroll.ov_tail_cg) : string_dup(&EMPTY_STRING); \
+} \
+static void PE_Set##PREFIX##OverrideBarCGName(int no, struct string *v) \
+{ \
+	struct parts_widget *w = PE_widget(no); \
+	if (w) \
+		widget_set_string(&w->scroll.ov_bar_cg, v); \
+} \
+static struct string *PE_Get##PREFIX##OverrideBarCGName(int no) \
+{ \
+	struct parts_widget *w = PE_widget_peek(no); \
+	return w ? widget_get_string(&w->scroll.ov_bar_cg) : string_dup(&EMPTY_STRING); \
+} \
+static void PE_Set##PREFIX##OverrideBGCGName(int no, struct string *v) \
+{ \
+	struct parts_widget *w = PE_widget(no); \
+	if (w) \
+		widget_set_string(&w->scroll.ov_bg_cg, v); \
+} \
+static struct string *PE_Get##PREFIX##OverrideBGCGName(int no) \
+{ \
+	struct parts_widget *w = PE_widget_peek(no); \
+	return w ? widget_get_string(&w->scroll.ov_bg_cg) : string_dup(&EMPTY_STRING); \
+} \
+static void PE_Set##PREFIX##Override##HEAD##FlatName(int no, struct string *v) \
+{ \
+	struct parts_widget *w = PE_widget(no); \
+	if (w) \
+		widget_set_string(&w->scroll.ov_head_flat, v); \
+} \
+static struct string *PE_Get##PREFIX##Override##HEAD##FlatName(int no) \
+{ \
+	struct parts_widget *w = PE_widget_peek(no); \
+	return w ? widget_get_string(&w->scroll.ov_head_flat) : string_dup(&EMPTY_STRING); \
+} \
+static void PE_Set##PREFIX##Override##TAIL##FlatName(int no, struct string *v) \
+{ \
+	struct parts_widget *w = PE_widget(no); \
+	if (w) \
+		widget_set_string(&w->scroll.ov_tail_flat, v); \
+} \
+static struct string *PE_Get##PREFIX##Override##TAIL##FlatName(int no) \
+{ \
+	struct parts_widget *w = PE_widget_peek(no); \
+	return w ? widget_get_string(&w->scroll.ov_tail_flat) : string_dup(&EMPTY_STRING); \
+} \
+static void PE_Set##PREFIX##OverrideBarFlatName(int no, struct string *v) \
+{ \
+	struct parts_widget *w = PE_widget(no); \
+	if (w) \
+		widget_set_string(&w->scroll.ov_bar_flat, v); \
+} \
+static struct string *PE_Get##PREFIX##OverrideBarFlatName(int no) \
+{ \
+	struct parts_widget *w = PE_widget_peek(no); \
+	return w ? widget_get_string(&w->scroll.ov_bar_flat) : string_dup(&EMPTY_STRING); \
+} \
+static void PE_Set##PREFIX##OverrideBGFlatName(int no, struct string *v) \
+{ \
+	struct parts_widget *w = PE_widget(no); \
+	if (w) \
+		widget_set_string(&w->scroll.ov_bg_flat, v); \
+} \
+static struct string *PE_Get##PREFIX##OverrideBGFlatName(int no) \
+{ \
+	struct parts_widget *w = PE_widget_peek(no); \
+	return w ? widget_get_string(&w->scroll.ov_bg_flat) : string_dup(&EMPTY_STRING); \
+}
+
+#define DEFINE_SCROLLBAR_SOUND(PREFIX) \
+static void PE_Set##PREFIX##OnCursorSoundNumber(int no, int n) \
+{ \
+	PE_SetPartsOnCursorSoundNumber(no, n); \
+} \
+static void PE_Set##PREFIX##ClickSoundNumber(int no, int n) \
+{ \
+	PE_SetPartsClickSoundNumber(no, n); \
+} \
+static int PE_Get##PREFIX##OnCursorSoundNumber(int no) \
+{ \
+	return PE_GetPartsOnCursorSoundNumber(no); \
+} \
+static int PE_Get##PREFIX##ClickSoundNumber(int no) \
+{ \
+	return PE_GetPartsClickSoundNumber(no); \
+}
+
+DEFINE_SCROLLBAR_SOUND(VScrollbar)
+DEFINE_SCROLLBAR_SOUND(HScrollbar)
+
+DEFINE_SCROLLBAR(VScrollbar, Up, Down, Height)
+DEFINE_SCROLLBAR(HScrollbar, Left, Right, Width)
+
 
 /* AIN SetMessageWindowActive：void SetMessageWindowActive。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_SetMessageWindowActive(int no, bool active)
@@ -4606,48 +5074,48 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(IsRadioButtonBoxExistGUI, PE_IsRadioButtonBoxExistGUI),
 	    HLL_EXPORT(NumofRadioButtonBoxChild, PE_NumofRadioButtonBoxChild),
 	    HLL_EXPORT(RemoveRadioButtonBoxChild, PE_RemoveRadioButtonBoxChild),
-	    HLL_TODO_EXPORT(SetVScrollbarOnCursorSoundNumber, PartsEngine_SetVScrollbarOnCursorSoundNumber),
-	    HLL_TODO_EXPORT(SetVScrollbarClickSoundNumber, PartsEngine_SetVScrollbarClickSoundNumber),
-	    HLL_TODO_EXPORT(GetVScrollbarOnCursorSoundNumber, PartsEngine_GetVScrollbarOnCursorSoundNumber),
-	    HLL_TODO_EXPORT(GetVScrollbarClickSoundNumber, PartsEngine_GetVScrollbarClickSoundNumber),
-	    HLL_EXPORT(SetVScrollbarSize, PE_Noop_SetVScrollbarSize),
-	    HLL_EXPORT(SetVScrollbarUpHeight, PE_Noop_SetVScrollbarUpHeight),
-	    HLL_EXPORT(SetVScrollbarDownHeight, PE_Noop_SetVScrollbarDownHeight),
-	    HLL_TODO_EXPORT(GetVScrollbarUpHeight, PartsEngine_GetVScrollbarUpHeight),
-	    HLL_TODO_EXPORT(GetVScrollbarDownHeight, PartsEngine_GetVScrollbarDownHeight),
-	    HLL_EXPORT(SetVScrollbarTotalSize, PE_Noop_SetVScrollbarTotalSize),
-	    HLL_EXPORT(SetVScrollbarViewSize, PE_Noop_SetVScrollbarViewSize),
-	    HLL_EXPORT(SetVScrollbarScrollPos, PE_Noop_SetVScrollbarScrollPos),
-	    HLL_TODO_EXPORT(SetVScrollbarScrollRate, PartsEngine_SetVScrollbarScrollRate),
-	    HLL_EXPORT(SetVScrollbarMoveSizeByButton, PE_Noop_SetVScrollbarMoveSizeByButton),
-	    HLL_TODO_EXPORT(GetVScrollbarTotalSize, PartsEngine_GetVScrollbarTotalSize),
-	    HLL_TODO_EXPORT(GetVScrollbarViewSize, PartsEngine_GetVScrollbarViewSize),
-	    HLL_TODO_EXPORT(GetVScrollbarScrollPos, PartsEngine_GetVScrollbarScrollPos),
-	    HLL_TODO_EXPORT(GetVScrollbarScrollRate, PartsEngine_GetVScrollbarScrollRate),
-	    HLL_TODO_EXPORT(GetVScrollbarMoveSizeByButton, PartsEngine_GetVScrollbarMoveSizeByButton),
-	    HLL_EXPORT(SetVScrollbarCGName, PE_Noop_SetVScrollbarCGName),
-	    HLL_TODO_EXPORT(GetVScrollbarCGName, PartsEngine_GetVScrollbarCGName),
-	    HLL_TODO_EXPORT(SetHScrollbarOnCursorSoundNumber, PartsEngine_SetHScrollbarOnCursorSoundNumber),
-	    HLL_TODO_EXPORT(SetHScrollbarClickSoundNumber, PartsEngine_SetHScrollbarClickSoundNumber),
-	    HLL_TODO_EXPORT(GetHScrollbarOnCursorSoundNumber, PartsEngine_GetHScrollbarOnCursorSoundNumber),
-	    HLL_TODO_EXPORT(GetHScrollbarClickSoundNumber, PartsEngine_GetHScrollbarClickSoundNumber),
-	    HLL_EXPORT(SetHScrollbarSize, PE_Noop_SetHScrollbarSize),
-	    HLL_EXPORT(SetHScrollbarLeftWidth, PE_Noop_SetHScrollbarLeftWidth),
-	    HLL_EXPORT(SetHScrollbarRightWidth, PE_Noop_SetHScrollbarRightWidth),
-	    HLL_TODO_EXPORT(GetHScrollbarLeftWidth, PartsEngine_GetHScrollbarLeftWidth),
-	    HLL_TODO_EXPORT(GetHScrollbarRightWidth, PartsEngine_GetHScrollbarRightWidth),
-	    HLL_EXPORT(SetHScrollbarTotalSize, PE_Noop_SetHScrollbarTotalSize),
-	    HLL_EXPORT(SetHScrollbarViewSize, PE_Noop_SetHScrollbarViewSize),
-	    HLL_EXPORT(SetHScrollbarScrollPos, PE_Noop_SetHScrollbarScrollPos),
-	    HLL_TODO_EXPORT(SetHScrollbarScrollRate, PartsEngine_SetHScrollbarScrollRate),
-	    HLL_EXPORT(SetHScrollbarMoveSizeByButton, PE_Noop_SetHScrollbarMoveSizeByButton),
-	    HLL_TODO_EXPORT(GetHScrollbarTotalSize, PartsEngine_GetHScrollbarTotalSize),
-	    HLL_TODO_EXPORT(GetHScrollbarViewSize, PartsEngine_GetHScrollbarViewSize),
-	    HLL_TODO_EXPORT(GetHScrollbarScrollPos, PartsEngine_GetHScrollbarScrollPos),
-	    HLL_TODO_EXPORT(GetHScrollbarScrollRate, PartsEngine_GetHScrollbarScrollRate),
-	    HLL_TODO_EXPORT(GetHScrollbarMoveSizeByButton, PartsEngine_GetHScrollbarMoveSizeByButton),
-	    HLL_EXPORT(SetHScrollbarCGName, PE_Noop_SetHScrollbarCGName),
-	    HLL_TODO_EXPORT(GetHScrollbarCGName, PartsEngine_GetHScrollbarCGName),
+	    HLL_EXPORT(SetVScrollbarOnCursorSoundNumber, PE_SetVScrollbarOnCursorSoundNumber),
+	    HLL_EXPORT(SetVScrollbarClickSoundNumber, PE_SetVScrollbarClickSoundNumber),
+	    HLL_EXPORT(GetVScrollbarOnCursorSoundNumber, PE_GetVScrollbarOnCursorSoundNumber),
+	    HLL_EXPORT(GetVScrollbarClickSoundNumber, PE_GetVScrollbarClickSoundNumber),
+	    HLL_EXPORT(SetVScrollbarSize, PE_SetVScrollbarSize),
+	    HLL_EXPORT(SetVScrollbarUpHeight, PE_SetVScrollbarUpHeight),
+	    HLL_EXPORT(SetVScrollbarDownHeight, PE_SetVScrollbarDownHeight),
+	    HLL_EXPORT(GetVScrollbarUpHeight, PE_GetVScrollbarUpHeight),
+	    HLL_EXPORT(GetVScrollbarDownHeight, PE_GetVScrollbarDownHeight),
+	    HLL_EXPORT(SetVScrollbarTotalSize, PE_SetVScrollbarTotalSize),
+	    HLL_EXPORT(SetVScrollbarViewSize, PE_SetVScrollbarViewSize),
+	    HLL_EXPORT(SetVScrollbarScrollPos, PE_SetVScrollbarScrollPos),
+	    HLL_EXPORT(SetVScrollbarScrollRate, PE_SetVScrollbarScrollRate),
+	    HLL_EXPORT(SetVScrollbarMoveSizeByButton, PE_SetVScrollbarMoveSizeByButton),
+	    HLL_EXPORT(GetVScrollbarTotalSize, PE_GetVScrollbarTotalSize),
+	    HLL_EXPORT(GetVScrollbarViewSize, PE_GetVScrollbarViewSize),
+	    HLL_EXPORT(GetVScrollbarScrollPos, PE_GetVScrollbarScrollPos),
+	    HLL_EXPORT(GetVScrollbarScrollRate, PE_GetVScrollbarScrollRate),
+	    HLL_EXPORT(GetVScrollbarMoveSizeByButton, PE_GetVScrollbarMoveSizeByButton),
+	    HLL_EXPORT(SetVScrollbarCGName, PE_SetVScrollbarCGName),
+	    HLL_EXPORT(GetVScrollbarCGName, PE_GetVScrollbarCGName),
+	    HLL_EXPORT(SetHScrollbarOnCursorSoundNumber, PE_SetHScrollbarOnCursorSoundNumber),
+	    HLL_EXPORT(SetHScrollbarClickSoundNumber, PE_SetHScrollbarClickSoundNumber),
+	    HLL_EXPORT(GetHScrollbarOnCursorSoundNumber, PE_GetHScrollbarOnCursorSoundNumber),
+	    HLL_EXPORT(GetHScrollbarClickSoundNumber, PE_GetHScrollbarClickSoundNumber),
+	    HLL_EXPORT(SetHScrollbarSize, PE_SetHScrollbarSize),
+	    HLL_EXPORT(SetHScrollbarLeftWidth, PE_SetHScrollbarLeftWidth),
+	    HLL_EXPORT(SetHScrollbarRightWidth, PE_SetHScrollbarRightWidth),
+	    HLL_EXPORT(GetHScrollbarLeftWidth, PE_GetHScrollbarLeftWidth),
+	    HLL_EXPORT(GetHScrollbarRightWidth, PE_GetHScrollbarRightWidth),
+	    HLL_EXPORT(SetHScrollbarTotalSize, PE_SetHScrollbarTotalSize),
+	    HLL_EXPORT(SetHScrollbarViewSize, PE_SetHScrollbarViewSize),
+	    HLL_EXPORT(SetHScrollbarScrollPos, PE_SetHScrollbarScrollPos),
+	    HLL_EXPORT(SetHScrollbarScrollRate, PE_SetHScrollbarScrollRate),
+	    HLL_EXPORT(SetHScrollbarMoveSizeByButton, PE_SetHScrollbarMoveSizeByButton),
+	    HLL_EXPORT(GetHScrollbarTotalSize, PE_GetHScrollbarTotalSize),
+	    HLL_EXPORT(GetHScrollbarViewSize, PE_GetHScrollbarViewSize),
+	    HLL_EXPORT(GetHScrollbarScrollPos, PE_GetHScrollbarScrollPos),
+	    HLL_EXPORT(GetHScrollbarScrollRate, PE_GetHScrollbarScrollRate),
+	    HLL_EXPORT(GetHScrollbarMoveSizeByButton, PE_GetHScrollbarMoveSizeByButton),
+	    HLL_EXPORT(SetHScrollbarCGName, PE_SetHScrollbarCGName),
+	    HLL_EXPORT(GetHScrollbarCGName, PE_GetHScrollbarCGName),
 	    HLL_EXPORT(SetTextBoxSize, PE_SetTextBoxSize),
 	    HLL_EXPORT(SetTextBoxFontProperty, PE_SetTextBoxFontProperty),
 	    HLL_EXPORT(GetTextBoxFontProperty, PE_GetTextBoxFontProperty),
@@ -4755,19 +5223,37 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetSpinBoxValue, PE_SetSpinBoxValue),
 	    HLL_EXPORT(SetComboBoxFontProperty, PE_SetComboBoxFontProperty),
 	    HLL_EXPORT(GetComboBoxFontProperty, PE_GetComboBoxFontProperty),
-	    HLL_EXPORT(SetMultiTextBoxSize, PE_Noop_SetMultiTextBoxSize),
-	    HLL_TODO_EXPORT(SetMultiTextBoxFontProperty, PartsEngine_SetMultiTextBoxFontProperty),
-	    HLL_TODO_EXPORT(GetMultiTextBoxFontProperty, PartsEngine_GetMultiTextBoxFontProperty),
-	    HLL_EXPORT(SetMultiTextBoxText, PE_Noop_SetMultiTextBoxText),
-	    HLL_TODO_EXPORT(GetMultiTextBoxText, PartsEngine_GetMultiTextBoxText),
-	    HLL_EXPORT(SetMultiTextBoxMaxTextLength, PE_Noop_SetMultiTextBoxMaxTextLength),
-	    HLL_TODO_EXPORT(GetMultiTextBoxMaxTextLength, PartsEngine_GetMultiTextBoxMaxTextLength),
-	    HLL_EXPORT(SetMultiTextBoxSelectColor, PE_Noop_SetMultiTextBoxSelectColor),
-	    HLL_TODO_EXPORT(GetMultiTextBoxSelectR, PartsEngine_GetMultiTextBoxSelectR),
-	    HLL_TODO_EXPORT(GetMultiTextBoxSelectG, PartsEngine_GetMultiTextBoxSelectG),
-	    HLL_TODO_EXPORT(GetMultiTextBoxSelectB, PartsEngine_GetMultiTextBoxSelectB),
-	    HLL_EXPORT(SetMultiTextBoxCGName, PE_Noop_SetMultiTextBoxCGName),
-	    HLL_TODO_EXPORT(GetMultiTextBoxCGName, PartsEngine_GetMultiTextBoxCGName),
+	    HLL_EXPORT(SetMultiTextBoxSize, PE_SetMultiTextBoxSize),
+	    HLL_EXPORT(GetMultiTextBoxBGB, PE_GetMultiTextBoxBGB),
+	    HLL_EXPORT(GetMultiTextBoxBGG, PE_GetMultiTextBoxBGG),
+	    HLL_EXPORT(GetMultiTextBoxBGR, PE_GetMultiTextBoxBGR),
+	    HLL_EXPORT(GetMultiTextBoxCharSpace, PE_GetMultiTextBoxCharSpace),
+	    HLL_EXPORT(GetMultiTextBoxFrameB, PE_GetMultiTextBoxFrameB),
+	    HLL_EXPORT(GetMultiTextBoxFrameG, PE_GetMultiTextBoxFrameG),
+	    HLL_EXPORT(GetMultiTextBoxFrameR, PE_GetMultiTextBoxFrameR),
+	    HLL_EXPORT(GetMultiTextBoxLineSpace, PE_GetMultiTextBoxLineSpace),
+	    HLL_EXPORT(GetMultiTextBoxPaddingBottom, PE_GetMultiTextBoxPaddingBottom),
+	    HLL_EXPORT(GetMultiTextBoxPaddingLeft, PE_GetMultiTextBoxPaddingLeft),
+	    HLL_EXPORT(GetMultiTextBoxPaddingRight, PE_GetMultiTextBoxPaddingRight),
+	    HLL_EXPORT(GetMultiTextBoxPaddingTop, PE_GetMultiTextBoxPaddingTop),
+	    HLL_EXPORT(GetMultiTextBoxReadOnlyBGB, PE_GetMultiTextBoxReadOnlyBGB),
+	    HLL_EXPORT(GetMultiTextBoxReadOnlyBGG, PE_GetMultiTextBoxReadOnlyBGG),
+	    HLL_EXPORT(GetMultiTextBoxReadOnlyBGR, PE_GetMultiTextBoxReadOnlyBGR),
+	    HLL_EXPORT(IsMultiTextBoxHScrollShow, PE_IsMultiTextBoxHScrollShow),
+	    HLL_EXPORT(IsMultiTextBoxReadOnly, PE_IsMultiTextBoxReadOnly),
+	    HLL_EXPORT(IsMultiTextBoxVScrollShow, PE_IsMultiTextBoxVScrollShow),
+	    HLL_EXPORT(SetMultiTextBoxFontProperty, PE_SetMultiTextBoxFontProperty),
+	    HLL_EXPORT(GetMultiTextBoxFontProperty, PE_GetMultiTextBoxFontProperty),
+	    HLL_EXPORT(SetMultiTextBoxText, PE_SetMultiTextBoxText),
+	    HLL_EXPORT(GetMultiTextBoxText, PE_GetMultiTextBoxText),
+	    HLL_EXPORT(SetMultiTextBoxMaxTextLength, PE_SetMultiTextBoxMaxTextLength),
+	    HLL_EXPORT(GetMultiTextBoxMaxTextLength, PE_GetMultiTextBoxMaxTextLength),
+	    HLL_EXPORT(SetMultiTextBoxSelectColor, PE_SetMultiTextBoxSelectColor),
+	    HLL_EXPORT(GetMultiTextBoxSelectR, PE_GetMultiTextBoxSelectR),
+	    HLL_EXPORT(GetMultiTextBoxSelectG, PE_GetMultiTextBoxSelectG),
+	    HLL_EXPORT(GetMultiTextBoxSelectB, PE_GetMultiTextBoxSelectB),
+	    HLL_EXPORT(SetMultiTextBoxCGName, PE_SetMultiTextBoxCGName),
+	    HLL_EXPORT(GetMultiTextBoxCGName, PE_GetMultiTextBoxCGName),
 	    HLL_EXPORT(SetLayoutBoxLayoutType, PE_SetLayoutBoxLayoutType),
 	    HLL_EXPORT(GetLayoutBoxLayoutType, PE_GetLayoutBoxLayoutType),
 	    HLL_EXPORT(SetLayoutBoxReturn, PE_SetLayoutBoxReturn),
@@ -4968,15 +5454,15 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetFormVScrollPos, PE_Noop_SetFormVScrollPos),
 	    HLL_EXPORT(SetHScrollTotalSizeLinkNumber, PE_Noop_SetHScrollTotalSizeLinkNumber),
 	    HLL_EXPORT(SetHScrollViewSizeLinkNumber, PE_Noop_SetHScrollViewSizeLinkNumber),
-	    HLL_EXPORT(SetHScrollbarFlatName, PE_Noop_SetHScrollbarFlatName),
-	    HLL_EXPORT(SetHScrollbarOverrideBGCGName, PE_Noop_SetHScrollbarOverrideBGCGName),
-	    HLL_EXPORT(SetHScrollbarOverrideBGFlatName, PE_Noop_SetHScrollbarOverrideBGFlatName),
-	    HLL_EXPORT(SetHScrollbarOverrideBarCGName, PE_Noop_SetHScrollbarOverrideBarCGName),
-	    HLL_EXPORT(SetHScrollbarOverrideBarFlatName, PE_Noop_SetHScrollbarOverrideBarFlatName),
-	    HLL_EXPORT(SetHScrollbarOverrideLeftCGName, PE_Noop_SetHScrollbarOverrideLeftCGName),
-	    HLL_EXPORT(SetHScrollbarOverrideLeftFlatName, PE_Noop_SetHScrollbarOverrideLeftFlatName),
-	    HLL_EXPORT(SetHScrollbarOverrideRightCGName, PE_Noop_SetHScrollbarOverrideRightCGName),
-	    HLL_EXPORT(SetHScrollbarOverrideRightFlatName, PE_Noop_SetHScrollbarOverrideRightFlatName),
+	    HLL_EXPORT(SetHScrollbarFlatName, PE_SetHScrollbarFlatName),
+	    HLL_EXPORT(SetHScrollbarOverrideBGCGName, PE_SetHScrollbarOverrideBGCGName),
+	    HLL_EXPORT(SetHScrollbarOverrideBGFlatName, PE_SetHScrollbarOverrideBGFlatName),
+	    HLL_EXPORT(SetHScrollbarOverrideBarCGName, PE_SetHScrollbarOverrideBarCGName),
+	    HLL_EXPORT(SetHScrollbarOverrideBarFlatName, PE_SetHScrollbarOverrideBarFlatName),
+	    HLL_EXPORT(SetHScrollbarOverrideLeftCGName, PE_SetHScrollbarOverrideLeftCGName),
+	    HLL_EXPORT(SetHScrollbarOverrideLeftFlatName, PE_SetHScrollbarOverrideLeftFlatName),
+	    HLL_EXPORT(SetHScrollbarOverrideRightCGName, PE_SetHScrollbarOverrideRightCGName),
+	    HLL_EXPORT(SetHScrollbarOverrideRightFlatName, PE_SetHScrollbarOverrideRightFlatName),
 	    HLL_EXPORT(SetKeyWaitCGName, PE_Noop_SetKeyWaitCGName),
 	    HLL_EXPORT(SetKeyWaitFlatName, PE_Noop_SetKeyWaitFlatName),
 	    HLL_EXPORT(SetKeyWaitPos, PE_Noop_SetKeyWaitPos),
@@ -5005,15 +5491,15 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetMessageWindowTextSpeed, PE_SetMessageWindowTextSpeed),
 	    HLL_EXPORT(SetMotionData, PE_Noop_SetMotionData),
 	    HLL_EXPORT(SetMovieTime, PE_Noop_SetMovieTime),
-	    HLL_EXPORT(SetMultiTextBoxBGColor, PE_Noop_SetMultiTextBoxBGColor),
-	    HLL_EXPORT(SetMultiTextBoxCharSpace, PE_Noop_SetMultiTextBoxCharSpace),
-	    HLL_EXPORT(SetMultiTextBoxFrameColor, PE_Noop_SetMultiTextBoxFrameColor),
-	    HLL_EXPORT(SetMultiTextBoxHScrollShow, PE_Noop_SetMultiTextBoxHScrollShow),
-	    HLL_EXPORT(SetMultiTextBoxLineSpace, PE_Noop_SetMultiTextBoxLineSpace),
-	    HLL_EXPORT(SetMultiTextBoxPadding, PE_Noop_SetMultiTextBoxPadding),
-	    HLL_EXPORT(SetMultiTextBoxReadOnly, PE_Noop_SetMultiTextBoxReadOnly),
-	    HLL_EXPORT(SetMultiTextBoxReadOnlyBGColor, PE_Noop_SetMultiTextBoxReadOnlyBGColor),
-	    HLL_EXPORT(SetMultiTextBoxVScrollShow, PE_Noop_SetMultiTextBoxVScrollShow),
+	    HLL_EXPORT(SetMultiTextBoxBGColor, PE_SetMultiTextBoxBGColor),
+	    HLL_EXPORT(SetMultiTextBoxCharSpace, PE_SetMultiTextBoxCharSpace),
+	    HLL_EXPORT(SetMultiTextBoxFrameColor, PE_SetMultiTextBoxFrameColor),
+	    HLL_EXPORT(SetMultiTextBoxHScrollShow, PE_SetMultiTextBoxHScrollShow),
+	    HLL_EXPORT(SetMultiTextBoxLineSpace, PE_SetMultiTextBoxLineSpace),
+	    HLL_EXPORT(SetMultiTextBoxPadding, PE_SetMultiTextBoxPadding),
+	    HLL_EXPORT(SetMultiTextBoxReadOnly, PE_SetMultiTextBoxReadOnly),
+	    HLL_EXPORT(SetMultiTextBoxReadOnlyBGColor, PE_SetMultiTextBoxReadOnlyBGColor),
+	    HLL_EXPORT(SetMultiTextBoxVScrollShow, PE_SetMultiTextBoxVScrollShow),
 	    HLL_EXPORT(SetNumeralFullPitch, PE_Noop_SetNumeralFullPitch),
 	    HLL_EXPORT(SetNumeralShowPadding, PE_Noop_SetNumeralShowPadding),
 	    HLL_EXPORT(SetNumeralShowType, PE_Noop_SetNumeralShowType),
@@ -5046,15 +5532,15 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(GetUserComponentName, PE_GetUserComponentName_str),
 	    HLL_EXPORT(SetVScrollTotalSizeLinkNumber, PE_Noop_SetVScrollTotalSizeLinkNumber),
 	    HLL_EXPORT(SetVScrollViewSizeLinkNumber, PE_Noop_SetVScrollViewSizeLinkNumber),
-	    HLL_EXPORT(SetVScrollbarFlatName, PE_Noop_SetVScrollbarFlatName),
-	    HLL_EXPORT(SetVScrollbarOverrideBGCGName, PE_Noop_SetVScrollbarOverrideBGCGName),
-	    HLL_EXPORT(SetVScrollbarOverrideBGFlatName, PE_Noop_SetVScrollbarOverrideBGFlatName),
-	    HLL_EXPORT(SetVScrollbarOverrideBarCGName, PE_Noop_SetVScrollbarOverrideBarCGName),
-	    HLL_EXPORT(SetVScrollbarOverrideBarFlatName, PE_Noop_SetVScrollbarOverrideBarFlatName),
-	    HLL_EXPORT(SetVScrollbarOverrideDownCGName, PE_Noop_SetVScrollbarOverrideDownCGName),
-	    HLL_EXPORT(SetVScrollbarOverrideDownFlatName, PE_Noop_SetVScrollbarOverrideDownFlatName),
-	    HLL_EXPORT(SetVScrollbarOverrideUpCGName, PE_Noop_SetVScrollbarOverrideUpCGName),
-	    HLL_EXPORT(SetVScrollbarOverrideUpFlatName, PE_Noop_SetVScrollbarOverrideUpFlatName),
+	    HLL_EXPORT(SetVScrollbarFlatName, PE_SetVScrollbarFlatName),
+	    HLL_EXPORT(SetVScrollbarOverrideBGCGName, PE_SetVScrollbarOverrideBGCGName),
+	    HLL_EXPORT(SetVScrollbarOverrideBGFlatName, PE_SetVScrollbarOverrideBGFlatName),
+	    HLL_EXPORT(SetVScrollbarOverrideBarCGName, PE_SetVScrollbarOverrideBarCGName),
+	    HLL_EXPORT(SetVScrollbarOverrideBarFlatName, PE_SetVScrollbarOverrideBarFlatName),
+	    HLL_EXPORT(SetVScrollbarOverrideDownCGName, PE_SetVScrollbarOverrideDownCGName),
+	    HLL_EXPORT(SetVScrollbarOverrideDownFlatName, PE_SetVScrollbarOverrideDownFlatName),
+	    HLL_EXPORT(SetVScrollbarOverrideUpCGName, PE_SetVScrollbarOverrideUpCGName),
+	    HLL_EXPORT(SetVScrollbarOverrideUpFlatName, PE_SetVScrollbarOverrideUpFlatName),
 	    HLL_EXPORT(IsExistActivity, PartsEngine_IsExistActivity),
 	    HLL_EXPORT(CreateActivity, PE_Act_CreateActivity),
 	    HLL_EXPORT(ReleaseActivity, PE_Act_ReleaseActivity),
@@ -5409,11 +5895,89 @@ int PartsEngine_WidgetSelfTest(void)
 	free_string(it);
 	CHECK_STR(PE_GetMessageWindowText(SELFTEST_NO), "\x82\xb1\x82\xf1", "MsgWin.Text");
 
+	/* --- MultiTextBox --- */
+	it = cstr_to_string("multi"); PE_SetMultiTextBoxText(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetMultiTextBoxText(SELFTEST_NO), "multi", "MultiTextBox.Text");
+	PE_SetMultiTextBoxMaxTextLength(SELFTEST_NO, 1000);
+	PE_SetMultiTextBoxReadOnly(SELFTEST_NO, true);
+	CHECK(PE_GetMultiTextBoxMaxTextLength(SELFTEST_NO) == 1000, "MultiTextBox.MaxTextLength");
+	CHECK(PE_IsMultiTextBoxReadOnly(SELFTEST_NO), "MultiTextBox.ReadOnly");
+	PE_SetMultiTextBoxVScrollShow(SELFTEST_NO, true);
+	PE_SetMultiTextBoxHScrollShow(SELFTEST_NO, true);
+	CHECK(PE_IsMultiTextBoxVScrollShow(SELFTEST_NO) &&
+	      PE_IsMultiTextBoxHScrollShow(SELFTEST_NO), "MultiTextBox.ScrollShow");
+	PE_SetMultiTextBoxBGColor(SELFTEST_NO, 51, 52, 53);
+	CHECK(PE_GetMultiTextBoxBGR(SELFTEST_NO) == 51 &&
+	      PE_GetMultiTextBoxBGG(SELFTEST_NO) == 52 &&
+	      PE_GetMultiTextBoxBGB(SELFTEST_NO) == 53, "MultiTextBox.BGColor");
+	PE_SetMultiTextBoxReadOnlyBGColor(SELFTEST_NO, 54, 55, 56);
+	CHECK(PE_GetMultiTextBoxReadOnlyBGR(SELFTEST_NO) == 54 &&
+	      PE_GetMultiTextBoxReadOnlyBGG(SELFTEST_NO) == 55 &&
+	      PE_GetMultiTextBoxReadOnlyBGB(SELFTEST_NO) == 56,
+	      "MultiTextBox.ReadOnlyBGColor");
+	PE_SetMultiTextBoxFrameColor(SELFTEST_NO, 57, 58, 59);
+	CHECK(PE_GetMultiTextBoxFrameR(SELFTEST_NO) == 57 &&
+	      PE_GetMultiTextBoxFrameG(SELFTEST_NO) == 58 &&
+	      PE_GetMultiTextBoxFrameB(SELFTEST_NO) == 59, "MultiTextBox.FrameColor");
+	PE_SetMultiTextBoxSelectColor(SELFTEST_NO, 60, 61, 62);
+	CHECK(PE_GetMultiTextBoxSelectR(SELFTEST_NO) == 60 &&
+	      PE_GetMultiTextBoxSelectG(SELFTEST_NO) == 61 &&
+	      PE_GetMultiTextBoxSelectB(SELFTEST_NO) == 62, "MultiTextBox.SelectColor");
+	PE_SetMultiTextBoxCharSpace(SELFTEST_NO, 6);
+	PE_SetMultiTextBoxLineSpace(SELFTEST_NO, 7);
+	CHECK(PE_GetMultiTextBoxCharSpace(SELFTEST_NO) == 6, "MultiTextBox.CharSpace");
+	CHECK(PE_GetMultiTextBoxLineSpace(SELFTEST_NO) == 7, "MultiTextBox.LineSpace");
+	PE_SetMultiTextBoxPadding(SELFTEST_NO, 1, 2, 3, 4);
+	CHECK(PE_GetMultiTextBoxPaddingTop(SELFTEST_NO) == 1 &&
+	      PE_GetMultiTextBoxPaddingBottom(SELFTEST_NO) == 2 &&
+	      PE_GetMultiTextBoxPaddingLeft(SELFTEST_NO) == 3 &&
+	      PE_GetMultiTextBoxPaddingRight(SELFTEST_NO) == 4, "MultiTextBox.Padding");
+
+	/* --- VScrollbar / HScrollbar（对称，只验 V 全量 + H 抽查） --- */
+	PE_SetVScrollbarUpHeight(SELFTEST_NO, 20);
+	PE_SetVScrollbarDownHeight(SELFTEST_NO, 21);
+	CHECK(PE_GetVScrollbarUpHeight(SELFTEST_NO) == 20 &&
+	      PE_GetVScrollbarDownHeight(SELFTEST_NO) == 21, "VScroll.Up/DownHeight");
+	PE_SetVScrollbarTotalSize(SELFTEST_NO, 1000);
+	PE_SetVScrollbarViewSize(SELFTEST_NO, 200);
+	PE_SetVScrollbarScrollPos(SELFTEST_NO, 300);
+	PE_SetVScrollbarScrollRate(SELFTEST_NO, 0.25f);
+	PE_SetVScrollbarMoveSizeByButton(SELFTEST_NO, 40);
+	CHECK(PE_GetVScrollbarTotalSize(SELFTEST_NO) == 1000 &&
+	      PE_GetVScrollbarViewSize(SELFTEST_NO) == 200 &&
+	      PE_GetVScrollbarScrollPos(SELFTEST_NO) == 300 &&
+	      PE_GetVScrollbarScrollRate(SELFTEST_NO) == 0.25f &&
+	      PE_GetVScrollbarMoveSizeByButton(SELFTEST_NO) == 40, "VScroll.尺寸与位置");
+	it = cstr_to_string("vs.cg"); PE_SetVScrollbarCGName(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetVScrollbarCGName(SELFTEST_NO), "vs.cg", "VScroll.CGName");
+	it = cstr_to_string("vs.fl"); PE_SetVScrollbarFlatName(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetVScrollbarFlatName(SELFTEST_NO), "vs.fl", "VScroll.FlatName");
+	it = cstr_to_string("vs.up"); PE_SetVScrollbarOverrideUpCGName(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetVScrollbarOverrideUpCGName(SELFTEST_NO), "vs.up", "VScroll.OvUpCG");
+	it = cstr_to_string("vs.dn"); PE_SetVScrollbarOverrideDownCGName(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetVScrollbarOverrideDownCGName(SELFTEST_NO), "vs.dn", "VScroll.OvDownCG");
+	it = cstr_to_string("vs.bar"); PE_SetVScrollbarOverrideBarCGName(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetVScrollbarOverrideBarCGName(SELFTEST_NO), "vs.bar", "VScroll.OvBarCG");
+	it = cstr_to_string("vs.bg"); PE_SetVScrollbarOverrideBGCGName(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetVScrollbarOverrideBGCGName(SELFTEST_NO), "vs.bg", "VScroll.OvBGCG");
+	it = cstr_to_string("vs.upf");
+	PE_SetVScrollbarOverrideUpFlatName(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetVScrollbarOverrideUpFlatName(SELFTEST_NO), "vs.upf", "VScroll.OvUpFlat");
+
+	PE_SetHScrollbarLeftWidth(SELFTEST_NO, 11);
+	PE_SetHScrollbarRightWidth(SELFTEST_NO, 12);
+	CHECK(PE_GetHScrollbarLeftWidth(SELFTEST_NO) == 11 &&
+	      PE_GetHScrollbarRightWidth(SELFTEST_NO) == 12, "HScroll.Left/RightWidth");
+	it = cstr_to_string("hs.left");
+	PE_SetHScrollbarOverrideLeftCGName(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetHScrollbarOverrideLeftCGName(SELFTEST_NO), "hs.left",
+		  "HScroll.OvLeftCG");
+
 	parts_release(SELFTEST_NO);
 	/* 释放后再查一次：部件没了，getter 必须退回默认值而不是崩。 */
 	CHECK_STR(PE_GetTextBoxText(SELFTEST_NO), "", "TextBox.Text after release");
 
-	NOTICE("[wtest] 控件状态自检：%d 项失败（7 类控件）", fail);
+	NOTICE("[wtest] 控件状态自检：%d 项失败（10 类控件）", fail);
 #undef CHECK
 #undef CHECK_STR
 	return fail;
