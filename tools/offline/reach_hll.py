@@ -29,6 +29,7 @@ import sys
 CALL_RE = re.compile(r'CALLMETHOD\s+arg=\d+\s+\(0x[0-9a-f]+\)\s+nargs=\d+\s+->\s+\[(\d+)\]')
 FUNC_CALL_RE = re.compile(r'CALLFUNC\s+arg=(\d+)')
 HLL_RE = re.compile(r'CALLHLL\s+arg=\d+\s+\(0x[0-9a-f]+\)\s*([A-Za-z0-9_.]+)')
+PUSH_RE = re.compile(r'^0x[0-9a-f]+: PUSH\s+arg=(\d+)')
 FUNC_RE = re.compile(r'^0x[0-9a-f]+: FUNC\s+arg=(\d+)')
 
 
@@ -63,12 +64,16 @@ def build_graph(dump):
     edges = collections.defaultdict(set)
     hlls = collections.defaultdict(set)
     cur = None
+    fnos = set()                 # 全部合法函数号：DG_NEW 边的合法性过滤用
+    push_window = []             # 最近若干条 PUSH 的立即数（DG_NEW 的 fun 在其中）
     with open(dump, 'rb') as f:
         for raw in f:
             line = raw.decode('utf-8', 'replace')
             m = FUNC_RE.match(line)
             if m:
                 cur = int(m.group(1))
+                fnos.add(cur)
+                push_window.clear()   # 窗口不跨函数
                 continue
             if cur is None:
                 continue
@@ -79,6 +84,26 @@ def build_graph(dump):
             m = FUNC_CALL_RE.search(line)
             if m:
                 edges[cur].add(int(m.group(1)))
+                continue
+            # [D497] 委托边：DG_NEW 从栈上弹 [obj, fun] 对，fun 是先前
+            # PUSH 的立即数。只跟 CALLMETHOD/CALLFUNC 会漏掉"仅经委托
+            # 调用"的函数（GUIDE 3.50 的 lambda 36970 就是这条形态）。
+            # 口径：DG_NEW 往前看 12 条指令内的 PUSH 立即数，凡合法
+            # 函数号都记一条边 —— 上界口径，宁可多连不可漏报
+            # （PUSH 一个恰好等于函数号的普通整数会产生假边，但那只
+            # 影响上界大小，不影响"列出来的就是可达"这个保证）。
+            m = re.search(r'\bDG_NEW\b', line)
+            if m:
+                for v in push_window[-12:]:
+                    if v in fnos:
+                        edges[cur].add(v)
+                push_window.clear()
+                continue
+            m = PUSH_RE.search(line)
+            if m:
+                push_window.append(int(m.group(1)))
+                if len(push_window) > 40:
+                    push_window.pop(0)
                 continue
             m = HLL_RE.search(line)
             if m:
