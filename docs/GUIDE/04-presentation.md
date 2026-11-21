@@ -273,6 +273,38 @@ task.SetAlpha(0.0, 1.0, 0)         ; 同时淡入
 表现出来是「动画停住、回调不来」，而不是报错 —— 这类故障只能从
 「任务有没有绑上一个活着的部件」去查。
 
+### 4.5.8 场景执行器的统一形状
+
+`RunIScene`(26379) 与 `RunISceneWithAssistant`(26386) 骨架完全相同，
+Assistant 版只多了一段 `AssistantView@ParentPartsNumber` 的父容器查找：
+
+```
+RunIScene(lambda):
+    stack = new SceneStack()            ; NEW 1117
+    foreach (f in lambda) f(stack)      ; 建场景 —— f 通常就是 xxx@Run，它内部 Join 阻塞
+    stack.WaitFrame()                   ; 节流 4 帧
+    foreach (g in ???) g()              ; DG_CALL 1035，收尾委托
+    stack.Release()
+    return
+```
+
+`SceneStack@Release`(29657) 全文只有一句：`global315 = -1`。它与 `InnerInit` 里的
+`global315 = this` 配对 —— `getCurrentSceneStack`(29644) 读的就是这个全局槽。
+**`Release` 不清图层**，图层由 `WaitFrame` 自己 `AddLayer` / `EraseLayer`。
+
+于是「一个场景从结束到下一站」的完整序列是：
+
+```
+按钮/回调 → Exit（m7 = true + EndWaitForClick）
+  → Join 的 while 退出 → Release（清 global315）
+  → f 返回 → 执行器 WaitFrame（4 帧）→ 收尾委托 → Release（幂等）
+  → 执行器返回 → 调用方继续（GameChapterN@Run 的下一轮 switch）
+```
+
+这条链上每一环现在都有字节码依据。`DG_CALL 1035` 的委托来源写成
+`local3.RefRef[0]`（某个数组的第 0 项），没有再往下拆——它是收尾用的，
+不影响主链路判断。
+
 ## 4.6 字符出来了但显示方框：先分码表、再分字体
 
 多字节编码的引擎里，「文字没显示」至少有三层，症状却几乎一样：纹理尺寸正常、
