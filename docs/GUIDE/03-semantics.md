@@ -1784,6 +1784,36 @@ SceneStack.Exit()
 要跑满回合必须走真实按钮（`ButtonTurnEnd`），这也是
 `[BATTLE-FULL-RUN]` 下一步必须解决 UI 点击的原因 —— 绕不过去。
 
+## 3.50 战况窗口是「开场显示、等一次点击关闭」——不是残留
+
+把 3.46 的「SceneBattleInformation 是独立场景」补完整，它的生命周期
+全部在 `lambda 36932`（`SceneBattle@Run` 的开场序列）里：
+
+```
+lambda 36932:
+  BattleScenes::RunBattleInformation(25950)
+    → NEW 745（SceneBattleInformation）→ Run(25051)
+      → BattleInfoView@Init(25042)
+      → OnClickStartEvent::add(dg{36970})      ← 注册「点击开始」回调
+      → Hide(dg{36971})                        ← Hide 带一个隐藏完成回调
+         lambda 36971 = AFL_Parts_EndWaitForClick(0)
+  → BattleApView@Init …（战斗 UI 继续布置）
+```
+
+**语义：战斗开场先弹战况窗口，等玩家点一下才 `Hide`，然后操作键才可点。**
+
+这推翻了我此前两个错误判断：
+
+- 「`900000228`/`900000731` 是残留件」——不是，它们是战况窗口的**活的框架按钮**；
+- 「跑测应该绕开它」——不该绕，**跑测该补一次点击**让它走完设计流程。
+
+对应的跑测修法：`RANCE10_LIVE_SEQ` 里进战斗后的第一步点击改为
+「点战况窗口」（任意位置通常也行，因为它注册的是 `OnClickStartEvent`），
+点完窗口 Hide，`ButtonTurnEnd` 自然露出来。
+
+**判据**：`[fwatch] fno=25048`（Hide）命中 ≥1 次后，点 `(1828,1025)`
+应触发 `24886 ProcessPostPlayerTurn`（TurnEnd 的处理函数）。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
