@@ -27,6 +27,8 @@
 #include "asset_manager.h"
 #include "system4/archive.h"
 #include "system4/ex.h"
+#include "movie.h"                  /* [D497] PartsMovie 族 */
+#include "sact.h"                   /* [D497] 部件 movie 精灵按帧重绘 */
 #include "hll.h"
 
 /* [D110c] D89 手写桩的触达探针。
@@ -4065,12 +4067,213 @@ static void PE_Noop_SetMotionData(int a0, struct string * a1, int a2, int a3)
 	(void)a3;
 }
 
-/* AIN SetMovieTime：void SetMovieTime。[HACK-POC D85] 空实现（setter 占位）。 */
+/* AIN SetMovieTime：void SetMovieTime(int, int, int)。[D85] 占位——
+ * [D497] 仍未接：movie API 没有 seek；AIN 签名 (no, ?, ?) 的两个 int
+ * 语义（目标时刻 / 帧号？）无运行期证据。 */
 static void PE_Noop_SetMovieTime(int a0, int a1, int a2)
 {
+	if (getenv("XSYS4_MOVIE_DBG"))
+		NOTICE("[pmov] SetMovieTime no=%d a1=%d a2=%d", a0, a1, a2);
 	(void)a0;
 	(void)a1;
 	(void)a2;
+}
+
+/* ==========================================================================
+ * [D497] PartsMovie 族：部件内嵌视频。
+ *
+ * 来源：69 个 Scene*@Run 全量入口扫 reach_hll（D496 修完主流程 10 条后
+ * 的复扫），4 条新可达未实现全在这族——消费方
+ * `movie::detail::CDrawMovie`（SceneMovie 的 OP 播放路径）。
+ *
+ * AIN 签名（--dump-hll 类型码，D493 列）：
+ *   bool CreatePartsMovie (int no, string file, int×6)
+ *   bool ReleasePartsMovie(int no, int state)
+ *   bool PlayPartsMovie   (int no, int state, int ?)
+ *   bool IsEndPartsMovie  (int no, int state)
+ *   int  GetPartsMovieEndTime  (int no, int state)
+ *   int  GetPartsMovieCurrentTime(int no, int state)
+ *
+ * 证据链：
+ *  - `CDrawMovie@CreateMovieParts`(6843) 反汇编：先 `Release(m0)` 再
+ *    `m0 = GetFreeSystemPartsNumber()`，然后 CreatePartsMovie(m0, file,
+ *    1000, local1, m4, m5, m6, 1)。成员名（dump-structs）：m4/m5/m6 =
+ *    `m_nBackColorY/Cb/Cr` —— **YCbCr 背景色**（视频信箱边的底色）。
+ *    尾参 1 = state（与 PE_init_parts_movie 的 1-based state 一致）；
+ *    1000/local1 按 (x, y) 处理——位置即使判错也只是 cosmetic。
+ *  - 创建后 AIN 立刻 `Math.Max(ViewWidth, Parts_GetWidth)` —— 部件尺寸
+ *    由**视频自身尺寸**定（movie_get_size），AIN 只做"至少铺满视图"。
+ *  - Play 循环里 AIN 每帧调 `IsEndPartsMovie` 轮询 ⇒ 引擎在轮询点
+ *    `movie_play`（推进）+ `movie_draw`（画进部件的隐藏精灵，
+ *    `PE_get_movie_sprite`），这与 DrawMovie 的 Load/Run/Draw 节奏同构。
+ *  - `PlayPartsMovie` 返回 false 的 AIN 路径是**优雅跳过**（隐藏光标、
+ *    return 0，字节码 0x1c886e）——所以 load 失败不会挂死场景。
+ *
+ * 引擎内建 YCbCr→RGB 用 BT.601（与视频解码同一惯例）。
+ * 判据（待跑测）：SceneMovie 的 OP 实际播放且结束时场景正常推进；
+ * `XSYS4_MOVIE_DBG=1` 打创建/轮询轨迹。 */
+#define PARTS_MOVIE_SLOTS 4
+struct parts_movie_slot {
+	int no;                /* 0 = 空槽（部件号从 1 开始） */
+	int state;
+	struct movie_context *mc;
+};
+static struct parts_movie_slot parts_movie_slots[PARTS_MOVIE_SLOTS];
+
+static struct movie_context **parts_movie_slot(int no, int state)
+{
+	struct parts_movie_slot *e = NULL;
+	for (int i = 0; i < PARTS_MOVIE_SLOTS; i++) {
+		if (parts_movie_slots[i].no == no) {
+			e = &parts_movie_slots[i];
+			break;
+		}
+		if (!e && parts_movie_slots[i].no == 0)
+			e = &parts_movie_slots[i];
+	}
+	if (!e)
+		return NULL;
+	e->no = no;
+	e->state = state;
+	return &e->mc;
+}
+
+static void parts_movie_close(int no)
+{
+	for (int i = 0; i < PARTS_MOVIE_SLOTS; i++) {
+		if (parts_movie_slots[i].no == no) {
+			if (parts_movie_slots[i].mc)
+				movie_free(parts_movie_slots[i].mc);
+			parts_movie_slots[i].mc = NULL;
+			parts_movie_slots[i].no = 0;
+		}
+	}
+}
+
+/* ITU-R BT.601：Y (16..219), Cb/Cr (-128..127) → RGB。
+ * 视频信箱底色，精度要求不高，截断即可。 */
+static int ycc_clamp8(int v)
+{
+	return v < 0 ? 0 : (v > 255 ? 255 : v);
+}
+static void ycbcr_to_rgb(int y, int cb, int cr, int *r, int *g, int *b)
+{
+	int C = y - 16, D = cb - 128, E = cr - 128;
+	*r = ycc_clamp8((298 * C + 409 * E + 128) >> 8);
+	*g = ycc_clamp8((298 * C - 100 * D - 208 * E + 128) >> 8);
+	*b = ycc_clamp8((298 * C + 516 * D + 128) >> 8);
+}
+
+static bool PE_CreatePartsMovie(int no, struct string *file, int x, int y,
+		int bg_y, int bg_cb, int bg_cr, int state)
+{
+	if (!file)
+		return false;
+	parts_movie_close(no);
+
+	struct movie_context *mc = movie_load(file->text);
+	if (!mc) {
+		WARNING("[pmov] CreatePartsMovie: movie_load(\"%s\") failed",
+			display_utf0(file->text));
+		return false;
+	}
+	int mw, mh;
+	movie_get_size(mc, &mw, &mh);
+	if (mw <= 0 || mh <= 0) {
+		/* 视频尺寸拿不到：退到视图大小，保证部件至少铺满可播。 */
+		mw = gfx_view_width();
+		mh = gfx_view_height();
+	}
+	int r, g, b;
+	ycbcr_to_rgb(bg_y, bg_cb, bg_cr, &r, &g, &b);
+	if (getenv("XSYS4_MOVIE_DBG"))
+		NOTICE("[pmov] create no=%d file='%s' %dx%d pos=(%d,%d) bg=(%d,%d,%d) state=%d",
+		       no, display_utf0(file->text), mw, mh, x, y, r, g, b, state);
+
+	if (!PE_init_parts_movie(no, mw, mh, r, g, b, state)) {
+		movie_free(mc);
+		return false;
+	}
+	/* x/y：AIN 侧证据是实参直传；引擎按部件坐标落位。 */
+	PE_SetPos(no, x, y);
+
+	struct movie_context **slot = parts_movie_slot(no, state);
+	if (!slot) {
+		WARNING("[pmov] movie slot table full (%d)", PARTS_MOVIE_SLOTS);
+		movie_free(mc);
+		return false;
+	}
+	*slot = mc;
+	return true;
+}
+
+static bool PE_ReleasePartsMovie(int no, int state)
+{
+	if (getenv("XSYS4_MOVIE_DBG"))
+		NOTICE("[pmov] release no=%d state=%d", no, state);
+	parts_movie_close(no);
+	return true;
+}
+
+static bool PE_PlayPartsMovie(int no, int state, int a2)
+{
+	struct movie_context **slot = parts_movie_slot(no, state);
+	if (!slot || !*slot) {
+		if (getenv("XSYS4_MOVIE_DBG"))
+			NOTICE("[pmov] play no=%d state=%d: no context (create failed?)",
+			       no, state);
+		return false;   /* AIN 侧走"优雅跳过"路径（0x1c886e） */
+	}
+	if (getenv("XSYS4_MOVIE_DBG"))
+		NOTICE("[pmov] play no=%d state=%d a2=%d", no, state, a2);
+	return movie_play(*slot);
+}
+
+static bool PE_IsEndPartsMovie(int no, int state)
+{
+	struct movie_context **slot = parts_movie_slot(no, state);
+	if (!slot || !*slot)
+		return true;   /* 没在播 = 视为已结束，让轮询退出 */
+	/* AIN 每帧来这里轮询（0x1c8854 之后是轮询循环）⇒ 推进 + 重绘。
+	 * 精灵是 PE_init_parts_movie 建的隐藏渲染目标，部件引擎每帧把它
+	 * 合成进部件（parts_render 走 movie 分支）。 */
+	struct sact_sprite *sp = sact_try_get_sprite(PE_get_movie_sprite(no, state));
+	if (sp)
+		movie_draw(*slot, sp);
+	return movie_is_end(*slot);
+}
+
+static int PE_GetPartsMovieEndTime(int no, int state)
+{
+	struct movie_context **slot = parts_movie_slot(no, state);
+	return (slot && *slot) ? movie_get_duration(*slot) : 0;
+}
+
+static int PE_GetPartsMovieCurrentTime(int no, int state)
+{
+	struct movie_context **slot = parts_movie_slot(no, state);
+	return (slot && *slot) ? movie_get_position(*slot) : 0;
+}
+
+/* [D497] `void GetPartsConstructionProcess(int no, int state, ref array a,
+ * ref array b, ref array c, int d)`（dump-hll：ret void、三 ref array）。
+ *
+ * AIN 消费方：`parts::GetConstructProcess(7)` → activity 的 CompParts
+ * 重放路径（FUNC 297/298）。要把 ops 队列（TAILQ）按 AIN 侧的数组编码
+ * 写回——**编码未知**（每个 op 的参数布局 = AIN 侧 op 枚举，没有证据），
+ * 猜了就是编造。当前回空数组 = "没有合成数据"：该路径在全部 679 份
+ * 历史日志中 0 次命中，从不影响已观察流程；真被走到时以
+ * `XSYS4_CPROC_DBG=1` 的轨迹定性，再按 AIN 枚举补编码。 */
+static void PE_GetPartsConstructionProcess(int no, int state,
+		struct page **a, struct page **b, struct page **c, int d)
+{
+	if (getenv("XSYS4_CPROC_DBG"))
+		NOTICE("[cproc] GetConstructionProcess no=%d state=%d d=%d "
+		       "(ops readback not implemented, returning empty)",
+		       no, state, d);
+	(void)a;
+	(void)b;
+	(void)c;
 }
 
 /* AIN SetMultiTextBoxBGColor：void SetMultiTextBoxBGColor。[HACK-POC D85] 空实现（setter 占位）。 */
@@ -5501,6 +5704,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Parts_BuildPartsConstructionProcessThread, PE_BuildPartsConstructionProcessThread),
 	    HLL_EXPORT(Parts_ClearPartsConstructionProcess, PE_ClearPartsConstructionProcess),
 	    HLL_EXPORT(Parts_GetPartsConstructionProcessCount, PE_GetPartsConstructionProcessCount),
+	    HLL_EXPORT(GetPartsConstructionProcess, PE_GetPartsConstructionProcess),
 	    HLL_EXPORT(Parts_AddDrawTextToPartsConstructionProcess, PE_AddDrawTextToPartsConstructionProcess),
 	    HLL_EXPORT(Parts_AddCopyTextToPartsConstructionProcess, PE_AddCopyTextToPartsConstructionProcess),
 	    HLL_EXPORT(Parts_SetPartsConstructionSurfaceArea, PE_SetPartsConstructionSurfaceArea),
@@ -5638,6 +5842,12 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetMessageWindowTextSpace, PE_SetMessageWindowTextSpace),
 	    HLL_EXPORT(SetMessageWindowTextSpeed, PE_SetMessageWindowTextSpeed),
 	    HLL_EXPORT(SetMotionData, PE_Noop_SetMotionData),
+	    HLL_EXPORT(CreatePartsMovie, PE_CreatePartsMovie),
+	    HLL_EXPORT(ReleasePartsMovie, PE_ReleasePartsMovie),
+	    HLL_EXPORT(PlayPartsMovie, PE_PlayPartsMovie),
+	    HLL_EXPORT(IsEndPartsMovie, PE_IsEndPartsMovie),
+	    HLL_EXPORT(GetPartsMovieEndTime, PE_GetPartsMovieEndTime),
+	    HLL_EXPORT(GetPartsMovieCurrentTime, PE_GetPartsMovieCurrentTime),
 	    HLL_EXPORT(SetMovieTime, PE_Noop_SetMovieTime),
 	    HLL_EXPORT(SetMultiTextBoxBGColor, PE_SetMultiTextBoxBGColor),
 	    HLL_EXPORT(SetMultiTextBoxCharSpace, PE_SetMultiTextBoxCharSpace),

@@ -23,5 +23,11 @@ bool movie_draw(struct movie_context *mc, struct sact_sprite *sprite);
 bool movie_is_end(struct movie_context *mc);
 int movie_get_position(struct movie_context *mc);
 bool movie_set_volume(struct movie_context *mc, int volume /* 0-100 */);
+/* [D497] PartsMovie 族（部件内嵌视频）需要的两个只读口：
+ * 创建部件时要用视频自身尺寸定部件大小（AIN 侧随后
+ * Math.Max(View, Parts) 决定显示尺寸）；结束时间给
+ * GetPartsMovieEndTime。 */
+void movie_get_size(struct movie_context *mc, int *w, int *h);
+int movie_get_duration(struct movie_context *mc);
 
 #endif /* SYSTEM4_MOVIE_H */

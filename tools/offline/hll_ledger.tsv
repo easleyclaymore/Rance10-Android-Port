@@ -123,3 +123,10 @@ system.GroupLoad	L3	→ load_globals：读盘并改写全局槽
 system.GroupSave	L3	→ save_globals：落盘到 savedir（实测生成 GlobalSave.asd）
 system.IsDebugMode	NA	发行环境应恒 false，属正确行为，无需实现
 system.Peek	L2	取栈顶不弹出；1516 次/章
+PartsEngine.CreatePartsMovie	L3	已实现（D497）：movie_load + PE_init_parts_movie（尺寸=视频自身尺寸 movie_get_size，AIN 侧随后 Math.Max(View,Parts)）；背景色 m_nBackColorY/Cb/Cr 是 YCbCr（dump-structs 成员名实证），BT.601 转 RGB。判据待跑测：SceneMovie OP 播放
+PartsEngine.ReleasePartsMovie	L3	已实现（D497）：关闭槽位 movie_context；parts 本体随场景释放
+PartsEngine.PlayPartsMovie	L3	已实现（D497）：movie_play；返回 false 走 AIN 优雅跳过路径（字节码 0x1c886e 实证：IFZ→HideCursor→return 0）
+PartsEngine.IsEndPartsMovie	L3	已实现（D497）：轮询点推进 movie_play + movie_draw 进部件隐藏精灵（PE_get_movie_sprite），返回 movie_is_end——AIN 每帧来这里轮询，节奏与 DrawMovie Load/Run/Draw 同构
+PartsEngine.GetPartsMovieEndTime	L2	已实现（D497）：movie_get_duration（容器元数据，无头流返回 0 按未知时长处理）
+PartsEngine.GetPartsMovieCurrentTime	L2	已实现（D497）：movie_get_position
+PartsEngine.GetPartsConstructionProcess	L1	未实现读回（D497）：AIN 消费方 parts::GetConstructProcess(7)→activity CompParts 重放路径；ops 队列→三 ref array 的编码（AIN 侧 op 枚举）无证据，猜=编造。当前回空数组；历史日志 0 次命中。判据：XSYS4_CPROC_DBG 轨迹 + AIN op 枚举取证后补编码

@@ -389,6 +389,27 @@ int movie_get_position(struct movie_context *mc)
 	return ms;
 }
 
+/* [D497] PartsMovie 族（部件内嵌视频）的两个只读口：
+ * 尺寸来自视频解码器（创建部件时定部件大小——AIN 侧随后拿
+ * Math.Max(View, Parts) 决定显示尺寸）；时长来自容器元数据，
+ * 拿不到（流式/无头）时返回 0，调用方按"未知时长"处理。 */
+void movie_get_size(struct movie_context *mc, int *w, int *h)
+{
+	if (w) *w = 0;
+	if (h) *h = 0;
+	if (!mc || !mc->video.ctx)
+		return;
+	if (w) *w = mc->video.ctx->width;
+	if (h) *h = mc->video.ctx->height;
+}
+
+int movie_get_duration(struct movie_context *mc)
+{
+	if (!mc || !mc->format_ctx || mc->format_ctx->duration <= 0)
+		return 0;
+	return (int)(mc->format_ctx->duration / (AV_TIME_BASE / 1000));
+}
+
 bool movie_set_volume(struct movie_context *mc, int volume)
 {
 	mc->volume = volume;
