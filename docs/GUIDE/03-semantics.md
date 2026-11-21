@@ -589,6 +589,39 @@ scene.Run(quest, post)
 - `SceneQuestSelect@Run` 的 stack 在 **m15**，而 `SceneTurnStart` 在 **m1** ——
   每个场景类自己决定把 `SceneStack` 放哪个字段，不能假设「统一在 m1」
 
+## 3.20 `SceneQuestSceneSet` 的单跑与堆叠跑
+
+场景模板有两个入口，区别只是「跑一次」还是「把队列跑空」：
+
+```
+Run(quest, reset, post):                     ; 23645
+    if (reset) ResetParm()                   ; 23654
+    if (!IsRegisterQuest(quest)) return 1    ; 23649 —— 任务未解锁
+    r = RunRegisteredQuest(quest, -1)        ; 23648
+    if (reset) ResetParm()
+    return r
+
+RunStacked():                                ; 23646
+    loop:
+        if (!GameContext.IsExistRestoreInfo()) break
+        q = GameContext.GetRestoreInfo()     ; 26140 取队首
+        GameContext.PopRestoreInfo()         ; 26142 弹出
+        RunRegisteredQuest(q, …)
+    ResetParm()
+```
+
+`RestoreInfo` 是一个**队列**：`GetRestoreInfo` 取队首、`PopRestoreInfo` 弹出。
+`RunStacked` 就是「只要队列非空就接着跑下一条」。
+
+所以两条路分工明确：
+
+- `OpenQuest` → `Run` → 跑**一个**任务
+- `RunStackedMapQuest` → `RunStacked` → 把**待恢复队列**跑到空
+
+`IsRegisterQuest` 为假时 `Run` 直接返回 `1`，**不抛错、也不开界面**。
+这就是「点了一个没解锁的任务、屏幕上什么也没发生」的来源 ——
+不是点击丢了，是这一层静默返回了。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
