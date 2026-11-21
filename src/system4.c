@@ -625,6 +625,7 @@ static void usage(void)
 	puts("        --dump-signatures   Dump every AIN function's arity and variable count");
 	puts("        --dump-hll          Dump every AIN HLL declaration (lib, fno, name, ret)");
 	puts("        --dump-structs      Dump the struct table (index, name, nr_members)");
+	puts("        --dump-strings     Dump the string table (index, text)");
 	puts("        --encoding       Specify the game's character encoding. sjis (default) or gbk");
 	puts("        --font-mincho    Specify the path to the mincho font to use (path[:index] for .ttc)");
 	puts("        --font-gothic    Specify the path to the gothic font to use (path[:index] for .ttc)");
@@ -664,6 +665,7 @@ enum {
 	LOPT_DUMP_SIGNATURES,
 	LOPT_DUMP_HLL,
 	LOPT_DUMP_STRUCTS,
+	LOPT_DUMP_STRINGS,
 	LOPT_ECHO_MESSAGE,
 	LOPT_ENCODING,
 	LOPT_FONT_MINCHO,
@@ -704,6 +706,7 @@ int main(int argc, char *argv[])
 	bool dump_signatures = false;
 	bool dump_hll = false;
 	bool dump_structs = false;
+	bool dump_strings = false;
 
 	char *font_mincho = NULL;
 	char *font_gothic = NULL;
@@ -725,6 +728,7 @@ int main(int argc, char *argv[])
 			{ "dump-signatures", no_argument, 0, LOPT_DUMP_SIGNATURES },
 			{ "dump-hll",        no_argument, 0, LOPT_DUMP_HLL },
 			{ "dump-structs",    no_argument, 0, LOPT_DUMP_STRUCTS },
+			{ "dump-strings",    no_argument, 0, LOPT_DUMP_STRINGS },
 			{ "echo-message",  no_argument,       0, LOPT_ECHO_MESSAGE },
 			{ "encoding",      required_argument, 0, LOPT_ENCODING },
 			{ "font-mincho",   required_argument, 0, LOPT_FONT_MINCHO },
@@ -781,6 +785,9 @@ int main(int argc, char *argv[])
 			break;
 		case LOPT_DUMP_STRUCTS:
 			dump_structs = true;
+			break;
+		case LOPT_DUMP_STRINGS:
+			dump_strings = true;
 			break;
 		case LOPT_DISASM: {
 			unsigned long ds = 0, dl = 0x400;
@@ -924,6 +931,27 @@ int main(int argc, char *argv[])
 	/* [D403] `--dump-switch <no>`：把 `ain->switches[no]` 的 case 表原样倒出来。
 	 * 相位状态机全是 `SWITCH <no>`，而 `--disasm` 只显示编号、不显示表，
 	 * 读流程时只能猜「这个 case 对应哪个 Phase 值」。和 `--struct` 同性质。 */
+/* [D466] `--dump-strings`：字符串表（索引 / 文本）。
+ *
+ * 为什么需要：反汇编里 `S_PUSH arg=3409` 压的是**字符串号**，
+ * 而不是文本。想知道 `Activity@GetButton(S_PUSH 3409)` 取的是哪个按钮、
+ * `Activity@Load(S_PUSH 3409)` 装的是哪个活动，没有这张表就只能猜 ——
+ * 猜错一个，「哪个按钮是什么」就全错。文本里的空白/换行换成 `_`，
+ * 保持一行一条可 grep。 */
+	if (dump_strings) {
+		for (int i = 0; i < ain->nr_strings; i++) {
+			struct string *str = ain->strings[i];
+			if (!str)
+				continue;
+			printf("%d\t", i);
+			for (char *c = str->text; c && *c; c++)
+				putchar(*c == '\n' || *c == '\t' || *c == ' ' ? '_' : *c);
+			putchar('\n');
+		}
+		ain_free(ain);
+		return 0;
+	}
+
 	/* [D453] `--dump-structs`：结构表（索引 / 名字 / 成员数）。
 	 *
 	 * 为什么需要：反汇编里 `NEW <n>` 的操作数是**结构索引**，不是函数号。

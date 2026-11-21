@@ -210,12 +210,18 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 		Rectangle dbghb = parts_hitbox_at(parts, PARTS_STATE_DEFAULT);
 		if (cur_pos.x >= dbghb.x && cur_pos.x < dbghb.x + dbghb.w &&
 		    cur_pos.y >= dbghb.y && cur_pos.y < dbghb.y + dbghb.h)
+			/* [D472] 加 `di=`（delegate_index）与 `hblock=`（本件是否
+			 * 会拦光标）。判据「自己没有任何点击委托的全屏件不该吃光标」
+			 * 需要这个数：`delegate_index < 0` 的件，AIN 的
+			 * CPartsMessageManager@CallDelegate 本来就会把它的消息丢掉
+			 * （message.c 有记录），所以它拦光标是纯粹的阻塞。 */
 			NOTICE("[cap] no=%d z=%d vis=%d show=%d ck=%d pc=%d "
-			       "hcons=%d began=%d hb=(%d,%d,%d,%d)",
+			       "hcons=%d began=%d di=%d hblock=%d hb=(%d,%d,%d,%d)",
 			       parts->no, parts->global.z,
 			       parts_is_visible(parts) ? 1 : 0, parts->global.show,
 			       parts->clickable, parts->pass_cursor,
 			       *hover_consumed ? 1 : 0, parts_began_click ? 1 : 0,
+			       parts->delegate_index, parts->pass_cursor ? 0 : 1,
 			       dbghb.x, dbghb.y, dbghb.w, dbghb.h);
 	}
 

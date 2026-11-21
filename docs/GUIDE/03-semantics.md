@@ -1598,6 +1598,98 @@ if (IsSimple) {
   输了走 `Scenes::RunGameOver`。所以「打完没结算」先看 Type 是不是没置上
   （见 3.34：`getBattleResultType` 只查我方 HP 和回合上限）。
 
+## 3.45 战斗操作键的完整映射：字符串号 → lambda → 部件
+
+`BattleSkillSelectorPanel@Init`(25189) 一次装四个按钮，编码是：
+
+```
+Activity@Load(S_PUSH 3409)                  ; "Game/Battle/SkillPanelButton"
+Activity@GetButton(S_PUSH 3410) → DG_PLUSA dg(36996)   ; ButtonDeffence
+Activity@GetButton(S_PUSH 2546) → DG_PLUSA dg(36997)   ; ButtonParty
+Activity@GetButton(S_PUSH 3411) → DG_PLUSA dg(36998)   ; ButtonTurnEnd
+Activity@GetButton(S_PUSH 3412) → DG_PLUSA dg(36999)   ; ButtonCardType
+```
+
+**`S_PUSH` 压的是字符串号，不是文本** —— 想知道 3410 是什么，必须用
+`--dump-strings` 查表（`3410 = ButtonDeffence`）。四个 lambda 都是 8 行的薄壳：
+
+```
+PUSHSTRUCTPAGE ; PUSH 7 ; REF ; DG_CALLBEGIN 1077 ; …     ; 36996 → this.m7
+PUSHSTRUCTPAGE ; PUSH 8 ; REF ; DG_CALLBEGIN 1077 ; …     ; 36998 → this.m8
+```
+
+也就是「把面板自己的 `m7`/`m8` 委托表转发出去」。**这两槽正好就是 3.36 里
+`SceneBattle@InitViewObjects` 订阅的 `OnClickDefenceEvent` / `OnClickTurnEndEvent`**
+（`24899 OnClickDefence` / `24886 ProcessPostPlayerTurn`）。静态两边独立推出同一条链，
+这是它可信的原因。
+
+三条能直接用的判据：
+
+- **`ButtonTurnEnd` 就是「回合结束」**，绑的是 `ProcessPostPlayerTurn`(24886)，
+  不经过任何角色卡。所以「回合怎么推」在界面上是有按钮的，只是它在**右下角**
+  （实测命中盒 `(1749,986,158,78)`），不在左下那一排。
+- **`ButtonDeffence` 是那个 `(1749,751,158,211)` 的竖长件**，走 `OnClickDefence`(24899)
+  = 让当前角色放弃行动后再判 `isActionAvailable`。
+- **`ActivityButton` 的点击不走 `Parts.m7` / `TextButton.m5`**，它走
+  `ActivityButton@0` 里的 `AFL_Parts_AddMouseLClickEvent(m4, dg)` →
+  `parts::AddMouseLClickEvent` → `CPartsFunctionSet.m7`（见 3.30）。
+
+**排查纪律**：`ActivityButton` 的**部件号每轮重建都变**（同一位置实测出现过
+`900000395` 与 `900000731` 两个号）。所以「上轮 dump 的部件号」不能直接用于下一轮点击，
+必须**同一轮内**先 `XSYS4_DUMP_ABTN=1` 拿号、再点；跨轮只保留「名字 ↔ lambda ↔ 相对位置」。
+
+## 3.46 `SceneBattleInformation` 是独立场景，`BattleInfoView` 只属于它
+
+`BattleInfoView@Init`(25042) 的**唯一调用者**是 `SceneBattleInformation@Run`。
+所以这套件（`BattleInfoView` + `CommonFrame` 框架 + 若干 `CommonFrame` 模板 lambda）
+出现时，当前界面是 **战况信息场景**，不是战斗操作界面：
+
+```
+SceneBattleInformation@Run
+  └─ BattleInfoView@Init(25042)
+       ├─ Parts@InitAsDummy
+       ├─ Parts@Z::set            ← 框架层把 z 抬到最上
+       ├─ Activity@Load
+       ├─ Activity@GetLabel ×3 → ActivityLabel@Text::set
+       └─ lambda 36967/36968/36969（CommonFrame 模板签名 (string,int,string,string)）
+```
+
+判据：**看 `BattleInfoView@Init` 有没有被调**。它在，就说明点开的是信息窗口，
+此时「找不到回合结束按钮」是正常的 —— 该先关掉这个窗口。
+
+`CommonFrame` 那几个 lambda 都是同一个模板签名 `(string, int, string, string)`，
+分别属于 `CommonFrame` / `QuestMapFrame` / `BattleSkillSelectorPanel` / `BattleInfoView`。
+**光看委托函数号分不清是哪个窗口的哪个按钮**，必须配合 `ActivityButton.m3`（部件名）
+或 `--dump-strings` 反查 —— 这是我在这一轮里把「菜单按钮」误当成「回合结束」的直接原因。
+
+## 3.47 回合循环的运行时验证：10 回合、敌方行动全部跑到
+
+3.35 的「互递归」是从反汇编推出来的，`full1` 用 `XSYS4_AUTO_BATTLE_END`
+（每 400 帧调一次 `ProcessPostPlayerTurn`）跑 10 轮，把每一跳都打到了：
+
+```
+24886 ProcessPostPlayerTurn   10 次
+24883 StartRound              10 次
+24923 ProcessEnemyAction      10 次   ← 这条链以前一次都没跑到过
+24955 CheckEndBattle          40 次   ← 一回合 4 次，与 3.39 完全一致
+24906 ProcessPlayerAction      1 次   ← 只出手了一次
+```
+
+`Game/Battle/EnemyAction/EnemyActionIconBase` 装载了 **43 个实例** ——
+每回合 `SetNewEnemyAction` 为每个敌人建一套行动图标。这是「敌方行动真的跑了」
+的独立证据（不只是函数进了，演出资源也建了）。
+
+三个可以直接用的结论：
+
+- **一回合 4 次 `CheckEndBattle` 这个数被实测确认了**（40/10）。
+  以后看到「一回合只有 2 次」就知道提前 return 了。
+- **`ProcessEnemyAction` 不依赖玩家点中任何东西**。它由
+  `ProcessPostPlayerTurn` 的末尾直接驱动，所以「敌人不行动」只可能是
+  回合没推进到那一层，不是 UI 问题。
+- **`XSYS4_AUTO_BATTLE_END=<frames>[:<maxRounds>]` 现在可重复触发**
+  （默认上限 12 回合）。这条开关的意义是「把回合推进从点得中变成确定性」，
+  不改变任何游戏语义 —— 用法与 `XSYS4_AUTO_MAP` 同类。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。

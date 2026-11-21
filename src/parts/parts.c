@@ -1975,6 +1975,48 @@ void PE_DebugCovers(int x, int y)
 }
 
 /* [D338 诊断] 打印单个部件的输入相关字段（`[pev]` 用）。 */
+/* [D471] 收集 (x,y) 处 z 最高的 N 个可见件。
+ *
+ * 「点不中」在兰斯10 里几乎总是同一个形状：真正想要的按钮 z=2010，
+ * 而某个面板/遮罩 z=20121、甚至 z=0x40000000 盖在上面且 `pass_cursor=0`
+ * 吃掉光标。以前只能靠 `XSYS4_CAP_DBG` 看一堆部件号猜谁是谁 ——
+ * 这个接口直接把「最顶的 5 个」连同祖先链打出来。
+ * 坐标口径与 `PE_PartsCovers` 完全一致（hitbox + 父 global 偏移）。 */
+void PE_DebugTopAt(int x, int y, int *nos, int *zs, int *n)
+{
+	int cnt = 0;
+	struct parts *p;
+	PARTS_LIST_FOREACH(p) {
+		Rectangle hb = p->states[PARTS_STATE_DEFAULT].common.hitbox;
+		if (p->parent) {
+			hb.x += p->parent->global.pos.x;
+			hb.y += p->parent->global.pos.y;
+		}
+		if (hb.w <= 0 || hb.h <= 0)
+			continue;
+		if (x < hb.x || x >= hb.x + hb.w || y < hb.y || y >= hb.y + hb.h)
+			continue;
+		if (!parts_is_visible(p))
+			continue;
+		if (p->global.alpha <= 0)
+			continue;
+		/* 插入排序，只保留前 5 个（z 降序）。 */
+		int z = p->global.z;
+		int i = cnt < 5 ? cnt : 4;
+		if (cnt < 5)
+			cnt++;
+		else if (z <= zs[4])
+			continue;
+		for (; i > 0 && zs[i - 1] < z; i--) {
+			zs[i] = zs[i - 1];
+			nos[i] = nos[i - 1];
+		}
+		zs[i] = z;
+		nos[i] = p->no;
+	}
+	*n = cnt;
+}
+
 void PE_DebugPartsInfo(int parts_no)
 {
 	struct parts *p = parts_try_get(parts_no);
@@ -1988,12 +2030,42 @@ void PE_DebugPartsInfo(int parts_no)
 		hb.x += p->parent->global.pos.x;
 		hb.y += p->parent->global.pos.y;
 	}
+	/* [D469] 同时打出 local.pos / global.pos 与**未加父偏移**的原始 hitbox。
+	 *
+	 * 起因：`ButtonTurnEnd` 与一个 z=20246 的菜单按钮报出几乎完全重叠的
+	 * hb，导致坐标点击永远先落到菜单上。要判断「到底是不是真重叠」，
+	 * 必须先确定 hitbox 的坐标系：
+	 *   - `global.pos` 在 `parts_update_global_pos()` 里是
+	 *     `parent.global.pos + local.pos`，即**已经是绝对坐标**；
+	 *   - 而 `PE_PartsCovers` / 这里都在 hitbox 上再加一次
+	 *     `p->parent->global.pos` —— 两者不可能同时成立。
+	 * 只有把 raw hitbox 与 gpos 并排打出来，才能判断哪一边是对的。 */
 	NOTICE("[pev]   no=%d st=%d w=%d h=%d a=%d show=%d ck=%d pc=%d "
-	       "z=%d ctrl=%d vis=%d hb=(%d,%d,%d,%d) par=%d",
+	       "z=%d ctrl=%d vis=%d hb=(%d,%d,%d,%d) raw=(%d,%d) "
+	       "gpos=(%d,%d) lpos=(%d,%d) par=%d",
 	       parts_no, (int)st->type, st->common.w, st->common.h,
 	       (int)p->global.alpha, p->global.show, p->clickable, p->pass_cursor,
 	       p->global.z, p->controller_no, parts_is_visible(p) ? 1 : 0,
-	       hb.x, hb.y, hb.w, hb.h, p->parent ? p->parent->no : -1);
+	       hb.x, hb.y, hb.w, hb.h,
+	       st->common.hitbox.x, st->common.hitbox.y,
+	       p->global.pos.x, p->global.pos.y,
+	       p->local.pos.x, p->local.pos.y,
+	       p->parent ? p->parent->no : -1);
+	/* [D470] 祖先链：判断「这个件属于哪个活动/是不是上个场景的残留」。
+	 * 部件号段会复用，只看自己的号分不清；沿 parent 打到根，
+	 * 配合 z 与 show 才能定性。 */
+	{
+		struct parts *a = p->parent;
+		for (int d = 0; a && d < 6; d++, a = a->parent)
+			NOTICE("[pev]     ↑%d par=%d z=%d show=%d vis=%d lpos=(%d,%d) "
+			       "gpos=(%d,%d) w=%d h=%d",
+			       d + 1, a->no, a->global.z, a->global.show,
+			       parts_is_visible(a) ? 1 : 0,
+			       a->local.pos.x, a->local.pos.y,
+			       a->global.pos.x, a->global.pos.y,
+			       a->states[PARTS_STATE_DEFAULT].common.w,
+			       a->states[PARTS_STATE_DEFAULT].common.h);
+	}
 }
 
 /* [D338] 覆盖 (x,y) 的**最上层局部可点击件**；没有则返回 0。

@@ -194,6 +194,31 @@ python3 tools/offline/reach_hll.py /tmp/ain_full4.txt     --roots 22579,24882,23
 可达的只有这 10 条，且全部落在网络 / debug / 系统信息页 / 窗体这类外围。
 所以「补 HLL」的收益主要不在这条线上 —— 该继续做的是 AIN 语义。
 
+## --dump-strings — 字符串表：`S_PUSH` 的钥匙
+
+反汇编里 `S_PUSH arg=3410` 压的是**字符串号**，不是文本。想知道
+`Activity@GetButton(S_PUSH 3410)` 取的是哪个按钮、`Activity@Load(S_PUSH 3409)`
+装的是哪个活动，没有这张表就只能猜：
+
+```bash
+build-sdl3/src/xsystem4 --nodebug --encoding gbk --dump-strings . > /tmp/ainstr.tsv
+awk -F'\t' '$1==3410{print}' /tmp/ainstr.tsv
+# 3410 = ButtonDeffence
+```
+
+2026-11-21 靠它钉死了战斗操作键那一排（`BattleSkillSelectorPanel@Init` 25189）：
+`Activity@Load(3409)="Game/Battle/SkillPanelButton"`，
+`GetButton(3410)=ButtonDeffence`、`(3411)=ButtonTurnEnd`、
+`(2546)=ButtonParty`、`(3412)=ButtonCardType`。
+
+**用法闭环**（查「某个按钮是什么/在哪」的标准三步）：
+
+1. `--dump-strings` 反查 `S_PUSH` 的按钮名；
+2. `GetButton` 调用点后面紧跟的 `ENDFUNC arg=<lambda fno>` 给出该按钮绑的 lambda；
+3. 运行期 `XSYS4_DUMP_ABTN=1` 打出每个 `ActivityButton` 实例的
+   `parts=`（部件号）和 m6 委托里的 `f<lambda>`——两边按 lambda 号对上，
+   按钮名 → 部件号 → 命中盒就全通了，不需要在画面上猜坐标。
+
 ## gsave_dump — 存档检查器
 
 不跑游戏就能判断"我们写出去的档，自己能不能读回来"。

@@ -45,6 +45,8 @@ void PE_DebugPartsInfo(int parts_no);
 bool PE_PartsCovers(int parts_no, int x, int y);
 /* [D347 诊断] 打印所有覆盖 (x,y) 的有尺寸部件。 */
 void PE_DebugCovers(int x, int y);
+/* [D471] 该点处 z 最高的 N 个可见件（N<=5），用于定位「谁把点击拿走了」。 */
+void PE_DebugTopAt(int x, int y, int *nos, int *zs, int *n);
 /* [D341] root_no 的子树里有没有部件覆盖 (x,y)。 */
 bool PE_SubtreeCovers(int root_no, int x, int y);
 bool PE_SubtreeBounds(int root_no, int *x, int *y, int *w, int *h, int *n);
@@ -110,6 +112,18 @@ int PE_GetPartsDrawFilter(int parts_no);
 void PE_SetAddColor(int parts_no, int r, int g, int b);
 void PE_GetAddColor(int parts_no, int *r, int *g, int *b);
 void PE_SetMultiplyColor(int parts_no, int r, int g, int b);
+/* [D455] 颜色分量 getter（回读 local，与 setter 同口径） */
+int PE_GetAddColorR(int parts_no);
+int PE_GetAddColorG(int parts_no);
+int PE_GetAddColorB(int parts_no);
+int PE_GetMultiplyColorR(int parts_no);
+int PE_GetMultiplyColorG(int parts_no);
+int PE_GetMultiplyColorB(int parts_no);
+/* [D456] 旋转 / alpha 裁剪器 / 数字长度的 getter（与 setter 同口径） */
+float PE_GetPartsRotateX(int parts_no);
+float PE_GetPartsRotateY(int parts_no);
+int PE_GetPartsAlphaClipperPartsNo(int parts_no);
+int PE_GetNumeralLength(int parts_no);
 void PE_GetMultiplyColor(int parts_no, int *r, int *g, int *b);
 int PE_GetPartsWidth(int parts_no, int state);
 int PE_GetPartsHeight(int parts_no, int state);

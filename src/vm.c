@@ -2101,6 +2101,182 @@ static void vm_dbg_lsb(void)
 	}
 }
 
+/* [D465] 诊断：打印所有 `ActivityButton` 实例的 **部件号**。
+ *
+ * 起因：战斗操作键（防御 / 队伍 / 回合结束的那一排）不是 `TextButton`
+ * —— D464 实测战斗界面只有 3 个 TextButton，且都是框架标题栏
+ * （委托 f36556 `CommonFrame` / f36652 `QuestMapFrame` / f37000
+ * `BattleSkillSelectorPanel`），点中也不触发 24899/24900。
+ *
+ * 它们的真身由 `BattleSkillSelectorPanel@Init`(25189) 经
+ * `Activity@Load` + `Activity@GetButton` 取出，是 `ActivityButton`
+ * （struct 1078）：构造时 `ActivityButton@0`(29082) 会调
+ *   `AFL_Activity_GetPartsNumber` → `AFL_Parts_AddMouseLClickEvent(m4, dg)`
+ * 把点击挂在部件的 `CPartsFunctionSet.m7` 上。
+ *
+ * 所以「点哪个像素」的答案不在画面里，在 `m4`。把 m2/m3/m4/m6 打出来，
+ * 就能直接对照 `[btn]` / `[pev]` 的部件号。 */
+/* [D467] 诊断：按部件号找 `CPartsFunctionSet`（struct 299），打它的 m7 委托数。
+ *
+ * 这是 `ActivityButton` 的点击落点：`ActivityButton@0` 调
+ * `AFL_Parts_AddMouseLClickEvent(m4, dg)` → `parts::AddMouseLClickEvent`
+ * → `GetFunctionSet(partsNo).m7 DG_PLUSA dg`。
+ *
+ * 战斗里的操作键（防御/回合结束/队伍/卡型）全是 `ActivityButton`，
+ * 它们的部件几何是真的（`hb=(1749,986,158,78)`），点击应该命中。
+ * 但 `fin2` 里点这些坐标后**一条 `[pev]` 都没有** —— 说明命中了部件、
+ * 却没走进任何一条已实现的派发分支。要区分两种情况：
+ *   ① 根本没建 FunctionSet（`m7` 无从谈起）；
+ *   ② FunctionSet 在，但 `m7` 是空委托（说明注册没生效）。
+ * 这个探针把两者分开。 */
+/* [D468] 打印候选对象明细：结构名 + 各自的委托槽。
+ *
+ * 只打「命中候选 N」不够——`fin2`/`fs1` 就是栽在这上面：点 (1828,1025)
+ * 命中了 1 个 TextButton，派发却什么都没触发，而日志里看不出那是**哪个**
+ * TextButton、它的 m5 是不是空的。 */
+static void vm_dbg_cand(const int *cand, int nc)
+{
+	for (int k = 0; k < nc; k++) {
+		struct page *p = heap[cand[k]].page;
+		if (!p)
+			continue;
+		const char *nm = (p->index >= 0 && p->index < ain->nr_structures)
+				 ? ain->structures[p->index].name : "?";
+		NOTICE("[cand]   #%d slot=%d struct=%d(%s) nv=%d",
+		       k, cand[k], p->index, nm ? nm : "?", p->nr_vars);
+		/* 三个已知委托槽：Parts.m7 / TextButton.m5 / LSB.m3 */
+		int slots[3] = { 7, 5, 3 };
+		for (int q = 0; q < 3; q++) {
+			int sl = slots[q];
+			if (p->nr_vars <= sl)
+				continue;
+			int ds = p->values[sl].i;
+			struct page *dg = (ds > 0 && (size_t)ds < heap_size)
+					  ? heap[ds].page : NULL;
+			if (!dg || dg->type != DELEGATE_PAGE)
+				continue;
+			char buf[160] = "";
+			int off = 0;
+			for (int j = 0; j < dg->nr_vars / 3 && j < 3; j++)
+				off += snprintf(buf + off, sizeof(buf) - off,
+				                " f%d", dg->values[j * 3 + 1].i);
+			NOTICE("[cand]     m%d = %d 条委托:%s", sl, dg->nr_vars / 3, buf);
+		}
+	}
+}
+
+static void vm_dbg_fs(int parts_no)
+{
+	static int fs_st = -2;
+	if (fs_st == -2) {
+		/* 真名带命名空间：`parts::detail::CPartsFunctionSet`（struct 299）。
+		 * `vm_struct_named` 是精确匹配，直接传短名会返回 -1 —— 第一次
+		 * 跑就打了「结构未找到」，白跑一轮。 */
+		fs_st = vm_struct_named("parts::detail::CPartsFunctionSet");
+		if (fs_st < 0)
+			fs_st = vm_struct_named("CPartsFunctionSet");
+	}
+	if (fs_st < 0) {
+		NOTICE("[fs] CPartsFunctionSet 结构未找到");
+		return;
+	}
+	int hit = 0, total = 0;
+	for (size_t i = 1; i < heap_size && total < 400; i++) {
+		struct page *p = heap[i].page;
+		if (!p || p->type != STRUCT_PAGE || p->index != fs_st)
+			continue;
+		total++;
+		int key = p->nr_vars > 1 ? p->values[1].i : -1;
+		if (parts_no > 0 && key != parts_no)
+			continue;
+		hit++;
+		int dg7 = p->nr_vars > 7 ? vm_delegate_count(p->values[7].i) : -1;
+		int dg8 = p->nr_vars > 8 ? vm_delegate_count(p->values[8].i) : -1;
+		NOTICE("[fs] slot=%d nv=%d m1(parts)=%d m7=%d m8=%d",
+		       (int)i, p->nr_vars, key, dg7, dg8);
+		if (dg7 > 0) {
+			int ds = p->values[7].i;
+			struct page *dg = (ds > 0 && (size_t)ds < heap_size)
+					  ? heap[ds].page : NULL;
+			if (dg && dg->type == DELEGATE_PAGE)
+				for (int k = 0; k < dg->nr_vars / 3 && k < 3; k++)
+					NOTICE("[fs]   m7[%d] obj=%d fun=%d", k,
+					       dg->values[k * 3].i, dg->values[k * 3 + 1].i);
+		}
+		if (hit >= 4)
+			break;
+	}
+	NOTICE("[fs] parts=%d 匹配 %d 个（共扫到 %d 个 FunctionSet）",
+	       parts_no, hit, total);
+}
+
+/* [D471] 打出 (x,y) 处 **z 最高的 N 个可见件**及其祖先链。
+ *
+ * 用途：回答「我点的这个像素，究竟被谁拿走了」。
+ * `XSYS4_CAP_DBG` 只给 z 序与部件号，看不出那是哪个活动、为什么在那儿；
+ * 而「点不中」的历史案例（技能卡、回合结束键）全是同一个形状：
+ * 一个 z 高出两个数量级的件盖在上面，且 `pass_cursor=0` 吃掉光标。
+ *
+ * 只在 `PARTS_EVENT_DBG` 打开时调，且一次点击只打前 5 个 —— 量很小。 */
+static void vm_dbg_top_at(int x, int y)
+{
+	int nos[5], zs[5], n = 0;
+	PE_DebugTopAt(x, y, nos, zs, &n);
+	for (int k = 0; k < n; k++)
+		PE_DebugPartsInfo(nos[k]);
+}
+
+static void vm_dbg_abtn(void)
+{
+	static int ab_st = -2;
+	if (ab_st == -2)
+		ab_st = vm_struct_named("ActivityButton");
+	if (ab_st < 0) {
+		NOTICE("[abtn] ActivityButton 结构未找到");
+		return;
+	}
+	int n = 0;
+	for (size_t i = 1; i < heap_size && n < 24; i++) {
+		struct page *p = heap[i].page;
+		if (!p || p->type != STRUCT_PAGE || p->index != ab_st)
+			continue;
+		n++;
+		int pno = p->nr_vars > 4 ? p->values[4].i : -1;
+		int dg6 = p->nr_vars > 6 ? vm_delegate_count(p->values[6].i) : -1;
+		int dg1 = p->nr_vars > 1 ? vm_delegate_count(p->values[1].i) : -1;
+		/* [D465] m2=activityName / m3=partsName 是 VM_STRING 槽，
+		 * 直接带文本，dump 出来就能按名字 grep（ButtonDeffence 等）。 */
+		const char *a2 = "", *a3 = "";
+		if (p->nr_vars > 2 && p->values[2].i > 0 &&
+		    (size_t)p->values[2].i < heap_size &&
+		    heap[p->values[2].i].type == VM_STRING && heap[p->values[2].i].s)
+			a2 = display_sjis0(heap[p->values[2].i].s->text);
+		if (p->nr_vars > 3 && p->values[3].i > 0 &&
+		    (size_t)p->values[3].i < heap_size &&
+		    heap[p->values[3].i].type == VM_STRING && heap[p->values[3].i].s)
+			a3 = display_sjis0(heap[p->values[3].i].s->text);
+		NOTICE("[abtn] #%d slot=%d nv=%d parts=%d dg1=%d dg6=%d act='%s' btn='%s'",
+		       n, (int)i, p->nr_vars, pno, dg1, dg6, a2, a3);
+		if (pno > 0)
+			PE_DebugPartsInfo(pno);
+		/* 委托里装的函数号：和 DUMP_BTN 一样，靠它反推这个按钮干什么。 */
+		for (int k = 1; k <= 6; k += 5) {
+			int ds = p->values[k].i;
+			struct page *dg = (ds > 0 && (size_t)ds < heap_size)
+					  ? heap[ds].page : NULL;
+			if (!dg || dg->type != DELEGATE_PAGE || dg->nr_vars < 3)
+				continue;
+			char buf[128] = "";
+			int off = 0;
+			for (int q = 0; q < dg->nr_vars / 3 && q < 4; q++)
+				off += snprintf(buf + off, sizeof(buf) - off,
+				                " f%d", dg->values[q * 3 + 1].i);
+			NOTICE("[abtn]     m%d 委托 =%s", k, buf);
+		}
+	}
+	NOTICE("[abtn] 共 %d 个 ActivityButton", n);
+}
+
 /* [D344] `XSYS4_AUTO_BATTLE_END=<frames>`：到点后**直接调**
  * `SceneBattle@ProcessPostPlayerTurn`(24886)，绕开"角色卡点不中"这个 UI 问题，
  * 单独验证「回合收尾逻辑本身能不能跑」。
@@ -2120,14 +2296,26 @@ void vm_pump_auto_battle_end(void)
 	const char *e = getenv("XSYS4_AUTO_BATTLE_END");
 	if (!e || auto_be_done || auto_battle_page <= 0)
 		return;
-	static int want_frames = -1;
-	if (want_frames < 0)
+	static int want_frames = -1, rounds = 0, max_rounds = -1;
+	if (want_frames < 0) {
 		want_frames = *e ? atoi(e) : 300;
+		/* [D473] 语法升级成 `<frames>[:<maxRounds>]`：**可重复触发**。
+		 * 只触发一次时永远走不到结算屏（一场战斗要好几回合），
+		 * 而「到结算屏」正是 `[BATTLE-FULL-RUN]` 的验收判据。
+		 * 缺省 `maxRounds=12` 与 `Round 1/10` 的上限对齐，防无限推进。 */
+		const char *c = strchr(e, ':');
+		max_rounds = (c && c[1]) ? atoi(c + 1) : 12;
+	}
 	if (++auto_be_frames < want_frames)
 		return;
-	auto_be_done = 1;
-	NOTICE("[abe] 强制 ProcessPostPlayerTurn(page=%d) after %d frames",
-	       auto_battle_page, auto_be_frames);
+	auto_be_frames = 0;
+	if (++rounds > max_rounds) {
+		auto_be_done = 1;
+		NOTICE("[abe] 已触发 %d 次，停止（max=%d）", rounds - 1, max_rounds);
+		return;
+	}
+	NOTICE("[abe] #%d 强制 ProcessPostPlayerTurn(page=%d)",
+	       rounds, auto_battle_page);
 	vm_call(24886, auto_battle_page);
 }
 
@@ -2663,6 +2851,18 @@ void vm_pump_parts_click(void)
 	pe_click_want_pending = false;
 	int no = pe_click_parts, x = pe_click_x, y = pe_click_y;
 
+	/* [D465] `XSYS4_DUMP_ABTN=1`：每次点击都先把 ActivityButton 实例打一遍
+	 * （前 3 次）。`[pev]` 那条只在**点不中**时才打 abtn，而战斗操作键的部件
+	 * 往往能被容器兜底命中，于是看不到清单。 */
+	{
+		static int abn;
+		if (abn < 3 && getenv("XSYS4_DUMP_ABTN")) {
+			abn++;
+			NOTICE("[pev] click=(%d,%d) 时的 ActivityButton 清单:", x, y);
+			vm_dbg_abtn();
+		}
+	}
+
 	if (parts_st == -2) {
 		parts_st = vm_struct_named("Parts");
 		onclick_fno = vm_fno_named("Parts@OnClick");
@@ -2728,12 +2928,29 @@ void vm_pump_parts_click(void)
 				int phx = 0, phy = 0, phw = 0, phh = 0;
 				if (par > 0)
 					PE_PartsHitbox(par, &phx, &phy, &phw, &phh);
+				/* [D464] 把委托里装的函数号也打出来。
+				 * 光知道「这个按钮有 1 个委托」没用 —— 得知道它调的是
+				 * `SceneBattle@OnClickParty` / `@OnClickDefence` / 还是某个
+				 * lambda。战斗界面的 3 个 TextButton 都是 0x0 命中盒，
+				 * 点中了也看不出走的是哪条逻辑，只能从委托内容反推。 */
+				char dgbuf[128] = "";
+				{
+					int ds = p->values[5].i;
+					struct page *dg = (ds > 0 && (size_t)ds < heap_size)
+							  ? heap[ds].page : NULL;
+					if (dg && dg->type == DELEGATE_PAGE) {
+						int off = 0;
+						for (int k = 0; k < dg->nr_vars / 3 && k < 3; k++)
+							off += snprintf(dgbuf + off, sizeof(dgbuf) - off,
+							                " f%d", dg->values[k * 3 + 1].i);
+					}
+				}
 				NOTICE("[btn] #%d slot=%d parts=%d dg=%d st=%d w=%d h=%d "
 				       "sa=%dx%d hb=(%d,%d,%d,%d) maxw=%d id=%d fs=%d "
-				       "uc=%d par=%d parhb=(%d,%d,%d,%d)",
+				       "uc=%d par=%d parhb=(%d,%d,%d,%d)%s",
 				       btn_dumps, (int)i, pn, dg, ty, pw, ph, saw, sah,
 				       hx, hy, hw, hh, p->values[6].i, p->values[1].i, fsz,
-				       PE_PartsUcFlags(pn), par, phx, phy, phw, phh);
+				       PE_PartsUcFlags(pn), par, phx, phy, phw, phh, dgbuf);
 				nb++;
 			}
 			NOTICE("[btn] #%d total=%d", btn_dumps, nb);
@@ -2920,11 +3137,23 @@ void vm_pump_parts_click(void)
 		}
 
 	}
+	if (getenv("XSYS4_PARTS_EVENT_DBG")) {
+		NOTICE("[pev] click=%d 命中候选 %d（Parts=%d TextButton=%d LSB=%d）",
+		       no, nc, nparts, ntbtn, nlsb);
+		PE_DebugPartsInfo(no);
+		NOTICE("[pev]   ---- 该点 z 最高的 5 个件（谁拿走了点击）----");
+		vm_dbg_top_at(x, y);
+		vm_dbg_fs(no);
+		vm_dbg_cand(cand, nc);
+	}
 	if (!nc && getenv("XSYS4_PARTS_EVENT_DBG")) {
 		NOTICE("[pev] click=%d 没有匹配的按钮对象（Parts=%d TextButton=%d LSB=%d）",
 		       no, nparts, ntbtn, nlsb);
 		PE_DebugCovers(x, y);
 		vm_dbg_lsb();
+		/* [D465] 战斗操作键是 ActivityButton（部件号在 m4），
+		 * 点不中时把它们的部件号打出来，好知道该点哪里。 */
+		vm_dbg_abtn();
 		PE_DebugPartsInfo(no);
 		{
 			int alt = PE_FindClickableAt(x, y);
