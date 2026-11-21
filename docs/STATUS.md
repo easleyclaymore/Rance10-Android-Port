@@ -10,9 +10,10 @@
 
 | | |
 |---|---|
-| **阶段** | **第一章可一直点到 `Game/TurnStart`，回合开始屏三个按钮现在真能点**（D397）：标题 → 序章 37 句 → 图鉴框 → 巨舰遗迹 → 战况播报 → `Game/TurnStart`；点 `(724,726)` 触发 `SceneTurnStart@FadeOut`（`[fwatch] fno=23464` 0→2），0 ERROR。**战斗与技能卡仍未通** |
-| **最大卡点** | `[BATTLE-STALL]` 战斗里技能卡点不中：`BattleCardButton.m9` 是空委托页（`[dgm] MISS dg_no=1021`），命中件 `SmallSkillButton01` 只有 `1×1`。D397 刚证实的「TextButton = 四件套（锚点/容器/底板 flat/文字）+ `PE_PartsIsUnder(no,pn)`」是否也适用于 `LargeSkillButton`，是下一步第一件要验的事 |
-| **本轮做过的** | **D397 结掉 TURNSTALL**：① `--disasm` 的 `CALLMETHOD` 一直把**立即数（nargs）当函数号**打印，全表名字都是错的（`nargs=1` 恰好撞上 `message::detail::GetMessageSpeedRate`）—— 两周的因果链（「23463 回调触发 FadeOut」）就建在这些假名上；现改为回溯常量 `PUSH`，回溯不到打 `?`。② 新增 `--struct`（dump 成员表）、`XSYS4_DUMP_BTN`、`PE_PartsHitbox/PE_PartsBrief/PE_PartsUcFlags/PE_PartsParent`。③ 真根因：TextButton 派发判据 `PE_PartsIsUnder(pn, no)` **参数顺序反了**，改 `(no, pn)` 后 `[pev] 落在容器上 -> 1 个候选`、`FadeOut` 触发。smoke quick PASS |
+| **阶段** | 第一章可一直点到 `Game/TurnStart`，**三个按钮的点击链已完整**（D397）：点 `(724,726)` → `[pev] 落在容器上 -> 1 个候选` → lambda 36647 → `FadeOut`(23464) → `SceneStack@Exit`(29658，`[fwatch]` 实测 2 次)。**场景仍未真正退出**，卡在 `[ACTIVE-PARTS]` |
+| **最大卡点** | `[ACTIVE-PARTS]` `SceneStack@Join` = `while(!IsFinish) WaitForClick(0)`（字节码实证），而 `WaitForClick` 的 break 要求 `parts::IsInputPartsActive`；它经 `GetActivePartsType`→`GetActiveParts` 取「最近鼠标命中部件」= flat 底板 `900000064`(st=9)，**不是按钮锚点** `900000062`，类型判据恒 false ⇒ `Exit` 之后点哪都不算数，`Join` 的 while 永远看不到 `IsFinish=true` |
+| **次级卡点** | `[BATTLE-STALL]` 技能卡点不中（`BattleCardButton.m9` 空委托页）；被上一条挡在后面 —— 场景退不出去就到不了作戦/出撃 |
+| **本轮做过的** | **D397 结掉「按钮点不动」**：真根因是 `PE_PartsIsUnder(pn,no)` 参数反了；顺带修好 `--disasm` 的 `CALLMETHOD` 假名（立即数是 nargs，不是 fno）并新增 `--struct` / `XSYS4_DUMP_BTN`。**D398 把「场景结束」这一层读通**：`SceneTurnStart@Run` 末尾就是 `m_sceneStack.Join()`；`Join` = `while(!IsFinish) WaitForClick(0)`；`WaitForClick` 的 break 要 `CASClick@IsClick` **且** `parts::IsInputPartsActive`。`Exit` 已把 `IsFinish` 置真，但 `IsInputPartsActive` 因「活动部件是 flat 底板」恒 false，所以循环不退出。smoke quick PASS |
 | **判据** | 画面一律用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S，且 alt+s 前空 ≥1.5s，否则会丢帧）；层/归属看 `[ctrl] SetActive id=N -> idx=M` 与 `[ctrl] layer … parts:` 清单；HLL 进展看 `python3 tools/offline/hll_hotness.py --todo ../logs/live_<tag>.log` 的输出是否为 0 |
 
 > **卡点必须挂债标签**：§0「最大卡点」里的 `` `[TAG]` `` 必须**逐字存在**于
@@ -221,7 +222,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **248**（未标注 32）｜ HLL 源码口径 **3520 / 4614（76.3%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 108 / 37** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **248**（未标注 32）｜ HLL 源码口径 **3520 / 4614（76.3%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 109 / 38** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
 <!-- STATS:END -->
 
 最常用的：

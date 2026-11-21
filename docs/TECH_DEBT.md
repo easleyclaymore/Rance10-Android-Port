@@ -13,6 +13,7 @@
 | `[MEM-LIVE-LEAK]` | 引用计数族（未定位到单一函数） | 槽回收打开后 `live` 仍 ~300 对象/秒线性涨（`pages` +150/s）。单个很小，RSS 平稳在 ~305MB，**不是 OOM 主因** | 按 `XSYS4_MEM_STAT` 的 `live` 斜率做基线；用 `XSYS4_SLOT_ID` + `[mem]` 按 page 类型分组，先缩到"结构体页还是局部页" |
 | `[POS-SEMANTICS]` | **已证伪（D199）** | `[flat] render` 探针「每号只打一次」把容器**滑入动画的第一帧**当成稳态值：`305` 的 pos 走 0→585→-73→0，`306` 相应 1920→1262→**1335**、`308` 2023→1365→**1438**。默认模型的稳态坐标本来就是对的。D193–D199 建立的三种坐标模型（`ABS_ALL` / `POS_MARK` / `CONTAINER_ROOT`）全部源于这个错误快照，均无必要 | 探针已改为每号最多打 8 次。`nr_libraries=0` 的真因已由 D200 解决（TALT 段 QNT 图集）。|
 | `[CH1-CLEAR]` | 主线：第一章通关 | **D386：首次不靠后门走到 `Game/Battle`** —— 配方 `XSYS4_AUTO_MAP=1 XSYS4_AUTO_MAP_ROUTE=12000 RANCE10_LIVE_SEQ="wait:16000;skip:600000:1117,907"`；已装载 `LargeSkillButton 0/1/2`、`SmallSkillButtonAtk/01/02`、`CardApView`、`EnemyInformationView`。剩下两条：① 战斗中技能卡仍点不中（`[BATTLE-STALL]` 的 m9 空委托 + 命中盒 1×1）；② 战况播报屏（`ResultArmyCountView02`）三行数字显示 `12345678`（`NumberJp2` 拿到 -1） | 判据：从标题一路点击/快进 → 打赢第一章战斗 → 回合结算 → 进下一回合，全程无后门 |
+| `[ACTIVE-PARTS]` | `PartsEngine.GetActiveParts` + `parts::IsInputPartsActive`(7243) | **场景结束的最后一环**：`SceneStack@Join`=`while(!IsFinish) WaitForClick(0)`（字节码实证），而 `WaitForClick` 的 break 要求 `CASClick@IsClick` **且** `parts::IsInputPartsActive` —— 后者经 `GetActivePartsType`→`GetActiveParts` 拿「最近鼠标命中部件」。兰斯10 的 TextButton 是四件套，命中的是 flat 底板 `900000064`(st=9)，不是按钮锚点 `900000062`，类型判据恒 false ⇒ 淡出后点哪都不算数。实测：`FadeOut`→`Exit`（`[fwatch] 29658` 2 次）之后场景仍不退出，`[act] loaded` 无新场景 | 先读 `parts::IsInputPartsActive`(7243, 0x1d2620) 的完整判据，再定引擎该返回锚点还是命中的件；判据：淡出后一次点击即可让 `[fwatch] fno=29656` 返回、出现下一场景 |
 
 ## B. 会炸的
 
