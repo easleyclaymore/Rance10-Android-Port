@@ -126,6 +126,7 @@ void vm_pump_parts_click(void);
 /* [D344] 诊断后门：到点后直接调 SceneBattle@ProcessPostPlayerTurn。 */
 void vm_pump_auto_battle_end(void);
 /* [D349] 诊断后门：技能卡展开后直接派发第 N 个 LargeSkillButton。 */
+void vm_pump_auto_call(void);
 void vm_pump_auto_skill(void);
 bool vm_iface_pair(int iface_no, int ref_slot, int *obj, int *offset);
 bool vm_call_hll_func(int fno, union vm_value elem, union vm_value *ret);

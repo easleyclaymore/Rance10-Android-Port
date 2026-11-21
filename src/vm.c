@@ -969,6 +969,37 @@ static void function_call(int fno, int return_address)
 				NOTICE("[fn]     v%d text='%s'", i,
 				       str && str->text ? display_sjis0(str->text) : "(null)");
 			}
+			/* [D384] 数组实参也展开内容。
+			 * `NumberJp2@Init(param)` 这类「传进来一个 int 数组」的控件，
+			 * 只看到 `v0 = 104742`（页号）完全判断不了值对不对 ——
+			 * 回合播报屏显示 12345678 就是这个数组的第 0 个元素是 -1。 */
+			for (int i = 0; i < f->nr_vars && i < 24; i++) {
+				int s = lp->values[i].i;
+				if (s <= 0 || (size_t)s >= heap_size || !heap[s].page)
+					continue;
+				struct page *ap = heap[s].page;
+				if (ap->type != ARRAY_PAGE)
+					continue;
+				NOTICE("[fn]     v%d array nr=%d elem_type=%d", i,
+				       ap->nr_vars, ap->a_type);
+				for (int k = 0; k < ap->nr_vars && k < 8; k++) {
+					int e = ap->values[k].i;
+					/* 元素也是页（`array<ref array<int>>` 这种两层结构，
+					 * `NumberJp2` 的「数位分组」就是它）→ 再展开一层。 */
+					if (ap->a_type == AIN_ARRAY && e > 0 &&
+					    (size_t)e < heap_size && heap[e].page &&
+					    heap[e].page->type == ARRAY_PAGE) {
+						struct page *ip = heap[e].page;
+						NOTICE("[fn]       [%d] -> array nr=%d elem_type=%d",
+						       k, ip->nr_vars, ip->a_type);
+						for (int j = 0; j < ip->nr_vars && j < 8; j++)
+							NOTICE("[fn]         (%d,%d) = %d", k, j,
+							       ip->values[j].i);
+					} else {
+						NOTICE("[fn]       [%d] = %d", k, e);
+					}
+				}
+			}
 			/* [D307] 结构体实参也展开成员。
 			 *
 			 * 起因：`CallDelegateMouseClick(fs)` 的 `fs` 是
@@ -2127,6 +2158,46 @@ void vm_pump_auto_click(uint32_t now)
 	mouse_inject_click(right != 0);
 	if (n++ < 5 || n % 40 == 0)
 		NOTICE("[aclk] #%lu click (%d,%d)%s", n, tx, ty, right ? " right" : "");
+}
+
+/* [D388] XSYS4_AUTO_CALL=<fno>[:<frames>] —— 到第 <frames> 帧直接调一次无参 AIN 函数。
+ *
+ * 为什么需要：跑到 `Game/TurnStart` 要 10 分钟（序章 37 句 + 图鉴框 + 逐国播报），
+ * 而调试点就在那一屏 —— 每验一次都要 10 分钟的话，一轮会话只能试三次。
+ * `Scenes::RunTurnStart`(26415) 是 `Scenes::Run(-1, lambda{ new SceneTurnStart })`
+ * 的薄壳，无参可直接调，于是「进回合开始屏」变成 20 秒的事。
+ *
+ * <frames> 缺省 600，指**帧泵计数**（`vm_frame_pump` 每 64 条字节码一次）——
+ * 所以它只在 VM 真的在跑字节码时才涨：标题画面静止等输入时几乎不涨
+ * （`ac1` 实测 200 秒只到几百帧，1500 帧没触发）。要用它必须先把游戏点进去。
+ * 与其它 AUTO_* 一样是**诊断后门**，默认关。 */
+void vm_pump_auto_call(void)
+{
+	static int frames = -1, want = -1, fno = -1, done;
+	if (fno != -1 || done)
+		return;
+	if (frames < 0) {
+		const char *e = getenv("XSYS4_AUTO_CALL");
+		frames = 0;
+		if (!e || !*e) {
+			fno = 0;   /* 没设：标记为已处理，别再进这个分支 */
+			return;
+		}
+		fno = atoi(e);
+		const char *c = strchr(e, ':');
+		want = (c && c[1]) ? atoi(c + 1) : 600;
+		if (fno <= 0) {
+			fno = 0;
+			return;
+		}
+		NOTICE("[acall] 将在第 %d 帧调用 fno=%d", want, fno);
+	}
+	if (++frames < want)
+		return;
+	done = 1;
+	NOTICE("[acall] 调用 fno=%d（第 %d 帧）", fno, frames);
+	vm_call(fno, -1);
+	NOTICE("[acall] 返回");
 }
 
 void vm_pump_auto_skill(void)
@@ -6185,6 +6256,7 @@ void vm_frame_pump(void)
 	 * （`parts_update_mouse` 只登记，见 vm_request_parts_click）。 */
 	vm_pump_parts_click();
 	vm_pump_auto_battle_end();
+	vm_pump_auto_call();
 	vm_pump_auto_skill();
 	vm_pump_auto_click(now);
 	/* [MEM] XSYS4_MEM_STAT=1：每约 2 秒打印一次虚拟机堆的构成。
