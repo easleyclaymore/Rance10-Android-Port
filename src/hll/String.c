@@ -222,10 +222,34 @@ static bool String_EndsWith(struct string **s, struct string *suffix)
 	return strcmp((*s)->text + l - r, suffix->text) == 0;
 }
 
+/* [D422] `String.Search/SearchAll/Match2` 三个桩暂时保留。
+ *
+ * 签名里的 `struct page **re` 是**结果输出数组**，但条目格式没取证：
+ * 是「匹配起点数组」还是「(start,end) 对数组」、含不含捕获组，都没有依据。
+ * 写错比不写更糟 —— 调用方拿到格式不符的数组会读出垃圾下标。
+ * 只先补语义确定的 `Match`；其余三个等一次针对性观测再动。
+ * 日志里 `String.Search` / `String.Match` 各 1254 次，是最响的两条。 */
 HLL_WARN_UNIMPLEMENTED(false, bool, String, Search, struct string **s, struct page **re, struct string *pat);
 HLL_WARN_UNIMPLEMENTED(false, bool, String, SearchAll, struct string **s, struct page **re, struct string *pat);
-HLL_WARN_UNIMPLEMENTED(false, bool, String, Match, struct string **s, struct string *pat);
 HLL_WARN_UNIMPLEMENTED(false, bool, String, Match2, struct string **s, struct page **re, struct string *pat);
+
+/* [D422] `String.Match(ref string s, string pat) -> bool`：整体匹配判断。
+ *
+ * 与 `ReplaceRegex` 同一套 POSIX regex，按字节处理（GBK 串）。
+ * 命中 true；模式空或编译失败按「不匹配」降级，不抛错。 */
+static bool String_Match(struct string **s, struct string *pat)
+{
+	if (!s || !*s || !pat)
+		return false;
+	if (pat->text[0] == '\0')
+		return false;
+	regex_t re;
+	if (regcomp(&re, pat->text, REG_EXTENDED) != 0)
+		return false;
+	bool ok = regexec(&re, (*s)->text, 0, NULL, 0) == 0;
+	regfree(&re);
+	return ok;
+}
 
 static struct string *String_Replace(struct string **s, struct string *from, struct string *to)
 {
@@ -648,6 +672,7 @@ HLL_LIBRARY(String,
 	HLL_EXPORT(EndsWith, String_EndsWith),
 	HLL_EXPORT(Replace, String_Replace),
 	HLL_EXPORT(ReplaceRegex, String_ReplaceRegex),
+	HLL_EXPORT(Match, String_Match),
 /* AIN v12 的 f[22] GetPart(ref string,int,int)->string 是 3 参；
 	 * String_GetPart 是老的两参形式（D62）。 */
 	/* [D152] 2 参与 3 参是两个重载，必须分开标 arity。
