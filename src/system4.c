@@ -606,6 +606,7 @@ static void usage(void)
 	puts("    -e, --echo-message   Echo in-game messages to standard output");
 	puts("        --stat-method    Histogram CALLMETHOD/CALLFUNC arguments and exit");
 	puts("        --struct <name|no>  Dump a structure's member table and exit");
+	puts("        --dump-switch <no>  Dump a switch's case table and exit");
 	puts("        --encoding       Specify the game's character encoding. sjis (default) or gbk");
 	puts("        --font-mincho    Specify the path to the mincho font to use (path[:index] for .ttc)");
 	puts("        --font-gothic    Specify the path to the gothic font to use (path[:index] for .ttc)");
@@ -640,6 +641,7 @@ enum {
 	LOPT_DISASM,
 	LOPT_STAT_METHOD,
 	LOPT_STRUCT,
+	LOPT_DUMP_SWITCH,
 	LOPT_ECHO_MESSAGE,
 	LOPT_ENCODING,
 	LOPT_FONT_MINCHO,
@@ -675,6 +677,7 @@ int main(int argc, char *argv[])
 	size_t disasm_start = 0, disasm_len = 0x400;
 	char *encoding = NULL;
 	char *struct_query = NULL;
+	int dump_switch_no = -1;
 
 	char *font_mincho = NULL;
 	char *font_gothic = NULL;
@@ -691,6 +694,7 @@ int main(int argc, char *argv[])
 			{ "disasm",        required_argument, 0, LOPT_DISASM },
 			{ "stat-method",    no_argument,       0, LOPT_STAT_METHOD },
 			{ "struct",        required_argument, 0, LOPT_STRUCT },
+			{ "dump-switch",   required_argument, 0, LOPT_DUMP_SWITCH },
 			{ "echo-message",  no_argument,       0, LOPT_ECHO_MESSAGE },
 			{ "encoding",      required_argument, 0, LOPT_ENCODING },
 			{ "font-mincho",   required_argument, 0, LOPT_FONT_MINCHO },
@@ -732,6 +736,9 @@ int main(int argc, char *argv[])
 			break;
 		case LOPT_STRUCT:
 			struct_query = optarg;
+			break;
+		case LOPT_DUMP_SWITCH:
+			dump_switch_no = atoi(optarg);
 			break;
 		case LOPT_DISASM: {
 			unsigned long ds = 0, dl = 0x400;
@@ -868,6 +875,26 @@ int main(int argc, char *argv[])
 	if (stat_method) {
 		NOTICE("stat-method");
 		ain_stat_method(stdout, ain);
+		ain_free(ain);
+		return 0;
+	}
+
+	/* [D403] `--dump-switch <no>`：把 `ain->switches[no]` 的 case 表原样倒出来。
+	 * 相位状态机全是 `SWITCH <no>`，而 `--disasm` 只显示编号、不显示表，
+	 * 读流程时只能猜「这个 case 对应哪个 Phase 值」。和 `--struct` 同性质。 */
+	if (dump_switch_no >= 0) {
+		if (dump_switch_no >= ain->nr_switches) {
+			fprintf(stderr, "switch %d out of range (nr=%d)\n",
+			        dump_switch_no, ain->nr_switches);
+		} else {
+			struct ain_switch *sw = &ain->switches[dump_switch_no];
+			printf("switch %d: type=%d cases=%d default=0x%x\n",
+			       dump_switch_no, (int)sw->case_type, sw->nr_cases,
+			       sw->default_address);
+			for (int i = 0; i < sw->nr_cases; i++)
+				printf("  case %-8d -> 0x%06x\n",
+				       sw->cases[i].value, sw->cases[i].address);
+		}
 		ain_free(ain);
 		return 0;
 	}
