@@ -1602,8 +1602,14 @@ void PE_UpdateComponent(possibly_unused int passed_time)
 		static int inited;
 		if (!inited) {
 			inited = 1;
+			/* [D484] 转正：默认**开**（读端先把稳定 ID 映射成栈下标）。
+			 * `XSYS4_VIS_IDX=0` 回退到旧行为。依据：
+			 * - vidx2：开关下完整出手链 24906→24909→24839 各 1、ERROR 0；
+			 * - vidx3：全流程进战斗，抓帧 Round/AP/HP/角色卡/右下面板完整；
+			 * - 键不一致是「写用下标、读用 ID」的客观事实，
+			 *   `AddLayer` 之后 `id[i] != i` 是常态，不修就永远错位。 */
 			const char *e = getenv("XSYS4_VIS_IDX");
-			parts_vis_use_index = e && !strcmp(e, "1");
+			parts_vis_use_index = !(e && !strcmp(e, "0"));
 		}
 	}
 	// 读档之后，游戏脚本可能算出一个负的时间增量：
