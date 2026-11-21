@@ -135,3 +135,6 @@ MsgSkip.SetAdvFlag	L2	已实现（D497）：键控表，键=(ADV函数名,版本
 MsgSkip.GetAdvFlag	L2	已实现（D497）：同上键控表读回
 SystemService.GetGameFolderPath	L2	已实现（D497）：0 参直返 game_dir（SJIS）；原出参形状在 0 参 cif 下写垃圾指针
 SystemService.PopSystemMessageString	L2	已实现（D497）：bool Pop(ref string out)——队列空 false、out 不动；原 0 参返回 string 形状与声明 (1 参 ref string/ret bool) 双不符
+FileOperation.GetFileList	L2	已实现（D497 考古定案）：X_SET（vm.c:4583，数组赋值拷负载）破译后调用点通顺 = localN = 结果 → 按 Split [D119-SPLIT] 槽号约定返回 heap_alloc_page 页；判据待跑测（0 历史命中，跑测时看 GetFolderList 不崩+返回数组长度合理）
+FileOperation.GetFolderList	L2	已实现（D497）：同上；调用点 0xb7912 在 debug 列目录路径（IsDebugMode 门控内），返回值经 X_SET 赋给 local3
+FileOperation.GetFileListWithSubFolder	L2	已实现（D497）：递归变体，此前连 TODO 导出都没有（启动告警三条之一）；判据同上

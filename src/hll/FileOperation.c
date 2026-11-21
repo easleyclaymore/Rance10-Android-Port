@@ -140,15 +140,26 @@ static bool FileOperation_DeleteFolder(struct string *folder_name)
 	return result;
 }
 
-static bool get_file_list(struct string *folder_name, struct page **out, bool folders)
+/* [D497] 建名字数组。调用点（0xb7956/0xb7912）把返回值经数组赋值
+ * （X_SET）拷进局部变量——所以按 Split 的 [D119-SPLIT] 槽号约定交回：
+ * heap_alloc_page 注册后把槽号当指针返回。原来的出参形态在 1 参 cif
+ * 下 `out` 读的是垃圾（arity 审计揪出）。 */
+static struct page *build_name_list(const char *dir_name, bool folders, bool sub);
+
+static struct page *get_file_list(struct string *folder_name, bool folders, bool sub)
 {
 	char *dir_name = unix_path(folder_name->text);
+	struct page *page = build_name_list(dir_name, folders, sub);
+	free(dir_name);
+	return page;
+}
 
+static struct page *build_name_list(const char *dir_name, bool folders, bool sub)
+{
 	UDIR *d = opendir_utf8(dir_name);
 	if (!d) {
 		WARNING("opendir(\"%s\"): %s", display_utf0(dir_name), strerror(errno));
-		free(dir_name);
-		return false;
+		return NULL;
 	}
 
 	struct string **names = NULL;
@@ -179,12 +190,29 @@ static bool get_file_list(struct string *folder_name, struct page **out, bool fo
 		names = xrealloc_array(names, nr_names, nr_names+1, sizeof(struct string*));
 		names[nr_names++] = cstr_to_string(sjis_name);
 		free(sjis_name);
+		if (sub && S_ISDIR(s.st_mode)) {
+			/* [D497] WithSubFolder 变体：递归收集子目录 */
+			char *subpath = path_join(dir_name, d_name);
+			struct page *subpage = build_name_list(subpath, folders, true);
+			free(subpath);
+			if (subpage && subpage->nr_vars) {
+				int base = nr_names;
+				names = xrealloc_array(names, nr_names,
+						nr_names + subpage->nr_vars,
+						sizeof(struct string*));
+				nr_names += subpage->nr_vars;
+				for (int i = 0; i < subpage->nr_vars; i++)
+					names[base + i] = string_dup(
+						heap_get_string(subpage->values[i].i));
+			}
+			if (subpage)
+				free_page(subpage);
+		}
 	loop_next:
 		free(utf8_path);
 		free(d_name);
 	}
 	closedir_utf8(d);
-	free(dir_name);
 
 	union vm_value dim = { .i = nr_names };
 	struct page *page = alloc_array(1, &dim, AIN_ARRAY_STRING, 0, false);
@@ -193,23 +221,43 @@ static bool get_file_list(struct string *folder_name, struct page **out, bool fo
 	}
 	free(names);
 
-	if (*out) {
-		delete_page_vars(*out);
-		free_page(*out);
-	}
-	*out = page;
-	return true;
+	return page;
 }
 
-static bool FileOperation_GetFileList(struct string *folder_name, struct page **out)
+
+static struct page *alloc_empty_string_array(void)
 {
-	return get_file_list(folder_name, out, false);
+	union vm_value dim = { .i = 0 };
+	return alloc_array(1, &dim, AIN_ARRAY_STRING, 0, false);
 }
 
-static bool FileOperation_GetFolderList(struct string *folder_name, struct page **out)
+/* [D119-SPLIT] 约定：ret=t79 落 ffi default 分支压原始返回值，
+ * AIN 按堆槽寻址 → 先 heap_alloc_page 注册、槽号当指针交回。 */
+static struct page *FileOperation_GetFileList(struct string *folder_name)
 {
-	return get_file_list(folder_name, out, true);
+	struct page *page = get_file_list(folder_name, false, false);
+	return page ? (struct page *)(intptr_t)heap_alloc_page(page)
+		    : (struct page *)(intptr_t)heap_alloc_page(
+			      alloc_empty_string_array());
 }
+
+static struct page *FileOperation_GetFolderList(struct string *folder_name)
+{
+	struct page *page = get_file_list(folder_name, true, false);
+	return page ? (struct page *)(intptr_t)heap_alloc_page(page)
+		    : (struct page *)(intptr_t)heap_alloc_page(
+			      alloc_empty_string_array());
+}
+
+/* GetFileListWithSubFolder：递归变体（此前连 TODO 导出都没有） */
+static struct page *FileOperation_GetFileListWithSubFolder(struct string *folder_name)
+{
+	struct page *page = get_file_list(folder_name, false, true);
+	return page ? (struct page *)(intptr_t)heap_alloc_page(page)
+		    : (struct page *)(intptr_t)heap_alloc_page(
+			      alloc_empty_string_array());
+}
+
 
 HLL_LIBRARY(FileOperation,
 	    HLL_EXPORT(ExistFile, FileOperation_ExistFile),
@@ -223,4 +271,5 @@ HLL_LIBRARY(FileOperation,
 	    HLL_EXPORT(CreateFolder, FileOperation_CreateFolder),
 	    HLL_EXPORT(DeleteFolder, FileOperation_DeleteFolder),
 	    HLL_EXPORT(GetFileList, FileOperation_GetFileList),
-	    HLL_EXPORT(GetFolderList, FileOperation_GetFolderList));
+	    HLL_EXPORT(GetFolderList, FileOperation_GetFolderList),
+	    HLL_EXPORT(GetFileListWithSubFolder, FileOperation_GetFileListWithSubFolder));
