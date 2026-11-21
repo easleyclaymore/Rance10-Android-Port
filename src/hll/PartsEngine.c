@@ -5004,9 +5004,13 @@ static float PE_GetFlatFPS(int parts_no, int state)
 
 /* [D341] `Parts_GetFlatFrame`：技能演算里按帧号推进（`sk15` 在
  * `SceneBattle@ProcessAttack` 之后撞上它）。与 `GetPartsFlatCurrentFrameNumber`
- * 同义，只是 AIN 用的是另一个导出名。 */
-static int PE_Parts_GetFlatFrame(int parts_no, int state)
+ * 同义，只是 AIN 用的是另一个导出名。
+ * [D497] AIN 声明 3 参 (int no, string name, int state)——中间的 string
+ * 是 flat 名；引擎里一个部件状态只有一份 flat，名字不参与判定
+ * （arity 审计揪出：原 2 参实现会把 string 指针当 state 用）。 */
+static int PE_Parts_GetFlatFrame(int parts_no, struct string *name, int state)
 {
+	(void)name;
 	return PE_GetPartsFlatCurrentFrameNumber(parts_no, state);
 }
 

@@ -137,6 +137,65 @@ static void MsgSkip_SetState(int _state)
 	state = _state;
 }
 
+/* [D497] SetAdvFlag/GetAdvFlag：以（ADV 函数名, 版本, 步数）为键的
+ * "跳过标记"表。调用点证据（0x990a4-0x990b6）：
+ *   GetAdvFlag(GetADVFunctionName(), GetADVFunctionVersion(),
+ *              GetADVFunctionStep())
+ * —— 三个实参合成一个键。AIN 声明 (string, int, int)；此前按别名接到
+ * MsgSkip_Set/GetFlag(msgnum) 上，string 指针被当成位图下标用，
+ * 一旦被调就是 OOB 写（arity 审计 D497 揪出）。运行期 0 次命中，
+ * 键控表是按钉死语义的最小实现。 */
+#define ADV_FLAG_MAX 256
+static struct adv_flag {
+	char *key;      /* "name\x1fver\x1fstep"；NULL = 空槽 */
+	int val;
+} adv_flags[ADV_FLAG_MAX];
+static unsigned adv_flag_cursor;
+
+static char *adv_flag_key(struct string *name, int ver, int step)
+{
+	char buf[512];
+	int n = snprintf(buf, sizeof(buf), "%s\x1f%d\x1f%d",
+			 name && name->text ? name->text : "", ver, step);
+	if (n <= 0 || n >= (int)sizeof(buf))
+		return NULL;
+	return strdup(buf);
+}
+
+static void MsgSkip_SetAdvFlag(struct string *name, int ver, int step)
+{
+	char *k = adv_flag_key(name, ver, step);
+	if (!k)
+		return;
+	for (int i = 0; i < ADV_FLAG_MAX; i++) {
+		if (adv_flags[i].key && !strcmp(adv_flags[i].key, k)) {
+			adv_flags[i].val = 1;
+			free(k);
+			return;
+		}
+	}
+	struct adv_flag *e = &adv_flags[adv_flag_cursor++ % ADV_FLAG_MAX];
+	free(e->key);
+	e->key = k;
+	e->val = 1;
+}
+
+static int MsgSkip_GetAdvFlag(struct string *name, int ver, int step)
+{
+	char *k = adv_flag_key(name, ver, step);
+	if (!k)
+		return 0;
+	int r = 0;
+	for (int i = 0; i < ADV_FLAG_MAX; i++) {
+		if (adv_flags[i].key && !strcmp(adv_flags[i].key, k)) {
+			r = adv_flags[i].val;
+			break;
+		}
+	}
+	free(k);
+	return r;
+}
+
 static int MsgSkip_GetState(void)
 {
 	return state;
@@ -169,12 +228,11 @@ HLL_LIBRARY(MsgSkip,
 	    HLL_EXPORT(GetFlag, MsgSkip_GetFlag),
 	    HLL_EXPORT(GetNumofMsg, MsgSkip_GetNumofMsg),
 	    HLL_EXPORT(GetNumofFlag, MsgSkip_GetNumofFlag),
-	    /* Rance X 用 SetAdvFlag/GetAdvFlag 指同一批"已读"标志位（日志里
-	     * `MsgSkip.SetAdvFlag` 一直报未实现）。按别名接到同一张位图上：
-	     * 这两个名字在 Rance10 里目前只声明、运行期尚未调用，接错也只会影响
-	     * ADV 回看是否判为已读，不会动到存档或剧情状态。 */
-	    HLL_EXPORT(SetAdvFlag, MsgSkip_SetFlag),
-	    HLL_EXPORT(GetAdvFlag, MsgSkip_GetFlag));
+	    /* [D497] SetAdvFlag/GetAdvFlag：键控表（见 adv_flag 注释）——
+	     * 此前按别名接 Set/GetFlag(msgnum)，string 指针当位图下标，
+	     * arity 审计揪出的 OOB 写级错形。 */
+	    HLL_EXPORT(SetAdvFlag, MsgSkip_SetAdvFlag),
+	    HLL_EXPORT(GetAdvFlag, MsgSkip_GetAdvFlag));
 
 HLL_QUIET_UNIMPLEMENTED(, void, vmMsgSkip, Init, void *imainsystem);
 

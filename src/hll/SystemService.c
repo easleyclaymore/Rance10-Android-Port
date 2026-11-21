@@ -349,11 +349,16 @@ static bool SystemService_GetMouseCursorConfig(int type, int *value)
 //bool SystemService_RunProgram(struct string *program_file_name, struct string *parameter);
 //bool SystemService_IsOpenedMutex(struct string *mutex_name);
 
-void SystemService_GetGameFolderPath(struct string **folder_path)
+/* [D497] AIN 声明 0 参 / ret string（dump-hll），原实现按出参写 ——
+ * cif 按声明建（0 参），C 的 `folder_path` 形参读到的是垃圾寄存器，
+ * 一旦被调（activityeditor 存档路径等 8 个调用点）就是垃圾指针写。
+ * 改成 0 参直返（GetOSInfo 的 D444 同款已验证形状）。 */
+static struct string *SystemService_GetGameFolderPath(void)
 {
 	char *sjis = utf2sjis(config.game_dir, 0);
-	*folder_path = make_string(sjis, strlen(sjis));
+	struct string *s = make_string(sjis, strlen(sjis));
 	free(sjis);
+	return s;
 }
 
 static void SystemService_GetTime(int *hour, int *min, int *sec)
@@ -500,19 +505,26 @@ static bool SystemService_PopSystemMessage(int *message)
 	return true;
 }
 
-/* `PopSystemMessageString()`：取最早一条的附加串（队列空返回空串）。
- * 签名按「无参、返回 string」推断 —— 表里原来连项都没有，没有可对照的注释。 */
-static struct string *SystemService_PopSystemMessageString(void)
+/* `PopSystemMessageString()`：取最早一条的附加串。
+ * [D497] AIN 声明 `bool Pop(ref string out)`（dump-hll：1 参 / ret bool）
+ * —— 原实现按「无参、返回 string」推断，0 参 cif 下出参根本写不进去。
+ * 队列空返回 false、out 不动；弹出成功把附加串写进出参（ref string
+ * 出参归 callee 管，替换前 free 旧值）。 */
+static bool SystemService_PopSystemMessageString(struct string **out)
 {
 	if (ss_msg_count <= 0)
-		return string_dup(&EMPTY_STRING);
+		return false;
 	const char *arg = ss_msgs[ss_msg_head].arg;
-	struct string *r = arg ? cstr_to_string(arg) : string_dup(&EMPTY_STRING);
+	if (out) {
+		if (*out)
+			free_string(*out);
+		*out = arg ? cstr_to_string(arg) : string_dup(&EMPTY_STRING);
+	}
 	free(ss_msgs[ss_msg_head].arg);
 	ss_msgs[ss_msg_head].arg = NULL;
 	ss_msg_head = (ss_msg_head + 1) % SS_SYSMSG_MAX;
 	ss_msg_count--;
-	return r;
+	return true;
 }
 
 static void SystemService_RestrainScreensaver(void) { }

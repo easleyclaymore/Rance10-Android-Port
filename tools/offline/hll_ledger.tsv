@@ -130,3 +130,8 @@ PartsEngine.IsEndPartsMovie	L3	已实现（D497）：轮询点推进 movie_play 
 PartsEngine.GetPartsMovieEndTime	L2	已实现（D497）：movie_get_duration（容器元数据，无头流返回 0 按未知时长处理）
 PartsEngine.GetPartsMovieCurrentTime	L2	已实现（D497）：movie_get_position
 PartsEngine.GetPartsConstructionProcess	L1	未实现读回（D497）：AIN 消费方 parts::GetConstructProcess(7)→activity CompParts 重放路径；ops 队列→三 ref array 的编码（AIN 侧 op 枚举）无证据，猜=编造。当前回空数组；历史日志 0 次命中。判据：XSYS4_CPROC_DBG 轨迹 + AIN op 枚举取证后补编码
+PartsEngine.Parts_GetFlatFrame	L2	已实现（D497）：3 参 (no, flat名, state)——名字不参与判定（一个部件状态一份 flat），arity 审计揪出原 2 参会把 string 指针当 state
+MsgSkip.SetAdvFlag	L2	已实现（D497）：键控表，键=(ADV函数名,版本,步数)——调用点 0x990a4 实证 GetADVFunctionName/Version/Step 直传；原别名接 SetFlag(msgnum) 是 string 指针当位图下标的 OOB 写
+MsgSkip.GetAdvFlag	L2	已实现（D497）：同上键控表读回
+SystemService.GetGameFolderPath	L2	已实现（D497）：0 参直返 game_dir（SJIS）；原出参形状在 0 参 cif 下写垃圾指针
+SystemService.PopSystemMessageString	L2	已实现（D497）：bool Pop(ref string out)——队列空 false、out 不动；原 0 参返回 string 形状与声明 (1 参 ref string/ret bool) 双不符
