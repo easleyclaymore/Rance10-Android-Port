@@ -867,6 +867,45 @@ XSYS4_SOFT_STUB=1 XSYS4_STUB_LOG=/tmp/stub.log
 `BattleCardButtonCollection@UpdateCardOne`。**两条创建路径**意味着同一个位置上的按钮
 可能被重建；排查「赋值到底落在哪个实例上」时，必须比 `slot` 而不只是比成员号。
 
+## 3.30 `CPartsFunctionSet`：另一套点击运输层
+
+`Parts` / `TextButton` 之外，AIN 还有第三条注册路径，走的是
+`CPartsFunctionSet`（struct 299，42 个成员）：
+
+```
+partsNo → GetFunctionSet(partsNo) → fs
+fs.m7 DG_PLUSA dg          ; 追加到 <MouseLClickEvent>
+```
+
+`fs` 的成员按事件类型分槽：
+
+| 成员 | 事件 | 委托类型 |
+|---|---|---|
+| `m1` | `m_PartsNumber` | int（**匹配键**）|
+| `m3` | `<MouseEnterEvent>` | `DG_MouseEnterHandler` |
+| `m6` | `<MouseWheelEvent>` | — |
+| `m7` | `<MouseLClickEvent>` | `DG_MouseClickHandler (int partsNo, int x, int y)` |
+| `m8` | `<MouseRClickEvent>` | 同上 |
+| `m9` | `<MouseMClickEvent>` | 同上 |
+
+派发器是 `CPartsFunctionSet@CallFunctionMouseClick(btn, x, y)`(7942)：
+
+```
+if (btn == 1) foreach (f in m7) f(m1, x, y)
+else if (btn == 2) foreach (f in m8) f(m1, x, y)
+...
+```
+
+而它的上游是 `CPartsMessageManager@CallDelegateMouseClick(fs)`(7978)，
+再上游是消息队列（`PopMessage`）。所以「点了一个部件」在 AIN 里是
+**消息 → CallDelegateMouseClick → CallFunctionMouseClick → m7 foreach** 这条链。
+
+**`AFL_Parts_AddMouseLClickEvent`(6892) 运行期是在被调用的** ——
+2026-11-21 实测 27 次（`XSYS4_FN_WATCH=6892`），D337 那条「本作运行期 0 次调用」
+是错的。用它的正是 `ActivityButton@0`（老式按钮）：构造时把自己生成的
+lambda 37568 挂到部件上。所以**技能按钮这类 `ActivityButton` 走的不是
+`Parts@OnClick`，而是 `CPartsFunctionSet.m7`**。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
