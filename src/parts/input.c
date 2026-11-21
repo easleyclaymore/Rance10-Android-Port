@@ -801,6 +801,19 @@ bool PE_SetPartsOnCursorSoundNumber(int parts_no, int sound_no)
 	return true;
 }
 
+/* [D396] 音效编号 getter。-1 表示没设过（`parts_init` 的初值）。 */
+int PE_GetPartsOnCursorSoundNumber(int parts_no)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	return parts ? parts->on_cursor_sound : -1;
+}
+
+int PE_GetPartsClickSoundNumber(int parts_no)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	return parts ? parts->on_click_sound : -1;
+}
+
 bool PE_SetPartsClickSoundNumber(int parts_no, int sound_no)
 {
 	if (!asset_exists(ASSET_SOUND, sound_no)) {

@@ -412,3 +412,72 @@ bool PE_SetTextLineSpace(int parts_no, int line_space, int state)
 }
 
 
+
+/* [D396] 字体 getter。
+ *
+ * 与 `PE_SetPartsFont*` 成对：AIN 的存档流程是「存前逐个 Get 出来、读后逐个
+ * Set 回去」，所以 getter 必须返回当前真实生效的样式，不能写死默认值。
+ *
+ * 用 **peek** 语义：只有该状态本来就是 PARTS_TEXT 时才读它的 `ts`；
+ * 否则读 `parts_get_text()` 会把状态强制重置成 TEXT（`parts_state_reset`
+ * 会释放原渲染资源），一个 getter 不该改变部件形态。
+ * 查不到时返回 `parts_default_text_style()` —— 即该部件此刻实际用的样式。
+ */
+static struct text_style *peek_text_style(struct parts *parts, int state)
+{
+	if (!parts || !parts_state_valid(state))
+		return parts_default_text_style();
+	struct parts_state *st = &parts->states[state];
+	return st->type == PARTS_TEXT ? &st->text.ts : parts_default_text_style();
+}
+
+bool PE_GetPartsFontType(int parts_no, int *type, int state)
+{
+	struct text_style *ts = peek_text_style(parts_try_get(parts_no), --state);
+	if (type)
+		*type = (int)ts->face;
+	return true;
+}
+
+bool PE_GetPartsFontSize(int parts_no, int *size, int state)
+{
+	struct text_style *ts = peek_text_style(parts_try_get(parts_no), --state);
+	if (size)
+		*size = (int)(ts->size + 0.5f);
+	return true;
+}
+
+bool PE_GetPartsFontColor(int parts_no, int *r, int *g, int *b, int state)
+{
+	struct text_style *ts = peek_text_style(parts_try_get(parts_no), --state);
+	if (r) *r = ts->color.r;
+	if (g) *g = ts->color.g;
+	if (b) *b = ts->color.b;
+	return true;
+}
+
+bool PE_GetPartsFontBoldWeight(int parts_no, float *weight, int state)
+{
+	struct text_style *ts = peek_text_style(parts_try_get(parts_no), --state);
+	if (weight)
+		*weight = ts->bold_width;
+	return true;
+}
+
+bool PE_GetPartsFontEdgeColor(int parts_no, int *r, int *g, int *b, int state)
+{
+	struct text_style *ts = peek_text_style(parts_try_get(parts_no), --state);
+	if (r) *r = ts->edge_color.r;
+	if (g) *g = ts->edge_color.g;
+	if (b) *b = ts->edge_color.b;
+	return true;
+}
+
+bool PE_GetPartsFontEdgeWeight(int parts_no, float *weight, int state)
+{
+	struct text_style *ts = peek_text_style(parts_try_get(parts_no), --state);
+	/* 四边在 setter 里被写成同一个值，读左上即可。 */
+	if (weight)
+		*weight = ts->edge_left;
+	return true;
+}

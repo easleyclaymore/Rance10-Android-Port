@@ -138,6 +138,7 @@ void PE_SetPartsRotateZ(int parts_no, float rot_z);
 float PE_GetPartsRotateZ(int parts_no);
 void PE_SetPartsAlphaClipperPartsNumber(int parts_no, int alpha_clipper_parts_no);
 void PE_SetPartsPixelDecide(int PartsNumber, bool pixel_decide);
+bool PE_GetPartsPixelDecide(int parts_no);
 bool PE_SetThumbnailReductionSize(int reduction_size);
 bool PE_SetThumbnailMode(bool Mode);
 void PE_SetComponentType(int parts_no, int type, int state);
@@ -145,6 +146,13 @@ int PE_GetComponentType(int parts_no, int state);
 void PE_SetInputState(int parts_no, int state);
 int PE_GetInputState(int parts_no);
 bool PE_SetPartsRectangleDetectionSize(int parts_no, int w, int h, int state);
+/* [D396] 控件状态（组件类型 0..15 的属性）。定义在 parts_internal.h。
+ * `PE_widget` 取或创建；`PE_widget_peek` 只读查询（不创建）。 */
+struct parts_widget;
+struct parts_widget *PE_widget(int parts_no);
+struct parts_widget *PE_widget_peek(int parts_no);
+void PE_widget_free(struct parts_widget *w);
+
 bool PE_SetPartsSize(int parts_no, int w, int h, int state);
 /* 用户组件 (component type 15)：登记控件种类与显示文字（游戏编码字节串）。
  * 目前只绘制 TextButton。 */
@@ -266,6 +274,9 @@ void PE_SetOnCursorShowLinkPartsNumber(int parts_no, int link_parts_no);
 int PE_GetOnCursorShowLinkPartsNumber(int parts_no);
 bool PE_SetPartsOnCursorSoundNumber(int parts_no, int sound_no);
 bool PE_SetPartsClickSoundNumber(int parts_no, int sound_no);
+/* [D396] 音效编号 getter（-1 = 未设）。与上面的 Set 成对，控件存档往返要用。 */
+int PE_GetPartsOnCursorSoundNumber(int parts_no);
+int PE_GetPartsClickSoundNumber(int parts_no);
 bool PE_SetClickMissSoundNumber(int sound_no);
 void PE_BeginInput(void);
 void PE_EndInput(void);
@@ -346,6 +357,14 @@ bool PE_AddPartsText(int parts_no, struct string *text, int state);
 bool PE_SetPartsTextSurfaceArea(int parts_no, int x, int y, int w, int h, int state);
 bool PE_SetFont(int parts_no, int type, int size, int r, int g, int b, float bold_weight, int edge_r, int edge_g, int edge_b, float edge_weight, int state);
 bool PE_SetPartsFontType(int parts_no, int type, int state);
+/* [D396] 字体 getter（与上面的 Set 成对，存档往返要用）。 */
+bool PE_GetPartsFontType(int parts_no, int *type, int state);
+bool PE_GetPartsFontSize(int parts_no, int *size, int state);
+bool PE_GetPartsFontColor(int parts_no, int *r, int *g, int *b, int state);
+bool PE_GetPartsFontBoldWeight(int parts_no, float *weight, int state);
+bool PE_GetPartsFontEdgeColor(int parts_no, int *r, int *g, int *b, int state);
+bool PE_GetPartsFontEdgeWeight(int parts_no, float *weight, int state);
+
 bool PE_SetPartsFontSize(int parts_no, int size, int state);
 bool PE_SetPartsFontColor(int parts_no, int r, int g, int b, int state);
 bool PE_SetPartsFontBoldWeight(int parts_no, float bold_weight, int state);

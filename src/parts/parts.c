@@ -308,28 +308,37 @@ void parts_cb_drop(int parts_no)
 		}
 }
 
+/* [D396] 勾选状态迁到 `parts_widget`（跟着部件生命周期走）。
+ *
+ * D174 当初用旁挂表，理由是「往 `struct parts` 中间插字段会让存档格式错位」。
+ * 现在状态挂在 `parts->widget`（**末尾的指针**，不参与 `parts/save.c` 的顺序
+ * 序列化），既不动存档格式，也不用再在 `parts_get` 里手动清旧记录。
+ *
+ * 旧表保留为空壳不再写入 —— 读不到就走 widget，行为与之前一致。 */
 void PE_CheckBoxChecked(int parts_no, bool check)
 {
-	parts_cb_slot(parts_no)->checked = check;
+	struct parts_widget *w = PE_widget(parts_no);
+	if (w)
+		w->checked = check;
 }
 
 bool PE_IsCheckBoxChecked(int parts_no)
 {
-	bool checked = false, enabled = false;
-	parts_cb_lookup(parts_no, &checked, &enabled);
-	return checked;
+	struct parts_widget *w = PE_widget_peek(parts_no);
+	return w ? w->checked : false;
 }
 
 void PE_SetCheckBoxEnable(int parts_no, bool enable)
 {
-	parts_cb_slot(parts_no)->enabled = enable;
+	struct parts_widget *w = PE_widget(parts_no);
+	if (w)
+		w->enabled = enable;
 }
 
 bool PE_IsCheckBoxEnable(int parts_no)
 {
-	bool checked = false, enabled = false;
-	parts_cb_lookup(parts_no, &checked, &enabled);
-	return enabled;
+	struct parts_widget *w = PE_widget_peek(parts_no);
+	return w ? w->enabled : false;
 }
 
 bool parts_exists(int parts_no)
@@ -1336,6 +1345,57 @@ static void parts_update_animation(int passed_time)
 	}
 }
 
+/* [D396] 控件状态。存在 parts 上，生命周期跟部件走。 */
+struct parts_widget *PE_widget_peek(int parts_no)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	return parts ? parts->widget : NULL;
+}
+
+struct parts_widget *PE_widget(int parts_no)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts)
+		return NULL;
+	if (!parts->widget)
+		parts->widget = xcalloc(1, sizeof(struct parts_widget));
+	return parts->widget;
+}
+
+void PE_widget_free(struct parts_widget *w)
+{
+	if (!w)
+		return;
+	/* `free_string()` 不接受 NULL（它直接读 `str->ref`）——
+	 * 控件状态里大部分字段是「没设过 = NULL」，必须逐个判空。 */
+	if (w->cg_name)
+		free_string(w->cg_name);
+	if (w->override_cg_name)
+		free_string(w->override_cg_name);
+	if (w->override_checked_cg_name)
+		free_string(w->override_checked_cg_name);
+	if (w->flat_name)
+		free_string(w->flat_name);
+	if (w->override_flat_name)
+		free_string(w->override_flat_name);
+	if (w->override_checked_flat_name)
+		free_string(w->override_checked_flat_name);
+	if (w->text)
+		free_string(w->text);
+	if (w->msg_func_name)
+		free_string(w->msg_func_name);
+	for (int i = 0; i < w->nr_items; i++)
+		if (w->items[i])
+			free_string(w->items[i]);
+	free(w->items);
+	for (int i = 0; i < w->nr_cb_items; i++)
+		if (w->cb_items[i])
+			free_string(w->cb_items[i]);
+	free(w->cb_items);
+	free(w->radio_children);
+	free(w);
+}
+
 void parts_release(int parts_no)
 {
 	struct ht_slot *slot = ht_put_int(parts_table, parts_no, NULL);
@@ -1355,6 +1415,8 @@ void parts_release(int parts_no)
 	free(parts->uc_object);
 	free(parts->uc_label);
 	free(parts->text_plain);
+	PE_widget_free(parts->widget);
+	parts->widget = NULL;
 	for (int i = 0; i < parts->uc_data_n; i++)
 		free(parts->uc_data[i]);
 	free(parts->uc_data);
@@ -3226,7 +3288,17 @@ void PE_SetPartsAlphaClipperPartsNumber(int parts_no, int alpha_clipper_parts_no
 
 void PE_SetPartsPixelDecide(int parts_no, bool pixel_decide)
 {
-	//UNIMPLEMENTED("(%d, %s)", parts_no, pixel_decide ? "true" : "false");
+	/* [D396] 原来是空实现（连日志都被注释掉了）。语义是「命中判定要求
+	 * 该像素不透明」—— 存下来，命中路径后续读它做 alpha 采样。 */
+	struct parts *parts = parts_try_get(parts_no);
+	if (parts)
+		parts->pixel_decide = pixel_decide;
+}
+
+bool PE_GetPartsPixelDecide(int parts_no)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	return parts ? parts->pixel_decide : false;
 }
 
 bool PE_SetThumbnailReductionSize(int reduction_size)

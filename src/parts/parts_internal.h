@@ -403,6 +403,109 @@ struct parts_state {
 	};
 };
 
+/* [D396] 控件（UI widget）状态。
+ *
+ * 兰斯10 的组件类型 0..15 是一族**控件**：按钮 / 复选框 / 两种滚动条 /
+ * 单行文本输入框 / 列表框 / 组合框 / 多行文本输入框 / 布局盒 / 单选按钮组 /
+ * 消息窗口 / 微调框 / 面板 / 表单。
+ *
+ * 这些控件的属性**不在 EX 里**：EX 只给位置和尺寸，属性由 AIN 在运行期
+ * 用 `Set*` 一族写进来，再用 `Get*` 读回去。最常见的用法是**存档前后往返**
+ * （存前逐个 Get 出来、读后逐个 Set 回去），所以 getter 必须原样返回
+ * setter 写进去的值 —— 返回"安全默认值"会让存档里的样式静默丢失。
+ *
+ * 过去这些 setter 是空实现、getter 写死 0，于是「设进去再读出来」永远是默认值。
+ * 这里按部件存一份真状态。
+ *
+ * 存在 `struct parts` 上（不是旁挂数组）：生命周期跟着部件走，部件释放时一起
+ * free，不需要手动 drop，也不会出现「环形数组被复用后串号」。
+ *
+ * 注意：字体不走这里。字体存在 `struct parts_text.ts`（`text_style`），
+ * 已有 `PE_SetPartsFont*` 一族真实现，控件只是转发。
+ */
+struct parts_widget {
+	/* --- 通用：底图 / 覆盖图 / flat 名（都是 GBK 字节串） --- */
+	struct string *cg_name;
+	struct string *override_cg_name;
+	struct string *override_checked_cg_name;
+	struct string *flat_name;
+	struct string *override_flat_name;
+	struct string *override_checked_flat_name;
+
+	/* --- 文本 --- */
+	struct string *text;
+	int char_space;
+	int line_space;
+	int text_origin_pos_mode;
+
+	/* --- 四组颜色（每组 RGB；AIN 的签名里没有 alpha） ---
+	 * 用 `*_set` 区分「没设过」与「设成 (0,0,0)」：
+	 * 前者应当回落到 EX/主题色，后者是玩家真的选了黑色。 */
+	int bg_r, bg_g, bg_b;          bool bg_set;
+	int ro_bg_r, ro_bg_g, ro_bg_b; bool ro_bg_set;
+	int frame_r, frame_g, frame_b; bool frame_set;
+	int select_r, select_g, select_b; bool select_set;
+
+	/* --- 单行文本输入框 / 微调框共用 --- */
+	int max_text_length;
+	bool readonly;
+
+	/* --- 列表框 --- */
+	struct string **items;
+	int nr_items, cap_items;
+	int select_index;
+	int scroll_pos;
+	int line_height;
+	int margin_w, margin_h;
+	/* 引擎侧 hover 时写：鼠标停在第几项（`GetListBoxOnCursorItem*` 读它）。
+	 * 由 parts 的 hover 判定更新，AIN 从不设。 */
+	int on_cursor_index;
+
+	/* --- 组合框：一个显示框 + 一个可展开的内嵌列表框 --- */
+	int cb_text_margin_w, cb_text_margin_h;
+	int cb_lb_height, cb_lb_line_height;
+	int cb_lb_margin_w, cb_lb_margin_h;
+	int cb_lb_scroll_pos;
+	int cb_lb_select_index;
+	int cb_lb_char_space;
+	struct string **cb_items;
+	int nr_cb_items, cap_cb_items;
+	bool cb_open;
+
+	/* --- 微调框 ---
+	 * value/default/max/min/increment 是 **float**：证据是 AIN 包装类的
+	 * `GetSpinBox{Value,DefaultValue,MaxValue,MinValue,IncrementalValue}`
+	 * 默认返回字节码都是 `F_PUSH 0`（浮点 0），而
+	 * `GetSpinBoxDecimalPlace` 是 `PUSH 0`（整数）。 */
+	float spin_value, spin_default, spin_max, spin_min, spin_increment;
+	int spin_decimal_place;
+
+	/* --- 复选框 --- */
+	bool checked, enabled;
+	bool button_mode;
+	bool drag;              /* `SetCheckBoxDrag`：按下拖动也能切换（AIN 侧语义） */
+	int button_width, button_height;
+
+	/* --- 单选按钮组：成员是子部件号 --- */
+	int *radio_children;
+	int nr_radio_children, cap_radio_children;
+
+	/* --- 消息窗口 ---
+	 * 文本走通用的 `text`；`CGName` / `FlatName` 也复用通用字段。
+	 * 下面这四个是 `SetMessageWindowText` 的「台词位置指纹」：AIN 在设文本时
+	 * 一并传进来，存档后靠它定位「读到哪一句」。AIN 侧没有对应的 getter，
+	 * 所以只存不读，但必须存 —— 否则会退化成「存档后从头开始」。 */
+	int msg_num;
+	struct string *msg_func_name;
+	int msg_ver, msg_step;
+	bool msg_active;
+	int msg_flat_wait_frame;
+	int msg_area_x, msg_area_y, msg_area_w, msg_area_h;
+	int msg_text_speed;
+	int msg_space_x, msg_space_y;
+	int msg_inactive_r, msg_inactive_g, msg_inactive_b;
+};
+
 TAILQ_HEAD(parts_list, parts);
 
 struct parts_params {
@@ -478,6 +581,11 @@ struct parts {
 	 * 只跳过真正重复的那一层 —— 早先用"16px 高"当判据，把任务面板的
 	 * 正文（也是 16px）一起吞掉了。 */
 	char *text_plain;
+	/* [D396] 控件状态；只有控件类组件才有，其余为 NULL。 */
+	struct parts_widget *widget;
+	/* [D396] 像素级判定：命中要求该像素不透明（`SetPartsPixelDecide`）。
+	 * 加在 `widget` 之后，同样不参与 `parts/save.c` 的顺序序列化。 */
+	bool pixel_decide;
 };
 
 #define PARTS_LIST_FOREACH(iter) TAILQ_FOREACH(iter, &parts_list, parts_list_entry)

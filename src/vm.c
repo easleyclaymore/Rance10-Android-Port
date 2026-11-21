@@ -2202,6 +2202,27 @@ void vm_pump_auto_call(void)
 	NOTICE("[acall] %u ms 后调用 fno=%d", auto_call_want_ms, auto_call_fno);
 }
 
+/* [D396] 控件状态自检（`XSYS4_WIDGET_SELFTEST=1`）：启动 3 秒后跑一次
+ * set→get 往返断言，`RESULT: PASS/FAIL` 打一行。给「填桩」当验收用 ——
+ * 「日志里不再报 Unimplemented」只能证明函数注册了，证明不了语义对。 */
+extern int PartsEngine_WidgetSelfTest(void);
+void vm_pump_widget_selftest(void)
+{
+	static int done;
+	static uint32_t t0;
+	if (done || !getenv("XSYS4_WIDGET_SELFTEST"))
+		return;
+	if (!t0) {
+		t0 = SDL_GetTicks();
+		return;
+	}
+	if (SDL_GetTicks() - t0 < 3000)
+		return;
+	done = 1;
+	int fail = PartsEngine_WidgetSelfTest();
+	NOTICE("[wtest] RESULT: %s (%d failed)", fail ? "FAIL" : "PASS", fail);
+}
+
 void vm_pump_auto_call_tick(void)
 {
 	if (auto_call_done || auto_call_fno <= 0)
@@ -6272,6 +6293,7 @@ void vm_frame_pump(void)
 	vm_pump_auto_battle_end();
 	vm_pump_auto_call();
 	vm_pump_auto_call_tick();
+	vm_pump_widget_selftest();
 	vm_pump_auto_skill();
 	vm_pump_auto_click(now);
 	/* [MEM] XSYS4_MEM_STAT=1：每约 2 秒打印一次虚拟机堆的构成。

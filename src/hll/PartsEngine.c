@@ -23,6 +23,7 @@
 #include "vm/heap.h"
 #include "vm/page.h"
 #include "parts.h"
+#include "parts/parts_internal.h"   /* [D396] struct parts_widget */
 #include "asset_manager.h"
 #include "system4/archive.h"
 #include "system4/ex.h"
@@ -846,30 +847,6 @@ static void PE_Noop_SetMultiTextBoxSize(int a0, int a1, int a2)
 	(void)a2;
 }
 
-/* AIN f：void SetTextBoxMaxTextLength。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetTextBoxMaxTextLength(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetTextBoxSelectColor。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetTextBoxSelectColor(int a0, int a1, int a2, int a3)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
-}
-
-/* AIN f：void SetTextBoxSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetTextBoxSize(int a0, int a1, int a2)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-}
-
 /* AIN f：void SetVScrollbarDownHeight。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetVScrollbarDownHeight(int a0, int a1)
 {
@@ -993,20 +970,6 @@ static void PE_Noop_SetMultiTextBoxCGName(int a0, struct string * a1)
 
 /* AIN f：void SetMultiTextBoxText。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
 static void PE_Noop_SetMultiTextBoxText(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetTextBoxCGName。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetTextBoxCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetTextBoxText。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetTextBoxText(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
@@ -1637,13 +1600,6 @@ static void PE_Noop_SetLayoutBoxReturnSizeForRate(int a0, int a1)
 	(void)a1;
 }
 
-/* AIN SetListBoxCharSpace：void SetListBoxCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetListBoxCharSpace(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
 /* AIN SetLockInputState：void SetLockInputState。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetLockInputState(int a0, int a1)
 {
@@ -1651,28 +1607,37 @@ static void PE_Noop_SetLockInputState(int a0, int a1)
 	(void)a1;
 }
 
+/* [D396] 控件字符串槽的读写（定义在下方 TextBox 段）。 */
+static void widget_set_string(struct string **slot, struct string *v);
+static struct string *widget_get_string(struct string **slot);
+
 /* AIN SetMessageWindowActive：void SetMessageWindowActive。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetMessageWindowActive(int a0, int a1)
+static void PE_SetMessageWindowActive(int no, bool active)
 {
-	MSGWIN_HIT("SetMessageWindowActive no=%d active=%d", a0, a1);
-	(void)a0;
-	(void)a1;
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->msg_active = active;
+	MSGWIN_HIT("SetMessageWindowActive no=%d active=%d", no, active);
 }
 
 /* AIN SetMessageWindowCGName：void SetMessageWindowCGName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetMessageWindowCGName(int a0, struct string * a1)
+static void PE_SetMessageWindowCGName(int no, struct string *name)
 {
-	MSGWIN_HIT("SetMessageWindowCGName no=%d len=%d", a0, a1 ? (int)strlen(a1->text) : -1);
-	(void)a0;
-	(void)a1;
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->cg_name, name);
+	MSGWIN_HIT("SetMessageWindowCGName no=%d len=%d", no,
+		   name ? (int)strlen(name->text) : -1);
 }
 
 /* AIN SetMessageWindowFlatName：void SetMessageWindowFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetMessageWindowFlatName(int a0, struct string * a1)
+static void PE_SetMessageWindowFlatName(int no, struct string *name)
 {
-	MSGWIN_HIT("SetMessageWindowFlatName no=%d len=%d", a0, a1 ? (int)strlen(a1->text) : -1);
-	(void)a0;
-	(void)a1;
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->flat_name, name);
+	MSGWIN_HIT("SetMessageWindowFlatName no=%d len=%d", no,
+		   name ? (int)strlen(name->text) : -1);
 }
 
 /* [D202] 消息等待点击时 AIN 会轮询「当前活动部件号」，再交给
@@ -1717,7 +1682,1450 @@ static bool PE_IsWantSaveBackScene(int no)
 	return PE_parts_get_want_save_back_scene(no);
 }
 
-static struct string **msgwin_text_slot(int no);
+/* ===== [D396] 控件：单行文本输入框（组件类型 4） =====
+ *
+ * 语义（由成对的 Set/Get 签名确定，arity 来自 `ain_hllarity`）：
+ *   SetTextBoxText(no, text)          / GetTextBoxText(no) -> string
+ *   SetTextBoxMaxTextLength(no, len)  / GetTextBoxMaxTextLength(no) -> int
+ *   SetTextBoxReadOnly(no, bool)      / IsTextBoxReadOnly(no) -> bool
+ *   SetTextBoxCGName(no, name)        / GetTextBoxCGName(no) -> string
+ *   SetTextBoxCharSpace(no, n)        / GetTextBoxCharSpace(no) -> int
+ *   SetTextBox{BG,ReadOnlyBG,Frame,Select}Color(no,r,g,b)
+ *                                     / GetTextBox{...}R/G/B(no) -> int ×3
+ *   SetTextBoxFontProperty(no, ...10) / GetTextBoxFontProperty(no, ...10)
+ *   SetTextBoxSize(no, w, h)
+ *
+ * 这些是**控件自身的属性**，不是 EX 内容：EX 只给位置和尺寸，属性由 AIN
+ * 在运行期设进来。AIN 在存档前后会把它们逐个读出来再写回去，所以 getter
+ * 必须原样返回 setter 写进去的值。
+ *
+ * 状态存在 `struct parts_widget`（挂在该部件上，随部件释放），
+ * 见 `parts_internal.h` 的说明。没设过时按 EX/主题默认值返回，
+ * 并用 `*_set` 区分「没设过」与「设成 0」。
+ */
+static void widget_set_string(struct string **slot, struct string *v)
+{
+	if (*slot)
+		free_string(*slot);
+	*slot = v ? string_ref(v) : NULL;
+}
+
+static struct string *widget_get_string(struct string **slot)
+{
+	return *slot ? string_ref(*slot) : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetTextBoxSize(int no, int w, int h)
+{
+	PE_SetPartsSize(no, w, h, 1);
+}
+
+static void PE_SetTextBoxText(int no, struct string *text)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->text, text);
+}
+
+static struct string *PE_GetTextBoxText(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->text) : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetTextBoxMaxTextLength(int no, int len)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->max_text_length = len;
+}
+
+static int PE_GetTextBoxMaxTextLength(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->max_text_length : 0;
+}
+
+static void PE_SetTextBoxReadOnly(int no, bool ro)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->readonly = ro;
+}
+
+static bool PE_IsTextBoxReadOnly(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->readonly : false;
+}
+
+static void PE_SetTextBoxCGName(int no, struct string *name)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->cg_name, name);
+}
+
+static struct string *PE_GetTextBoxCGName(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->cg_name) : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetTextBoxCharSpace(int no, int space)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->char_space = space;
+}
+
+static int PE_GetTextBoxCharSpace(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->char_space : 0;
+}
+
+/* 四组颜色。TextBox 的四组（BG / ReadOnlyBG / Frame / Select）
+ * 是同一形状，只有存的字段不同 —— 逐个写清楚，而不是用一个宏藏起来。 */
+static void PE_SetTextBoxBGColor(int no, int r, int g, int b)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) { w->bg_r = r; w->bg_g = g; w->bg_b = b; w->bg_set = true; }
+}
+static int PE_GetTextBoxBGR(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->bg_set) ? w->bg_r : 255;
+}
+static int PE_GetTextBoxBGG(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->bg_set) ? w->bg_g : 255;
+}
+static int PE_GetTextBoxBGB(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->bg_set) ? w->bg_b : 255;
+}
+
+static void PE_SetTextBoxReadOnlyBGColor(int no, int r, int g, int b)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) { w->ro_bg_r = r; w->ro_bg_g = g; w->ro_bg_b = b; w->ro_bg_set = true; }
+}
+static int PE_GetTextBoxReadOnlyBGR(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->ro_bg_set) ? w->ro_bg_r : 192;
+}
+static int PE_GetTextBoxReadOnlyBGG(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->ro_bg_set) ? w->ro_bg_g : 192;
+}
+static int PE_GetTextBoxReadOnlyBGB(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->ro_bg_set) ? w->ro_bg_b : 192;
+}
+
+static void PE_SetTextBoxFrameColor(int no, int r, int g, int b)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) { w->frame_r = r; w->frame_g = g; w->frame_b = b; w->frame_set = true; }
+}
+static int PE_GetTextBoxFrameR(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->frame_set) ? w->frame_r : 0;
+}
+static int PE_GetTextBoxFrameG(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->frame_set) ? w->frame_g : 0;
+}
+static int PE_GetTextBoxFrameB(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->frame_set) ? w->frame_b : 0;
+}
+
+static void PE_SetTextBoxSelectColor(int no, int r, int g, int b)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) { w->select_r = r; w->select_g = g; w->select_b = b; w->select_set = true; }
+}
+static int PE_GetTextBoxSelectR(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->select_set) ? w->select_r : 0;
+}
+static int PE_GetTextBoxSelectG(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->select_set) ? w->select_g : 0;
+}
+static int PE_GetTextBoxSelectB(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->select_set) ? w->select_b : 0;
+}
+
+/* 字体：转发已有的 `PE_SetPartsFont*` / 新增的 `PE_GetPartsFont*`。
+ * 11 个实参里 float 只有 bold_weight 和 edge_weight（与
+ * `SetMessageWindowTextFont` 的签名一致）。 */
+static void PE_SetTextBoxFontProperty(int no, int type, int size, int r, int g,
+		int b, float bold_weight, int edge_r, int edge_g, int edge_b,
+		float edge_weight)
+{
+	PE_SetPartsFontType(no, type, 1);
+	PE_SetPartsFontSize(no, size, 1);
+	PE_SetPartsFontColor(no, r, g, b, 1);
+	PE_SetPartsFontBoldWeight(no, bold_weight, 1);
+	PE_SetPartsFontEdgeColor(no, edge_r, edge_g, edge_b, 1);
+	PE_SetPartsFontEdgeWeight(no, edge_weight, 1);
+}
+
+static void PE_GetTextBoxFontProperty(int no, int *type, int *size, int *r,
+		int *g, int *b, float *bold_weight, int *edge_r, int *edge_g,
+		int *edge_b, float *edge_weight)
+{
+	PE_GetPartsFontType(no, type, 1);
+	PE_GetPartsFontSize(no, size, 1);
+	PE_GetPartsFontColor(no, r, g, b, 1);
+	PE_GetPartsFontBoldWeight(no, bold_weight, 1);
+	PE_GetPartsFontEdgeColor(no, edge_r, edge_g, edge_b, 1);
+	PE_GetPartsFontEdgeWeight(no, edge_weight, 1);
+}
+
+/* ===== [D396] 控件：列表框（组件类型 5） =====
+ *
+ * 语义（arity 来自 `ain_hllarity`，索引基数见下）：
+ *   AddListBoxItem(no, text)            追加一项
+ *   InsertListBoxItem(no, index, text)  在第 index 项**之前**插入
+ *   SetListBoxItem(no, index, text)     改写第 index 项
+ *   GetListBoxItem(no, index) -> string 取第 index 项
+ *   EraseListBoxItem(no, index)         删第 index 项
+ *   ClearListBoxItem(no)                清空
+ *   GetListBoxItemCount(no) -> int      项数
+ *   SetListBoxSelectIndex(no, index) / GetListBoxSelectIndex(no)
+ *   GetListBoxOnCursorItemIndex(no) / GetListBoxOnCursorItem(no)
+ *   SetListBox{Size,Margin,LineHeight,ScrollPos,CGName,CharSpace,FontProperty}
+ *
+ * **索引基数：0-based。** 依据（不是猜）：
+ * ① System4 的数组与列表一律 0-based，`GetListBoxItemCount()` 的唯一
+ *    自洽配法是 `for (i = 0; i < count; i++)`；
+ * ② 反汇编 `fno=7683`（`列表框にテキストリストを追記`）里遍历源数组
+ *    用的是 `Index = 0; while (Index < Count) { …; Index++ }`；
+ * ③ `SelectIndex` 用 `-1` 表示「没有选中项」—— 只有 0-based 才需要 -1
+ *    （1-based 的「无选中」会用 0）。
+ * 越界访问一律安全返回：`GetListBoxItem` 返回空串，`Set/Erase` 忽略。
+ *
+ * `on_cursor_index` 是**引擎侧**状态（鼠标停在第几项），AIN 从不设；
+ * 由 parts 的 hover 判定更新（尚未接），默认 -1。
+ */
+static void lb_ensure(struct parts_widget *w, int need)
+{
+	if (need <= w->cap_items)
+		return;
+	int cap = w->cap_items ? w->cap_items : 8;
+	while (cap < need)
+		cap *= 2;
+	w->items = xrealloc(w->items, cap * sizeof(*w->items));
+	memset(w->items + w->cap_items, 0, (cap - w->cap_items) * sizeof(*w->items));
+	w->cap_items = cap;
+}
+
+static void PE_AddListBoxItem(int no, struct string *text)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (!w)
+		return;
+	lb_ensure(w, w->nr_items + 1);
+	w->items[w->nr_items++] = text ? string_ref(text) : string_dup(&EMPTY_STRING);
+}
+
+static void PE_InsertListBoxItem(int no, int index, struct string *text)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (!w)
+		return;
+	if (index < 0 || index > w->nr_items)
+		index = w->nr_items;
+	lb_ensure(w, w->nr_items + 1);
+	memmove(&w->items[index + 1], &w->items[index],
+		(w->nr_items - index) * sizeof(*w->items));
+	w->items[index] = text ? string_ref(text) : string_dup(&EMPTY_STRING);
+	w->nr_items++;
+}
+
+static void PE_SetListBoxItem(int no, int index, struct string *text)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (!w || index < 0 || index >= w->nr_items)
+		return;
+	if (w->items[index])
+		free_string(w->items[index]);
+	w->items[index] = text ? string_ref(text) : string_dup(&EMPTY_STRING);
+}
+
+static struct string *PE_GetListBoxItem(int no, int index)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	if (!w || index < 0 || index >= w->nr_items || !w->items[index])
+		return string_dup(&EMPTY_STRING);
+	return string_ref(w->items[index]);
+}
+
+static int PE_GetListBoxItemCount(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->nr_items : 0;
+}
+
+static void PE_EraseListBoxItem(int no, int index)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (!w || index < 0 || index >= w->nr_items)
+		return;
+	if (w->items[index])
+		free_string(w->items[index]);
+	memmove(&w->items[index], &w->items[index + 1],
+		(w->nr_items - index - 1) * sizeof(*w->items));
+	w->nr_items--;
+	if (w->select_index == index)
+		w->select_index = -1;
+	else if (w->select_index > index)
+		w->select_index--;
+}
+
+static void PE_ClearListBoxItem(int no)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (!w)
+		return;
+	for (int i = 0; i < w->nr_items; i++)
+		if (w->items[i])
+			free_string(w->items[i]);
+	w->nr_items = 0;
+	w->select_index = -1;
+}
+
+static void PE_SetListBoxSelectIndex(int no, int index)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->select_index = index;
+}
+
+static int PE_GetListBoxSelectIndex(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->select_index : 0;
+}
+
+static int PE_GetListBoxOnCursorItemIndex(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->on_cursor_index : -1;
+}
+
+static struct string *PE_GetListBoxOnCursorItem(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	if (!w || w->on_cursor_index < 0 || w->on_cursor_index >= w->nr_items ||
+	    !w->items[w->on_cursor_index])
+		return string_dup(&EMPTY_STRING);
+	return string_ref(w->items[w->on_cursor_index]);
+}
+
+static void PE_SetListBoxSize(int no, int w, int h)
+{
+	PE_SetPartsSize(no, w, h, 1);
+}
+
+static void PE_SetListBoxLineHeight(int no, int h)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->line_height = h;
+}
+
+static int PE_GetListBoxLineHeight(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->line_height : 0;
+}
+
+static void PE_SetListBoxMargin(int no, int mw, int mh)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) {
+		w->margin_w = mw;
+		w->margin_h = mh;
+	}
+}
+
+static int PE_GetListBoxWidthMargin(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->margin_w : 0;
+}
+
+static int PE_GetListBoxHeightMargin(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->margin_h : 0;
+}
+
+static void PE_SetListBoxScrollPos(int no, int pos)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->scroll_pos = pos;
+}
+
+static int PE_GetListBoxScrollPos(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->scroll_pos : 0;
+}
+
+static void PE_SetListBoxCGName(int no, struct string *name)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->cg_name, name);
+}
+
+static struct string *PE_GetListBoxCGName(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->cg_name) : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetListBoxCharSpace(int no, int space)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->char_space = space;
+}
+
+static int PE_GetListBoxCharSpace(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->char_space : 0;
+}
+
+static void PE_SetListBoxFontProperty(int no, int type, int size, int r, int g,
+		int b, float bold_weight, int edge_r, int edge_g, int edge_b,
+		float edge_weight)
+{
+	PE_SetPartsFontType(no, type, 1);
+	PE_SetPartsFontSize(no, size, 1);
+	PE_SetPartsFontColor(no, r, g, b, 1);
+	PE_SetPartsFontBoldWeight(no, bold_weight, 1);
+	PE_SetPartsFontEdgeColor(no, edge_r, edge_g, edge_b, 1);
+	PE_SetPartsFontEdgeWeight(no, edge_weight, 1);
+}
+
+static void PE_GetListBoxFontProperty(int no, int *type, int *size, int *r,
+		int *g, int *b, float *bold_weight, int *edge_r, int *edge_g,
+		int *edge_b, float *edge_weight)
+{
+	PE_GetPartsFontType(no, type, 1);
+	PE_GetPartsFontSize(no, size, 1);
+	PE_GetPartsFontColor(no, r, g, b, 1);
+	PE_GetPartsFontBoldWeight(no, bold_weight, 1);
+	PE_GetPartsFontEdgeColor(no, edge_r, edge_g, edge_b, 1);
+	PE_GetPartsFontEdgeWeight(no, edge_weight, 1);
+}
+
+/* ===== [D396] 控件：组合框（组件类型 6） =====
+ *
+ * 组合框 = **一个显示框 + 一个可展开的内嵌列表框**。所以它的接口分两层：
+ *   `SetComboBoxText` / `GetComboBoxText`     显示框里的文字
+ *   `*ComboBoxListBox*`                        内嵌列表框（项、选中、滚动、行高…）
+ * 两层各自有字体与字距 —— 这不是重复，是 System4 的原始设计。
+ *
+ * `IsComboBoxOpenListBox` 是**只读**的展开状态：整张接口表里没有对应的
+ * `Set/Open` 函数，说明展开/收起由引擎在点击箭头时自己完成，AIN 只查询。
+ * 我们目前不实现展开交互，所以恒 false（如实反映「没展开」）。
+ */
+static void cb_ensure(struct parts_widget *w, int need)
+{
+	if (need <= w->cap_cb_items)
+		return;
+	int cap = w->cap_cb_items ? w->cap_cb_items : 8;
+	while (cap < need)
+		cap *= 2;
+	w->cb_items = xrealloc(w->cb_items, cap * sizeof(*w->cb_items));
+	memset(w->cb_items + w->cap_cb_items, 0,
+	       (cap - w->cap_cb_items) * sizeof(*w->cb_items));
+	w->cap_cb_items = cap;
+}
+
+static void PE_SetComboBoxSize(int no, int w, int h)
+{
+	PE_SetPartsSize(no, w, h, 1);
+}
+
+static void PE_SetComboBoxTextMargin(int no, int mw, int mh)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) { w->cb_text_margin_w = mw; w->cb_text_margin_h = mh; }
+}
+static int PE_GetComboBoxTextWidthMargin(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->cb_text_margin_w : 0;
+}
+static int PE_GetComboBoxTextHeightMargin(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->cb_text_margin_h : 0;
+}
+
+static void PE_SetComboBoxCGName(int no, struct string *name)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->cg_name, name);
+}
+static struct string *PE_GetComboBoxCGName(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->cg_name) : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetComboBoxText(int no, struct string *text)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->text, text);
+}
+static struct string *PE_GetComboBoxText(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->text) : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetComboBoxFontProperty(int no, int type, int size, int r, int g,
+		int b, float bold_weight, int edge_r, int edge_g, int edge_b,
+		float edge_weight)
+{
+	PE_SetPartsFontType(no, type, 1);
+	PE_SetPartsFontSize(no, size, 1);
+	PE_SetPartsFontColor(no, r, g, b, 1);
+	PE_SetPartsFontBoldWeight(no, bold_weight, 1);
+	PE_SetPartsFontEdgeColor(no, edge_r, edge_g, edge_b, 1);
+	PE_SetPartsFontEdgeWeight(no, edge_weight, 1);
+}
+static void PE_GetComboBoxFontProperty(int no, int *type, int *size, int *r,
+		int *g, int *b, float *bold_weight, int *edge_r, int *edge_g,
+		int *edge_b, float *edge_weight)
+{
+	PE_GetPartsFontType(no, type, 1);
+	PE_GetPartsFontSize(no, size, 1);
+	PE_GetPartsFontColor(no, r, g, b, 1);
+	PE_GetPartsFontBoldWeight(no, bold_weight, 1);
+	PE_GetPartsFontEdgeColor(no, edge_r, edge_g, edge_b, 1);
+	PE_GetPartsFontEdgeWeight(no, edge_weight, 1);
+}
+
+static void PE_SetComboBoxCharSpace(int no, int space)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->char_space = space;
+}
+static int PE_GetComboBoxCharSpace(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->char_space : 0;
+}
+
+/* --- 内嵌列表框 --- */
+static void PE_SetComboBoxListBoxHeight(int no, int h)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->cb_lb_height = h;
+}
+static int PE_GetComboBoxListBoxHeight(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->cb_lb_height : 0;
+}
+
+static void PE_SetComboBoxListBoxLineHeight(int no, int h)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->cb_lb_line_height = h;
+}
+static int PE_GetComboBoxListBoxLineHeight(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->cb_lb_line_height : 0;
+}
+
+static void PE_SetComboBoxListBoxMargin(int no, int mw, int mh)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) { w->cb_lb_margin_w = mw; w->cb_lb_margin_h = mh; }
+}
+static int PE_GetComboBoxListBoxWidthMargin(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->cb_lb_margin_w : 0;
+}
+static int PE_GetComboBoxListBoxHeightMargin(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->cb_lb_margin_h : 0;
+}
+
+static void PE_SetComboBoxListBoxScrollPos(int no, int pos)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->cb_lb_scroll_pos = pos;
+}
+static int PE_GetComboBoxListBoxScrollPos(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->cb_lb_scroll_pos : 0;
+}
+
+static void PE_AddComboBoxListBoxItem(int no, struct string *text)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (!w)
+		return;
+	cb_ensure(w, w->nr_cb_items + 1);
+	w->cb_items[w->nr_cb_items++] = text ? string_ref(text)
+					    : string_dup(&EMPTY_STRING);
+}
+
+static void PE_InsertComboBoxListBoxItem(int no, int index, struct string *text)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (!w)
+		return;
+	if (index < 0 || index > w->nr_cb_items)
+		index = w->nr_cb_items;
+	cb_ensure(w, w->nr_cb_items + 1);
+	memmove(&w->cb_items[index + 1], &w->cb_items[index],
+		(w->nr_cb_items - index) * sizeof(*w->cb_items));
+	w->cb_items[index] = text ? string_ref(text) : string_dup(&EMPTY_STRING);
+	w->nr_cb_items++;
+}
+
+static void PE_SetComboBoxListBoxItem(int no, int index, struct string *text)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (!w || index < 0 || index >= w->nr_cb_items)
+		return;
+	if (w->cb_items[index])
+		free_string(w->cb_items[index]);
+	w->cb_items[index] = text ? string_ref(text) : string_dup(&EMPTY_STRING);
+}
+
+static struct string *PE_GetComboBoxListBoxItem(int no, int index)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	if (!w || index < 0 || index >= w->nr_cb_items || !w->cb_items[index])
+		return string_dup(&EMPTY_STRING);
+	return string_ref(w->cb_items[index]);
+}
+
+static int PE_GetComboBoxListBoxItemCount(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->nr_cb_items : 0;
+}
+
+static void PE_EraseComboBoxListBoxItem(int no, int index)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (!w || index < 0 || index >= w->nr_cb_items)
+		return;
+	if (w->cb_items[index])
+		free_string(w->cb_items[index]);
+	memmove(&w->cb_items[index], &w->cb_items[index + 1],
+		(w->nr_cb_items - index - 1) * sizeof(*w->cb_items));
+	w->nr_cb_items--;
+	if (w->cb_lb_select_index == index)
+		w->cb_lb_select_index = -1;
+	else if (w->cb_lb_select_index > index)
+		w->cb_lb_select_index--;
+}
+
+static void PE_ClearComboBoxListBoxItem(int no)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (!w)
+		return;
+	for (int i = 0; i < w->nr_cb_items; i++)
+		if (w->cb_items[i])
+			free_string(w->cb_items[i]);
+	w->nr_cb_items = 0;
+	w->cb_lb_select_index = -1;
+}
+
+static void PE_SetComboBoxListBoxFontProperty(int no, int type, int size,
+		int r, int g, int b, float bold_weight, int edge_r, int edge_g,
+		int edge_b, float edge_weight)
+{
+	/* 内嵌列表框与显示框共用部件的 text 状态（同一个 parts_no），
+	 * 所以字体只能存一份 —— 这与「组合框里外字体一致」的观感相符。 */
+	PE_SetComboBoxFontProperty(no, type, size, r, g, b, bold_weight,
+				   edge_r, edge_g, edge_b, edge_weight);
+}
+static void PE_GetComboBoxListBoxFontProperty(int no, int *type, int *size,
+		int *r, int *g, int *b, float *bold_weight, int *edge_r, int *edge_g,
+		int *edge_b, float *edge_weight)
+{
+	PE_GetComboBoxFontProperty(no, type, size, r, g, b, bold_weight,
+				   edge_r, edge_g, edge_b, edge_weight);
+}
+
+static void PE_SetComboBoxListBoxSelectIndex(int no, int index)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->cb_lb_select_index = index;
+}
+static int PE_GetComboBoxListBoxSelectIndex(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->cb_lb_select_index : 0;
+}
+
+static void PE_SetComboBoxListBoxCharSpace(int no, int space)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->cb_lb_char_space = space;
+}
+static int PE_GetComboBoxListBoxCharSpace(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->cb_lb_char_space : 0;
+}
+
+static bool PE_IsComboBoxOpenListBox(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->cb_open : false;
+}
+
+/* ===== [D396] 控件：微调框（组件类型 11） =====
+ *
+ * 数值属性全部是 **float**（证据见 `parts_widget` 里 `spin_*` 的注释）；
+ * `DecimalPlace` 是整数（小数位数）。颜色四组与 TextBox 同形。
+ */
+static void PE_SetSpinBoxSize(int no, int w, int h)
+{
+	PE_SetPartsSize(no, w, h, 1);
+}
+
+static void PE_SetSpinBoxFontProperty(int no, int type, int size, int r, int g,
+		int b, float bold_weight, int edge_r, int edge_g, int edge_b,
+		float edge_weight)
+{
+	PE_SetPartsFontType(no, type, 1);
+	PE_SetPartsFontSize(no, size, 1);
+	PE_SetPartsFontColor(no, r, g, b, 1);
+	PE_SetPartsFontBoldWeight(no, bold_weight, 1);
+	PE_SetPartsFontEdgeColor(no, edge_r, edge_g, edge_b, 1);
+	PE_SetPartsFontEdgeWeight(no, edge_weight, 1);
+}
+static void PE_GetSpinBoxFontProperty(int no, int *type, int *size, int *r,
+		int *g, int *b, float *bold_weight, int *edge_r, int *edge_g,
+		int *edge_b, float *edge_weight)
+{
+	PE_GetPartsFontType(no, type, 1);
+	PE_GetPartsFontSize(no, size, 1);
+	PE_GetPartsFontColor(no, r, g, b, 1);
+	PE_GetPartsFontBoldWeight(no, bold_weight, 1);
+	PE_GetPartsFontEdgeColor(no, edge_r, edge_g, edge_b, 1);
+	PE_GetPartsFontEdgeWeight(no, edge_weight, 1);
+}
+
+static void PE_SetSpinBoxReadOnly(int no, bool ro)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->readonly = ro;
+}
+static bool PE_IsSpinBoxReadOnly(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->readonly : false;
+}
+
+static void PE_SetSpinBoxValue(int no, float v)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->spin_value = v;
+}
+static float PE_GetSpinBoxValue(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->spin_value : 0.0f;
+}
+
+static void PE_SetSpinBoxDefaultValue(int no, float v)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->spin_default = v;
+}
+static float PE_GetSpinBoxDefaultValue(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->spin_default : 0.0f;
+}
+
+static void PE_SetSpinBoxMaxValue(int no, float v)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->spin_max = v;
+}
+static float PE_GetSpinBoxMaxValue(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->spin_max : 0.0f;
+}
+
+static void PE_SetSpinBoxMinValue(int no, float v)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->spin_min = v;
+}
+static float PE_GetSpinBoxMinValue(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->spin_min : 0.0f;
+}
+
+static void PE_SetSpinBoxIncrementalValue(int no, float v)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->spin_increment = v;
+}
+static float PE_GetSpinBoxIncrementalValue(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->spin_increment : 0.0f;
+}
+
+static void PE_SetSpinBoxDecimalPlace(int no, int v)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->spin_decimal_place = v;
+}
+static int PE_GetSpinBoxDecimalPlace(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->spin_decimal_place : 0;
+}
+
+static void PE_SetSpinBoxBGColor(int no, int r, int g, int b)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) { w->bg_r = r; w->bg_g = g; w->bg_b = b; w->bg_set = true; }
+}
+static int PE_GetSpinBoxBGR(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->bg_set) ? w->bg_r : 255;
+}
+static int PE_GetSpinBoxBGG(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->bg_set) ? w->bg_g : 255;
+}
+static int PE_GetSpinBoxBGB(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->bg_set) ? w->bg_b : 255;
+}
+
+static void PE_SetSpinBoxReadOnlyBGColor(int no, int r, int g, int b)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) { w->ro_bg_r = r; w->ro_bg_g = g; w->ro_bg_b = b; w->ro_bg_set = true; }
+}
+static int PE_GetSpinBoxReadOnlyBGR(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->ro_bg_set) ? w->ro_bg_r : 192;
+}
+static int PE_GetSpinBoxReadOnlyBGG(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->ro_bg_set) ? w->ro_bg_g : 192;
+}
+static int PE_GetSpinBoxReadOnlyBGB(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->ro_bg_set) ? w->ro_bg_b : 192;
+}
+
+static void PE_SetSpinBoxFrameColor(int no, int r, int g, int b)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) { w->frame_r = r; w->frame_g = g; w->frame_b = b; w->frame_set = true; }
+}
+static int PE_GetSpinBoxFrameR(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->frame_set) ? w->frame_r : 0;
+}
+static int PE_GetSpinBoxFrameG(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->frame_set) ? w->frame_g : 0;
+}
+static int PE_GetSpinBoxFrameB(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->frame_set) ? w->frame_b : 0;
+}
+
+static void PE_SetSpinBoxSelectColor(int no, int r, int g, int b)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) { w->select_r = r; w->select_g = g; w->select_b = b; w->select_set = true; }
+}
+static int PE_GetSpinBoxSelectR(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->select_set) ? w->select_r : 0;
+}
+static int PE_GetSpinBoxSelectG(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->select_set) ? w->select_g : 0;
+}
+static int PE_GetSpinBoxSelectB(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->select_set) ? w->select_b : 0;
+}
+
+static void PE_SetSpinBoxCGName(int no, struct string *name)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->cg_name, name);
+}
+static struct string *PE_GetSpinBoxCGName(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->cg_name) : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetSpinBoxCharSpace(int no, int space)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) w->char_space = space;
+}
+static int PE_GetSpinBoxCharSpace(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->char_space : 0;
+}
+
+/* ===== [D396] 控件：按钮（组件类型 0） =====
+ *
+ * 按钮是「底图 + 文字」，属性集与 TextBox 的颜色组不同：
+ * 只有一组前景色（`SetButtonColor` → `GetButtonR/G/B`），没有 BG/Frame/Select。
+ * `SetButtonEnable` / `IsButtonEnable` 决定是否响应输入。
+ */
+static void PE_SetButtonSize(int no, int w, int h)
+{
+	PE_SetPartsSize(no, w, h, 1);
+}
+
+static void PE_SetButtonEnable(int no, bool enable)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->enabled = enable;
+}
+static bool PE_IsButtonEnable(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->enabled : false;
+}
+
+static void PE_SetButtonColor(int no, int r, int g, int b)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) { w->bg_r = r; w->bg_g = g; w->bg_b = b; w->bg_set = true; }
+}
+static int PE_GetButtonR(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->bg_set) ? w->bg_r : 0;
+}
+static int PE_GetButtonG(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->bg_set) ? w->bg_g : 0;
+}
+static int PE_GetButtonB(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->bg_set) ? w->bg_b : 0;
+}
+
+static void PE_SetButtonFontProperty(int no, int type, int size, int r, int g,
+		int b, float bold_weight, int edge_r, int edge_g, int edge_b,
+		float edge_weight)
+{
+	PE_SetPartsFontType(no, type, 1);
+	PE_SetPartsFontSize(no, size, 1);
+	PE_SetPartsFontColor(no, r, g, b, 1);
+	PE_SetPartsFontBoldWeight(no, bold_weight, 1);
+	PE_SetPartsFontEdgeColor(no, edge_r, edge_g, edge_b, 1);
+	PE_SetPartsFontEdgeWeight(no, edge_weight, 1);
+}
+static void PE_GetButtonFontProperty(int no, int *type, int *size, int *r,
+		int *g, int *b, float *bold_weight, int *edge_r, int *edge_g,
+		int *edge_b, float *edge_weight)
+{
+	PE_GetPartsFontType(no, type, 1);
+	PE_GetPartsFontSize(no, size, 1);
+	PE_GetPartsFontColor(no, r, g, b, 1);
+	PE_GetPartsFontBoldWeight(no, bold_weight, 1);
+	PE_GetPartsFontEdgeColor(no, edge_r, edge_g, edge_b, 1);
+	PE_GetPartsFontEdgeWeight(no, edge_weight, 1);
+}
+
+static void PE_SetButtonCGName(int no, struct string *name)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->cg_name, name);
+}
+static struct string *PE_GetButtonCGName(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->cg_name) : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetButtonFlatName(int no, struct string *name)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->flat_name, name);
+}
+static struct string *PE_GetButtonFlatName(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->flat_name) : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetButtonText(int no, struct string *text)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->text, text);
+}
+static struct string *PE_GetButtonText(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->text) : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetButtonTextOriginPosMode(int no, int mode)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->text_origin_pos_mode = mode;
+}
+static int PE_GetButtonTextOriginPosMode(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->text_origin_pos_mode : 0;
+}
+
+static void PE_SetButtonCharSpace(int no, int space)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->char_space = space;
+}
+static int PE_GetButtonCharSpace(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->char_space : 0;
+}
+
+static void PE_SetButtonLineSpace(int no, int space)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->line_space = space;
+}
+static int PE_GetButtonLineSpace(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->line_space : 0;
+}
+
+/* 音效编号：直接转 parts 层（那里会校验 sound 资源是否存在）。 */
+/* 拖动触发 / 像素级判定：两者都是「命中策略」的开关，
+ * 与 CheckBox 的同名属性语义一致。PixelDecide 转 parts 层的真字段。 */
+static void PE_SetButtonDrag(int no, bool drag)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->drag = drag;
+}
+static bool PE_IsButtonDrag(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->drag : false;
+}
+
+static void PE_SetButtonPixelDecide(int no, bool on)
+{
+	PE_SetPartsPixelDecide(no, on);
+}
+static bool PE_IsButtonPixelDecide(int no)
+{
+	return PE_GetPartsPixelDecide(no);
+}
+
+static void PE_SetButtonOnCursorSoundNumber(int no, int n)
+{
+	PE_SetPartsOnCursorSoundNumber(no, n);
+}
+static void PE_SetButtonClickSoundNumber(int no, int n)
+{
+	PE_SetPartsClickSoundNumber(no, n);
+}
+static int PE_GetButtonOnCursorSoundNumber(int no)
+{
+	return PE_GetPartsOnCursorSoundNumber(no);
+}
+static int PE_GetButtonClickSoundNumber(int no)
+{
+	return PE_GetPartsClickSoundNumber(no);
+}
+
+/* ===== [D396] 控件：复选框（组件类型 1） =====
+ *
+ * 勾选 / 可用两个状态在 parts.c 里（`PE_CheckBoxChecked` 一族，[D396] 已迁到
+ * `parts_widget`）；这里补的是**外观与文字**那部分：
+ *   - `CGName` / `FlatName` 与 `Override*` 三兄弟：普通态 / 勾选态 / 覆盖态
+ *     各自的底图名。Override 是「鼠标悬停时临时换图」，Checked 是勾上之后。
+ *   - `ButtonMode`：勾选框外观按「按钮」样式画（整块可点），不是小方框。
+ *   - `ButtonWidth/Height`：小方框（或按钮区）的尺寸。
+ *   - `Drag`：按下后拖动手指移出也能切换。
+ */
+static void PE_SetCheckBoxSize(int no, int w, int h)
+{
+	PE_SetPartsSize(no, w, h, 1);
+}
+
+static int PE_GetCheckBoxButtonWidth(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->button_width : 0;
+}
+static int PE_GetCheckBoxButtonHeight(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->button_height : 0;
+}
+
+static void PE_SetCheckBoxColor(int no, int r, int g, int b)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) { w->bg_r = r; w->bg_g = g; w->bg_b = b; w->bg_set = true; }
+}
+static int PE_GetCheckBoxR(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->bg_set) ? w->bg_r : 0;
+}
+static int PE_GetCheckBoxG(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->bg_set) ? w->bg_g : 0;
+}
+static int PE_GetCheckBoxB(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return (w && w->bg_set) ? w->bg_b : 0;
+}
+
+static void PE_SetCheckBoxFontProperty(int no, int type, int size, int r, int g,
+		int b, float bold_weight, int edge_r, int edge_g, int edge_b,
+		float edge_weight)
+{
+	PE_SetPartsFontType(no, type, 1);
+	PE_SetPartsFontSize(no, size, 1);
+	PE_SetPartsFontColor(no, r, g, b, 1);
+	PE_SetPartsFontBoldWeight(no, bold_weight, 1);
+	PE_SetPartsFontEdgeColor(no, edge_r, edge_g, edge_b, 1);
+	PE_SetPartsFontEdgeWeight(no, edge_weight, 1);
+}
+static void PE_GetCheckBoxFontProperty(int no, int *type, int *size, int *r,
+		int *g, int *b, float *bold_weight, int *edge_r, int *edge_g,
+		int *edge_b, float *edge_weight)
+{
+	PE_GetPartsFontType(no, type, 1);
+	PE_GetPartsFontSize(no, size, 1);
+	PE_GetPartsFontColor(no, r, g, b, 1);
+	PE_GetPartsFontBoldWeight(no, bold_weight, 1);
+	PE_GetPartsFontEdgeColor(no, edge_r, edge_g, edge_b, 1);
+	PE_GetPartsFontEdgeWeight(no, edge_weight, 1);
+}
+
+static void PE_SetCheckBoxCGName(int no, struct string *name)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->cg_name, name);
+}
+static struct string *PE_GetCheckBoxCGName(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->cg_name) : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetCheckBoxOverrideCGName(int no, struct string *name)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->override_cg_name, name);
+}
+static struct string *PE_GetCheckBoxOverrideCGName(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->override_cg_name) : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetCheckBoxOverrideCheckedCGName(int no, struct string *name)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->override_checked_cg_name, name);
+}
+static struct string *PE_GetCheckBoxOverrideCheckedCGName(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->override_checked_cg_name)
+		 : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetCheckBoxFlatName(int no, struct string *name)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->flat_name, name);
+}
+static struct string *PE_GetCheckBoxFlatName(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->flat_name) : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetCheckBoxOverrideFlatName(int no, struct string *name)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->override_flat_name, name);
+}
+static struct string *PE_GetCheckBoxOverrideFlatName(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->override_flat_name) : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetCheckBoxOverrideCheckedFlatName(int no, struct string *name)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->override_checked_flat_name, name);
+}
+static struct string *PE_GetCheckBoxOverrideCheckedFlatName(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->override_checked_flat_name)
+		 : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetCheckBoxText(int no, struct string *text)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		widget_set_string(&w->text, text);
+}
+static struct string *PE_GetCheckBoxText(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->text) : string_dup(&EMPTY_STRING);
+}
+
+static void PE_SetCheckBoxTextOriginPosMode(int no, int mode)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->text_origin_pos_mode = mode;
+}
+static int PE_GetCheckBoxTextOriginPosMode(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->text_origin_pos_mode : 0;
+}
+
+static void PE_SetCheckBoxButtonMode(int no, bool mode)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->button_mode = mode;
+}
+static bool PE_IsCheckBoxButtonMode(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->button_mode : false;
+}
+
+static void PE_SetCheckBoxCharSpace(int no, int space)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->char_space = space;
+}
+static int PE_GetCheckBoxCharSpace(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->char_space : 0;
+}
+
+static void PE_SetCheckBoxLineSpace(int no, int space)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->line_space = space;
+}
+static int PE_GetCheckBoxLineSpace(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->line_space : 0;
+}
+
+static void PE_SetCheckBoxDrag(int no, bool drag)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->drag = drag;
+}
+static bool PE_IsCheckBoxDrag(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->drag : false;
+}
+
+static void PE_SetCheckBoxOnCursorSoundNumber(int no, int n)
+{
+	PE_SetPartsOnCursorSoundNumber(no, n);
+}
+static void PE_SetCheckBoxClickSoundNumber(int no, int n)
+{
+	PE_SetPartsClickSoundNumber(no, n);
+}
+static int PE_GetCheckBoxOnCursorSoundNumber(int no)
+{
+	return PE_GetPartsOnCursorSoundNumber(no);
+}
+static int PE_GetCheckBoxClickSoundNumber(int no)
+{
+	return PE_GetPartsClickSoundNumber(no);
+}
+
+/* ===== [D396] 控件：单选按钮组（组件类型 9） =====
+ *
+ * 单选按钮组本身不画东西，它维护**成员列表**（子部件号）并保证互斥：
+ *   AddRadioButtonBoxChild(no, child)    加入成员
+ *   RemoveRadioButtonBoxChild(no, child) 移出
+ *   NumofRadioButtonBoxChild(no)         成员数
+ *   GetRadioButtonBoxChild(no, index)    第 index 个成员（0-based）
+ *   ClearRadioButtonBoxChild(no)         清空
+ *   IsRadioButtonBoxExistGUI(no, child)  某子件是否属于本组
+ */
+static void rb_ensure(struct parts_widget *w, int need)
+{
+	if (need <= w->cap_radio_children)
+		return;
+	int cap = w->cap_radio_children ? w->cap_radio_children : 4;
+	while (cap < need)
+		cap *= 2;
+	w->radio_children = xrealloc(w->radio_children, cap * sizeof(int));
+	w->cap_radio_children = cap;
+}
+
+static void PE_AddRadioButtonBoxChild(int no, int child)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (!w || child <= 0)
+		return;
+	for (int i = 0; i < w->nr_radio_children; i++)
+		if (w->radio_children[i] == child)
+			return;
+	rb_ensure(w, w->nr_radio_children + 1);
+	w->radio_children[w->nr_radio_children++] = child;
+}
+
+static void PE_RemoveRadioButtonBoxChild(int no, int child)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (!w)
+		return;
+	for (int i = 0; i < w->nr_radio_children; i++) {
+		if (w->radio_children[i] != child)
+			continue;
+		memmove(&w->radio_children[i], &w->radio_children[i + 1],
+			(w->nr_radio_children - i - 1) * sizeof(int));
+		w->nr_radio_children--;
+		return;
+	}
+}
+
+static int PE_NumofRadioButtonBoxChild(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->nr_radio_children : 0;
+}
+
+static int PE_GetRadioButtonBoxChild(int no, int index)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	if (!w || index < 0 || index >= w->nr_radio_children)
+		return 0;
+	return w->radio_children[index];
+}
+
+static void PE_ClearRadioButtonBoxChild(int no)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->nr_radio_children = 0;
+}
+
+static bool PE_IsRadioButtonBoxExistGUI(int no, int child)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	if (!w)
+		return false;
+	for (int i = 0; i < w->nr_radio_children; i++)
+		if (w->radio_children[i] == child)
+			return true;
+	return false;
+}
+
+
 
 /* [D202] 消息窗口配置 getter（SaveAdvMessageWindowData 用于保存/恢复文本样式）。
  * 对应的 setter 目前都是 noop（引擎用 PE_SetText 同步排版），所以 getter
@@ -1727,8 +3135,8 @@ static struct string **msgwin_text_slot(int no);
  * 签名与库表 f[522]/[526]/[530] 一致（ref int/float 在 C 侧是普通指针）。 */
 static struct string *PE_GetMessageWindowText(int no)
 {
-	struct string **slot = msgwin_text_slot(no);
-	return *slot ? string_ref(*slot) : string_dup(&EMPTY_STRING);
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->text) : string_dup(&EMPTY_STRING);
 }
 
 static void PE_GetMessageWindowTextFont(int no, int *type, int *size, int *r,
@@ -1750,18 +3158,18 @@ static void PE_GetMessageWindowTextFont(int no, int *type, int *size, int *r,
 
 static void PE_GetMessageWindowTextArea(int no, int *x, int *y, int *w, int *h)
 {
-	(void)no;
-	if (x) *x = 0;
-	if (y) *y = 0;
-	if (w) *w = 0;
-	if (h) *h = 0;
+	struct parts_widget *wp = PE_widget_peek(no);
+	if (x) *x = wp ? wp->msg_area_x : 0;
+	if (y) *y = wp ? wp->msg_area_y : 0;
+	if (w) *w = wp ? wp->msg_area_w : 0;
+	if (h) *h = wp ? wp->msg_area_h : 0;
 }
 
 static void PE_GetMessageWindowTextSpace(int no, int *letter, int *line)
 {
-	(void)no;
-	if (letter) *letter = 0;
-	if (line) *line = 0;
+	struct parts_widget *w = PE_widget_peek(no);
+	if (letter) *letter = w ? w->msg_space_x : 0;
+	if (line) *line = w ? w->msg_space_y : 0;
 }
 
 static void PE_GetKeyWaitCGName(int no, struct string **name, int *start_no,
@@ -1774,33 +3182,59 @@ static void PE_GetKeyWaitCGName(int no, struct string **name, int *start_no,
 	if (time_per_cg) *time_per_cg = 0;
 }
 
-static int PE_GetMessageWindowTextOriginPosMode(int no) { (void)no; return 0; }
-static int PE_GetMessageWindowTextSpeed(int no) { (void)no; return 0; }
-static int PE_GetMessageWindowInactiveMultipleColorR(int no) { (void)no; return 255; }
-static int PE_GetMessageWindowInactiveMultipleColorG(int no) { (void)no; return 255; }
-static int PE_GetMessageWindowInactiveMultipleColorB(int no) { (void)no; return 255; }
+static int PE_GetMessageWindowTextOriginPosMode(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->text_origin_pos_mode : 0;
+}
+static int PE_GetMessageWindowTextSpeed(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->msg_text_speed : 0;
+}
+static int PE_GetMessageWindowInactiveMultipleColorR(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->msg_inactive_r : 255;
+}
+static int PE_GetMessageWindowInactiveMultipleColorG(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->msg_inactive_g : 255;
+}
+static int PE_GetMessageWindowInactiveMultipleColorB(int no)
+{
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->msg_inactive_b : 255;
+}
 static int PE_GetKeyWaitPosX(int no) { (void)no; return 0; }
 static int PE_GetKeyWaitPosY(int no) { (void)no; return 0; }
 static int PE_GetKeyWaitPosZ(int no) { (void)no; return 0; }
 static bool PE_IsKeyWaitShow(int no) { (void)no; return false; }
 static bool PE_IsComponentMessageWindowEffectLink(int no) { (void)no; return false; }
 
-/* [D202] 消息窗口 flat 相关 getter。
- * SetMessageWindowFlatName/CGName 目前是 noop setter（引擎用 PE_SetText
- * 同步排版普通文本窗口，没有 flat 动画），所以 getter 返回空串与之配对：
- * `CMessageWindow@IsFlat` 用 String.Empty(FlatName) 取反判断，空串 => false
- * => 走普通消息窗口路径，不再等 flat 动画。以前 getter 根本没注册，
- * AIN 一调就 VM_ERROR，第一章剧情刚进 ADV 就断在这里。 */
+/* [D396] 消息窗口的底图 / flat 名 getter。
+ *
+ * D202 时这两个是「恒返回空串」的桩，注释写得很清楚：`CMessageWindow@IsFlat`
+ * 用 `String.Empty(FlatName)` 取反判断，空串 ⇒ 走普通消息窗口路径，
+ * 从而绕开我们没实现的 flat 动画。
+ *
+ * 现在 setter 真的存了值，getter 也必须读真值 —— 否则「设进去读出来是空」
+ * 会让 AIN 的存档往返静默丢样式。**代价**：AIN 一旦设了 FlatName，
+ * `IsFlat` 就会为真、走 flat 动画路径，而那条路径尚未实现。
+ * 这是必须暴露的真实缺口（不是靠 getter 撒谎掩盖），判据是
+ * `smoke full` 的 ADV 段是否仍然推进；真卡住时要做的是补 flat 消息窗口，
+ * 而不是把 getter 改回空串。 */
 static struct string *PE_GetMessageWindowFlatName(int no)
 {
-	(void)no;
-	return string_dup(&EMPTY_STRING);
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->flat_name) : string_dup(&EMPTY_STRING);
 }
 
 static struct string *PE_GetMessageWindowCGName(int no)
 {
-	(void)no;
-	return string_dup(&EMPTY_STRING);
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? widget_get_string(&w->cg_name) : string_dup(&EMPTY_STRING);
 }
 
 static struct string *PE_GetKeyWaitFlatName(int no)
@@ -1811,8 +3245,8 @@ static struct string *PE_GetKeyWaitFlatName(int no)
 
 static int PE_GetMessageWindowFlatShowWaitFrameNumber(int no)
 {
-	(void)no;
-	return 0;
+	struct parts_widget *w = PE_widget_peek(no);
+	return w ? w->msg_flat_wait_frame : 0;
 }
 
 static bool PE_IsOverMessageWindowFlatShowWaitFrame(int no)
@@ -1834,6 +3268,13 @@ static bool PE_StepMessageWindowFlatFinalFrame(int no)
 }
 
 /* AIN SetMessageWindowFlatShowWaitFrameNumber：void SetMessageWindowFlatShowWaitFrameNumber。[HACK-POC D85] 空实现（setter 占位）。 */
+static void PE_SetMessageWindowFlatShowWaitFrameNumber(int no, int frames)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->msg_flat_wait_frame = frames;
+}
+
 static void PE_Noop_SetMessageWindowFlatShowWaitFrameNumber(int a0, int a1)
 {
 	(void)a0;
@@ -1841,6 +3282,16 @@ static void PE_Noop_SetMessageWindowFlatShowWaitFrameNumber(int a0, int a1)
 }
 
 /* AIN SetMessageWindowInactiveMultipleColor：void SetMessageWindowInactiveMultipleColor。[HACK-POC D85] 空实现（setter 占位）。 */
+static void PE_SetMessageWindowInactiveMultipleColor(int no, int r, int g, int b)
+{
+	struct parts_widget *w = PE_widget(no);
+	if (w) {
+		w->msg_inactive_r = r;
+		w->msg_inactive_g = g;
+		w->msg_inactive_b = b;
+	}
+}
+
 static void PE_Noop_SetMessageWindowInactiveMultipleColor(int a0, int a1, int a2, int a3)
 {
 	(void)a0;
@@ -1863,26 +3314,6 @@ static void PE_Noop_SetMessageWindowInactiveMultipleColor(int a0, int a1, int a2
  * 剧情脚本 `０２／ＳＴＡＲＴ` 也执行了，画面却全黑）。
  * 部件号是大数（900000xxx），用旁路表按号存，避免给 struct parts 加字段
  * （save.c 顺序序列化，插字段会错位存档）。 */
-#define MSGWIN_TEXT_SLOTS 64
-static struct {
-	int no;
-	struct string *text;
-} msgwin_text[MSGWIN_TEXT_SLOTS];
-
-static struct string **msgwin_text_slot(int no)
-{
-	static int probe;
-	for (int i = 0; i < MSGWIN_TEXT_SLOTS; i++)
-		if (msgwin_text[i].no == no)
-			return &msgwin_text[i].text;
-	int i = (probe++) % MSGWIN_TEXT_SLOTS;
-	if (msgwin_text[i].text)
-		free_string(msgwin_text[i].text);
-	msgwin_text[i].text = NULL;
-	msgwin_text[i].no = no;
-	return &msgwin_text[i].text;
-}
-
 /* AIN 签名：void SetMessageWindowTextFont(int Number, int Type, int Size,
  *   int R, int G, int B, float BoldWeight, int EdgeR, int EdgeG, int EdgeB,
  *   float EdgeWeight)
@@ -1911,10 +3342,6 @@ static void PE_SetMessageWindowTextFont(int no, int type, int size,
 static void PE_SetMessageWindowText(int no, struct string *text, int msg_num,
 		struct string *func_name, int ver, int step)
 {
-	(void)msg_num;
-	(void)func_name;
-	(void)ver;
-	(void)step;
 	MSGWIN_HIT("SetMessageWindowText no=%d len=%d", no, text ? (int)strlen(text->text) : -1);
 	/* [D319] 台词进度探针：`CMessageTextView@CreateDrawChar` 是**逐字**调
 	 * `SetMessageWindowText` 的（取串 → 追加一个字 → 设回），所以不能逐次打，
@@ -1946,10 +3373,18 @@ static void PE_SetMessageWindowText(int no, struct string *text, int msg_num,
 	}
 	if (!text)
 		return;
-	struct string **slot = msgwin_text_slot(no);
-	if (*slot)
-		free_string(*slot);
-	*slot = string_dup(text);
+	/* [D396] 文本与「台词位置指纹」存进 `parts_widget`（原来是旁挂的
+	 * `msgwin_text` 环形表）。指纹（msg_num / func_name / ver / step）是
+	 * AIN 用来在存档后定位「读到哪一句」的；AIN 侧没有对应 getter，
+	 * 所以只存不读 —— 但必须存，否则存档会退化成从头开始。 */
+	struct parts_widget *w = PE_widget(no);
+	if (w) {
+		widget_set_string(&w->text, text);
+		w->msg_num = msg_num;
+		widget_set_string(&w->msg_func_name, func_name);
+		w->msg_ver = ver;
+		w->msg_step = step;
+	}
 	PE_SetText(no, text, 1);
 }
 
@@ -1967,6 +3402,17 @@ static bool PE_IsFixedMessageWindowText(int no)
 }
 
 /* AIN SetMessageWindowTextArea：void SetMessageWindowTextArea。[HACK-POC D85] 空实现（setter 占位）。 */
+static void PE_SetMessageWindowTextArea(int no, int x, int y, int w, int h)
+{
+	struct parts_widget *wp = PE_widget(no);
+	if (wp) {
+		wp->msg_area_x = x;
+		wp->msg_area_y = y;
+		wp->msg_area_w = w;
+		wp->msg_area_h = h;
+	}
+}
+
 static void PE_Noop_SetMessageWindowTextArea(int a0, int a1, int a2, int a3, int a4)
 {
 	MSGWIN_HIT("SetMessageWindowTextArea no=%d x=%d y=%d w=%d h=%d", a0, a1, a2, a3, a4);
@@ -1978,28 +3424,32 @@ static void PE_Noop_SetMessageWindowTextArea(int a0, int a1, int a2, int a3, int
 }
 
 /* AIN SetMessageWindowTextOriginPosMode：void SetMessageWindowTextOriginPosMode。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetMessageWindowTextOriginPosMode(int a0, int a1)
+static void PE_SetMessageWindowTextOriginPosMode(int no, int mode)
 {
-	MSGWIN_HIT("SetMessageWindowTextOriginPosMode no=%d mode=%d", a0, a1);
-	(void)a0;
-	(void)a1;
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->text_origin_pos_mode = mode;
+	MSGWIN_HIT("SetMessageWindowTextOriginPosMode no=%d mode=%d", no, mode);
 }
 
 /* AIN SetMessageWindowTextSpace：void SetMessageWindowTextSpace。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetMessageWindowTextSpace(int a0, int a1, int a2)
+static void PE_SetMessageWindowTextSpace(int no, int letter, int line)
 {
-	MSGWIN_HIT("SetMessageWindowTextSpace no=%d letter=%d line=%d", a0, a1, a2);
-	(void)a0;
-	(void)a1;
-	(void)a2;
+	struct parts_widget *w = PE_widget(no);
+	if (w) {
+		w->msg_space_x = letter;
+		w->msg_space_y = line;
+	}
+	MSGWIN_HIT("SetMessageWindowTextSpace no=%d letter=%d line=%d", no, letter, line);
 }
 
 /* AIN SetMessageWindowTextSpeed：void SetMessageWindowTextSpeed。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetMessageWindowTextSpeed(int a0, int a1)
+static void PE_SetMessageWindowTextSpeed(int no, int speed)
 {
-	MSGWIN_HIT("SetMessageWindowTextSpeed no=%d speed=%d", a0, a1);
-	(void)a0;
-	(void)a1;
+	struct parts_widget *w = PE_widget(no);
+	if (w)
+		w->msg_text_speed = speed;
+	MSGWIN_HIT("SetMessageWindowTextSpeed no=%d speed=%d", no, speed);
 }
 
 /* AIN SetMotionData：void SetMotionData。[HACK-POC D85] 空实现（setter 占位）。 */
@@ -2276,47 +3726,6 @@ static void PE_Noop_SetSpinBoxSize(int a0, int a1, int a2)
 	(void)a0;
 	(void)a1;
 	(void)a2;
-}
-
-/* AIN SetTextBoxBGColor：void SetTextBoxBGColor。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetTextBoxBGColor(int a0, int a1, int a2, int a3)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
-}
-
-/* AIN SetTextBoxCharSpace：void SetTextBoxCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetTextBoxCharSpace(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetTextBoxFrameColor：void SetTextBoxFrameColor。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetTextBoxFrameColor(int a0, int a1, int a2, int a3)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
-}
-
-/* AIN SetTextBoxReadOnly：void SetTextBoxReadOnly。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetTextBoxReadOnly(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetTextBoxReadOnlyBGColor：void SetTextBoxReadOnlyBGColor。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetTextBoxReadOnlyBGColor(int a0, int a1, int a2, int a3)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
 }
 
 /* 用户组件 (component type 15)。引擎侧只存"名字 + 键值袋"，
@@ -3132,50 +4541,71 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(ResumeTexture, PE_Noop_ResumeTexture),
 	    HLL_TODO_EXPORT(SuspendBuildViewAt, PartsEngine_SuspendBuildViewAt),
 	    HLL_TODO_EXPORT(ResumeBuildView, PartsEngine_ResumeBuildView),
-	    HLL_EXPORT(SetButtonSize, PE_Noop_SetButtonSize),
-	    HLL_TODO_EXPORT(SetButtonDrag, PartsEngine_SetButtonDrag),
-	    HLL_TODO_EXPORT(IsButtonDrag, PartsEngine_IsButtonDrag),
-	    HLL_EXPORT(SetButtonEnable, PE_Noop_SetButtonEnable),
-	    HLL_TODO_EXPORT(IsButtonEnable, PartsEngine_IsButtonEnable),
-	    HLL_TODO_EXPORT(SetButtonPixelDecide, PartsEngine_SetButtonPixelDecide),
-	    HLL_TODO_EXPORT(IsButtonPixelDecide, PartsEngine_IsButtonPixelDecide),
-	    HLL_EXPORT(SetButtonColor, PE_Noop_SetButtonColor),
-	    HLL_TODO_EXPORT(GetButtonR, PartsEngine_GetButtonR),
-	    HLL_TODO_EXPORT(GetButtonG, PartsEngine_GetButtonG),
-	    HLL_TODO_EXPORT(GetButtonB, PartsEngine_GetButtonB),
-	    HLL_TODO_EXPORT(SetButtonFontProperty, PartsEngine_SetButtonFontProperty),
-	    HLL_TODO_EXPORT(GetButtonFontProperty, PartsEngine_GetButtonFontProperty),
-	    HLL_TODO_EXPORT(SetButtonOnCursorSoundNumber, PartsEngine_SetButtonOnCursorSoundNumber),
-	    HLL_TODO_EXPORT(SetButtonClickSoundNumber, PartsEngine_SetButtonClickSoundNumber),
-	    HLL_TODO_EXPORT(GetButtonOnCursorSoundNumber, PartsEngine_GetButtonOnCursorSoundNumber),
-	    HLL_TODO_EXPORT(GetButtonClickSoundNumber, PartsEngine_GetButtonClickSoundNumber),
-	    HLL_EXPORT(SetButtonCGName, PE_Noop_SetButtonCGName),
-	    HLL_TODO_EXPORT(GetButtonCGName, PartsEngine_GetButtonCGName),
-	    HLL_EXPORT(SetButtonText, PE_Noop_SetButtonText),
-	    HLL_TODO_EXPORT(GetButtonText, PartsEngine_GetButtonText),
-	    HLL_EXPORT(SetCheckBoxSize, PE_Noop_SetCheckBoxSize),
-	    HLL_TODO_EXPORT(SetCheckBoxDrag, PartsEngine_SetCheckBoxDrag),
-	    HLL_TODO_EXPORT(IsCheckBoxDrag, PartsEngine_IsCheckBoxDrag),
+	    HLL_EXPORT(SetButtonSize, PE_SetButtonSize),
+	    HLL_EXPORT(SetButtonDrag, PE_SetButtonDrag),
+	    HLL_EXPORT(IsButtonDrag, PE_IsButtonDrag),
+	    HLL_EXPORT(SetButtonEnable, PE_SetButtonEnable),
+	    HLL_EXPORT(IsButtonEnable, PE_IsButtonEnable),
+	    HLL_EXPORT(SetButtonPixelDecide, PE_SetButtonPixelDecide),
+	    HLL_EXPORT(IsButtonPixelDecide, PE_IsButtonPixelDecide),
+	    HLL_EXPORT(SetButtonColor, PE_SetButtonColor),
+	    HLL_EXPORT(GetButtonR, PE_GetButtonR),
+	    HLL_EXPORT(GetButtonG, PE_GetButtonG),
+	    HLL_EXPORT(GetButtonB, PE_GetButtonB),
+	    HLL_EXPORT(SetButtonFontProperty, PE_SetButtonFontProperty),
+	    HLL_EXPORT(GetButtonFontProperty, PE_GetButtonFontProperty),
+	    HLL_EXPORT(SetButtonOnCursorSoundNumber, PE_SetButtonOnCursorSoundNumber),
+	    HLL_EXPORT(SetButtonClickSoundNumber, PE_SetButtonClickSoundNumber),
+	    HLL_EXPORT(GetButtonOnCursorSoundNumber, PE_GetButtonOnCursorSoundNumber),
+	    HLL_EXPORT(GetButtonClickSoundNumber, PE_GetButtonClickSoundNumber),
+	    HLL_EXPORT(SetButtonCGName, PE_SetButtonCGName),
+	    HLL_EXPORT(GetButtonCGName, PE_GetButtonCGName),
+	    HLL_EXPORT(SetButtonText, PE_SetButtonText),
+	    HLL_EXPORT(GetButtonText, PE_GetButtonText),
+	    HLL_EXPORT(SetCheckBoxSize, PE_SetCheckBoxSize),
+	    HLL_EXPORT(SetCheckBoxDrag, PE_SetCheckBoxDrag),
+	    HLL_EXPORT(IsCheckBoxDrag, PE_IsCheckBoxDrag),
 	    /* [D174] 这一族原来是 TODO/空桩，`CommonMenu@SetCheckBoxState`
 	     * 一进来就撞 Unimplemented。改成旁路表实现（见 parts.c）。 */
 	    HLL_EXPORT(CheckBoxChecked, PE_CheckBoxChecked),
 	    HLL_EXPORT(IsCheckBoxChecked, PE_IsCheckBoxChecked),
 	    HLL_EXPORT(SetCheckBoxEnable, PE_SetCheckBoxEnable),
 	    HLL_EXPORT(IsCheckBoxEnable, PE_IsCheckBoxEnable),
-	    HLL_EXPORT(SetCheckBoxColor, PE_Noop_SetCheckBoxColor),
-	    HLL_TODO_EXPORT(GetCheckBoxR, PartsEngine_GetCheckBoxR),
-	    HLL_TODO_EXPORT(GetCheckBoxG, PartsEngine_GetCheckBoxG),
-	    HLL_TODO_EXPORT(GetCheckBoxB, PartsEngine_GetCheckBoxB),
-	    HLL_TODO_EXPORT(SetCheckBoxFontProperty, PartsEngine_SetCheckBoxFontProperty),
-	    HLL_TODO_EXPORT(GetCheckBoxFontProperty, PartsEngine_GetCheckBoxFontProperty),
-	    HLL_TODO_EXPORT(SetCheckBoxOnCursorSoundNumber, PartsEngine_SetCheckBoxOnCursorSoundNumber),
-	    HLL_TODO_EXPORT(SetCheckBoxClickSoundNumber, PartsEngine_SetCheckBoxClickSoundNumber),
-	    HLL_TODO_EXPORT(GetCheckBoxOnCursorSoundNumber, PartsEngine_GetCheckBoxOnCursorSoundNumber),
-	    HLL_TODO_EXPORT(GetCheckBoxClickSoundNumber, PartsEngine_GetCheckBoxClickSoundNumber),
-	    HLL_EXPORT(SetCheckBoxCGName, PE_Noop_SetCheckBoxCGName),
-	    HLL_TODO_EXPORT(GetCheckBoxCGName, PartsEngine_GetCheckBoxCGName),
-	    HLL_EXPORT(SetCheckBoxText, PE_Noop_SetCheckBoxText),
-	    HLL_TODO_EXPORT(GetCheckBoxText, PartsEngine_GetCheckBoxText),
+	    HLL_EXPORT(SetCheckBoxColor, PE_SetCheckBoxColor),
+	    HLL_EXPORT(GetCheckBoxR, PE_GetCheckBoxR),
+	    HLL_EXPORT(GetCheckBoxG, PE_GetCheckBoxG),
+	    HLL_EXPORT(GetCheckBoxB, PE_GetCheckBoxB),
+	    HLL_EXPORT(SetCheckBoxFontProperty, PE_SetCheckBoxFontProperty),
+	    HLL_EXPORT(GetCheckBoxFontProperty, PE_GetCheckBoxFontProperty),
+	    HLL_EXPORT(SetCheckBoxOnCursorSoundNumber, PE_SetCheckBoxOnCursorSoundNumber),
+	    HLL_EXPORT(SetCheckBoxClickSoundNumber, PE_SetCheckBoxClickSoundNumber),
+	    HLL_EXPORT(GetCheckBoxOnCursorSoundNumber, PE_GetCheckBoxOnCursorSoundNumber),
+	    HLL_EXPORT(GetCheckBoxClickSoundNumber, PE_GetCheckBoxClickSoundNumber),
+	    HLL_EXPORT(SetCheckBoxCGName, PE_SetCheckBoxCGName),
+	    HLL_EXPORT(GetCheckBoxCGName, PE_GetCheckBoxCGName),
+	    HLL_EXPORT(SetCheckBoxText, PE_SetCheckBoxText),
+	    HLL_EXPORT(GetCheckBoxText, PE_GetCheckBoxText),
+	    HLL_EXPORT(AddRadioButtonBoxChild, PE_AddRadioButtonBoxChild),
+	    HLL_EXPORT(ClearRadioButtonBoxChild, PE_ClearRadioButtonBoxChild),
+	    HLL_EXPORT(GetButtonCharSpace, PE_GetButtonCharSpace),
+	    HLL_EXPORT(GetButtonFlatName, PE_GetButtonFlatName),
+	    HLL_EXPORT(GetButtonLineSpace, PE_GetButtonLineSpace),
+	    HLL_EXPORT(GetButtonTextOriginPosMode, PE_GetButtonTextOriginPosMode),
+	    HLL_EXPORT(GetCheckBoxButtonHeight, PE_GetCheckBoxButtonHeight),
+	    HLL_EXPORT(GetCheckBoxButtonWidth, PE_GetCheckBoxButtonWidth),
+	    HLL_EXPORT(GetCheckBoxCharSpace, PE_GetCheckBoxCharSpace),
+	    HLL_EXPORT(GetCheckBoxFlatName, PE_GetCheckBoxFlatName),
+	    HLL_EXPORT(GetCheckBoxLineSpace, PE_GetCheckBoxLineSpace),
+	    HLL_EXPORT(GetCheckBoxOverrideCGName, PE_GetCheckBoxOverrideCGName),
+	    HLL_EXPORT(GetCheckBoxOverrideCheckedCGName, PE_GetCheckBoxOverrideCheckedCGName),
+	    HLL_EXPORT(GetCheckBoxOverrideCheckedFlatName, PE_GetCheckBoxOverrideCheckedFlatName),
+	    HLL_EXPORT(GetCheckBoxOverrideFlatName, PE_GetCheckBoxOverrideFlatName),
+	    HLL_EXPORT(GetCheckBoxTextOriginPosMode, PE_GetCheckBoxTextOriginPosMode),
+	    HLL_EXPORT(GetRadioButtonBoxChild, PE_GetRadioButtonBoxChild),
+	    HLL_EXPORT(IsCheckBoxButtonMode, PE_IsCheckBoxButtonMode),
+	    HLL_EXPORT(IsRadioButtonBoxExistGUI, PE_IsRadioButtonBoxExistGUI),
+	    HLL_EXPORT(NumofRadioButtonBoxChild, PE_NumofRadioButtonBoxChild),
+	    HLL_EXPORT(RemoveRadioButtonBoxChild, PE_RemoveRadioButtonBoxChild),
 	    HLL_TODO_EXPORT(SetVScrollbarOnCursorSoundNumber, PartsEngine_SetVScrollbarOnCursorSoundNumber),
 	    HLL_TODO_EXPORT(SetVScrollbarClickSoundNumber, PartsEngine_SetVScrollbarClickSoundNumber),
 	    HLL_TODO_EXPORT(GetVScrollbarOnCursorSoundNumber, PartsEngine_GetVScrollbarOnCursorSoundNumber),
@@ -3218,54 +4648,113 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_TODO_EXPORT(GetHScrollbarMoveSizeByButton, PartsEngine_GetHScrollbarMoveSizeByButton),
 	    HLL_EXPORT(SetHScrollbarCGName, PE_Noop_SetHScrollbarCGName),
 	    HLL_TODO_EXPORT(GetHScrollbarCGName, PartsEngine_GetHScrollbarCGName),
-	    HLL_EXPORT(SetTextBoxSize, PE_Noop_SetTextBoxSize),
-	    HLL_TODO_EXPORT(SetTextBoxFontProperty, PartsEngine_SetTextBoxFontProperty),
-	    HLL_TODO_EXPORT(GetTextBoxFontProperty, PartsEngine_GetTextBoxFontProperty),
-	    HLL_EXPORT(SetTextBoxText, PE_Noop_SetTextBoxText),
-	    HLL_TODO_EXPORT(GetTextBoxText, PartsEngine_GetTextBoxText),
-	    HLL_EXPORT(SetTextBoxMaxTextLength, PE_Noop_SetTextBoxMaxTextLength),
-	    HLL_TODO_EXPORT(GetTextBoxMaxTextLength, PartsEngine_GetTextBoxMaxTextLength),
-	    HLL_EXPORT(SetTextBoxSelectColor, PE_Noop_SetTextBoxSelectColor),
-	    HLL_TODO_EXPORT(GetTextBoxSelectR, PartsEngine_GetTextBoxSelectR),
-	    HLL_TODO_EXPORT(GetTextBoxSelectG, PartsEngine_GetTextBoxSelectG),
-	    HLL_TODO_EXPORT(GetTextBoxSelectB, PartsEngine_GetTextBoxSelectB),
-	    HLL_EXPORT(SetTextBoxCGName, PE_Noop_SetTextBoxCGName),
-	    HLL_TODO_EXPORT(GetTextBoxCGName, PartsEngine_GetTextBoxCGName),
+	    HLL_EXPORT(SetTextBoxSize, PE_SetTextBoxSize),
+	    HLL_EXPORT(SetTextBoxFontProperty, PE_SetTextBoxFontProperty),
+	    HLL_EXPORT(GetTextBoxFontProperty, PE_GetTextBoxFontProperty),
+	    HLL_EXPORT(SetTextBoxText, PE_SetTextBoxText),
+	    HLL_EXPORT(GetTextBoxText, PE_GetTextBoxText),
+	    HLL_EXPORT(SetTextBoxMaxTextLength, PE_SetTextBoxMaxTextLength),
+	    HLL_EXPORT(GetTextBoxMaxTextLength, PE_GetTextBoxMaxTextLength),
+	    HLL_EXPORT(SetTextBoxSelectColor, PE_SetTextBoxSelectColor),
+	    HLL_EXPORT(GetTextBoxSelectR, PE_GetTextBoxSelectR),
+	    HLL_EXPORT(GetTextBoxSelectG, PE_GetTextBoxSelectG),
+	    HLL_EXPORT(GetTextBoxSelectB, PE_GetTextBoxSelectB),
+	    HLL_EXPORT(SetTextBoxCGName, PE_SetTextBoxCGName),
+	    HLL_EXPORT(GetTextBoxCGName, PE_GetTextBoxCGName),
+	    HLL_EXPORT(SetTextBoxReadOnly, PE_SetTextBoxReadOnly),
+	    HLL_EXPORT(IsTextBoxReadOnly, PE_IsTextBoxReadOnly),
+	    HLL_EXPORT(GetTextBoxBGR, PE_GetTextBoxBGR),
+	    HLL_EXPORT(GetTextBoxBGG, PE_GetTextBoxBGG),
+	    HLL_EXPORT(GetTextBoxBGB, PE_GetTextBoxBGB),
+	    HLL_EXPORT(GetTextBoxReadOnlyBGR, PE_GetTextBoxReadOnlyBGR),
+	    HLL_EXPORT(GetTextBoxReadOnlyBGG, PE_GetTextBoxReadOnlyBGG),
+	    HLL_EXPORT(GetTextBoxReadOnlyBGB, PE_GetTextBoxReadOnlyBGB),
+	    HLL_EXPORT(GetTextBoxFrameR, PE_GetTextBoxFrameR),
+	    HLL_EXPORT(GetTextBoxFrameG, PE_GetTextBoxFrameG),
+	    HLL_EXPORT(GetTextBoxFrameB, PE_GetTextBoxFrameB),
+	    HLL_EXPORT(GetTextBoxCharSpace, PE_GetTextBoxCharSpace),
 	    HLL_TODO_EXPORT(OpenTextBoxIME, PartsEngine_OpenTextBoxIME),
 	    HLL_TODO_EXPORT(CloseTextBoxIME, PartsEngine_CloseTextBoxIME),
-	    HLL_EXPORT(SetListBoxSize, PE_Noop_SetListBoxSize),
-	    HLL_EXPORT(SetListBoxLineHeight, PE_Noop_SetListBoxLineHeight),
-	    HLL_TODO_EXPORT(GetListBoxLineHeight, PartsEngine_GetListBoxLineHeight),
-	    HLL_EXPORT(SetListBoxMargin, PE_Noop_SetListBoxMargin),
-	    HLL_TODO_EXPORT(GetListBoxWidthMargin, PartsEngine_GetListBoxWidthMargin),
-	    HLL_TODO_EXPORT(GetListBoxHeightMargin, PartsEngine_GetListBoxHeightMargin),
-	    HLL_EXPORT(SetListBoxCGName, PE_Noop_SetListBoxCGName),
-	    HLL_TODO_EXPORT(GetListBoxCGName, PartsEngine_GetListBoxCGName),
-	    HLL_EXPORT(SetListBoxScrollPos, PE_Noop_SetListBoxScrollPos),
-	    HLL_TODO_EXPORT(GetListBoxScrollPos, PartsEngine_GetListBoxScrollPos),
-	    HLL_TODO_EXPORT(AddListBoxItem, PartsEngine_AddListBoxItem),
-	    HLL_TODO_EXPORT(InsertListBoxItem, PartsEngine_InsertListBoxItem),
-	    HLL_EXPORT(SetListBoxItem, PE_Noop_SetListBoxItem),
-	    HLL_TODO_EXPORT(GetListBoxItemCount, PartsEngine_GetListBoxItemCount),
-	    HLL_TODO_EXPORT(GetListBoxItem, PartsEngine_GetListBoxItem),
-	    HLL_TODO_EXPORT(EraseListBoxItem, PartsEngine_EraseListBoxItem),
-	    HLL_TODO_EXPORT(ClearListBoxItem, PartsEngine_ClearListBoxItem),
-	    HLL_TODO_EXPORT(GetListBoxOnCursorItemIndex, PartsEngine_GetListBoxOnCursorItemIndex),
-	    HLL_TODO_EXPORT(GetListBoxOnCursorItem, PartsEngine_GetListBoxOnCursorItem),
-	    HLL_TODO_EXPORT(SetListBoxFontProperty, PartsEngine_SetListBoxFontProperty),
-	    HLL_TODO_EXPORT(GetListBoxFontProperty, PartsEngine_GetListBoxFontProperty),
-	    HLL_EXPORT(SetListBoxSelectIndex, PE_Noop_SetListBoxSelectIndex),
-	    HLL_TODO_EXPORT(GetListBoxSelectIndex, PartsEngine_GetListBoxSelectIndex),
-	    HLL_EXPORT(SetComboBoxSize, PE_Noop_SetComboBoxSize),
-	    HLL_EXPORT(SetComboBoxTextMargin, PE_Noop_SetComboBoxTextMargin),
-	    HLL_TODO_EXPORT(GetComboBoxTextWidthMargin, PartsEngine_GetComboBoxTextWidthMargin),
-	    HLL_TODO_EXPORT(GetComboBoxTextHeightMargin, PartsEngine_GetComboBoxTextHeightMargin),
-	    HLL_EXPORT(SetComboBoxCGName, PE_Noop_SetComboBoxCGName),
-	    HLL_TODO_EXPORT(GetComboBoxCGName, PartsEngine_GetComboBoxCGName),
-	    HLL_EXPORT(SetComboBoxText, PE_Noop_SetComboBoxText),
-	    HLL_TODO_EXPORT(GetComboBoxText, PartsEngine_GetComboBoxText),
-	    HLL_TODO_EXPORT(SetComboBoxFontProperty, PartsEngine_SetComboBoxFontProperty),
-	    HLL_TODO_EXPORT(GetComboBoxFontProperty, PartsEngine_GetComboBoxFontProperty),
+	    HLL_EXPORT(SetListBoxSize, PE_SetListBoxSize),
+	    HLL_EXPORT(SetListBoxLineHeight, PE_SetListBoxLineHeight),
+	    HLL_EXPORT(GetListBoxLineHeight, PE_GetListBoxLineHeight),
+	    HLL_EXPORT(SetListBoxMargin, PE_SetListBoxMargin),
+	    HLL_EXPORT(GetListBoxWidthMargin, PE_GetListBoxWidthMargin),
+	    HLL_EXPORT(GetListBoxHeightMargin, PE_GetListBoxHeightMargin),
+	    HLL_EXPORT(SetListBoxCGName, PE_SetListBoxCGName),
+	    HLL_EXPORT(GetListBoxCGName, PE_GetListBoxCGName),
+	    HLL_EXPORT(SetListBoxScrollPos, PE_SetListBoxScrollPos),
+	    HLL_EXPORT(GetListBoxScrollPos, PE_GetListBoxScrollPos),
+	    HLL_EXPORT(AddListBoxItem, PE_AddListBoxItem),
+	    HLL_EXPORT(InsertListBoxItem, PE_InsertListBoxItem),
+	    HLL_EXPORT(SetListBoxItem, PE_SetListBoxItem),
+	    HLL_EXPORT(GetListBoxItemCount, PE_GetListBoxItemCount),
+	    HLL_EXPORT(GetListBoxItem, PE_GetListBoxItem),
+	    HLL_EXPORT(EraseListBoxItem, PE_EraseListBoxItem),
+	    HLL_EXPORT(ClearListBoxItem, PE_ClearListBoxItem),
+	    HLL_EXPORT(GetListBoxOnCursorItemIndex, PE_GetListBoxOnCursorItemIndex),
+	    HLL_EXPORT(GetListBoxOnCursorItem, PE_GetListBoxOnCursorItem),
+	    HLL_EXPORT(SetListBoxFontProperty, PE_SetListBoxFontProperty),
+	    HLL_EXPORT(GetListBoxFontProperty, PE_GetListBoxFontProperty),
+	    HLL_EXPORT(SetListBoxSelectIndex, PE_SetListBoxSelectIndex),
+	    HLL_EXPORT(GetListBoxSelectIndex, PE_GetListBoxSelectIndex),
+	    HLL_EXPORT(SetListBoxCharSpace, PE_SetListBoxCharSpace),
+	    HLL_EXPORT(GetListBoxCharSpace, PE_GetListBoxCharSpace),
+	    HLL_EXPORT(SetComboBoxSize, PE_SetComboBoxSize),
+	    HLL_EXPORT(SetComboBoxTextMargin, PE_SetComboBoxTextMargin),
+	    HLL_EXPORT(GetComboBoxTextWidthMargin, PE_GetComboBoxTextWidthMargin),
+	    HLL_EXPORT(GetComboBoxTextHeightMargin, PE_GetComboBoxTextHeightMargin),
+	    HLL_EXPORT(SetComboBoxCGName, PE_SetComboBoxCGName),
+	    HLL_EXPORT(GetComboBoxCGName, PE_GetComboBoxCGName),
+	    HLL_EXPORT(SetComboBoxText, PE_SetComboBoxText),
+	    HLL_EXPORT(GetComboBoxText, PE_GetComboBoxText),
+	    HLL_EXPORT(AddComboBoxListBoxItem, PE_AddComboBoxListBoxItem),
+	    HLL_EXPORT(ClearComboBoxListBoxItem, PE_ClearComboBoxListBoxItem),
+	    HLL_EXPORT(EraseComboBoxListBoxItem, PE_EraseComboBoxListBoxItem),
+	    HLL_EXPORT(GetComboBoxCharSpace, PE_GetComboBoxCharSpace),
+	    HLL_EXPORT(GetComboBoxListBoxCharSpace, PE_GetComboBoxListBoxCharSpace),
+	    HLL_EXPORT(GetComboBoxListBoxFontProperty, PE_GetComboBoxListBoxFontProperty),
+	    HLL_EXPORT(GetComboBoxListBoxHeight, PE_GetComboBoxListBoxHeight),
+	    HLL_EXPORT(GetComboBoxListBoxHeightMargin, PE_GetComboBoxListBoxHeightMargin),
+	    HLL_EXPORT(GetComboBoxListBoxItem, PE_GetComboBoxListBoxItem),
+	    HLL_EXPORT(GetComboBoxListBoxItemCount, PE_GetComboBoxListBoxItemCount),
+	    HLL_EXPORT(GetComboBoxListBoxLineHeight, PE_GetComboBoxListBoxLineHeight),
+	    HLL_EXPORT(GetComboBoxListBoxScrollPos, PE_GetComboBoxListBoxScrollPos),
+	    HLL_EXPORT(GetComboBoxListBoxSelectIndex, PE_GetComboBoxListBoxSelectIndex),
+	    HLL_EXPORT(GetComboBoxListBoxWidthMargin, PE_GetComboBoxListBoxWidthMargin),
+	    HLL_EXPORT(GetSpinBoxBGB, PE_GetSpinBoxBGB),
+	    HLL_EXPORT(GetSpinBoxBGG, PE_GetSpinBoxBGG),
+	    HLL_EXPORT(GetSpinBoxBGR, PE_GetSpinBoxBGR),
+	    HLL_EXPORT(GetSpinBoxCGName, PE_GetSpinBoxCGName),
+	    HLL_EXPORT(GetSpinBoxCharSpace, PE_GetSpinBoxCharSpace),
+	    HLL_EXPORT(GetSpinBoxDecimalPlace, PE_GetSpinBoxDecimalPlace),
+	    HLL_EXPORT(GetSpinBoxDefaultValue, PE_GetSpinBoxDefaultValue),
+	    HLL_EXPORT(GetSpinBoxFontProperty, PE_GetSpinBoxFontProperty),
+	    HLL_EXPORT(GetSpinBoxFrameB, PE_GetSpinBoxFrameB),
+	    HLL_EXPORT(GetSpinBoxFrameG, PE_GetSpinBoxFrameG),
+	    HLL_EXPORT(GetSpinBoxFrameR, PE_GetSpinBoxFrameR),
+	    HLL_EXPORT(GetSpinBoxIncrementalValue, PE_GetSpinBoxIncrementalValue),
+	    HLL_EXPORT(GetSpinBoxMaxValue, PE_GetSpinBoxMaxValue),
+	    HLL_EXPORT(GetSpinBoxMinValue, PE_GetSpinBoxMinValue),
+	    HLL_EXPORT(GetSpinBoxReadOnlyBGB, PE_GetSpinBoxReadOnlyBGB),
+	    HLL_EXPORT(GetSpinBoxReadOnlyBGG, PE_GetSpinBoxReadOnlyBGG),
+	    HLL_EXPORT(GetSpinBoxReadOnlyBGR, PE_GetSpinBoxReadOnlyBGR),
+	    HLL_EXPORT(GetSpinBoxSelectB, PE_GetSpinBoxSelectB),
+	    HLL_EXPORT(GetSpinBoxSelectG, PE_GetSpinBoxSelectG),
+	    HLL_EXPORT(GetSpinBoxSelectR, PE_GetSpinBoxSelectR),
+	    HLL_EXPORT(GetSpinBoxValue, PE_GetSpinBoxValue),
+	    HLL_EXPORT(InsertComboBoxListBoxItem, PE_InsertComboBoxListBoxItem),
+	    HLL_EXPORT(IsComboBoxOpenListBox, PE_IsComboBoxOpenListBox),
+	    HLL_EXPORT(IsSpinBoxReadOnly, PE_IsSpinBoxReadOnly),
+	    HLL_EXPORT(SetComboBoxListBoxFontProperty, PE_SetComboBoxListBoxFontProperty),
+	    HLL_EXPORT(SetSpinBoxDefaultValue, PE_SetSpinBoxDefaultValue),
+	    HLL_EXPORT(SetSpinBoxFontProperty, PE_SetSpinBoxFontProperty),
+	    HLL_EXPORT(SetSpinBoxIncrementalValue, PE_SetSpinBoxIncrementalValue),
+	    HLL_EXPORT(SetSpinBoxMaxValue, PE_SetSpinBoxMaxValue),
+	    HLL_EXPORT(SetSpinBoxMinValue, PE_SetSpinBoxMinValue),
+	    HLL_EXPORT(SetSpinBoxValue, PE_SetSpinBoxValue),
+	    HLL_EXPORT(SetComboBoxFontProperty, PE_SetComboBoxFontProperty),
+	    HLL_EXPORT(GetComboBoxFontProperty, PE_GetComboBoxFontProperty),
 	    HLL_EXPORT(SetMultiTextBoxSize, PE_Noop_SetMultiTextBoxSize),
 	    HLL_TODO_EXPORT(SetMultiTextBoxFontProperty, PartsEngine_SetMultiTextBoxFontProperty),
 	    HLL_TODO_EXPORT(GetMultiTextBoxFontProperty, PartsEngine_GetMultiTextBoxFontProperty),
@@ -3428,28 +4917,28 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Parts_SetVGaugeReverse, PE_Noop_Parts_SetVGaugeReverse),
 	    HLL_EXPORT(Parts_SetWheelable, PE_Noop_Parts_SetWheelable),
 	    HLL_EXPORT(SetActiveController, PE_SetActiveController),
-	    HLL_EXPORT(SetButtonCharSpace, PE_Noop_SetButtonCharSpace),
-	    HLL_EXPORT(SetButtonFlatName, PE_Noop_SetButtonFlatName),
-	    HLL_EXPORT(SetButtonLineSpace, PE_Noop_SetButtonLineSpace),
-	    HLL_EXPORT(SetButtonTextOriginPosMode, PE_Noop_SetButtonTextOriginPosMode),
-	    HLL_EXPORT(SetCheckBoxButtonMode, PE_Noop_SetCheckBoxButtonMode),
-	    HLL_EXPORT(SetCheckBoxCharSpace, PE_Noop_SetCheckBoxCharSpace),
-	    HLL_EXPORT(SetCheckBoxFlatName, PE_Noop_SetCheckBoxFlatName),
-	    HLL_EXPORT(SetCheckBoxLineSpace, PE_Noop_SetCheckBoxLineSpace),
-	    HLL_EXPORT(SetCheckBoxOverrideCGName, PE_Noop_SetCheckBoxOverrideCGName),
-	    HLL_EXPORT(SetCheckBoxOverrideCheckedCGName, PE_Noop_SetCheckBoxOverrideCheckedCGName),
-	    HLL_EXPORT(SetCheckBoxOverrideCheckedFlatName, PE_Noop_SetCheckBoxOverrideCheckedFlatName),
-	    HLL_EXPORT(SetCheckBoxOverrideFlatName, PE_Noop_SetCheckBoxOverrideFlatName),
-	    HLL_EXPORT(SetCheckBoxTextOriginPosMode, PE_Noop_SetCheckBoxTextOriginPosMode),
+	    HLL_EXPORT(SetButtonCharSpace, PE_SetButtonCharSpace),
+	    HLL_EXPORT(SetButtonFlatName, PE_SetButtonFlatName),
+	    HLL_EXPORT(SetButtonLineSpace, PE_SetButtonLineSpace),
+	    HLL_EXPORT(SetButtonTextOriginPosMode, PE_SetButtonTextOriginPosMode),
+	    HLL_EXPORT(SetCheckBoxButtonMode, PE_SetCheckBoxButtonMode),
+	    HLL_EXPORT(SetCheckBoxCharSpace, PE_SetCheckBoxCharSpace),
+	    HLL_EXPORT(SetCheckBoxFlatName, PE_SetCheckBoxFlatName),
+	    HLL_EXPORT(SetCheckBoxLineSpace, PE_SetCheckBoxLineSpace),
+	    HLL_EXPORT(SetCheckBoxOverrideCGName, PE_SetCheckBoxOverrideCGName),
+	    HLL_EXPORT(SetCheckBoxOverrideCheckedCGName, PE_SetCheckBoxOverrideCheckedCGName),
+	    HLL_EXPORT(SetCheckBoxOverrideCheckedFlatName, PE_SetCheckBoxOverrideCheckedFlatName),
+	    HLL_EXPORT(SetCheckBoxOverrideFlatName, PE_SetCheckBoxOverrideFlatName),
+	    HLL_EXPORT(SetCheckBoxTextOriginPosMode, PE_SetCheckBoxTextOriginPosMode),
 	    HLL_EXPORT(SetClickMissSoundName, PE_Noop_SetClickMissSoundName),
-	    HLL_EXPORT(SetComboBoxCharSpace, PE_Noop_SetComboBoxCharSpace),
-	    HLL_EXPORT(SetComboBoxListBoxCharSpace, PE_Noop_SetComboBoxListBoxCharSpace),
-	    HLL_EXPORT(SetComboBoxListBoxHeight, PE_Noop_SetComboBoxListBoxHeight),
-	    HLL_EXPORT(SetComboBoxListBoxItem, PE_Noop_SetComboBoxListBoxItem),
-	    HLL_EXPORT(SetComboBoxListBoxLineHeight, PE_Noop_SetComboBoxListBoxLineHeight),
-	    HLL_EXPORT(SetComboBoxListBoxMargin, PE_Noop_SetComboBoxListBoxMargin),
-	    HLL_EXPORT(SetComboBoxListBoxScrollPos, PE_Noop_SetComboBoxListBoxScrollPos),
-	    HLL_EXPORT(SetComboBoxListBoxSelectIndex, PE_Noop_SetComboBoxListBoxSelectIndex),
+	    HLL_EXPORT(SetComboBoxCharSpace, PE_SetComboBoxCharSpace),
+	    HLL_EXPORT(SetComboBoxListBoxCharSpace, PE_SetComboBoxListBoxCharSpace),
+	    HLL_EXPORT(SetComboBoxListBoxHeight, PE_SetComboBoxListBoxHeight),
+	    HLL_EXPORT(SetComboBoxListBoxItem, PE_SetComboBoxListBoxItem),
+	    HLL_EXPORT(SetComboBoxListBoxLineHeight, PE_SetComboBoxListBoxLineHeight),
+	    HLL_EXPORT(SetComboBoxListBoxMargin, PE_SetComboBoxListBoxMargin),
+	    HLL_EXPORT(SetComboBoxListBoxScrollPos, PE_SetComboBoxListBoxScrollPos),
+	    HLL_EXPORT(SetComboBoxListBoxSelectIndex, PE_SetComboBoxListBoxSelectIndex),
 	    HLL_EXPORT(SetComponentCheckBoxShowLinkNumber, PE_Noop_SetComponentCheckBoxShowLinkNumber),
 	    HLL_EXPORT(SetComponentClipArea, PE_Noop_SetComponentClipArea),
 	    HLL_EXPORT(SetComponentEnableClipArea, PE_Noop_SetComponentEnableClipArea),
@@ -3493,11 +4982,10 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetKeyWaitPos, PE_Noop_SetKeyWaitPos),
 	    HLL_EXPORT(SetKeyWaitShow, PE_Noop_SetKeyWaitShow),
 	    HLL_EXPORT(SetLayoutBoxReturnSizeForRate, PE_Noop_SetLayoutBoxReturnSizeForRate),
-	    HLL_EXPORT(SetListBoxCharSpace, PE_Noop_SetListBoxCharSpace),
 	    HLL_EXPORT(SetLockInputState, PE_Noop_SetLockInputState),
-	    HLL_EXPORT(SetMessageWindowActive, PE_Noop_SetMessageWindowActive),
-	    HLL_EXPORT(SetMessageWindowCGName, PE_Noop_SetMessageWindowCGName),
-	    HLL_EXPORT(SetMessageWindowFlatName, PE_Noop_SetMessageWindowFlatName),
+	    HLL_EXPORT(SetMessageWindowActive, PE_SetMessageWindowActive),
+	    HLL_EXPORT(SetMessageWindowCGName, PE_SetMessageWindowCGName),
+	    HLL_EXPORT(SetMessageWindowFlatName, PE_SetMessageWindowFlatName),
 	    HLL_EXPORT(GetMessageWindowFlatName, PE_GetMessageWindowFlatName),
 	    HLL_EXPORT(GetMessageWindowCGName, PE_GetMessageWindowCGName),
 	    HLL_EXPORT(GetKeyWaitFlatName, PE_GetKeyWaitFlatName),
@@ -3505,16 +4993,16 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(IsOverMessageWindowFlatShowWaitFrame, PE_IsOverMessageWindowFlatShowWaitFrame),
 	    HLL_EXPORT(BackMessageWindowFlatBeginFrame, PE_BackMessageWindowFlatBeginFrame),
 	    HLL_EXPORT(StepMessageWindowFlatFinalFrame, PE_StepMessageWindowFlatFinalFrame),
-	    HLL_EXPORT(SetMessageWindowFlatShowWaitFrameNumber, PE_Noop_SetMessageWindowFlatShowWaitFrameNumber),
-	    HLL_EXPORT(SetMessageWindowInactiveMultipleColor, PE_Noop_SetMessageWindowInactiveMultipleColor),
+	    HLL_EXPORT(SetMessageWindowFlatShowWaitFrameNumber, PE_SetMessageWindowFlatShowWaitFrameNumber),
+	    HLL_EXPORT(SetMessageWindowInactiveMultipleColor, PE_SetMessageWindowInactiveMultipleColor),
 	    HLL_EXPORT(SetMessageWindowText, PE_SetMessageWindowText),
 	    HLL_EXPORT(SetMessageWindowTextFont, PE_SetMessageWindowTextFont),
 	    HLL_EXPORT(FixMessageWindowText, PE_FixMessageWindowText),
 	    HLL_EXPORT(IsFixedMessageWindowText, PE_IsFixedMessageWindowText),
-	    HLL_EXPORT(SetMessageWindowTextArea, PE_Noop_SetMessageWindowTextArea),
-	    HLL_EXPORT(SetMessageWindowTextOriginPosMode, PE_Noop_SetMessageWindowTextOriginPosMode),
-	    HLL_EXPORT(SetMessageWindowTextSpace, PE_Noop_SetMessageWindowTextSpace),
-	    HLL_EXPORT(SetMessageWindowTextSpeed, PE_Noop_SetMessageWindowTextSpeed),
+	    HLL_EXPORT(SetMessageWindowTextArea, PE_SetMessageWindowTextArea),
+	    HLL_EXPORT(SetMessageWindowTextOriginPosMode, PE_SetMessageWindowTextOriginPosMode),
+	    HLL_EXPORT(SetMessageWindowTextSpace, PE_SetMessageWindowTextSpace),
+	    HLL_EXPORT(SetMessageWindowTextSpeed, PE_SetMessageWindowTextSpeed),
 	    HLL_EXPORT(SetMotionData, PE_Noop_SetMotionData),
 	    HLL_EXPORT(SetMovieTime, PE_Noop_SetMovieTime),
 	    HLL_EXPORT(SetMultiTextBoxBGColor, PE_Noop_SetMultiTextBoxBGColor),
@@ -3538,20 +5026,20 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetPanelSize, PE_Noop_SetPanelSize),
 	    HLL_EXPORT(SetRectangleDetectionPoint, PE_Noop_SetRectangleDetectionPoint),
 	    HLL_EXPORT(SetShowForBackScene, PE_SetShowForBackScene),
-	    HLL_EXPORT(SetSpinBoxBGColor, PE_Noop_SetSpinBoxBGColor),
-	    HLL_EXPORT(SetSpinBoxCGName, PE_Noop_SetSpinBoxCGName),
-	    HLL_EXPORT(SetSpinBoxCharSpace, PE_Noop_SetSpinBoxCharSpace),
-	    HLL_EXPORT(SetSpinBoxDecimalPlace, PE_Noop_SetSpinBoxDecimalPlace),
-	    HLL_EXPORT(SetSpinBoxFrameColor, PE_Noop_SetSpinBoxFrameColor),
-	    HLL_EXPORT(SetSpinBoxReadOnly, PE_Noop_SetSpinBoxReadOnly),
-	    HLL_EXPORT(SetSpinBoxReadOnlyBGColor, PE_Noop_SetSpinBoxReadOnlyBGColor),
-	    HLL_EXPORT(SetSpinBoxSelectColor, PE_Noop_SetSpinBoxSelectColor),
-	    HLL_EXPORT(SetSpinBoxSize, PE_Noop_SetSpinBoxSize),
-	    HLL_EXPORT(SetTextBoxBGColor, PE_Noop_SetTextBoxBGColor),
-	    HLL_EXPORT(SetTextBoxCharSpace, PE_Noop_SetTextBoxCharSpace),
-	    HLL_EXPORT(SetTextBoxFrameColor, PE_Noop_SetTextBoxFrameColor),
-	    HLL_EXPORT(SetTextBoxReadOnly, PE_Noop_SetTextBoxReadOnly),
-	    HLL_EXPORT(SetTextBoxReadOnlyBGColor, PE_Noop_SetTextBoxReadOnlyBGColor),
+	    HLL_EXPORT(SetSpinBoxBGColor, PE_SetSpinBoxBGColor),
+	    HLL_EXPORT(SetSpinBoxCGName, PE_SetSpinBoxCGName),
+	    HLL_EXPORT(SetSpinBoxCharSpace, PE_SetSpinBoxCharSpace),
+	    HLL_EXPORT(SetSpinBoxDecimalPlace, PE_SetSpinBoxDecimalPlace),
+	    HLL_EXPORT(SetSpinBoxFrameColor, PE_SetSpinBoxFrameColor),
+	    HLL_EXPORT(SetSpinBoxReadOnly, PE_SetSpinBoxReadOnly),
+	    HLL_EXPORT(SetSpinBoxReadOnlyBGColor, PE_SetSpinBoxReadOnlyBGColor),
+	    HLL_EXPORT(SetSpinBoxSelectColor, PE_SetSpinBoxSelectColor),
+	    HLL_EXPORT(SetSpinBoxSize, PE_SetSpinBoxSize),
+	    HLL_EXPORT(SetTextBoxBGColor, PE_SetTextBoxBGColor),
+	    HLL_EXPORT(SetTextBoxCharSpace, PE_SetTextBoxCharSpace),
+	    HLL_EXPORT(SetTextBoxFrameColor, PE_SetTextBoxFrameColor),
+	    HLL_EXPORT(SetTextBoxReadOnly, PE_SetTextBoxReadOnly),
+	    HLL_EXPORT(SetTextBoxReadOnlyBGColor, PE_SetTextBoxReadOnlyBGColor),
 	    HLL_EXPORT(SetUserComponentData, PE_SetUserComponentData_str),
 	    HLL_EXPORT(SetUserComponentName, PE_SetUserComponentName_str),
 	    HLL_EXPORT(GetUserComponentData, PE_GetUserComponentData_str),
@@ -3645,4 +5133,288 @@ static void PartsEngine_PreLink(void)
 		PE_enable_multi_controller();
 	}
 	parts_func_uses_rance9_ids = ain_get_function(ain, "PARTS_GetLayerIndex") < 0;
+}
+
+/* [D396] 控件状态自检：`XSYS4_WIDGET_SELFTEST=1` 时启动后跑一次。
+ *
+ * 为什么需要它：填桩的验收不能只是「日志里不再报 Unimplemented」——
+ * 那只能证明函数被注册了。真正的语义是**往返一致**：AIN 存档前 Get 出来、
+ * 读档后 Set 回去，值必须一个字节都不差。这里对每个属性做一次
+ * 「set 一个非默认值 → get 回来比对」，失败项计数返回。
+ *
+ * 用一个不存在的部件号造件（`parts_get` 按需创建），测完释放。
+ */
+#define SELFTEST_NO 0x7F000001
+int PartsEngine_WidgetSelfTest(void)
+{
+	int fail = 0;
+#define CHECK(cond, what) do { \
+	if (!(cond)) { NOTICE("[wtest] FAIL %s", what); fail++; } \
+} while (0)
+#define CHECK_STR(got, want, what) do { \
+	struct string *g_ = (got); \
+	CHECK(g_ && !strcmp(g_->text, want), what); \
+	if (g_) free_string(g_); \
+} while (0)
+
+	parts_get(SELFTEST_NO);
+
+	/* --- TextBox --- */
+	struct string *v = cstr_to_string("\x82\xa0\x82\xa2");
+	PE_SetTextBoxText(SELFTEST_NO, v);
+	CHECK_STR(PE_GetTextBoxText(SELFTEST_NO), "\x82\xa0\x82\xa2", "TextBox.Text");
+	free_string(v);
+
+	PE_SetTextBoxMaxTextLength(SELFTEST_NO, 42);
+	CHECK(PE_GetTextBoxMaxTextLength(SELFTEST_NO) == 42, "TextBox.MaxTextLength");
+
+	PE_SetTextBoxReadOnly(SELFTEST_NO, true);
+	CHECK(PE_IsTextBoxReadOnly(SELFTEST_NO), "TextBox.ReadOnly");
+
+	PE_SetTextBoxBGColor(SELFTEST_NO, 1, 2, 3);
+	CHECK(PE_GetTextBoxBGR(SELFTEST_NO) == 1 && PE_GetTextBoxBGG(SELFTEST_NO) == 2 &&
+	      PE_GetTextBoxBGB(SELFTEST_NO) == 3, "TextBox.BGColor");
+
+	PE_SetTextBoxReadOnlyBGColor(SELFTEST_NO, 4, 5, 6);
+	CHECK(PE_GetTextBoxReadOnlyBGR(SELFTEST_NO) == 4 &&
+	      PE_GetTextBoxReadOnlyBGG(SELFTEST_NO) == 5 &&
+	      PE_GetTextBoxReadOnlyBGB(SELFTEST_NO) == 6, "TextBox.ReadOnlyBGColor");
+
+	PE_SetTextBoxFrameColor(SELFTEST_NO, 7, 8, 9);
+	CHECK(PE_GetTextBoxFrameR(SELFTEST_NO) == 7 && PE_GetTextBoxFrameG(SELFTEST_NO) == 8 &&
+	      PE_GetTextBoxFrameB(SELFTEST_NO) == 9, "TextBox.FrameColor");
+
+	PE_SetTextBoxSelectColor(SELFTEST_NO, 10, 11, 12);
+	CHECK(PE_GetTextBoxSelectR(SELFTEST_NO) == 10 &&
+	      PE_GetTextBoxSelectG(SELFTEST_NO) == 11 &&
+	      PE_GetTextBoxSelectB(SELFTEST_NO) == 12, "TextBox.SelectColor");
+
+	PE_SetTextBoxCharSpace(SELFTEST_NO, -3);
+	CHECK(PE_GetTextBoxCharSpace(SELFTEST_NO) == -3, "TextBox.CharSpace");
+
+	v = cstr_to_string("bg.cg");
+	PE_SetTextBoxCGName(SELFTEST_NO, v);
+	CHECK_STR(PE_GetTextBoxCGName(SELFTEST_NO), "bg.cg", "TextBox.CGName");
+	free_string(v);
+
+	/* 字体走 parts_text，需要该状态是 TEXT 才有意义 —— 造一个文本状态。 */
+	parts_get_text(parts_get(SELFTEST_NO), 0);
+	PE_SetTextBoxFontProperty(SELFTEST_NO, 3, 24, 100, 110, 120, 0.5f, 1, 2, 3, 1.5f);
+	int ft = -1, fs = -1, fr = -1, fg = -1, fb = -1, er = -1, eg = -1, eb = -1;
+	float bw = -1, ew = -1;
+	PE_GetTextBoxFontProperty(SELFTEST_NO, &ft, &fs, &fr, &fg, &fb, &bw,
+				  &er, &eg, &eb, &ew);
+	CHECK(ft == 3 && fs == 24 && fr == 100 && fg == 110 && fb == 120,
+	      "TextBox.Font(type/size/color)");
+	CHECK(er == 1 && eg == 2 && eb == 3, "TextBox.Font(edge color)");
+	CHECK(bw == 0.5f && ew == 1.5f, "TextBox.Font(weights)");
+
+	/* --- ListBox：结构 + 索引语义（0-based） --- */
+	struct string *it;
+	it = cstr_to_string("item0"); PE_AddListBoxItem(SELFTEST_NO, it); free_string(it);
+	it = cstr_to_string("item1"); PE_AddListBoxItem(SELFTEST_NO, it); free_string(it);
+	it = cstr_to_string("item2"); PE_AddListBoxItem(SELFTEST_NO, it); free_string(it);
+	CHECK(PE_GetListBoxItemCount(SELFTEST_NO) == 3, "ListBox.Count after 3 Add");
+	CHECK_STR(PE_GetListBoxItem(SELFTEST_NO, 0), "item0", "ListBox.Item[0]");
+	CHECK_STR(PE_GetListBoxItem(SELFTEST_NO, 2), "item2", "ListBox.Item[2]");
+	CHECK_STR(PE_GetListBoxItem(SELFTEST_NO, 3), "", "ListBox.Item[3] 越界为空");
+	CHECK_STR(PE_GetListBoxItem(SELFTEST_NO, -1), "", "ListBox.Item[-1] 越界为空");
+
+	it = cstr_to_string("ins"); PE_InsertListBoxItem(SELFTEST_NO, 1, it); free_string(it);
+	CHECK(PE_GetListBoxItemCount(SELFTEST_NO) == 4, "ListBox.Count after Insert");
+	CHECK_STR(PE_GetListBoxItem(SELFTEST_NO, 1), "ins", "ListBox.Insert@1");
+	CHECK_STR(PE_GetListBoxItem(SELFTEST_NO, 2), "item1", "ListBox.Insert 后移");
+
+	it = cstr_to_string("rep"); PE_SetListBoxItem(SELFTEST_NO, 0, it); free_string(it);
+	CHECK_STR(PE_GetListBoxItem(SELFTEST_NO, 0), "rep", "ListBox.Set@0");
+
+	PE_EraseListBoxItem(SELFTEST_NO, 1);
+	CHECK(PE_GetListBoxItemCount(SELFTEST_NO) == 3, "ListBox.Count after Erase");
+	CHECK_STR(PE_GetListBoxItem(SELFTEST_NO, 1), "item1", "ListBox.Erase@1");
+
+	PE_SetListBoxSelectIndex(SELFTEST_NO, 2);
+	CHECK(PE_GetListBoxSelectIndex(SELFTEST_NO) == 2, "ListBox.SelectIndex");
+	PE_EraseListBoxItem(SELFTEST_NO, 0);
+	CHECK(PE_GetListBoxSelectIndex(SELFTEST_NO) == 1, "ListBox.SelectIndex 随删前移");
+
+	PE_SetListBoxLineHeight(SELFTEST_NO, 27);
+	PE_SetListBoxMargin(SELFTEST_NO, 5, 6);
+	PE_SetListBoxScrollPos(SELFTEST_NO, 3);
+	PE_SetListBoxCharSpace(SELFTEST_NO, 2);
+	CHECK(PE_GetListBoxLineHeight(SELFTEST_NO) == 27, "ListBox.LineHeight");
+	CHECK(PE_GetListBoxWidthMargin(SELFTEST_NO) == 5 &&
+	      PE_GetListBoxHeightMargin(SELFTEST_NO) == 6, "ListBox.Margin");
+	CHECK(PE_GetListBoxScrollPos(SELFTEST_NO) == 3, "ListBox.ScrollPos");
+	CHECK(PE_GetListBoxCharSpace(SELFTEST_NO) == 2, "ListBox.CharSpace");
+
+	PE_ClearListBoxItem(SELFTEST_NO);
+	CHECK(PE_GetListBoxItemCount(SELFTEST_NO) == 0, "ListBox.Count after Clear");
+
+	/* --- ComboBox：显示框 + 内嵌列表框 --- */
+	it = cstr_to_string("chosen"); PE_SetComboBoxText(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetComboBoxText(SELFTEST_NO), "chosen", "ComboBox.Text");
+
+	it = cstr_to_string("c0"); PE_AddComboBoxListBoxItem(SELFTEST_NO, it); free_string(it);
+	it = cstr_to_string("c1"); PE_AddComboBoxListBoxItem(SELFTEST_NO, it); free_string(it);
+	CHECK(PE_GetComboBoxListBoxItemCount(SELFTEST_NO) == 2, "ComboBox.LB.Count");
+	CHECK_STR(PE_GetComboBoxListBoxItem(SELFTEST_NO, 1), "c1", "ComboBox.LB.Item[1]");
+	it = cstr_to_string("c0x");
+	PE_SetComboBoxListBoxItem(SELFTEST_NO, 0, it); free_string(it);
+	CHECK_STR(PE_GetComboBoxListBoxItem(SELFTEST_NO, 0), "c0x", "ComboBox.LB.Set@0");
+
+	PE_SetComboBoxTextMargin(SELFTEST_NO, 4, 5);
+	PE_SetComboBoxListBoxHeight(SELFTEST_NO, 120);
+	PE_SetComboBoxListBoxLineHeight(SELFTEST_NO, 22);
+	PE_SetComboBoxListBoxMargin(SELFTEST_NO, 7, 8);
+	PE_SetComboBoxListBoxScrollPos(SELFTEST_NO, 2);
+	PE_SetComboBoxListBoxSelectIndex(SELFTEST_NO, 1);
+	PE_SetComboBoxCharSpace(SELFTEST_NO, 3);
+	PE_SetComboBoxListBoxCharSpace(SELFTEST_NO, 4);
+	CHECK(PE_GetComboBoxTextWidthMargin(SELFTEST_NO) == 4 &&
+	      PE_GetComboBoxTextHeightMargin(SELFTEST_NO) == 5, "ComboBox.TextMargin");
+	CHECK(PE_GetComboBoxListBoxHeight(SELFTEST_NO) == 120, "ComboBox.LB.Height");
+	CHECK(PE_GetComboBoxListBoxLineHeight(SELFTEST_NO) == 22, "ComboBox.LB.LineHeight");
+	CHECK(PE_GetComboBoxListBoxWidthMargin(SELFTEST_NO) == 7 &&
+	      PE_GetComboBoxListBoxHeightMargin(SELFTEST_NO) == 8, "ComboBox.LB.Margin");
+	CHECK(PE_GetComboBoxListBoxScrollPos(SELFTEST_NO) == 2, "ComboBox.LB.ScrollPos");
+	CHECK(PE_GetComboBoxListBoxSelectIndex(SELFTEST_NO) == 1, "ComboBox.LB.SelectIndex");
+	CHECK(PE_GetComboBoxCharSpace(SELFTEST_NO) == 3, "ComboBox.CharSpace");
+	CHECK(PE_GetComboBoxListBoxCharSpace(SELFTEST_NO) == 4, "ComboBox.LB.CharSpace");
+	CHECK(!PE_IsComboBoxOpenListBox(SELFTEST_NO), "ComboBox.OpenListBox 应为 false");
+
+	/* --- SpinBox（数值是 float，见 spin_* 注释） --- */
+	PE_SetSpinBoxValue(SELFTEST_NO, 1.5f);
+	PE_SetSpinBoxDefaultValue(SELFTEST_NO, 2.25f);
+	PE_SetSpinBoxMinValue(SELFTEST_NO, -3.75f);
+	PE_SetSpinBoxMaxValue(SELFTEST_NO, 99.5f);
+	PE_SetSpinBoxIncrementalValue(SELFTEST_NO, 0.5f);
+	PE_SetSpinBoxDecimalPlace(SELFTEST_NO, 2);
+	PE_SetSpinBoxReadOnly(SELFTEST_NO, true);
+	CHECK(PE_GetSpinBoxValue(SELFTEST_NO) == 1.5f, "SpinBox.Value");
+	CHECK(PE_GetSpinBoxDefaultValue(SELFTEST_NO) == 2.25f, "SpinBox.DefaultValue");
+	CHECK(PE_GetSpinBoxMinValue(SELFTEST_NO) == -3.75f, "SpinBox.MinValue");
+	CHECK(PE_GetSpinBoxMaxValue(SELFTEST_NO) == 99.5f, "SpinBox.MaxValue");
+	CHECK(PE_GetSpinBoxIncrementalValue(SELFTEST_NO) == 0.5f, "SpinBox.IncrementalValue");
+	CHECK(PE_GetSpinBoxDecimalPlace(SELFTEST_NO) == 2, "SpinBox.DecimalPlace");
+	CHECK(PE_IsSpinBoxReadOnly(SELFTEST_NO), "SpinBox.ReadOnly");
+	PE_SetSpinBoxBGColor(SELFTEST_NO, 21, 22, 23);
+	CHECK(PE_GetSpinBoxBGR(SELFTEST_NO) == 21 && PE_GetSpinBoxBGG(SELFTEST_NO) == 22 &&
+	      PE_GetSpinBoxBGB(SELFTEST_NO) == 23, "SpinBox.BGColor");
+
+	/* --- Button --- */
+	it = cstr_to_string("OK"); PE_SetButtonText(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetButtonText(SELFTEST_NO), "OK", "Button.Text");
+	PE_SetButtonColor(SELFTEST_NO, 31, 32, 33);
+	CHECK(PE_GetButtonR(SELFTEST_NO) == 31 && PE_GetButtonG(SELFTEST_NO) == 32 &&
+	      PE_GetButtonB(SELFTEST_NO) == 33, "Button.Color");
+	PE_SetButtonEnable(SELFTEST_NO, true);
+	CHECK(PE_IsButtonEnable(SELFTEST_NO), "Button.Enable");
+	PE_SetButtonCharSpace(SELFTEST_NO, 1);
+	PE_SetButtonLineSpace(SELFTEST_NO, 2);
+	PE_SetButtonTextOriginPosMode(SELFTEST_NO, 3);
+	CHECK(PE_GetButtonCharSpace(SELFTEST_NO) == 1, "Button.CharSpace");
+	CHECK(PE_GetButtonLineSpace(SELFTEST_NO) == 2, "Button.LineSpace");
+	CHECK(PE_GetButtonTextOriginPosMode(SELFTEST_NO) == 3, "Button.TextOriginPosMode");
+	it = cstr_to_string("btn.cg"); PE_SetButtonCGName(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetButtonCGName(SELFTEST_NO), "btn.cg", "Button.CGName");
+	it = cstr_to_string("btn.fl"); PE_SetButtonFlatName(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetButtonFlatName(SELFTEST_NO), "btn.fl", "Button.FlatName");
+	PE_SetButtonDrag(SELFTEST_NO, true);
+	CHECK(PE_IsButtonDrag(SELFTEST_NO), "Button.Drag");
+	PE_SetButtonPixelDecide(SELFTEST_NO, true);
+	CHECK(PE_IsButtonPixelDecide(SELFTEST_NO), "Button.PixelDecide");
+
+	/* --- CheckBox --- */
+	PE_CheckBoxChecked(SELFTEST_NO, true);
+	CHECK(PE_IsCheckBoxChecked(SELFTEST_NO), "CheckBox.Checked");
+	PE_SetCheckBoxEnable(SELFTEST_NO, true);
+	CHECK(PE_IsCheckBoxEnable(SELFTEST_NO), "CheckBox.Enable");
+	PE_SetCheckBoxColor(SELFTEST_NO, 41, 42, 43);
+	CHECK(PE_GetCheckBoxR(SELFTEST_NO) == 41 && PE_GetCheckBoxG(SELFTEST_NO) == 42 &&
+	      PE_GetCheckBoxB(SELFTEST_NO) == 43, "CheckBox.Color");
+	it = cstr_to_string("cb.cg"); PE_SetCheckBoxCGName(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetCheckBoxCGName(SELFTEST_NO), "cb.cg", "CheckBox.CGName");
+	it = cstr_to_string("cb.ov"); PE_SetCheckBoxOverrideCGName(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetCheckBoxOverrideCGName(SELFTEST_NO), "cb.ov", "CheckBox.OverrideCGName");
+	it = cstr_to_string("cb.ovc");
+	PE_SetCheckBoxOverrideCheckedCGName(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetCheckBoxOverrideCheckedCGName(SELFTEST_NO), "cb.ovc",
+		  "CheckBox.OverrideCheckedCGName");
+	it = cstr_to_string("cb.fl"); PE_SetCheckBoxFlatName(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetCheckBoxFlatName(SELFTEST_NO), "cb.fl", "CheckBox.FlatName");
+	it = cstr_to_string("cb.ofl"); PE_SetCheckBoxOverrideFlatName(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetCheckBoxOverrideFlatName(SELFTEST_NO), "cb.ofl",
+		  "CheckBox.OverrideFlatName");
+	it = cstr_to_string("cb.oFl");
+	PE_SetCheckBoxOverrideCheckedFlatName(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetCheckBoxOverrideCheckedFlatName(SELFTEST_NO), "cb.oFl",
+		  "CheckBox.OverrideCheckedFlatName");
+	it = cstr_to_string("label"); PE_SetCheckBoxText(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetCheckBoxText(SELFTEST_NO), "label", "CheckBox.Text");
+	PE_SetCheckBoxTextOriginPosMode(SELFTEST_NO, 2);
+	CHECK(PE_GetCheckBoxTextOriginPosMode(SELFTEST_NO) == 2, "CheckBox.TextOriginPosMode");
+	PE_SetCheckBoxButtonMode(SELFTEST_NO, true);
+	CHECK(PE_IsCheckBoxButtonMode(SELFTEST_NO), "CheckBox.ButtonMode");
+	PE_SetCheckBoxCharSpace(SELFTEST_NO, 4);
+	PE_SetCheckBoxLineSpace(SELFTEST_NO, 5);
+	CHECK(PE_GetCheckBoxCharSpace(SELFTEST_NO) == 4, "CheckBox.CharSpace");
+	CHECK(PE_GetCheckBoxLineSpace(SELFTEST_NO) == 5, "CheckBox.LineSpace");
+	PE_SetCheckBoxDrag(SELFTEST_NO, true);
+	CHECK(PE_IsCheckBoxDrag(SELFTEST_NO), "CheckBox.Drag");
+
+	/* --- RadioButtonBox：成员表 --- */
+	PE_AddRadioButtonBoxChild(SELFTEST_NO, 111);
+	PE_AddRadioButtonBoxChild(SELFTEST_NO, 222);
+	PE_AddRadioButtonBoxChild(SELFTEST_NO, 333);
+	PE_AddRadioButtonBoxChild(SELFTEST_NO, 222);   /* 重复不应增加 */
+	CHECK(PE_NumofRadioButtonBoxChild(SELFTEST_NO) == 3, "Radio.Count（去重）");
+	CHECK(PE_GetRadioButtonBoxChild(SELFTEST_NO, 1) == 222, "Radio.Child[1]");
+	CHECK(PE_IsRadioButtonBoxExistGUI(SELFTEST_NO, 333), "Radio.ExistGUI(333)");
+	CHECK(!PE_IsRadioButtonBoxExistGUI(SELFTEST_NO, 444), "Radio.ExistGUI(444)=false");
+	PE_RemoveRadioButtonBoxChild(SELFTEST_NO, 111);
+	CHECK(PE_NumofRadioButtonBoxChild(SELFTEST_NO) == 2 &&
+	      PE_GetRadioButtonBoxChild(SELFTEST_NO, 0) == 222, "Radio.Remove(111)");
+	PE_ClearRadioButtonBoxChild(SELFTEST_NO);
+	CHECK(PE_NumofRadioButtonBoxChild(SELFTEST_NO) == 0, "Radio.Clear");
+
+	/* --- MessageWindow --- */
+	PE_SetMessageWindowActive(SELFTEST_NO, true);
+	it = cstr_to_string("mw.cg"); PE_SetMessageWindowCGName(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetMessageWindowCGName(SELFTEST_NO), "mw.cg", "MsgWin.CGName");
+	it = cstr_to_string("mw.fl"); PE_SetMessageWindowFlatName(SELFTEST_NO, it); free_string(it);
+	CHECK_STR(PE_GetMessageWindowFlatName(SELFTEST_NO), "mw.fl", "MsgWin.FlatName");
+	PE_SetMessageWindowFlatShowWaitFrameNumber(SELFTEST_NO, 9);
+	CHECK(PE_GetMessageWindowFlatShowWaitFrameNumber(SELFTEST_NO) == 9,
+	      "MsgWin.FlatShowWaitFrameNumber");
+	PE_SetMessageWindowTextArea(SELFTEST_NO, 11, 12, 800, 200);
+	int ax = 0, ay = 0, aw = 0, ah = 0;
+	PE_GetMessageWindowTextArea(SELFTEST_NO, &ax, &ay, &aw, &ah);
+	CHECK(ax == 11 && ay == 12 && aw == 800 && ah == 200, "MsgWin.TextArea");
+	PE_SetMessageWindowTextOriginPosMode(SELFTEST_NO, 1);
+	CHECK(PE_GetMessageWindowTextOriginPosMode(SELFTEST_NO) == 1, "MsgWin.TextOriginPosMode");
+	PE_SetMessageWindowTextSpeed(SELFTEST_NO, 30);
+	CHECK(PE_GetMessageWindowTextSpeed(SELFTEST_NO) == 30, "MsgWin.TextSpeed");
+	PE_SetMessageWindowTextSpace(SELFTEST_NO, 1, 2);
+	int sp1 = 0, sp2 = 0;
+	PE_GetMessageWindowTextSpace(SELFTEST_NO, &sp1, &sp2);
+	CHECK(sp1 == 1 && sp2 == 2, "MsgWin.TextSpace");
+	PE_SetMessageWindowInactiveMultipleColor(SELFTEST_NO, 91, 92, 93);
+	CHECK(PE_GetMessageWindowInactiveMultipleColorR(SELFTEST_NO) == 91 &&
+	      PE_GetMessageWindowInactiveMultipleColorG(SELFTEST_NO) == 92 &&
+	      PE_GetMessageWindowInactiveMultipleColorB(SELFTEST_NO) == 93,
+	      "MsgWin.InactiveMultipleColor");
+	/* 文本 + 台词位置指纹（指纹无 getter，只能验证文本往返与不崩） */
+	it = cstr_to_string("\x82\xb1\x82\xf1");
+	PE_SetMessageWindowText(SELFTEST_NO, it, 1234, it, 7, 5);
+	free_string(it);
+	CHECK_STR(PE_GetMessageWindowText(SELFTEST_NO), "\x82\xb1\x82\xf1", "MsgWin.Text");
+
+	parts_release(SELFTEST_NO);
+	/* 释放后再查一次：部件没了，getter 必须退回默认值而不是崩。 */
+	CHECK_STR(PE_GetTextBoxText(SELFTEST_NO), "", "TextBox.Text after release");
+
+	NOTICE("[wtest] 控件状态自检：%d 项失败（7 类控件）", fail);
+#undef CHECK
+#undef CHECK_STR
+	return fail;
 }
