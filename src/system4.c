@@ -624,6 +624,7 @@ static void usage(void)
 	puts("        --dump-delegate <no> Dump a delegate type's signature and exit");
 	puts("        --dump-signatures   Dump every AIN function's arity and variable count");
 	puts("        --dump-hll          Dump every AIN HLL declaration (lib, fno, name, ret)");
+	puts("        --dump-structs      Dump the struct table (index, name, nr_members)");
 	puts("        --encoding       Specify the game's character encoding. sjis (default) or gbk");
 	puts("        --font-mincho    Specify the path to the mincho font to use (path[:index] for .ttc)");
 	puts("        --font-gothic    Specify the path to the gothic font to use (path[:index] for .ttc)");
@@ -662,6 +663,7 @@ enum {
 	LOPT_DUMP_DELEGATE,
 	LOPT_DUMP_SIGNATURES,
 	LOPT_DUMP_HLL,
+	LOPT_DUMP_STRUCTS,
 	LOPT_ECHO_MESSAGE,
 	LOPT_ENCODING,
 	LOPT_FONT_MINCHO,
@@ -701,6 +703,7 @@ int main(int argc, char *argv[])
 	int dump_delegate_no = -1;
 	bool dump_signatures = false;
 	bool dump_hll = false;
+	bool dump_structs = false;
 
 	char *font_mincho = NULL;
 	char *font_gothic = NULL;
@@ -721,6 +724,7 @@ int main(int argc, char *argv[])
 			{ "dump-delegate", required_argument, 0, LOPT_DUMP_DELEGATE },
 			{ "dump-signatures", no_argument, 0, LOPT_DUMP_SIGNATURES },
 			{ "dump-hll",        no_argument, 0, LOPT_DUMP_HLL },
+			{ "dump-structs",    no_argument, 0, LOPT_DUMP_STRUCTS },
 			{ "echo-message",  no_argument,       0, LOPT_ECHO_MESSAGE },
 			{ "encoding",      required_argument, 0, LOPT_ENCODING },
 			{ "font-mincho",   required_argument, 0, LOPT_FONT_MINCHO },
@@ -774,6 +778,9 @@ int main(int argc, char *argv[])
 			break;
 		case LOPT_DUMP_HLL:
 			dump_hll = true;
+			break;
+		case LOPT_DUMP_STRUCTS:
+			dump_structs = true;
 			break;
 		case LOPT_DISASM: {
 			unsigned long ds = 0, dl = 0x400;
@@ -917,6 +924,22 @@ int main(int argc, char *argv[])
 	/* [D403] `--dump-switch <no>`：把 `ain->switches[no]` 的 case 表原样倒出来。
 	 * 相位状态机全是 `SWITCH <no>`，而 `--disasm` 只显示编号、不显示表，
 	 * 读流程时只能猜「这个 case 对应哪个 Phase 值」。和 `--struct` 同性质。 */
+	/* [D453] `--dump-structs`：结构表（索引 / 名字 / 成员数）。
+	 *
+	 * 为什么需要：反汇编里 `NEW <n>` 的操作数是**结构索引**，不是函数号。
+	 * 想知道 `Scenes::RunIScene(-1, dg{ NEW 786 })` 到底 new 了哪个活动类，
+	 * 没有这张表就只能猜 —— 而猜错一个，整条「哪个场景被创建」的结论就废了。
+	 */
+	if (dump_structs) {
+		for (int i = 0; i < ain->nr_structures; i++) {
+			struct ain_struct *st = &ain->structures[i];
+			printf("%d\t%d\t%s\n", i, st->nr_members,
+			       st->name ? st->name : "");
+		}
+		ain_free(ain);
+		return 0;
+	}
+
 	/* [D443] `--dump-hll`：AIN 侧**声明**的每个 HLL 函数（库名 / 库内序号 / 名字 /
 	 * 实参个数 / 返回类型）。用途是跟 C 侧导出表做交叉核对：
 	 *

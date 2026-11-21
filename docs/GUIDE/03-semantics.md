@@ -1381,6 +1381,48 @@ StartRound()                                           ← 闭环
 - **`FlushRoundSkillCount` 在换回合前调**，`UpdateSkillNotUsedRound` 在开始时调。
   这一对是「技能冷却/使用次数」的计数器，技能不能用先查它们。
 
+## 3.40 两个被名字误导的入口：`ProcessEnemySkillAction` 与 `RunBattleResult`
+
+**`SceneBattle@ProcessEnemySkillAction`(24925) 不是敌方专用。** 它的唯一调用者是
+`SceneBattle@ProcessAction`(24929)，而 `ProcessAction` 又被自动技能路径调用
+（`RunInitialSkill` / `RunInitialBadCondition` / `RunLeaderAutoSkill` 里都有它的常量）。
+它其实是**通用技能执行器**：
+
+```
+skill = action.Skill
+CheckSkillPer(skill)
+switch (skill.Kind) {
+  ShowScreenPreAction
+  未命中 → ShowActionMiss
+  skill.IsAttack ? SceneBattle@ProcessAttack(24909)          ← 走伤害结算
+                 : NonAttackSkillEffect@Run + ProcessSkillEffect(24919)
+  BadConditions → BadConditionGroup@AddBySkill               ← 命中后附加异常
+}
+```
+
+按名字去找「敌人打我」的入口会找错地方 —— 敌我是同一段代码，
+差别只在 `PlayerSkill@IsAttack` 和 `ActionProcessType`。
+
+**`BattleScenes::RunBattleResult`(25947) 是个薄壳**，和 `RunBattle` 同一形状：
+
+```
+Scenes::RunIScene(-1, dg{ NEW 786 })
+```
+
+`NEW` 的操作数是**结构索引**，不是函数号。786 是谁？用 `--dump-structs`：
+
+```
+$ xsystem4 --dump-structs .
+786	10	SceneBattleResult
+```
+
+所以结算屏 = `new SceneBattleResult`（10 个成员），
+`SceneBattleResult@Run` / `@CalcResult` / `@InitResultView` / `@InitCardView` 是它的方法。
+
+**教训**：反汇编里凡是 `NEW <n>`，都要用 `--dump-structs` 查一下 n 是什么，
+不要拿 `fnmap` 的同号去套 —— 那是两张完全不同的表（函数号和结构索引），
+我第一眼就把 786 当成了某个函数。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
