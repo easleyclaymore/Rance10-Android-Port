@@ -622,6 +622,42 @@ RunStacked():                                ; 23646
 这就是「点了一个没解锁的任务、屏幕上什么也没发生」的来源 ——
 不是点击丢了，是这一层静默返回了。
 
+## 3.21 一个任务的三路分发，以及战斗的唯一入口
+
+`RunRegisteredQuest(quest)`(23648) 是「一个任务怎么跑」的分发点：
+
+```
+q = findQuestFromId(quest)                  ; 26467
+if (q.IsQuestDataExist()) {                 ; 28367
+    if (q.IsMapQuest() && q.IsMapExist())   ; 28365 / 28366
+        RunMapQuest(…)                      ; 26314 —— 地图任务
+    else
+        RunAdvQuest(…)                      ; 26315 —— 剧情任务
+} else {
+    AddProcessList(ShowDialog)              ; 23647 ——「任务数据不存在」
+}
+ProcessPostEvent(…)                         ; 23651 —— 收尾
+```
+
+两条腿各跑一轮场景：
+
+- `RunMapQuest` 跑 `SceneQuestMap`，结束后读 `FinishType`(23583) 决定下一步
+- `RunAdvQuest` 跑剧情，用 `SceneAdvQuestSelection@GetResult`(23871) 取玩家选择
+
+**战斗只有一条入口**：
+
+```
+Scenes::RunBattleSceneSet(a, b)             ; 26388
+  → new BattleSceneSet().Open(a, b)         ; 27582
+    → BattleSceneSet.RunBattle()            ; 27585
+      → RunIScene(new SceneBattle)
+```
+
+`SceneBattle@Run`(24882) 与 `SceneTurnStart@Run` 一样：**零 CALLMETHOD、零 PUSH**。
+它是活动方法，只能由 `RunIScene` 的工厂 lambda 造出来。所以「进战斗」在 AIN 层
+**只有 `RunBattleSceneSet` 一个入口**，不存在第二条路 —— 排查「为什么没进战斗」时
+只要看这一条链有没有走到，不必去找别的分支。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
