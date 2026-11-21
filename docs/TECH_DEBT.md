@@ -79,6 +79,7 @@ EX 静态绝对坐标按子部件高度累加垂直重排（实测 `0→1080→1
 
 | 项 | 数量 | 处置 |
 |---|---|---|
+| `[SYSINFO-STUB]` SystemService 的 12 条占位桩 | 12 | **已确认不影响流程，冻结**。`GetPlatformType` 唯一消费者是 `enquate::detail::CSystemInfo@Set`（系统信息页）；`SetWaitVSyncMode`/`GetWaitVSyncMode`/`IsHookCloseApp` 在 AIN 里 `CALLHLL` 命中 0 次；其余只影响窗口位置/截图。真要做时窗口状态可从 `gfx` 的 `SDL_Window` 取（需先加公共访问器） |
 | `[HACK-POC]` 标记 | **232 处**（`PartsEngine.c` 200、`SystemService.c` 27…） | 只加断言与日志，不改逻辑；等能跑到结局后集中清算 |
 | `[VIEW-CFG]` | 1 | 渲染分辨率写死 1920×1080（`AliceStart.ini`），改为平台配置注入 |
 | `[D119-FLATFPS]` | 1 | `SetFlatFPSRate` 收了不存，flat 动画速度不生效 |

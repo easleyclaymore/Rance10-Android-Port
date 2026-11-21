@@ -1311,6 +1311,62 @@ SceneBattle@RunSelectedSkill(24898)
 `@ProcessPost` 收尾 / `@SpecificLog` 出日志。敌方的 `EnemyActionView@StartAction`
 也是这个模式（它只做 `EraseFront` + `SetIndex`，真正的动作靠过程队列）。
 
+## 3.39 一回合的完整生命周期：`StartRound` 前段 + `ProcessPostPlayerTurn` 后段
+
+把 3.35 的骨架拆成两半，一回合就是两段首尾相接（中间夹玩家输入）：
+
+**前半段 `StartRound`(24883)** —— 准备
+
+```
+CheckEndBattle(0) → ShowRound → Ap.Recover → SetNewEnemyAction → Combo=0
+→ RunInitialBadCondition → RunInitialSkill（开场技能）
+→ AdvInsertion → BattleInsertionProcessor.Process
+→ RunPlayerCardInsertion → ProcessPlayerBadCondition
+→ AegisEffects（DecCount / RunAutoSkill）→ RunAutoHeal(0) → RunAutoBoost
+→ BattleScenes::RunBattlePhase(0)（回合开始演出）
+→ 有人在行动？ SetControlEnable(1)  :  ProcessPostPlayerTurn()
+```
+
+**后半段 `ProcessPostPlayerTurn`(24886, 438 行)** —— 收尾
+
+```
+PartyChangeRound@UpdateOnTurnEnd
+CheckEndBattle
+ComboView@Hide
+LeaderCardCollection@UpdateSkillNotUsedRound
+RecentUsedSkill@Reset
+selector.SetControlEnable
+BadConditions → BadConditionGroup@DecRound     ← 异常状态减回合（第一次）
+CheckEndBattle
+LeaderCardCollection@ResetState
+selector.UpdateSelectable
+BattleScenes::RunBattlePhase
+ProcessEnemyBadCondition
+AegisEffects（DecCount / RunAutoSkill）
+CheckEndBattle
+RunAutoHeal → BadConditions → IsExist
+ProcessEnemyAction                            ← 敌方行动
+BadConditionViewGroup@Blink
+parts::AddConstructProcess
+LeaderCardCollection@TransfarSacrificeEffect  ← 牺牲/献祭效果转移
+CheckEndBattle
+BadConditions → BadConditionGroup@DecRound     ← 减回合（第二次！）
+Round.Value
+Party@_Leaders → LeaderCardCollection@FlushRoundSkillCount
+PartyChangeRound@Dec                                   ← 换人回合计数
+StartRound()                                           ← 闭环
+```
+
+三个容易看漏的点：
+
+- **`BadConditionGroup@DecRound` 出现两次**（敌方行动前后各一次）。异常状态
+  是按「回合段」计时的，不是按整回合 —— 一次 `DecRound` 里减两次，别以为重复调用。
+- **`CheckEndBattle` 在后半段出现 4 次**（开头、异常状态后、护盾后、献祭转移后），
+  加上前半段的 4 次，**一回合里最多 8 个结束判定点**。查「明明该结束却没结束」
+  时，先确认是不是某个判定点的入参/返回值不对，而不是循环没退。
+- **`FlushRoundSkillCount` 在换回合前调**，`UpdateSkillNotUsedRound` 在开始时调。
+  这一对是「技能冷却/使用次数」的计数器，技能不能用先查它们。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
