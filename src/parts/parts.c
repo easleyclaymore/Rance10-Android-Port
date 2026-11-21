@@ -1680,7 +1680,10 @@ static void parts_update_cover_layer(void)
 	TAILQ_FOREACH(p, &parts_list, parts_list_entry) {
 		if (!p->global.show)
 			continue;
-		int c = p->controller_no;
+		/* [D483] 用映射后的**下标**：`opaque[]` 与 `parts_cover_layer`
+		 * 都是下标空间，原来这里拿稳定 ID 当下标，和写端（`PE_SetShow`
+		 * 用下标）错位。 */
+		int c = parts_ctrl_index(p);
 		if (c < 0 || c >= PARTS_CONTROLLER_STACK_MAX)
 			continue;
 		if (!ctrl_stack.show[c])

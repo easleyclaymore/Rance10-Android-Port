@@ -425,6 +425,14 @@ EraseLayer(id=3)  →  show[1] = 0
   （都下标，或都 ID）。改一处不改另一处，就是 D261 那种「改了却没用」
   的第三次复现。
 
+**`parts_update_cover_layer` 里还有第三处**：`opaque[c] = true` 和
+`if (!ctrl_stack.show[c])` 用的也是 `parts->controller_no`（稳定 ID）。
+D483 把三处统一进 `parts_ctrl_index()`：`parts_is_visible` 与
+`parts_update_cover_layer` 的读端一律先过映射，映射失败按「不过滤」处理
+（宁可多画一件，不要整屏黑）。A/B 判据同上；`vidx2` 在开关下跑完整出手链
+（`24906→24909→24839` 各 1 次、ERROR 0、画面完整），`vidx3` 抓帧确认
+战斗 UI 无缺失。
+
 ## 4.6 字符出来了但显示方框：先分码表、再分字体
 
 多字节编码的引擎里，「文字没显示」至少有三层，症状却几乎一样：纹理尺寸正常、

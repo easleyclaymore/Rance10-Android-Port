@@ -666,6 +666,30 @@ static inline bool parts_no_is_layer(int no)
 extern bool parts_vis_use_index;
 int PE_get_controller_index(int id);   /* [D481] 定义在 parts.c */
 
+/* [D483] 把部件的 `controller_no`（**稳定 ID**）映射成 `ctrl_stack` **下标**。
+ *
+ * `ctrl_stack.show[]` / `opaque[]` 都是按**下标**索引的：
+ *   - `PE_SetShow` 的图层分支写 `show[PE_get_controller_index(id)]`；
+ *   - `parts_update_cover_layer` 的 `opaque[c]`、`top = c` 也都是下标。
+ * 只有读端（`parts_is_visible` / `parts_update_cover_layer`）拿
+ * `parts->controller_no` 直接当下标 —— 于是 `id[i] != i` 时全错位。
+ * 这里统一成一个映射函数，读端一律先过它。
+ *
+ * 映射失败（返回 -1）按「不参与图层过滤」处理：宁可多画一件，
+ * 也不要因为映射失败把整层藏掉（那是整屏黑）。 */
+static inline int parts_ctrl_index(const struct parts *parts)
+{
+	int c = parts->controller_no;
+	if (c < 0 || c >= PARTS_CONTROLLER_STACK_MAX)
+		return -1;
+	if (!parts_vis_use_index)
+		return c;          /* A/B 关掉时保持旧行为 */
+	/* 系统 overlay 是哨兵值，不参与映射。 */
+	if (c == PARTS_CONTROLLER_SYSTEM_OVERLAY)
+		return c;
+	return PE_get_controller_index(c);
+}
+
 static inline bool parts_is_visible(const struct parts *parts)
 {
 	if (!parts->global.show)
@@ -673,11 +697,13 @@ static inline bool parts_is_visible(const struct parts *parts)
 	int c = parts->controller_no;
 	if (c < 0 || c >= PARTS_CONTROLLER_STACK_MAX)
 		return true;
-	if (parts_vis_use_index) {
-		int m = PE_get_controller_index(c);
-		if (m >= 0)
-			c = m;
+	int idx = parts_ctrl_index(parts);
+	if (idx >= 0) {
+		if (!ctrl_stack.show[idx])
+			return false;
+		return idx >= parts_cover_layer;
 	}
+	/* 映射失败：不过滤（安全侧）。 */
 	if (!ctrl_stack.show[c])
 		return false;
 	return c >= parts_cover_layer;
