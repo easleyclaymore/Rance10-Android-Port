@@ -227,6 +227,17 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 
 	// 不管当前显示状态是什么，命中盒一律用 DEFAULT 状态。
 	/* [D128] 隐藏的图层不参与命中（否则旧场景的按钮还挡在新场景前面）。 */
+	/* [D489] **曾尝试给 hover 加 `global.alpha > 0` 判据（D488），已回退**。
+	 *
+	 * 动机：战况窗口淡出后图形消失但按钮仍吃光标。实测（d489）结果是
+	 * **副作用**：第一击落到 `900000387`（候选 0，空炮），
+	 * `25048 Hide` 反而不再触发 —— 说明 `OnClickStartEvent` 的接收件
+	 * 恰恰是那个低 alpha 的件，加判据把触发路径也掐断了。
+	 * 且 TurnEnd 依旧点不到（换成了 228 在挡）。
+	 * **结论：窗口淡出后按钮仍可点，不是 alpha 判据缺失，**
+	 * 而是要先弄清 Hide 的 117 行到底对部件做了什么
+	 * （IsEnable=false 只是禁用按钮；图形的消失要么靠动画、
+	 * 要么靠场景退出时的 parts 释放）。在弄清之前不动这条判据。 */
 	bool is_hovered = parts_is_visible(parts)
 		&& parts_hittest(parts, PARTS_STATE_DEFAULT, cur_pos)
 		&& !*hover_consumed;
