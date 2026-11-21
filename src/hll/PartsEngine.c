@@ -4711,10 +4711,14 @@ static int PE_Act_ReleaseActivity(struct string *name, struct page **erase_numbe
 }
 
 /* AIN f[25] SaveActivityEXText：仅供编辑器，游戏流程用不到。 */
-static int PE_Act_SaveActivityEXText(struct page **a0, struct string *a1)
+/* [D497] AIN 声明 (ref string path, string name)——原 (page**, string)
+ * 形状是错的（ref string 到达形式是 struct string **）。桩返回 0 =
+ * 调用方回退到文件加载（见下方 LoadActivityEXText 注释），形状对齐
+ * 后语义不变。 */
+static int PE_Act_SaveActivityEXText(struct string **path, struct string *name)
 {
-	(void)a0;
-	(void)a1;
+	(void)path;
+	(void)name;
 	return 0;
 }
 
