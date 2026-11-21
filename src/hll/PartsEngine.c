@@ -4243,10 +4243,17 @@ static void PE_Noop_SetSpinBoxSize(int a0, int a1, int a2)
  * 数据表就是 EX 的 数据 = ['オブジェクト名','TextButton','参数','标题,从头开始']。 */
 static struct string *PE_GetUserComponentName_str(int parts_no)
 {
+	/* [D441] 声明返回 `string` 的导出**不能返回 NULL**。
+	 *
+	 * AIN 侧没有"空指针字符串"这个值：`string` 是堆上的页，NULL 会被 FFI
+	 * 层报成 `returned (nil) where a string was declared`，调用方拿到的是
+	 * 一个无法比较、无法拼接的野值。同族的 `PE_Act_GetActivityPartsName`
+	 * 一直是 `cstr_to_string("")` —— 这里跟它对齐。
+	 *
+	 * 触发场景：战斗里每次点技能都会刷 2 条该告警
+	 * （`bat3`/`chain1` 日志），说明确实有部件没有用户组件名。 */
 	const char *name = PE_GetUserComponentName(parts_no);
-	if (!name)
-		return NULL;
-	return cstr_to_string(name);
+	return cstr_to_string(name ? name : "");
 }
 
 static void PE_SetUserComponentName_str(int parts_no, struct string *name)
@@ -4261,10 +4268,10 @@ static void PE_SetUserComponentData_str(int parts_no, struct string *key, struct
 
 static struct string *PE_GetUserComponentData_str(int parts_no, struct string *key)
 {
+	/* [D441] 同上：声明 `string` 返回就必须给一个真字符串。
+	 * 部件没登记过这个 key 是**正常情况**（不是错误），返回空串。 */
 	const char *v = PE_GetUserComponentData(parts_no, key ? key->text : NULL);
-	if (!v)
-		return NULL;
-	return cstr_to_string(v);
+	return cstr_to_string(v ? v : "");
 }
 
 /* AIN SetVScrollTotalSizeLinkNumber：void SetVScrollTotalSizeLinkNumber。[HACK-POC D85] 空实现（setter 占位）。 */

@@ -1062,6 +1062,44 @@ SceneBattle@ProcessEnemyAction              ← 敌人行动
 `RunSelectedSkill` 直接 return（不再碰 `isActionAvailable`），
 活动全部卸载、画面切到战后场景、`ERROR` 计数 0。
 
+## 3.34 胜负在哪里判：`RunBattle` 之后才分叉
+
+`BattleSceneSetNormal@Process`(27588) 的调用顺序就是整场战斗的生命周期：
+
+```
+SnapShotSaveManager::Save          ← 战前快照
+BattleScenes::RunBattle            ← 回合循环（内部反复 CheckEndBattle）
+BattleResult.Type::get
+BattleBonusCalculator::Calc        ← 只有赢了才算奖励
+ResetParam
+Music@FadeOut
+BattleResult.Type::get
+GameContext.Chapter
+BattleScenes::RunBattleResult      ← 结算画面
+GameContext.GetCurrentQuestId
+Scenes::RunGameOver                ← 输的那一支
+```
+
+`BattleScenes::RunBattle` 返回之后才按 `BattleResult.Type` 分叉到
+`RunBattleResult` 或 `RunGameOver`。所以「战斗没结束」只有两种可能：
+`RunBattle` 的循环没退出，或者 `BattleResult.Type` 没被置上。
+
+`BattleProcess@IsEndBattle`(24825) 自己不算胜负，它只做一件事：
+调 `getBattleResultType`(24975) 把算出来的类型 `set` 进去，然后回读。
+
+而 `getBattleResultType` **只看两件事**：
+
+```
+player = BattleContext.GetPlayer()
+if (player.Hp <= 0)      → 败
+if (Round.IsLimit)       → 回合上限（平局/强制结束）
+```
+
+**它不查敌方 HP。** 敌方全灭的胜利是另外几条路径写进去的
+（`SkillEffectProcessAbsorption@Process`、`SkillEffectProcessHandOfClausen@Process`、
+以及各个 `BattleSceneSet*` 自己）。所以排查「敌人明明死了却不结算」时，
+不要去改 `getBattleResultType` —— 那里根本没有敌方单位这个概念。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
