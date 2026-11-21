@@ -14,7 +14,7 @@
 | HLL 缺口 | 1071 | `HLL_TODO_EXPORT(` 行首计数 | `src/hll/*.c` |
 | HLL 源码覆盖率 | 76.9% (4627 个导出) | 已实现 /（已实现 + 缺口） | 计算 |
 | 假设台账 | 64（待验 38 / 成立 9 / 证伪 17） | 表格行首 `H<编号>` 去重，按 section 归类 | `docs/HYPOTHESES.md` |
-| 根因编号 | 119 | `D<2-3 位>` 去重 | README + TECH_DEBT + HYPOTHESES |
+| 根因编号 | 121 | `D<2-3 位>` 去重 | README + TECH_DEBT + HYPOTHESES |
 | 未结技术债 | 42 | 表格行首 `` `[标签]` `` 去重 | `TECH_DEBT.md` |
 | 影响面清单 | 33 | 表格行首 `I<编号>` | `docs/IMPACT.md` |
 | 子模块补丁 | 2 | `patches/*.patch` | `patches/` |

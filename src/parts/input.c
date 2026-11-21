@@ -251,7 +251,15 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	 * `XSYS4_CLICK_ONLY_CLICKABLE` 仍然 `EndInput=0`，因为背景 705(pc=0)
 	 * 在 z 最高处先把 `hover_consumed` 置真，后面 700/701 连
 	 * `is_hovered` 都拿不到，直接 `return` 掉 —— 根本走不到捕获那段。 */
-	bool hover_blocking = !parts->pass_cursor;
+	/* [D490] 拆开两个语义（D488/D489 的教训）：
+	 *   - `is_hovered`（能不能**收到**事件）——不看 alpha，
+	 *     否则 `BattleInfoView` 的 OnClickStartEvent 接收件在淡出时
+	 *     收不到点击，`Hide` 反而触发不了（d489 实测）；
+	 *   - `hover_blocking` / `click_eligible`（要不要**挡住**别的件、
+	 *     要不要**捕获**点击）——淡出到 alpha=0 的件不该再挡：
+	 *     渲染端一个像素都不画，命中却还在，就是
+	 *     「窗口看不见了、`ButtonTurnEnd` 仍点不到」的根因。 */
+	bool hover_blocking = !parts->pass_cursor && parts->global.alpha > 0;
 	/* [D338] **没有任何图形尺寸的部件不拦光标、不参与捕获。**
 	 *
 	 * 战斗里点 (960,886) 命中的是 `900000568` —— 那是**回想对话框的全屏根**
@@ -448,7 +456,8 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 		return;
 	}
 
-	bool click_eligible = parts->clickable || !parts->pass_cursor;
+	bool click_eligible = (parts->clickable || !parts->pass_cursor)
+		&& parts->global.alpha > 0;   /* [D490] 淡出件不捕获 */
 	/* [D338] 与 hover 拦截同一判据（见上）。只放 hover 不改这里，
 	 * 仍会被它抢走 `click_down_parts`。 */
 	if (pe_needs_shape && pe_no_shape)

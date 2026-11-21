@@ -1814,6 +1814,19 @@ lambda 36932:
 **判据**：`[fwatch] fno=25048`（Hide）命中 ≥1 次后，点 `(1828,1025)`
 应触发 `24886 ProcessPostPlayerTurn`（TurnEnd 的处理函数）。
 
+**d490 实测（2026-11-21）**：判据的**前半**成立——`25048 Hide` 命中 1 次，
+且 D490 的语义拆分（`hover_blocking`/`click_eligible` 加 `alpha>0`，
+`is_hovered` 不加）保住了触发路径，淡出的 731 也让位了。**后半不成立**：
+第二次点击命中的变成 `900000228`（alpha 仍 255）——它**不在 Hide 的处理范围**。
+
+`Hide` 全文 117 行只做三件事：
+`GetButton("Button")` → `IsEnable(false)`；
+`GetParts("")`（**空名字**）→ `Motion().SetAlpha(1→0)` + `SetOnFinishEvent`；
+清引用。窗口里**其它件**（框架 222/223/228 一族）它一个都没碰——
+它们的消失要靠 `SceneBattleInformation` 场景退出时的层释放，
+而那条路就是 `[LAYER-LEAK]` / H033（`released=0` 的空层、层号与
+`controller_no` 两套编号）。**两件事别混在一起修。**
+
 ## 3.51 部件动画（PartsMotion）的完整执行链
 
 `BattleInfoView@Hide` 的淡出走的是 AIN 侧的动画系统，链路五层：
