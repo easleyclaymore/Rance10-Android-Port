@@ -136,6 +136,32 @@ if (local >= tl->graphic.count) continue;   /* v15 的 count 恒为 0 */
 撤回调、显示图层、删图层。它是**节流 4 帧**，不是同步一帧；
 跑测里「画面几十毫秒才动一下」多半就是它。
 
+### 4.5.2 一个场景只有一个阻塞点
+
+把 `SceneTurnStart@Run` 的调用序列整条列出来：
+
+```
+Music.Play(…)
+Overlay.FadeIn(…, dg)      ; 只注册淡入完成回调
+LPYearView.FadeIn()
+instantTimer(dg1)          ; 延时后调 TurnNumberViewGroup.Slide
+instantTimer(dg2)          ; 延时后调 LPYearView.Slide
+SceneStack@Join()          ; ← 唯一的阻塞点
+```
+
+旁边那些 `FadeIn` / `Slide` 都不阻塞：`Overlay@FadeIn` 里只有一个
+`DG_CALLBEGIN 1077 / DG_CALL 1077, END` 的 foreach，调的是**传进去的回调**；
+真正推进它们的是 `View_Update` 的动画时钟。
+
+所以「界面卡住」永远只有一个位置可查 —— `Join` 里那个 `WaitForClick`。
+它不等帧、不等动画、不等资源，只等两件事：`GetClickNumber() > 0`，
+以及外层 `while (!IsFinish)` 的 `IsFinish`。
+
+`parts::detail::WaitForClick`(7659) 和 `parts::WaitForClick`(7221) 全项目
+只有 2 个 AIN 调用点，`WaitForClick` 内部也只有 2 个真正的实现入口
+（8309 的直接调用者只有 7221 与 7659）。**不存在「另一个等待把点击抢走」的可能**，
+排查时不必去怀疑并发等待。
+
 ## 4.6 字符出来了但显示方框：先分码表、再分字体
 
 多字节编码的引擎里，「文字没显示」至少有三层，症状却几乎一样：纹理尺寸正常、
