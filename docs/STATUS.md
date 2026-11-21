@@ -10,10 +10,9 @@
 
 | | |
 |---|---|
-| **阶段** | **第一章可从头一路点击/快进走到战斗，全程无后门（D386）**：标题 → 序章 37 句 ADV → 图鉴框 → 巨舰遗迹任务 → 战况播报（逐国，需 Ctrl 快进 + 点掉弹出的图鉴框）→ `Game/Battle` 完整界面。战斗内点角色卡可展开技能列表、伤害能结算（敌 HP 9000→8303）。**技能卡用鼠标点仍不中**（`BattleCardButton.m9` 空委托 + 命中矩形 1×1，D372–D375） |
-| **最大卡点** | `[TURNSTALL]` **回合开始屏（TURN 1）停住**。D389 已解掉原来的**死循环**（进程从 `R`/CPU 101% 变正常等待，`OnFinishFadeIn` 能触发）：根因是 `GetMotionBeginFrame/EndMotionFrame` 未实现 → `CASTask@IsEndTask` 恒 false → `Overlay@Fade` 的 onFinish 永不触发 → `SceneStack@Join` 空转。**仍卡**在 `FadeInButton`(23461) 的按钮淡入完成回调（`FadeOut`(23464) 0 次 ⇒ 场景不退出）。这是「回合循环 → 作戦 → 出撃 → 战斗」的最后一道墙 |
-| **次级卡点** | `[BATTLE-STALL]` 战斗卡在最后一段 UI→AIN：`SceneBattle@OnClickSkill` 之后整条链（`ShowUseApCount → CreateEndTask → RunSelectedSkill → ProcessPlayerAction`）用确定性驱动验证**全部正常**，缺的是「点技能卡」这一下——`m9` 空委托 + 命中件 1×1，见台账 |
-| **本轮做过的** | **D385–D386 通了「第一章 → 战斗」这条路**：① 新增跑测动作 `skip:<ms>[:x,y]`（按住 Ctrl 快进 + 期间点掉图鉴框），一条命令 10 分钟从标题跑到 `Game/Battle`；② `SetLayoutBoxPadding` 原来是空实现、4 个 `GetLayoutBoxPadding*` 根本没导出（兰斯10 走静态链接，`CALLHLL` 那套 case 分派进不去），已修；③ 导出 `GetPartsCGSurfaceArea`。另记：截图上看着「布局错乱」的画面多数是**动画中间帧**，等 2 秒会自己排好 —— 先等再判。<br>**D346–D375 把「点技能卡」钉到两个具体字段**：AIN 侧点击链其实完整（`ActivityButton` 37568 → LSB 37029 → collection 37032 → `BattleCardButton` 37011 → `m9.DG_CALL`），断在 `m9` 是**空委托页**（`[dgm] MISS dg_no=1021 nr=0`）；命中件 `SmallSkillButton01:0/Normal` 的矩形是 `1×1`，且 EX 里就没有四角负载（`[actrect]` 0 条）。顺带修掉 `ain_xref` 漏 CALLMETHOD 的盲区（`tools/offline/ain_callers.py`）。<br>**发布**：`.github/workflows/build.yml` 云编译，`v*` tag 自动出二进制并建 Release（`v0.1.0-preview.2`，自带 SDL3+GLEW，解压即用）|
+| **阶段** | **第一章可一直点到 `Game/TurnStart`，回合开始屏三个按钮现在真能点**（D397）：标题 → 序章 37 句 → 图鉴框 → 巨舰遗迹 → 战况播报 → `Game/TurnStart`；点 `(724,726)` 触发 `SceneTurnStart@FadeOut`（`[fwatch] fno=23464` 0→2），0 ERROR。**战斗与技能卡仍未通** |
+| **最大卡点** | `[BATTLE-STALL]` 战斗里技能卡点不中：`BattleCardButton.m9` 是空委托页（`[dgm] MISS dg_no=1021`），命中件 `SmallSkillButton01` 只有 `1×1`。D397 刚证实的「TextButton = 四件套（锚点/容器/底板 flat/文字）+ `PE_PartsIsUnder(no,pn)`」是否也适用于 `LargeSkillButton`，是下一步第一件要验的事 |
+| **本轮做过的** | **D397 结掉 TURNSTALL**：① `--disasm` 的 `CALLMETHOD` 一直把**立即数（nargs）当函数号**打印，全表名字都是错的（`nargs=1` 恰好撞上 `message::detail::GetMessageSpeedRate`）—— 两周的因果链（「23463 回调触发 FadeOut」）就建在这些假名上；现改为回溯常量 `PUSH`，回溯不到打 `?`。② 新增 `--struct`（dump 成员表）、`XSYS4_DUMP_BTN`、`PE_PartsHitbox/PE_PartsBrief/PE_PartsUcFlags/PE_PartsParent`。③ 真根因：TextButton 派发判据 `PE_PartsIsUnder(pn, no)` **参数顺序反了**，改 `(no, pn)` 后 `[pev] 落在容器上 -> 1 个候选`、`FadeOut` 触发。smoke quick PASS |
 | **判据** | 画面一律用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S，且 alt+s 前空 ≥1.5s，否则会丢帧）；层/归属看 `[ctrl] SetActive id=N -> idx=M` 与 `[ctrl] layer … parts:` 清单；HLL 进展看 `python3 tools/offline/hll_hotness.py --todo ../logs/live_<tag>.log` 的输出是否为 0 |
 
 > **卡点必须挂债标签**：§0「最大卡点」里的 `` `[TAG]` `` 必须**逐字存在**于
@@ -211,14 +210,18 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
     委托存在 AIN `Parts` 对象字段 7（`Parts@SetOnClickEvent`）或 `TextButton` 自身字段 5，
     派发者是 `Parts@OnClick`(29541)，而它**零个 AIN 调用点** —— 这一拍没有任何 AIN 代码负责。
     映射只能扫堆：`Parts.m0` / `TextButton.m3.m0` 等于被点部件号。别再去 `CPartsFunctionSet.m7`
-    里找缺口（那条路本作运行期为 0 调用）。点击落在容器上时按 `PE_PartsIsUnder()` 下钻一层。
+    里找缺口（那条路本作运行期为 0 调用）。
+    **一个 TextButton 是四个部件**：锚点 `900000062`(0×0) → 容器 `900000063` → 底板 flat `900000064`(476×78) + 文字。
+    所以「点中底板」要按 **`PE_PartsIsUnder(被点件, 锚点)`** 匹配 —— 参数顺序反了就是全屏按钮都点不动（D397）。
+
+38. **`CALLMETHOD` 的立即数是实参个数，不是函数号** —— VM 用 `stack_peek(nargs)` 取 fno（栈布局 `[obj,fno,args…]`）。`--disasm` 曾把立即数当 fno 打印，全表名字都错（`nargs=0`→`NULL`、`nargs=1`→`GetMessageSpeedRate`），照它读出的调用链会整体跑偏（TURNSTALL 就这么走了两周）。现在回溯最近常量 `PUSH` 还原，回溯不到打 `?`——见到 `?` 别编名字。结构成员用 `--struct <名字|号>` 查，`m4.m2.m5` 这类嵌套要先确认类型。
 
 ---
 
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **247**（未标注 31）｜ HLL 源码口径 **3520 / 4614（76.3%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 111 / 38** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **248**（未标注 32）｜ HLL 源码口径 **3520 / 4614（76.3%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 108 / 37** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
 <!-- STATS:END -->
 
 最常用的：
@@ -237,6 +240,8 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 | `XSYS4_ICAST_DBG=1` | 只打**失败**的 `X_ICAST`：目标类型号 + 源对象的真实页类型/结构号（`[icast]`）|
 | `XSYS4_CLICK_DBG=1` | 跑测脚本侧：每次点击的 view/win 坐标、窗口几何、落点窗口 |
 | `XSYS4_PARTS_DUMP=1` | 每次活动装载后快照"当前显示的部件"（no/ctrl/z/pos/尺寸/UC 名） |
+| `XSYS4_DUMP_BTN=1` | 每次点击派发前把堆里全部 `TextButton` 列一遍（部件号/委托数/命中盒/父号/uc 标志），前 40 次 |
+| `XSYS4_PARTS_EVENT_DBG=1` | 点击派发的匹配过程：命中件、候选按钮、坐标兜底结果（`[pev]`）|
 | `XSYS4_CTRL_DBG=1` / `XSYS4_LAYER_TRACE=1` | 图层 show / 遮挡判定 / 栈操作 |
 | `XSYS4_MEM_STAT=1` | 每 2s 一行 `[mem]`：heap_slots/live/pages/strings/rss/textures |
 | `XSYS4_HEAP_LIVE_LIMIT=<n>` / `XSYS4_RSS_LIMIT=<MB>` | 存活对象 / RSS 硬闸（默认 50 万 / 关） |

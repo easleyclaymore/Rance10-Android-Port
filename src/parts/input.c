@@ -163,6 +163,24 @@ static bool parts_hittest(struct parts *parts, int state, Point pos)
 	return SDL_PointInRect(&pos, &hb);
 }
 
+/* [D397] 对外暴露命中盒：排查「按钮点不中」的第一步是知道按钮到底在哪。
+ * 以前只能从 `[pev]` 的 `hb=` 反推，而那行要求**先点中**才打 ——
+ * 点不中时恰好什么都看不到。`XSYS4_DUMP_BTN` 用它列出场景全部 TextButton。 */
+bool PE_PartsHitbox(int parts_no, int *x, int *y, int *w, int *h)
+{
+	if (parts_no <= 0)
+		return false;
+	struct parts *p = parts_get(parts_no);
+	if (!p)
+		return false;
+	Rectangle r = parts_hitbox_at(p, PARTS_STATE_DEFAULT);
+	if (x) *x = r.x;
+	if (y) *y = r.y;
+	if (w) *w = r.w;
+	if (h) *h = r.h;
+	return true;
+}
+
 static void drag_state_reset(void)
 {
 	drag_parts = NULL;

@@ -632,6 +632,42 @@ static void parts_common_recalculate_hitbox(struct parts *parts, struct parts_co
 	}
 }
 
+/* [D397] 部件的 (类型, w, h, surface_area w/h)，排查「命中盒 0×0」用。
+ * 不做任何推断，只把 `states[0].common` 原样交出来 —— 判据要能
+ * 区分「EX 没给尺寸」「AIN 没设尺寸」「设了但被覆盖」三种情形。 */
+bool PE_PartsBrief(int parts_no, int *type, int *w, int *h, int *sa_w, int *sa_h)
+{
+	if (parts_no <= 0)
+		return false;
+	struct parts *p = parts_get(parts_no);
+	if (!p)
+		return false;
+	struct parts_common *c = &p->states[PARTS_STATE_DEFAULT].common;
+	if (type) *type = (int)p->state;
+	if (w) *w = c->w;
+	if (h) *h = c->h;
+	if (sa_w) *sa_w = c->surface_area.w;
+	if (sa_h) *sa_h = c->surface_area.h;
+	return true;
+}
+
+/* [D397] 用户组件标记 + 父号。`[btn]` 要能区分「EX 没声明成用户组件」
+ * 和「声明了但 uc_label 空」—— 这两种都会让 prepare 早退，但修法完全不同。 */
+int PE_PartsUcFlags(int parts_no)
+{
+	struct parts *p = parts_try_get(parts_no);
+	if (!p)
+		return -1;
+	return (p->uc_object ? 1 : 0) | ((p->uc_label && *p->uc_label) ? 2 : 0) |
+	       (p->uc_data_n > 0 ? 4 : 0);
+}
+
+int PE_PartsParent(int parts_no)
+{
+	struct parts *p = parts_try_get(parts_no);
+	return (p && p->parent) ? p->parent->no : 0;
+}
+
 void parts_recalculate_hitbox(struct parts *parts)
 {
 	for (int i = 0; i < PARTS_NR_STATES; i++) {

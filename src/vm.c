@@ -2642,6 +2642,44 @@ void vm_pump_parts_click(void)
 	int cand[24];
 	int nc = 0, nparts = 0, ntbtn = 0, nlsb = 0;
 
+	/* [D397] XSYS4_DUMP_BTN=1：每次点击派发前把堆里所有 `TextButton`
+	 * 列一遍（部件号 / 委托条数 / 命中盒）。
+	 *
+	 * 为什么：排查「按钮点不中」时，需要的三件事——按钮存在、委托非空、
+	 * 矩形在哪——分散在三个入口，而且 `[pev]` 那行**要求先点中**才打，
+	 * 点不中时恰好什么都看不到。TurnStart 的三个按钮就是这样：明明
+	 * `SceneTurnStart.m_btn[0..2].m5` 都有 lambda，但没人知道该点哪。
+	 * 上限 40 次，避免长跑测刷屏。 */
+	{
+		static int btn_dumps;
+		if (btn_dumps < 40 && tbtn_st >= 0 && getenv("XSYS4_DUMP_BTN")) {
+			btn_dumps++;
+			int nb = 0;
+			for (size_t i = 1; i < heap_size && nb < 200; i++) {
+				struct page *p = heap[i].page;
+				if (!p || p->type != STRUCT_PAGE || p->index != tbtn_st ||
+				    p->nr_vars < 6)
+					continue;
+				int pn = vm_parts_obj_number(p->values[3].i);
+				int dg = vm_delegate_count(p->values[5].i);
+				int hx = 0, hy = 0, hw = 0, hh = 0;
+				int ty = -1, pw = 0, ph = 0, saw = 0, sah = 0;
+				PE_PartsHitbox(pn, &hx, &hy, &hw, &hh);
+				PE_PartsBrief(pn, &ty, &pw, &ph, &saw, &sah);
+				int fsz = -1;
+				PE_GetPartsFontSize(pn, &fsz, 1);
+				NOTICE("[btn] #%d slot=%d parts=%d dg=%d st=%d w=%d h=%d "
+				       "sa=%dx%d hb=(%d,%d,%d,%d) maxw=%d id=%d fs=%d "
+				       "uc=%d par=%d",
+				       btn_dumps, (int)i, pn, dg, ty, pw, ph, saw, sah,
+				       hx, hy, hw, hh, p->values[6].i, p->values[1].i, fsz,
+				       PE_PartsUcFlags(pn), PE_PartsParent(pn));
+				nb++;
+			}
+			NOTICE("[btn] #%d total=%d", btn_dumps, nb);
+		}
+	}
+
 	/* [D338] 命中号找不到按钮对象时，按**点击坐标**兜底再找一次：
 	 * 战斗里点 (740,886) 命中记录的是角色卡内部的透明装饰层 `900000818`
 	 * （`ck=0`），而角色卡本体 `900000813` 是 `ck=1` 的矩形检测件、与它重叠。
@@ -2711,7 +2749,20 @@ void vm_pump_parts_click(void)
 					 * 容器回退（`PE_PartsIsUnder`）保留 —— 那是 D337 为
 					 * 回想对话按钮加的正确判据；防御按钮那种 0×0 布局盒
 					 * 另想办法（放到 A 组之后按坐标兜底）。 */
-					if (pn != no && !PE_PartsIsUnder(pn, no) &&
+					/* [D397] `PE_PartsIsUnder(child, ancestor)` 的
+					 * 参数顺序修正：这里要问的是「**被点的件**是否在
+					 * 按钮子树里」= `(no, pn)`。旧代码传 `(pn, no)`，
+					 * 方向反了。
+					 *
+					 * 兰斯10 的一个 TextButton 是**四个部件**：
+					 * 锚点 `900000062`(0×0) → 容器 `900000063` →
+					 * 底板 flat `900000064`(476×78) + 文字 `900000065`。
+					 * 点中底板时旧判据两个都为假（锚点不在底板子树里、
+					 * 锚点自身 0×0），于是永远匹配不上 —— 回合开始屏
+					 * 三个按钮全点不动，场景退不出去（TURNSTALL）。
+					 * 两向都判：任一方向是祖先即视为同一按钮组。 */
+					if (pn != no && !PE_PartsIsUnder(no, pn) &&
+					    !PE_PartsIsUnder(pn, no) &&
 					    !PE_PartsCovers(pn, x, y))
 						continue;
 					if (vm_delegate_count(p->values[5].i) <= 0)

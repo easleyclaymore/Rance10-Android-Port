@@ -389,6 +389,30 @@ static void ain_stat_method(FILE *f, struct ain *ain)
 static void ain_disasm(FILE *f, struct ain *ain, size_t start, size_t len)
 {
 	size_t end = (start + len > ain->code_size) ? ain->code_size : start + len;
+	/* [D397] CALLMETHOD 的立即数是**逻辑实参个数**，不是函数号。
+	 *
+	 * VM 侧 `method_call(nargs, …)` 取 fno 用的是 `stack_peek(nargs).i`
+	 * （栈布局 `[obj, fno, args…]`，fno 压在实参下面一层）。旧版这里把
+	 * `addr+2` 当函数号打印，于是**全表 CALLMETHOD 的名字都是错的**：
+	 * nargs=0 打成 `NULL @0x0`，nargs=1 恰好等于 `GetMessageSpeedRate`
+	 * 的 fno，于是满屏假名。据此读出的调用链不可信 —— TURNSTALL 里
+	 * 「23463 触发 FadeOut」就是照着假名推出来的，实际 23463 只做
+	 * `ThumbnailCapture + LocalSave`。
+	 *
+	 * 静态反汇编只能还原「常量压栈」这一种最常见形式：编译器固定生成
+	 * `PUSH <fno>` 紧接 CALLMETHOD（中间只隔 REF/SWAP/DUP）。这里回溯
+	 * 最近压入的立即数，并排除 `PUSHSTRUCTPAGE + PUSH <structno>`
+	 * 这种**结构页号**（它不是函数号，取值和 fno 空间重叠）。
+	 * 回溯不到就打印 `?` —— 诚实地说「这是动态方法号」，
+	 * 比编一个错名字有用。
+	 */
+	struct {
+		unsigned int raw;
+		bool struct_page;
+		uint16_t prev_op, next_op;
+	} pushes[16];
+	int n_pushes = 0;
+	uint16_t prev_opcode = 0xffff;
 
 	for (size_t addr = start; addr < end;) {
 		uint16_t opcode = LittleEndian_getW(ain->code, addr);
@@ -396,16 +420,20 @@ static void ain_disasm(FILE *f, struct ain *ain, size_t start, size_t len)
 			fprintf(f, "0x%08zx: <invalid opcode 0x%04x>\n", addr, opcode);
 			break;
 		}
+		/* 回填「上一条 PUSH 的下一条指令」——回溯 fno 时要用它区分
+		 * 「方法号」和「随后压入的实参」：fno 后面跟的是实参压栈或
+		 * CALLMETHOD，而实参 PUSH 后面跟的是另一条实参压栈/SWAP。 */
+		if (n_pushes > 0 && pushes[n_pushes - 1].next_op == 0xffff)
+			pushes[n_pushes - 1].next_op = opcode;
+
 		const struct instruction *instr = &instructions[opcode];
-		{
-			int w = instruction_width(opcode);
-			unsigned int raw = 0;
-			if (w >= 6)
-				raw = LittleEndian_getDW(ain->code, addr + 2);
-			fprintf(f, "0x%08zx: %-18s", addr, instr->name);
-			if (w >= 6)
-				fprintf(f, " arg=%-8u(0x%x)", raw, raw);
-		}
+		int w = instruction_width(opcode);
+		unsigned int raw = 0;
+		if (w >= 6)
+			raw = LittleEndian_getDW(ain->code, addr + 2);
+		fprintf(f, "0x%08zx: %-18s", addr, instr->name);
+		if (w >= 6)
+			fprintf(f, " arg=%-8u(0x%x)", raw, raw);
 
 		if (opcode == CALLHLL) {
 			uint32_t lib = LittleEndian_getDW(ain->code, addr + 2);
@@ -417,19 +445,103 @@ static void ain_disasm(FILE *f, struct ain *ain, size_t start, size_t len)
 			} else {
 				fprintf(f, "lib=%u fun=%u <out of range>", lib, fun);
 			}
-		} else if (opcode == CALLFUNC || opcode == CALLMETHOD) {
-			uint32_t fun = LittleEndian_getDW(ain->code, addr + 2);
+		} else if (opcode == CALLMETHOD) {
+			/* 回溯 fno：从新到旧找**最像方法号**的那条 PUSH。
+			 * 排除三类：
+			 *   ① `PUSHSTRUCTPAGE + PUSH n` 的结构页号；
+			 *   ② 夹在两条实参压栈中间的那条（prev 是 PUSH/F_PUSH/S_PUSH）；
+			 *   ③ 后一条既不是 CALLMETHOD 也不是实参压栈的
+			 *      （那是 `local1 = …` 里的槽号，不是栈值）。
+			 * 第一条 CALLMETHOD 之后会把该位置及之后的记录丢掉（已消费）。 */
+			fprintf(f, " nargs=%u ->", raw);
+			int hit = -1;
+			for (int k = n_pushes - 1; k >= 0; k--) {
+				if (pushes[k].struct_page)
+					continue;
+				if (pushes[k].raw >= (unsigned int)ain->nr_functions)
+					continue;
+				if (pushes[k].prev_op == PUSH || pushes[k].prev_op == F_PUSH ||
+				    pushes[k].prev_op == S_PUSH)
+					continue;
+				uint16_t nx = pushes[k].next_op;
+				if (nx != CALLMETHOD && nx != F_PUSH && nx != S_PUSH && nx != PUSH)
+					continue;
+				hit = k;
+				break;
+			}
+			if (hit >= 0) {
+				uint32_t fun = pushes[hit].raw;
+				fprintf(f, " [%u] %s @0x%08x", fun, ain->functions[fun].name,
+					ain->functions[fun].address);
+				n_pushes = hit;   /* 该 PUSH 及之后的压栈已被这条调用消费 */
+			} else {
+				fprintf(f, " ?");
+			}
+		} else if (opcode == CALLFUNC) {
+			uint32_t fun = raw;   /* CALLFUNC 的立即数确实是函数号 */
 			if (fun < (uint32_t)ain->nr_functions) {
-				fprintf(f, "[%u] %s @0x%08x", fun, ain->functions[fun].name,
+				fprintf(f, " [%u] %s @0x%08x", fun, ain->functions[fun].name,
 					ain->functions[fun].address);
 			} else {
-				fprintf(f, "[%u] <OUT OF RANGE, nr_functions=%d>", fun, ain->nr_functions);
+				fprintf(f, " [%u] <OUT OF RANGE, nr_functions=%d>", fun, ain->nr_functions);
 			}
 		}
+
+		if (opcode == PUSH && w >= 6) {
+			if (n_pushes == (int)(sizeof(pushes) / sizeof(pushes[0]))) {
+				memmove(&pushes[0], &pushes[1], sizeof(pushes[0]) * 15);
+				n_pushes = 15;
+			}
+			pushes[n_pushes].raw = raw;
+			pushes[n_pushes].struct_page = (prev_opcode == PUSHSTRUCTPAGE);
+			pushes[n_pushes].prev_op = prev_opcode;
+			pushes[n_pushes].next_op = 0xffff;
+			n_pushes++;
+		}
+		prev_opcode = opcode;
+
 		fprintf(f, "\n");
 		addr += instruction_width(opcode);
 	}
 	fflush(f);
+}
+
+/* [D397] dump 一个结构体的成员表（序号 / 名字 / 类型）。
+ *
+ * 为什么需要：反汇编里到处是 `this.m4.m2.m5`，而「m5 是什么」决定了
+ * 「这个 lambda 挂上去以后由谁触发」。以前只能猜，猜错的代价是整条
+ * 排查链建立在假前提上（TURNSTALL 这两周就是）。
+ *
+ * 用法：`xsystem4 --struct SceneStack` 或 `--struct 1118`。
+ */
+static void ain_dump_struct(FILE *f, struct ain *ain, const char *query)
+{
+	int no = -1;
+	char *end = NULL;
+	long v = strtol(query, &end, 0);
+	if (end && end != query && *end == 0) {
+		no = (int)v;
+	} else {
+		for (int i = 0; i < ain->nr_structures; i++) {
+			if (ain->structures[i].name && !strcmp(ain->structures[i].name, query)) {
+				no = i;
+				break;
+			}
+		}
+	}
+	if (no < 0 || no >= ain->nr_structures) {
+		fprintf(f, "no such struct: %s (nr_structures=%d)\n", query, ain->nr_structures);
+		return;
+	}
+	struct ain_struct *s = &ain->structures[no];
+	fprintf(f, "struct %d %s  members=%d ctor=%d dtor=%d ifaces=%d\n",
+	        no, s->name, s->nr_members, s->constructor, s->destructor, s->nr_interfaces);
+	for (int i = 0; i < s->nr_members; i++) {
+		struct ain_variable *m = &s->members[i];
+		fprintf(f, "  m%-3d %-24s %s\n", i,
+		        m->name ? m->name : "?",
+		        ain_variable_to_string(ain, m));
+	}
 }
 
 static void ain_audit(FILE *f, struct ain *ain)
@@ -482,6 +594,8 @@ static void usage(void)
 	puts("    -v, --version        Display the version and exit");
 	puts("    -a, --audit          Audit AIN file for xsystem4 compatibility");
 	puts("    -e, --echo-message   Echo in-game messages to standard output");
+	puts("        --stat-method    Histogram CALLMETHOD/CALLFUNC arguments and exit");
+	puts("        --struct <name|no>  Dump a structure's member table and exit");
 	puts("        --encoding       Specify the game's character encoding. sjis (default) or gbk");
 	puts("        --font-mincho    Specify the path to the mincho font to use (path[:index] for .ttc)");
 	puts("        --font-gothic    Specify the path to the gothic font to use (path[:index] for .ttc)");
@@ -515,6 +629,7 @@ enum {
 	LOPT_AUDIT,
 	LOPT_DISASM,
 	LOPT_STAT_METHOD,
+	LOPT_STRUCT,
 	LOPT_ECHO_MESSAGE,
 	LOPT_ENCODING,
 	LOPT_FONT_MINCHO,
@@ -549,6 +664,7 @@ int main(int argc, char *argv[])
 	bool stat_method = false;
 	size_t disasm_start = 0, disasm_len = 0x400;
 	char *encoding = NULL;
+	char *struct_query = NULL;
 
 	char *font_mincho = NULL;
 	char *font_gothic = NULL;
@@ -564,6 +680,7 @@ int main(int argc, char *argv[])
 			{ "audit",         no_argument,       0, LOPT_AUDIT },
 			{ "disasm",        required_argument, 0, LOPT_DISASM },
 			{ "stat-method",    no_argument,       0, LOPT_STAT_METHOD },
+			{ "struct",        required_argument, 0, LOPT_STRUCT },
 			{ "echo-message",  no_argument,       0, LOPT_ECHO_MESSAGE },
 			{ "encoding",      required_argument, 0, LOPT_ENCODING },
 			{ "font-mincho",   required_argument, 0, LOPT_FONT_MINCHO },
@@ -602,6 +719,9 @@ int main(int argc, char *argv[])
 			break;
 		case LOPT_STAT_METHOD:
 			stat_method = true;
+			break;
+		case LOPT_STRUCT:
+			struct_query = optarg;
 			break;
 		case LOPT_DISASM: {
 			unsigned long ds = 0, dl = 0x400;
@@ -738,6 +858,13 @@ int main(int argc, char *argv[])
 	if (stat_method) {
 		NOTICE("stat-method");
 		ain_stat_method(stdout, ain);
+		ain_free(ain);
+		return 0;
+	}
+
+	if (struct_query) {
+		/* [D397] 只读 ain 结构，和 --disasm 一样不需要 init_libraries()。 */
+		ain_dump_struct(stdout, ain, struct_query);
 		ain_free(ain);
 		return 0;
 	}

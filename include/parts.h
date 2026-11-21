@@ -30,6 +30,13 @@ void PE_SetDelegateIndex(int parts_no, int delegate_index);
 int PE_GetDelegateIndex(int parts_no);
 /* [D337] child_no 是否为 ancestor_no 或其后代（点击落在容器上时用）。 */
 bool PE_PartsIsUnder(int child_no, int ancestor_no);
+/* [D397] 部件的命中盒（含父偏移），排查「点不中」用。 */
+bool PE_PartsHitbox(int parts_no, int *x, int *y, int *w, int *h);
+/* [D397] (类型, w, h, surface_area w/h)，区分「EX 没给」和「AIN 没设」。 */
+bool PE_PartsBrief(int parts_no, int *type, int *w, int *h, int *sa_w, int *sa_h);
+/* [D397] 位标志：1=有 uc_object 2=uc_label 非空 4=有 uc_data。 */
+int PE_PartsUcFlags(int parts_no);
+int PE_PartsParent(int parts_no);
 /* [D338] 覆盖 (x,y) 的最上层局部 clickable 件（0 = 没有）。 */
 int PE_FindClickableAt(int x, int y);
 /* [D338 诊断] 打印单个部件的输入相关字段。 */
