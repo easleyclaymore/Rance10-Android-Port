@@ -693,6 +693,33 @@ switch (BattleResult.Type) {         ; SWITCH 431
 `BattleInitializer::Init` 本体很短：`Init`(24821) → `EnemyCreator::Create`(24853) →
 读 `BattleResult.Type`(27289) / `BattleContext.GetPlayer().Hp`(26640) 判胜负初值。
 
+## 3.23 `BattleScenes`：战斗被拆成八个场景
+
+`BattleScenes::RunBattle`(25945) 本身只有十几字节，是一个 `RunIScene` 包装：
+
+```
+RunBattle() = RunIScene(dg(lambda: new 733))
+```
+
+战斗的每个阶段各自是一个独立场景，各有自己的 `RunXxx`：
+
+| fno | 入口 | 作用 |
+|---|---|---|
+| 25945 | `RunBattle` | 战斗本体（`SceneBattle`，类 733） |
+| 25946 | `RunBattlePhase` | 回合阶段推进 |
+| 25947 | `RunBattleResult` | 战斗结果画面 |
+| 25948 | `RunLowerLog` | 战报滚动 |
+| 25949 | `RunWinLoseView` | 胜 / 负画面 |
+| 25950 | `RunBattleInformation` | 战斗情报 |
+| 25951 | `RunSimpleBattleInformation` | 简易战斗情报 |
+| 25952 | `RunSimpleBattle` | 简易战斗本体 |
+| 25953 | `RunSimpleBattleResult` | 简易战斗结果 |
+
+`BattleResult.Type` 只有两个值（`SWITCH 431`）：`1` = 胜、`2` = 负。
+`Normal@Process` 的 `switch` 就两项 —— **没有平局、撤退或超时之类的第三态**。
+所以「战斗结束但两个 case 都没进」这种情况不存在，出现异常只可能是
+`BattleResult.Type` 本身没被写。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
