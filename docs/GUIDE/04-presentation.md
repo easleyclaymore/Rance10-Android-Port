@@ -390,6 +390,41 @@ LargeSkillButton 被点
 把它当成点击入口去找，方向就反了 —— 真正的入口是 `LargeSkillButton@SetOnClickEvent`(25350)
 写进去的 `m3`。
 
+### 4.5.12 图层的「写」和「读」用了两个不同的键
+
+这是兰斯10 里「层已经关了，部件还在画/还在吃点击」的根因，藏得很深：
+
+```c
+/* 写：PE_SetShow 的图层分支 */
+int c = PE_get_controller_index(parts_no);   /* AIN 的稳定 ID → 栈下标 */
+ctrl_stack.show[c] = show;
+
+/* 读：parts_is_visible（parts_internal.h） */
+int c = parts->controller_no;                /* 稳定 ID，直接当下标 */
+if (!ctrl_stack.show[c]) return false;
+```
+
+`ctrl_stack.id[i]` 存的是**稳定 ID**（0/2/4/6…），`ctrl_stack.show[i]` 按**栈下标**索引。
+`AddLayer` 之后 `id[i] != i` 是常态，于是：
+
+```
+EraseLayer(id=3)  →  show[1] = 0
+部件 228 的 controller_no = 2  →  去查 show[2]，仍是 1  →  继续画、继续吃光标
+```
+
+**A/B 判据**（`XSYS4_VIS_IDX=1` 会先把 `controller_no` 映射成栈下标再查）：
+同一坐标点击的命中从 `900000228` 变成 `900000731`，
+战斗装载 `Game/Battle` 仍是 32 次、零错误 —— 差异只可能来自这条修复。
+
+两个后续要点：
+
+- **这条修完不等于解决遮挡**。它只让「老活动的件」让位；控制台里的
+  `SceneBattleInformation` 框架按钮是**另一个活着的层**（见 3.46），
+  两者要分别处理。
+- `parts_cover_layer` 与 `ctrl_stack.show[]` 必须用**同一个键空间**
+  （都下标，或都 ID）。改一处不改另一处，就是 D261 那种「改了却没用」
+  的第三次复现。
+
 ## 4.6 字符出来了但显示方框：先分码表、再分字体
 
 多字节编码的引擎里，「文字没显示」至少有三层，症状却几乎一样：纹理尺寸正常、

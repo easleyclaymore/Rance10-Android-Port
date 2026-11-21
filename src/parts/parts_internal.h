@@ -651,7 +651,21 @@ static inline bool parts_no_is_layer(int no)
 {
 	return no >= 0 && no < 100000000;
 }
-/* 图层 + 部件自身都可见才画。 */
+/* [D481] 图层 + 部件自身都可见才画。
+ *
+ * **这里曾经读写用不同的键**：`PE_SetShow` 的图层分支写的是
+ * `ctrl_stack.show[PE_get_controller_index(id)]`（**栈下标**），
+ * 而这里直接用 `parts->controller_no`（**稳定 ID**）当下标去读。
+ * 只要 `ctrl_stack.id[i] != i`（AddLayer 之后必然如此），两者就错位：
+ * `EraseLayer(id=3)` 关掉的是 `show[1]`，部件却去看 `show[2]`，
+ * 于是「层关了、部件仍 vis=1」—— 表现就是老场景的按钮还留在画面上、
+ * 按 z 抢新场景的点击（`[LAYER-LEAK]` / H033 的精确形态）。
+ *
+ * `XSYS4_VIS_IDX=1` 打开「先把 controller_no 映射成栈下标再查」，
+ * 用于验证这条不一致是不是残留层的成因。 */
+extern bool parts_vis_use_index;
+int PE_get_controller_index(int id);   /* [D481] 定义在 parts.c */
+
 static inline bool parts_is_visible(const struct parts *parts)
 {
 	if (!parts->global.show)
@@ -659,6 +673,11 @@ static inline bool parts_is_visible(const struct parts *parts)
 	int c = parts->controller_no;
 	if (c < 0 || c >= PARTS_CONTROLLER_STACK_MAX)
 		return true;
+	if (parts_vis_use_index) {
+		int m = PE_get_controller_index(c);
+		if (m >= 0)
+			c = m;
+	}
 	if (!ctrl_stack.show[c])
 		return false;
 	return c >= parts_cover_layer;

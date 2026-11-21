@@ -1593,8 +1593,19 @@ static void parts_update_component(struct parts *parts)
 	}
 }
 
+/* [D481] 见 parts_internal.h 里 `parts_is_visible` 的说明。 */
+bool parts_vis_use_index;
+
 void PE_UpdateComponent(possibly_unused int passed_time)
 {
+	{
+		static int inited;
+		if (!inited) {
+			inited = 1;
+			const char *e = getenv("XSYS4_VIS_IDX");
+			parts_vis_use_index = e && !strcmp(e, "1");
+		}
+	}
 	// 读档之后，游戏脚本可能算出一个负的时间增量：
 	// 因为它在存档里存的是绝对的 system.GetTime() 值，
 	// 而那个值跨进程重启是没有意义的。
