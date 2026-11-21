@@ -1423,6 +1423,42 @@ $ xsystem4 --dump-structs .
 不要拿 `fnmap` 的同号去套 —— 那是两张完全不同的表（函数号和结构索引），
 我第一眼就把 786 当成了某个函数。
 
+## 3.41 「setter 有、getter 缺」是一整类缺口，可以自动扫
+
+兰斯10 的 HLL 接口大量成对：`SetComponentXxx` / `GetComponentXxx`。
+实现的人往往只补了 setter（因为画面能出来），getter 留在
+`HLL_TODO_EXPORT` 里。**这一类是最好补的**：存储位置已经被 setter 定死了，
+getter 只是回读同一个量 —— 不需要推断任何新语义。
+
+扫法（`--dump-hll` + 源码导出表）：
+
+```
+对每条未实现的声明 (lib, name)：
+    如果 name 以 Get 开头
+    且 (lib, name.replace("Get","Set",1)) 或 (lib, name.replace("Get","Is",1))
+       在已实现集合里
+    → 这是一个配对缺口
+```
+
+2026-11-21 的结果：**59 组配对缺口**，其中 **36 组的 setter 是真实现**
+（剩下的 setter 自己是 `PE_Noop_*` 空桩，补 getter 也没东西可读）。
+按这个扫法一轮补了 11 条：6 个颜色分量 + draw filter + 旋转 X/Y +
+alpha 裁剪器 + 数字长度。
+
+**两条必须守住的口径**：
+
+- **getter 回读 `local.*`，不是 `global.*`。** `global` 是叠加父件之后的合成值；
+  setter 写的是 `local`，getter 必须回读同一个量。`PE_GetPartsAlpha` 一直是这么做的，
+  新补的 `PE_GetAddColorR` / `PE_GetPartsRotateX` 跟它对齐。
+- **参数个数可能不对称。** `SetNumeralLength(partsNo, length, state)` 是 3 参，
+  而 `GetNumeralLength(partsNo)` 只有 1 参 —— 这时读**默认态 state 0**，
+  不要照 setter 的签名去补一个 state 参数（`--dump-hll` 里有准确的 args 数）。
+
+**还有一类不能照搬**：`Parts_SetAnchor(partsNo, top, left, right, bottom)` 想实现
+就必须往 `struct parts` 里加字段，而**这个结构是按顺序序列化进存档的**
+（D174 的复选框就是这么踩的，最后用 64 槽旁路表绕开）。凡是"要加字段到
+`struct parts`"的补法，一律先找旁路表，别直接加。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。

@@ -3006,6 +3006,23 @@ void PE_SetMultiplyColor(int parts_no, int r, int g, int b)
 /* [D341] 别名：AIN 的 `GetComponentAbsolutePos*` 指的是**含父偏移**的全局坐标，
  * 而 `PE_GetPartsX/Y/Z` 返回的是 `local.pos`。两者不能混用 ——
  * 战斗中敌人/技能卡都挂在多层容器下，拿 local 去算会整体偏移。 */
+/* [D455] 颜色 getter 族：**setter 早就有，getter 一直是 TODO**。
+ *
+ * 这一族是典型「配对缺口」：`SetComponentAddColor` / `SetComponentMulColor`
+ * 都实现了（写进 `local.add_color` / `local.multiply_color`），
+ * 但 6 个分量 getter 全在未实现清单里。调用方（技能演出、受击闪白）
+ * 设完颜色再读回来做插值时，拿到的是桩返回的 0，颜色就永远停在第一次。
+ *
+ * 口径与 `PE_GetPartsAlpha` 一致：**返回 local（本件自己的值），不是 global**。
+ * global 是叠加父件之后的合成值，读它会把父件的颜色也算进来 ——
+ * 而 setter 写的是 local，getter 必须回读同一个量。 */
+int PE_GetAddColorR(int parts_no) { return parts_get(parts_no)->local.add_color.r; }
+int PE_GetAddColorG(int parts_no) { return parts_get(parts_no)->local.add_color.g; }
+int PE_GetAddColorB(int parts_no) { return parts_get(parts_no)->local.add_color.b; }
+int PE_GetMultiplyColorR(int parts_no) { return parts_get(parts_no)->local.multiply_color.r; }
+int PE_GetMultiplyColorG(int parts_no) { return parts_get(parts_no)->local.multiply_color.g; }
+int PE_GetMultiplyColorB(int parts_no) { return parts_get(parts_no)->local.multiply_color.b; }
+
 int PE_GetPartsAbsoluteX(int parts_no) { return parts_get(parts_no)->global.pos.x; }
 int PE_GetPartsAbsoluteY(int parts_no) { return parts_get(parts_no)->global.pos.y; }
 int PE_GetPartsAbsoluteZ(int parts_no) { return parts_get(parts_no)->global.z; }
@@ -3344,6 +3361,31 @@ float PE_GetPartsMagY(int parts_no)
 void PE_SetPartsRotateX(int parts_no, float rot_x)
 {
 	parts_set_rotation_x(parts_get(parts_no), rot_x);
+}
+
+/* [D456] 与 setter 配对的 getter（同样是"setter 有、getter 缺"）。
+ * 口径统一：回读 `local.*`（本件自己的值），不是叠加父件后的 `global.*`。 */
+float PE_GetPartsRotateX(int parts_no)
+{
+	return parts_get(parts_no)->local.rotation.x;
+}
+
+float PE_GetPartsRotateY(int parts_no)
+{
+	return parts_get(parts_no)->local.rotation.y;
+}
+
+int PE_GetPartsAlphaClipperPartsNo(int parts_no)
+{
+	return parts_get(parts_no)->local.alpha_clipper_parts_no;
+}
+
+/* `GetNumeralLength` 在 AIN 里只有 (partsNo) 一个参数，没有 state ——
+ * 而 setter 是 (partsNo, length, state)。所以读**默认态 (state 0)** 的长度：
+ * 数字件几乎只用默认态，带 state 的那些是逐帧动画用的，读错态会得到上一帧的值。 */
+int PE_GetNumeralLength(int parts_no)
+{
+	return parts_get_numeral(parts_get(parts_no), PARTS_STATE_DEFAULT)->length;
 }
 
 void PE_SetPartsRotateY(int parts_no, float rot_y)
