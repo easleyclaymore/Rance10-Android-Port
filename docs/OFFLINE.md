@@ -158,6 +158,42 @@ AIN 函数总数    ：37698        （用 --dump-signatures 当分母）
 判据用法：某个界面报错时，先跑一次带 `XSYS4_FN_COVER` 的，看那个界面
 **实际执行到哪些 fno**，再决定读哪几个函数 —— 比按文件名瞎猜准。
 
+## reach_hll — 「主流程会撞上哪些未实现 HLL」的静态上界
+
+`--dump-hll` 只能告「哪些没实现」（339 条）；软桩只能告「这轮跑到了哪些」（0 条）。
+两者之间有个空档：**没实现、而且从主流程可达、只是这轮还没走到** —— 那批才是
+接下来一定会撞上的。
+
+```bash
+python3 tools/offline/reach_hll.py /tmp/ain_full4.txt     --roots 22579,24882,23586,26388,26415 --max-depth 25
+```
+
+做法：把 `CALLMETHOD n -> [fno]` / `CALLFUNC fno` 读成有向边，从入口 BFS，
+沿途遇到的 `CALLHLL` 若在未实现集合里就记下（带最短深度）。
+
+**两个必须注意的点**（我第一版两个都踩了）：
+
+- **HLL 名必须连库名一起比。** 只比函数名会把 `KiwiSoundEngine.Stop`
+  （已实现）和别的库的 `Stop`（未实现）混起来，虚报一条。
+- **结果是上界，不是精确值。** 静态分析不区分运行时分支，所以列出来的可能到不了；
+  但**不会漏**——「没列出来」比「列出来了」更强。
+
+2026-11-21 的结果（入口 = 第一章 / 战斗 / 地图 / 结算 / 回合开始；深度到 16 饱和）：
+
+```
+可达且未实现的 HLL：10 条
+  d=4  HTTPDownloader.DecodeString / EncodeString / SJISToUTF8 / UTF8ToSJIS   ← 网络命令
+  d=8  ChipmunkSpriteEngine.Debug_GetFillRate                                  ← debug 叠加层
+  d=8  SystemService.Debug_GetUseVideoMemorySize                               ← debug 叠加层
+  d=9  PartsEngine.GetSystemOverlayController                                  ← 系统 overlay
+  d=10 SystemService.GetCPUInfo / GetScreenInfo                                ← 系统信息页
+  d=11 PartsEngine.CancelFormClose                                             ← 窗体
+```
+
+**结论：HLL 对主流程已经不是瓶颈。** 剩下 328 条未实现里，能从上面对主流程
+可达的只有这 10 条，且全部落在网络 / debug / 系统信息页 / 窗体这类外围。
+所以「补 HLL」的收益主要不在这条线上 —— 该继续做的是 AIN 语义。
+
 ## gsave_dump — 存档检查器
 
 不跑游戏就能判断"我们写出去的档，自己能不能读回来"。
