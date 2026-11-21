@@ -1526,6 +1526,41 @@ SetPos
 结算屏只负责读。所以「奖励为空」要往 `BattleBonusCalculator::Calc` 查，不是这里。
 
 
+## 3.43 敌方回合：动作是「按条件挑」，不是随机表
+
+`SceneBattle@ProcessEnemyAction`(24923, 212 行) 只有 7 个调用，因为它几乎全是
+内联的数组操作。真正的语义在三跳里：
+
+```
+enemy.Actions
+  → EnemyActionCollection@Require(27740)     ← 挑本回合用哪个动作
+       ├─ CalcIndex(27741)                    ← 逐个 BattleConditionEvaluator@Evaluate
+       │                                         条件成立的**第一个** 就是它
+       ├─ RAND                                ← 同条件里的随机
+       ├─ BattleContext.IsShowWeakPointAlways
+       └─ IsTutorialForceShowWeakPoint        ← 教学关强制展示弱点
+  → Current → EnemyActionView@Set             ← 把选中的动作显示在敌人头上
+  → EnemyAction.SkillActions → EnemySkillActionCollection@Reset   ← 技能游标归零
+```
+
+`CalcIndex` 里 242 行几乎全是 `Evaluate(动作[i].条件)` 之后紧跟 `IFZ 跳到下一个` ——
+**没有查表、没有权重数组**。所以「敌人不放某个技能」这个问题：
+
+- 不是随机没摇到，而是**那个动作的条件一直不成立**；
+- 条件的语义在 `BattleConditionEvaluator@Evaluate` 里，要往那里查，
+  不要往 `EnemyActionCollection` 里找规则表。
+
+后面那半段是**表现**而不是逻辑：
+
+```
+EnemyActionView@StartAction(25101)   ← 只有 EraseFront + SetIndex，只动图标
+SceneBattle@IsEnemySkillActionFailed
+parts::AddProcessList                ← 真正的动作演出交给过程队列
+```
+
+所以「敌人不动」要先分清是**没选到动作**（`Require` / `Evaluate` 那条）
+还是**选了但演出没跑**（过程队列那条）。判据：`EnemyActionView@Set` 有没有被调。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
