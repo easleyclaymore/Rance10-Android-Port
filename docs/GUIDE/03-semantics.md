@@ -550,6 +550,45 @@ case 6 / 8 / 9 / 11–13 / 15 里既没有 `Scenes::Run*` 也没有 `Turn::set`�
 switch 表；`switch 313 / 314 / 315` 分别对应 `GameChapter1/2/3@Run`。
 对着错的 switch 表找 case，会得到一张看似合理但完全错位的图。
 
+## 3.19 选关：两个入口，一处分叉
+
+第一章 phase 4/5 分别调两个入口，它们只在开头一句不同：
+
+```
+RunSingleQuest(id):
+    if (!GameContext.IsExistRestoreInfo()) RunStackedMapQuest()
+    else                                   OpenQuest(id)
+
+RunMultiQuest():
+    if (!GameContext.IsExistRestoreInfo()) RunStackedMapQuest()
+    while (true) {
+        QuestList.EraseFront()
+        if (QuestList.IsEmpty()) break
+        OpenQuest(QuestList.Front)
+    }
+```
+
+`GameContext@IsExistRestoreInfo` 就是「读档后有没有待恢复的进度」。
+**有就跳过地图、直接进上次那一关；没有就先跑地图。** 这是「续玩」与「新回合」
+唯一的分叉点，也是为什么读档能绕过地图直接落回原处。
+
+`OpenQuest(quest, pre, post)` 也不是「打开界面」，而是先拼委托再交给场景模板：
+
+```
+scene = new SceneQuestSceneSet()
+scene.m0 += pre              ; DG_PLUSA —— 委托数组拼接
+scene.Run(quest, post)
+```
+
+`SceneQuestSceneSet@Run`(23645) 是**标准场景 Run 模板**：建 stack → 跑前置委托 →
+场景体 → `Join`。每个场景 `Run` 结尾那句 `X.Join()` 都是这个模板的产物。
+
+两处细节：
+
+- `SceneQuestSelect@GetResult` = `return m4[m5]`（选中项数组 + 索引）
+- `SceneQuestSelect@Run` 的 stack 在 **m15**，而 `SceneTurnStart` 在 **m1** ——
+  每个场景类自己决定把 `SceneStack` 放哪个字段，不能假设「统一在 m1」
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
