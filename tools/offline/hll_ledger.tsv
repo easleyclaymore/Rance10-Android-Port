@@ -106,7 +106,7 @@ PartsEngine.SetComponentPosZ	L3	parts_set_z：local.z 变化即重算 global.z �
 PartsEngine.SetComponentShow	L3	层号走 ctrl_stack.show（D128），部件走 local.show；D311 serial 实测 show/hide 序列与 AIN 意图一致
 PartsEngine.SetComponentType	L3	类型变更时 parts_state_reset 重建状态 + 写 component_type（1-based state）
 PartsEngine.SetDelegateIndex	L3	写 parts.delegate_index；后续 CallDelegate 按它取 FunctionSet（s161 实测 di 一致）
-PartsEngine.SetEnableInputProcess	L3	已实现（D496）：flag 挂 struct parts 尾（默认 true，不参与 save.c 顺序序列化）；input.c 对组件类型显式 ∈ {4,7,11} 的部件门控 hover_blocking/click_eligible（is_hovered 不动，D490 教训），不碰 clickable（D165 教训）。XSYS4_EIP_GATE=0 回退。契约证据：AIN 只写不读（8255 xref 全是转发；IsInputPartsActive 按类型过滤）。判据待跑测：D165 场景回归（活动 107 个、任务地图进战斗）+ 输入组件 enable=0 不响应
+PartsEngine.SetEnableInputProcess	L3	已实现（D496）：flag 挂 struct parts 尾（默认 true，不参与 save.c 顺序序列化）；input.c 对组件类型显式 ∈ {4,7,11} 的部件门控 hover_blocking/click_eligible（is_hovered 不动，D490 教训），不碰 clickable（D165 教训）。XSYS4_EIP_GATE=0 回退。契约证据：AIN 只写不读（8255 xref 全是转发；IsInputPartsActive 按类型过滤）。判据已落实（d497_eip0 vs d497_smoke A/B）：两轮活动数一致（36）、任务地图可进；[eip] 探针 206/217 次 enable=0 全部 MISS（部件未创建）→ 闸在主路径惰性，11 次 enable=1 命中真实部件
 PartsEngine.SetKeyWaitShow	L2	存取闭环成立（D496）：状态挂 parts_widget（keywait_cg/flat/x/y/z/show），IsKeyWaitShow 读回；调用方证据 = _CMsgKeyWait@_PreCommand→show(0)/_PostCommand→show(1)（693 次/章）。渲染挂钩待证据：SetKeyWaitCGName/FlatName/Pos 运行期 0 次命中，引擎默认 ▼ 素材与闪烁节奏不可知，不猜
 PartsEngine.SetWantSaveBackScene	L3	写 want_save_back_scene，决定 SaveBackScene 的收录范围（读取端默认关，D310）
 PassRegister.RegistText	L3	有序插入 + write_register 落盘，幂等
@@ -123,7 +123,7 @@ system.GroupLoad	L3	→ load_globals：读盘并改写全局槽
 system.GroupSave	L3	→ save_globals：落盘到 savedir（实测生成 GlobalSave.asd）
 system.IsDebugMode	NA	发行环境应恒 false，属正确行为，无需实现
 system.Peek	L2	取栈顶不弹出；1516 次/章
-PartsEngine.CreatePartsMovie	L3	已实现（D497）：movie_load + PE_init_parts_movie（尺寸=视频自身尺寸 movie_get_size，AIN 侧随后 Math.Max(View,Parts)）；背景色 m_nBackColorY/Cb/Cr 是 YCbCr（dump-structs 成员名实证），BT.601 转 RGB。判据待跑测：SceneMovie OP 播放
+PartsEngine.CreatePartsMovie	L3	已实现（D497）：movie_load + PE_init_parts_movie（尺寸=视频自身尺寸 movie_get_size，AIN 侧随后 Math.Max(View,Parts)）；背景色 m_nBackColorY/Cb/Cr 是 YCbCr（dump-structs 成员名实证），BT.601 转 RGB。判据未落实：[acall] 调 SceneMovie@Run 空队列早退（无 [pmov]），OP 是纯新游戏路径、无历史会话到达过；待新游戏点击序列考古
 PartsEngine.ReleasePartsMovie	L3	已实现（D497）：关闭槽位 movie_context；parts 本体随场景释放
 PartsEngine.PlayPartsMovie	L3	已实现（D497）：movie_play；返回 false 走 AIN 优雅跳过路径（字节码 0x1c886e 实证：IFZ→HideCursor→return 0）
 PartsEngine.IsEndPartsMovie	L3	已实现（D497）：轮询点推进 movie_play + movie_draw 进部件隐藏精灵（PE_get_movie_sprite），返回 movie_is_end——AIN 每帧来这里轮询，节奏与 DrawMovie Load/Run/Draw 同构
