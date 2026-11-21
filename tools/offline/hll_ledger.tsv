@@ -43,7 +43,7 @@ Delegate.Empty	L2	判空委托；6387 次/章，是消息派发的前置判断
 Delegate.Numof	L2	委托项数；调用方按它遍历 [obj,fun] 对
 Delegate.Set	L3	按下标改写委托项（obj,fun）；写后派发即生效（[dgadd] 实测）
 IbisInputEngine.Joystick_ClearCaptureFlag	NA	手柄捕获标志；键鼠路径不使用，属可选功能
-IbisInputEngine.Joystick_IsKeyDown	NA	键鼠路径不需要手柄；接 SDL 手柄属可选功能
+IbisInputEngine.Joystick_IsKeyDown	L3	已实现（D497）：SDL3 Joystick 直通映射（code=按钮下标/axis=轴下标），无原版编码表证据，注释写明待手柄实测；键鼠行为不变（无手柄时恒 false）
 IbisInputEngine.Key_IsDown	L2	按键按下状态；1.5 万次/章，Ctrl 快进与点击推进都靠它
 IbisInputEngine.MouseWheel_GetCount	L3	消费式读取：取增量并清零（600 次/章，列表滚动可用）
 MainEXFile.A2Exists	L2	A2 键存在性查询；EX 读取链路正确：名字/行/文本与脚本一致（12 屏文字即证据）

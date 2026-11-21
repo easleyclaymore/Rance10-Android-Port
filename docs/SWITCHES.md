@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **257** 个开关，其中 **39** 个没有就近注释。
+共 **257** 个开关，其中 **36** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -66,7 +66,7 @@
 | 呈现与输入 | `XSYS4_ACT_CLICKABLE_ALL` | `src/parts/activity.c:1158` | 把所有**活动文件里声明**的部件标为可点（运行时建的 900000xxx 不受影响） |
 | 呈现与输入 | `XSYS4_ACT_DBG` | `src/parts/activity.c:765` | 活动装载与点击派发诊断 |
 | 呈现与输入 | `XSYS4_ACT_DEBUG` | `src/parts/activity.c:1717` | 活动诊断的旧开关 |
-| 呈现与输入 | `XSYS4_ACT_GEOM` | `src/hll/PartsEngine.c:4847` | [D360 诊断，默认关] `AFL_Activity_GetPartsNumber` 每查到一个部件号就把它的矩形/可见性打出来 —— 一次跑测即可拿到「按名字找到的部件到底在屏幕哪里」 |
+| 呈现与输入 | `XSYS4_ACT_GEOM` | `src/hll/PartsEngine.c:4857` | [D360 诊断，默认关] `AFL_Activity_GetPartsNumber` 每查到一个部件号就把它的矩形/可见性打出来 —— 一次跑测即可拿到「按名字找到的部件到底在屏幕哪里」 |
 | 呈现与输入 | `XSYS4_ACT_PART_DBG` | `src/parts/parts.c:3003` | 打印活动部件的建造解析（名字/类型/尺寸/表示領域/flat 名）与 300 号段之后的 SetPos/SetZ |
 | 呈现与输入 | `XSYS4_ACT_RELEASE_DGLIST` | `src/parts/activity.c:1530` | [D270 已转正] ReleaseActivity 的 EraseNumberList 出参不再丢弃：把被释放部件的 delegate_index 写回 AIN，供 CPartsMessageManager@ReleaseFunctionSetList 销掉消息分发表里的委托（否则释放后的委托仍可命中，号复用时调到上一次活动的处理器）；默认生效，=0 回退做 A/B |
 | 呈现与输入 | `XSYS4_ACT_RELEASE_DGLIST_DBG` | `src/parts/activity.c:1519` | [诊断] 打印每次 ReleaseActivity 释放的活动名、部件数与实际写回 EraseNumberList 的委托下标个数；用来证明 D270 的修复不是死代码（个数恒 0 就说明出参本来没被 AIN 用） |
@@ -117,8 +117,8 @@
 | 其它 | `XSYS4_ALPHA_DBG` | `src/parts/parts.c:3106` | 打印 SetComponentAlpha 与 AddMotionAlpha 的 parts/alpha 序列（查部件为何全透明）。[D277] 现在同时打 `fno~` 提示来源；注意该值只是参考（见下条） |
 | 其它 | `XSYS4_ALPHA_STACK` | `src/parts/parts.c:3117` | [诊断] 配合 ALPHA_DBG，在每次 SetAlpha 时打 AIN 调用栈。定位 alpha 被谁写成 0 必须用它 —— `hll_current_fno()` 返回的是上次 HLL 的值、返回后不复原，实测会打出 `fno=107`(CASConstructionProcess@SetSrcX) 这种完全无关的函数 |
 | 其它 | `XSYS4_BACKSCENE_DBG` | `src/parts/save.c:756` | [诊断] 打印 SetWantSaveBackScene / SaveBackScene / LoadBackScene 的时机与规模（背景场景快照链） |
-| 其它 | `XSYS4_BACKSCENE_SHOW` | `src/hll/PartsEngine.c:4458` | [诊断] 让 `SetShowForBackScene(no,show)` 真正生效（默认空桩）。战斗里全屏背景 flat 705 挡住技能按钮点击，这个 setter 是 AIN 本来要用来按场景隐藏背景的手段；开它可验证 `[backscene] no= show=` 的实参 |
-| 其它 | `XSYS4_BACKSCENE_WANT` | `src/hll/PartsEngine.c:2246` | [诊断] `=1` 让 `IsWantSaveBackScene` 返回真实标记（默认仍恒 false）。实测对开场剧情背景无影响 |
+| 其它 | `XSYS4_BACKSCENE_SHOW` | `src/hll/PartsEngine.c:4468` | [诊断] 让 `SetShowForBackScene(no,show)` 真正生效（默认空桩）。战斗里全屏背景 flat 705 挡住技能按钮点击，这个 setter 是 AIN 本来要用来按场景隐藏背景的手段；开它可验证 `[backscene] no= show=` 的实参 |
+| 其它 | `XSYS4_BACKSCENE_WANT` | `src/hll/PartsEngine.c:2256` | [诊断] `=1` 让 `IsWantSaveBackScene` 返回真实标记（默认仍恒 false）。实测对开场剧情背景无影响 |
 | 其它 | `XSYS4_BCB_DBG` | `src/vm.c:6229` | [D376 诊断，默认关] `DG_ASSIGN` 写 `BattleCardButton` 的点击委托（37011/37016/37029/37568）时打目标实例页与成员号 —— 回答「赋值有没有落到被点中的那个实例上」 |
 | 其它 | `XSYS4_BG_SWEEP_MAP` | `src/parts/parts.c:2283` | `=0` 关闭「根级 `背景／*` 换图时收起同层 `地图／*` 覆盖件的根」。默认开（D317，[BG-LAYER] 的收敛） |
 | 其它 | `XSYS4_CAP_DBG` | `src/parts/input.c:240` | [诊断] 点击捕获归因：只在「按下那一帧、且命中盒覆盖光标」时打印每个部件的 vis/show/ck/pc/hover-consumed/began，用来判「为什么没人拿到 click_down_parts」（D332） |
@@ -129,10 +129,10 @@
 | 其它 | `XSYS4_CG_MISS_STACK` | `src/hll/CGManager.c:83` | [D292 诊断] 配合 CG_MISS_DBG，在每个未命中的 CG 名后面打一次 AIN 调用栈；用来抓「是谁在问这个不存在的名字」（占位图 `？？？` 的调用方） |
 | 其它 | `XSYS4_CG_SPRITE_DBG` | `src/parts/render.c:643` | [诊断] 配合 CG_SPRITE_PATH：打印走精灵路径的大矩形（no/di/pr/filt/a） |
 | 其它 | `XSYS4_CG_SPRITE_PATH` | `src/parts/render.c:639` | [诊断] 宽≥1900 且高 250..600 的 CG 改走精灵路径（`gfx_render_texture`）。实测与 parts 着色器路径**结果一致**（`s92` vs `s104` 逐像素几乎相同），说明底板一直在正常绘制，保留供以后遇到真·着色器问题时对照 |
-| 其它 | `XSYS4_CONSTRUCT_776` | `src/hll/PartsEngine.c:574` | =0 把 AddPartsConstructionProcess(776) 退回空桩，用于卡片合成 A/B |
+| 其它 | `XSYS4_CONSTRUCT_776` | `src/hll/PartsEngine.c:584` | =0 把 AddPartsConstructionProcess(776) 退回空桩，用于卡片合成 A/B |
 | 其它 | `XSYS4_CONSTRUCT_DBG` | `src/parts/construction.c:358` | 打印部件合成操作：PartsFunc(case 162)、776 批量入口、Build 的 parts/cmd/CG 名与 op 数 |
 | 其它 | `XSYS4_COVER_HYST` | `src/parts/parts.c:1821` | [D343 默认生效，=0 关闭] cover_layer 单帧滞回：同一个值连续 3 帧才生效，抹掉「某层偶发全屏不透明件」造成的整层闪烁（实测变化次数 17→9，且不再在 4/7 之间逐帧跳） |
-| 其它 | `XSYS4_CPROC_DBG` | `src/hll/PartsEngine.c:4270` | — |
+| 其它 | `XSYS4_CPROC_DBG` | `src/hll/PartsEngine.c:4280` | GetPartsConstructionProcess 合成读回挂账的触达轨迹（D497） |
 | 其它 | `XSYS4_CP_DBG` | `src/vm.c:512` | 〔摘〕Parts(1114) 的 m_partsNumber 若在拷贝时还是 0，副本就永远是 0。 |
 | 其它 | `XSYS4_DUMP_ABTN` | `src/vm.c:2876` | — |
 | 其它 | `XSYS4_DUMP_BTN` | `src/vm.c:2922` | — |
@@ -142,7 +142,7 @@
 | 其它 | `XSYS4_DUMP_FRAME` | `src/video.c:540` | 指定帧的完整快照（配合 DUMP_AT 的扩展模式） |
 | 其它 | `XSYS4_DUMP_GLYPH` | `src/parts/render.c:253` | [诊断] 把指定文本部件的字形纹理逐个转存成 /tmp/glyph_<no>_<i>.png（最多 6 个）。判断「字被裁」是位图层还是绘制层的唯一硬证据 |
 | 其它 | `XSYS4_DUMP_TOPS` | `src/vm.c:3998` | 〔摘〕「条件是真是假」，而这类「条件永远为假」正是最难查的一类。 |
-| 其它 | `XSYS4_EIP_GATE` | `src/parts/input.c:139` | — |
+| 其它 | `XSYS4_EIP_GATE` | `src/parts/input.c:139` | SetEnableInputProcess 门控总闸；=0 回退到"输入组件不门控"（D496） |
 | 其它 | `XSYS4_ENV_DBG` | `src/vm.c:4557` | — |
 | 其它 | `XSYS4_EX_DBG` | `src/hll/MainEXFile.c:527` | 〔摘〕所有任务都会被判成地图任务、剧情整段跳过——所以必须能看见。 |
 | 其它 | `XSYS4_EX_DUMP` | `src/parts/activity.c:899` | 按部件名 dump 整棵 EX 子树（查「尺寸」「表示領域」写在哪个键上）；值=部件名 |
@@ -197,9 +197,9 @@
 | 其它 | `XSYS4_MC_SLOT_DBG` | `src/vm.c:1441` | — |
 | 其它 | `XSYS4_MC_WATCH` | `src/vm.c:1244` | 〔摘〕时（callee 声明 N 槽、call site 只压了 1 槽）只能靠猜。 |
 | 其它 | `XSYS4_MGRBT` | `src/vm.c:4254` | — |
-| 其它 | `XSYS4_MOTION_DBG` | `src/hll/PartsEngine.c:4058` | — |
+| 其它 | `XSYS4_MOTION_DBG` | `src/hll/PartsEngine.c:4068` | — |
 | 其它 | `XSYS4_MOUSE_DBG` | `src/input.c:436` | [诊断] 打印 SDL 按钮事件（btn / state / clicks / pos / windowID）。用来二分「X 层没把 ButtonPress 交给 SDL」和「SDL 收到了但引擎丢边沿」：同一配方下无 `key:Shift_L` 激活时 `[mouse]` 一条都没有（`s27`），加激活后立即出现并点中 `900000716`（`s26`） |
-| 其它 | `XSYS4_MOVIE_DBG` | `src/hll/PartsEngine.c:4075` | — |
+| 其它 | `XSYS4_MOVIE_DBG` | `src/hll/PartsEngine.c:4085` | PartsMovie 族（部件内嵌视频）的创建/轮询轨迹（D497） |
 | 其它 | `XSYS4_MSGF_FIX` | `src/hacks.c:328` | [D204] AIN v12 无 MSGF 段时按函数名把 msgf 解析到 "message"/3（Rance10: fno 6100）；默认开启，=0 关闭做 A/B |
 | 其它 | `XSYS4_MSGQ_DBG` | `src/parts/message.c:179` | 〔摘〕对其它值走 member1[delegate_index]。分派打空炮时必须先知道走的哪条。 |
 | 其它 | `XSYS4_MSGWIN_DBG` | `src/hll/PartsEngine.c:49` | [诊断] 打印消息窗口配置族 setter 的触达与实参（Active/Text/CGName/FlatName/TextArea/OriginPosMode/Space/Speed），每个函数限 20 条；用来判定「空桩是不是真被调用」 |
@@ -208,7 +208,7 @@
 | 其它 | `XSYS4_MSGWIN_FULL` | `src/parts/activity.c:1256` | [D217 已转正] EX 消息窗口组件补齐 39px 字体/字色/字距/行距，并用独立 CG 部件装载 种类別情报 的 底板ＣＧ名；默认生效，=0 回退做 A/B |
 | 其它 | `XSYS4_MSGWIN_TEXT_BASELINE` | `src/parts/activity.c:1313` | [诊断] 消息窗口正文 y 补偿一个字号（默认开）。`文本エリア.y` 是「首行顶边距窗口顶」，而文本件的 `origin_offset.y` 已是 `-字形高`，不补偿会高出整一个字，正文上半被名牌盖住（`s126` 的「半个字」）；`=0` 回退 |
 | 其它 | `XSYS4_MSG_DBG` | `src/parts/message.c:45` | 〔摘〕只打非悬停消息，否则前 60 条全被 MOUSE_ON 占满，看不到点击。 |
-| 其它 | `XSYS4_MSG_LINES` | `src/hll/PartsEngine.c:3944` | [诊断] 每开始一句新台词打一行 `[msgline] N`。剧情推进的唯一可量化指标，也是「卡住了没」的判据（D319） |
+| 其它 | `XSYS4_MSG_LINES` | `src/hll/PartsEngine.c:3954` | [诊断] 每开始一句新台词打一行 `[msgline] N`。剧情推进的唯一可量化指标，也是「卡住了没」的判据（D319） |
 | 其它 | `XSYS4_MSG_NO_SENTINEL` | `src/parts/message.c:175` | 〔摘〕这就是那个把 SceneStack@WaitFrame 卡死的忙循环。 |
 | 其它 | `XSYS4_MSG_POPDBG` | `src/parts/message.c:139` | 〔摘〕这里能看到 type=5 被 pop 而没有对应 dispatch。 |
 | 其它 | `XSYS4_MSG_TRACE` | `src/parts/message.c:154` | — |
@@ -224,7 +224,7 @@
 | 其它 | `XSYS4_NULL_RET` | `src/vm.c:1338` | 〔摘〕XSYS4_NULL_RET=0 可回退，用于定位"到底跳过了哪些调用"。 |
 | 其它 | `XSYS4_OBJ_WATCH` | `src/vm.c:4430` | 监视指定堆槽的读写 |
 | 其它 | `XSYS4_ORIGIN_MODE0_TL` | `src/parts/parts.c:652` | `=1` 把 origin mode 0 与未映射模式按**左上角 `{0,0}`** 处理（上游 77f7f02 语义）。默认保持旧的 `{mode, 3h/4}`（D328 的 A/B） |
-| 其它 | `XSYS4_PARENT_REAL` | `src/hll/PartsEngine.c:637` | `=0` 把 `Parts_GetParentPartsNumber` 退回恒 0 桩（D80/D81 行为）。默认返回真实父号 |
+| 其它 | `XSYS4_PARENT_REAL` | `src/hll/PartsEngine.c:647` | `=0` 把 `Parts_GetParentPartsNumber` 退回恒 0 桩（D80/D81 行为）。默认返回真实父号 |
 | 其它 | `XSYS4_PART_LIFE` | `src/parts/parts.c:241` | [诊断] 打印 900000560..900000600（回想对话框段）部件的 create/release，用于判「绑定是不是随部件重建丢掉」（D320） |
 | 其它 | `XSYS4_PART_TYPE_DBG` | `src/parts/activity.c:718` | 未识别的部件类型：打印 种类別情报 的全部子键名（定位「真实类型藏在哪个子节点」） |
 | 其它 | `XSYS4_PE_DBG` | `src/hll/PartsEngine.c:39` | PartsEngine 调用诊断 |

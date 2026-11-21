@@ -213,3 +213,6 @@ XSYS4_AUTO_CLICK_DELAY	[D378 诊断，默认关] `XSYS4_AUTO_CLICK` 的启动延
 XSYS4_EX_RECT_FILL_PARENT	[D387 默认开] `矩形検出` 既无 EX 四角负载、尺寸又是 1×1 占位时，按父件尺寸铺满（技能卡命中盒 1×1 → 206×147）；`=0` 回退做 A/B
 XSYS4_AUTO_CALL	[D388 诊断，默认关] `<fno>[:<frames>]` 到第 frames 帧（缺省 600）直接调一次无参 AIN 函数 —— 把「跑到某屏要 10 分钟」压到几十秒，例如 `26415` = Scenes::RunTurnStart
 XSYS4_WIDGET_SELFTEST	[D396 诊断，默认关] `=1` 启动 3 秒后跑一次控件状态自检（set→get 往返断言），打 `[wtest] RESULT: PASS/FAIL` —— 填桩的验收用，证明的是语义往返而不是「不再报未实现」
+XSYS4_MOVIE_DBG	PartsMovie 族（部件内嵌视频）的创建/轮询轨迹（D497）
+XSYS4_CPROC_DBG	GetPartsConstructionProcess 合成读回挂账的触达轨迹（D497）
+XSYS4_EIP_GATE	SetEnableInputProcess 门控总闸；=0 回退到"输入组件不门控"（D496）

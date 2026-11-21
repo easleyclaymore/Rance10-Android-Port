@@ -276,6 +276,16 @@ static void PartsEngine_add_construction_process(union vm_value *ints,
 				dx, dy, dw, dh, sx, sy, dw, dh,
 				interp_type, state);
 		break;
+	/* [D497] cmd=20 SetCutCGScaleAlphaBlend。判据与 19 同法：FUNC 62
+	 * (SetCutCGScaleBlend) vs FUNC 75 逐指令 diff，成员写入完全一致、
+	 * 唯一差异是常量 13 vs 20 → 与 case 13 同实现（缩放 cut-CG 混合）。
+	 * 21/22（OnlyAlpha 族）同法验证字段也一致，但 OnlyAlpha 的渲染语义
+	 * （只取 alpha 通道做遮罩）与混合绘制不同，无渲染机制证据，不猜。 */
+	case 20:  // CASConstructionProcess::SetCutCGScaleAlphaBlend
+		PE_AddDrawCutCGToPartsConstructionProcess(parts_no, cg_name,
+				dx, dy, dw, dh, sx, sy, sw, sh,
+				interp_type, state);
+		break;
 	/* [D184] cmd=29 是 Rance10 的「按 CG 原尺寸绘制」：`d=dx,dy,0,0` 且带
 	 * CG 名（`カード／ランス／基本` 等），尺寸在 CG 本身。实测 171 次，全部
 	 * 落在卡片部件上——卡片立绘不出的直接原因就是它被当 unknown 丢掉。
