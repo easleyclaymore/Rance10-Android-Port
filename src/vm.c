@@ -671,6 +671,46 @@ static void scenario_call(int slot)
  */
 static void call_trace_probe(int fno, int ret_addr);
 
+/* [D452] XSYS4_FN_COVER=<path>：**全量函数覆盖**探针。
+ *
+ * 已有的 `XSYS4_CALL_TRACE` 只能盯 16 个函数，回答不了「这一轮到底执行了
+ * 游戏里多少个函数、哪些还没碰过」——而这是判断「语义摸到多少」唯一靠得住
+ * 的分母。
+ *
+ * 实现刻意取最笨的一种：**每个函数第一次被调用时立刻追加一行**到文件。
+ * 不建表、不在退出时回填 —— 因为 `ain` 在若干路径上会被提前 free，
+ * 退出钩子里再去读 `ain->functions[i].name` 就是野指针。
+ * 每行写 `fno<TAB>nr_args<TAB>name`，离线再和 GUIDE 里写过的 fno 求交。
+ *
+ * 默认关闭（不设环境变量时只在第一次调用时查一次 getenv）。 */
+static FILE *cov_fp;
+static uint8_t *cov_seen;
+static int cov_total;
+static int cov_init;
+
+static inline void cov_note(int fno)
+{
+	if (!cov_init) {
+		cov_init = 1;
+		const char *e = getenv("XSYS4_FN_COVER");
+		if (e && *e && ain) {
+			cov_fp = fopen(e, "w");
+			cov_total = ain->nr_functions;
+			cov_seen = xcalloc(cov_total, 1);
+			if (!cov_fp) {
+				free(cov_seen);
+				cov_seen = NULL;
+			}
+		}
+	}
+	if (!cov_seen || fno <= 0 || fno >= cov_total || cov_seen[fno])
+		return;
+	cov_seen[fno] = 1;
+	struct ain_function *f = &ain->functions[fno];
+	fprintf(cov_fp, "%d\t%d\t%s\n", fno, f->nr_args,
+	        f->name ? f->name : "");
+}
+
 /* `fn` 的形参一共占多少个操作数栈槽。
  *
  * AIN 把一个 AIN_IFACE（以及 AIN_WRAP）值放在两个相邻的变量槽里
@@ -773,6 +813,7 @@ static void fn_watch_note(int fno, int nargs, int this_slot)
 
 static int _function_call(int fno, int return_address)
 {
+	cov_note(fno);
 	fn_watch_note(fno, (ain && fno > 0 && fno < ain->nr_functions)
 				? ain->functions[fno].nr_args : 0, -2);
 	/* [D114] 探针放在这里，而不是 function_call()：delegate_call() 会绕过

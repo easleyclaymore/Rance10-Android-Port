@@ -125,6 +125,36 @@ build-sdl3/src/xsystem4 --nodebug --encoding gbk --dump-hll . > /tmp/ainhll.tsv
   `12` 才是 `AIN_STRING`，`10` 是 `AIN_INT`。把 47 当字符串会得出「签名不匹配」
   的错误结论 —— 我第一遍就是这么误判的。
 
+## 函数覆盖度量：`XSYS4_FN_COVER` + `cover_report.py`
+
+问「语义摸到多少」时，**唯一可验证的口径是「游戏自己执行了多少函数、其中多少
+我们已经写过语义」**。指着文档数小节数没有任何意义。
+
+```bash
+XSYS4_FN_COVER=/tmp/cover.tsv ... tools/run/run-headless.sh cov1 230
+python3 tools/offline/cover_report.py /tmp/cover.tsv --prefix SceneBattle@
+```
+
+探针在每个函数**第一次**被调用时立刻追加一行 `fno<TAB>nr_args<TAB>name`
+到文件。刻意不在退出钩子里回填 —— `ain` 在若干路径上会被提前 free，
+退出时读 `ain->functions[i].name` 就是野指针。
+
+`cover_report.py` 的输出三行是关键：
+
+```
+本轮执行到的函数：2613
+AIN 函数总数    ：37698        （用 --dump-signatures 当分母）
+其中文档写过语义：33  (1.3% of 已执行)
+```
+
+**分母要小心**：37698 里包含约 1600 个位于 5MB 之后的剧本段函数。而 28842 个
+「引擎语义段」函数里，一条「地图 → 战斗 → 出手」路径只执行 2233 个（7.7%）。
+这个比例低是正常的 —— 存档、图鉴、卡牌捕获、3D、粒子这些子系统我们根本没碰。
+**它衡量的是"这轮跑测走了游戏多少表面"，不是"移植完成了多少"。**
+
+判据用法：某个界面报错时，先跑一次带 `XSYS4_FN_COVER` 的，看那个界面
+**实际执行到哪些 fno**，再决定读哪几个函数 —— 比按文件名瞎猜准。
+
 ## gsave_dump — 存档检查器
 
 不跑游戏就能判断"我们写出去的档，自己能不能读回来"。
