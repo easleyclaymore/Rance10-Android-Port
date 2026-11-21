@@ -10,10 +10,10 @@
 
 | | |
 |---|---|
-| **阶段** | 第一章可一直点到 `Game/TurnStart`，**三个按钮的点击链已完整**（D397）：点 `(724,726)` → `[pev] 落在容器上 -> 1 个候选` → lambda 36647 → `FadeOut`(23464) → `SceneStack@Exit`(29658，`[fwatch]` 实测 2 次)。**场景仍未真正退出**，卡在 `[ACTIVE-PARTS]` |
-| **最大卡点** | `[ACTIVE-PARTS]` `SceneStack@Join` = `while(!IsFinish) WaitForClick(0)`（字节码实证），而 `WaitForClick` 的 break 要求 `parts::IsInputPartsActive`；它经 `GetActivePartsType`→`GetActiveParts` 取「最近鼠标命中部件」= flat 底板 `900000064`(st=9)，**不是按钮锚点** `900000062`，类型判据恒 false ⇒ `Exit` 之后点哪都不算数，`Join` 的 while 永远看不到 `IsFinish=true` |
+| **阶段** | 第一章可一直点到 `Game/TurnStart`，三个按钮的点击链已完整（D397）：点 `(724,726)` → `[pev] 落在容器上 -> 1 个候选` → lambda 36647 → `FadeOut`(23464) → `SceneStack@Exit`(29658，`[fwatch]` 实测 2 次)。**场景仍未退出**，卡在 `[WAITFORCLICK]` |
+| **最大卡点** | `[WAITFORCLICK]` `SceneStack@Join` = `while(!IsFinish) WaitForClick(0)`；`WaitForClick`(8309) 唯一 break 是 `0 < GetClickNumber()`（`local1` 参数为 0，CASClick 分支整段跳过），而 `GetClickNumber` = `clicked_parts`（命中按下时写、`PE_EndInput` 清）。**`IsInputPartsActive` 不是判据**：它判 {TEXTBOX,MLTEXTBOX,SPINBOX} 且在 `NOT` 之后，恒 false 是正常的 |
 | **次级卡点** | `[BATTLE-STALL]` 技能卡点不中（`BattleCardButton.m9` 空委托页）；被上一条挡在后面 —— 场景退不出去就到不了作戦/出撃 |
-| **本轮做过的** | **D397 结掉「按钮点不动」**：真根因是 `PE_PartsIsUnder(pn,no)` 参数反了；顺带修好 `--disasm` 的 `CALLMETHOD` 假名（立即数是 nargs，不是 fno）并新增 `--struct` / `XSYS4_DUMP_BTN`。**D398 把「场景结束」这一层读通**：`SceneTurnStart@Run` 末尾就是 `m_sceneStack.Join()`；`Join` = `while(!IsFinish) WaitForClick(0)`；`WaitForClick` 的 break 要 `CASClick@IsClick` **且** `parts::IsInputPartsActive`。`Exit` 已把 `IsFinish` 置真，但 `IsInputPartsActive` 因「活动部件是 flat 底板」恒 false，所以循环不退出。smoke quick PASS |
+| **本轮做过的** | **D398 把「场景结束」读到底**：`Run` 末尾就是 `m_sceneStack.Join()`；`Join` = `RegisterEvent; while(!IsFinish) WaitForClick(0); Release`；`WaitForClick` 的 break 只有 `0 < GetClickNumber()`；`IsInputPartsActive` 判 {4,7,11}=文本框类且取反（推翻了上一版判断）。`Exit` 已置 `IsFinish`，但 `clicked_parts` 在自旋期是否置位未验 —— 这是下一个观测点 |
 | **判据** | 画面一律用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S，且 alt+s 前空 ≥1.5s，否则会丢帧）；层/归属看 `[ctrl] SetActive id=N -> idx=M` 与 `[ctrl] layer … parts:` 清单；HLL 进展看 `python3 tools/offline/hll_hotness.py --todo ../logs/live_<tag>.log` 的输出是否为 0 |
 
 > **卡点必须挂债标签**：§0「最大卡点」里的 `` `[TAG]` `` 必须**逐字存在**于
@@ -217,6 +217,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 
 38. **`CALLMETHOD` 的立即数是实参个数，不是函数号** —— VM 用 `stack_peek(nargs)` 取 fno（栈布局 `[obj,fno,args…]`）。`--disasm` 曾把立即数当 fno 打印，全表名字都错（`nargs=0`→`NULL`、`nargs=1`→`GetMessageSpeedRate`），照它读出的调用链会整体跑偏（TURNSTALL 就这么走了两周）。现在回溯最近常量 `PUSH` 还原，回溯不到打 `?`——见到 `?` 别编名字。结构成员用 `--struct <名字|号>` 查，`m4.m2.m5` 这类嵌套要先确认类型。
 
+39. **场景结束 = `IsFinish` + 一次命中任何部件的点击**。`SceneTurnStart@Run` 末尾就是 `m_sceneStack.Join()`，而 `Join` = `RegisterEvent; while(!IsFinish) WaitForClick(0); Release`；`WaitForClick`(8309) 只在 `GetClickNumber() > 0` 时返回（`clicked_parts` 由 `parts_input_update` 命中按下时写、`PE_EndInput` 清 0）。所以「按钮派发跑了、`FadeOut`/`SceneStack@Exit` 也跑了」**不等于**场景退出 —— 还差一次点击来喂饱 `Join` 的 while。`parts::IsInputPartsActive`(7243) 判的是 {TEXTBOX,MLTEXTBOX,SPINBOX}=4/7/11 且取反，**不是**按钮判据，恒 false 是正常值（D398）。
 ---
 
 ## 4. 诊断开关（全部默认关，门禁会检查）
