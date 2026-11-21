@@ -458,23 +458,31 @@ static void ain_disasm(FILE *f, struct ain *ain, size_t start, size_t len)
 		} else if (opcode == CALLMETHOD) {
 			/* 回溯 fno：从新到旧找**最像方法号**的那条 PUSH。
 			 * 排除三类：
-			 *   ① `PUSHSTRUCTPAGE + PUSH n` 的结构页号；
-			 *   ② 夹在两条实参压栈中间的那条（prev 是 PUSH/F_PUSH/S_PUSH）；
-			 *   ③ 后一条既不是 CALLMETHOD 也不是实参压栈的
-			 *      （那是 `local1 = …` 里的槽号，不是栈值）。
+			 *   ① 夹在实参压栈中间那条（prev 是 PUSH/F_PUSH/S_PUSH）；
+			 *   ② 后一条不是 CALLMETHOD/实参压栈/栈整理的（那是成员号或槽号）；
+			 *
+			 * **[D427] 「排除 PUSHSTRUCTPAGE 之后的 PUSH」是错的**：PUSHSTRUCTPAGE
+			 * 是零操作数指令（`OP(PUSHSTRUCTPAGE, 0, (), (), (T_PAGE))`），它后面
+			 * 那条 PUSH 是独立指令。而方法调用最常见的编码正是
+			 * `PUSHSTRUCTPAGE; PUSH <fno>; [args]; CALLMETHOD n` —— 排除掉就等于
+			 * 把绝大多数方法调用打成 `?`。成员号那种情形由「下一条是 REF」挡掉。
 			 * 第一条 CALLMETHOD 之后会把该位置及之后的记录丢掉（已消费）。 */
 			fprintf(f, " nargs=%u ->", raw);
 			int hit = -1;
 			for (int k = n_pushes - 1; k >= 0; k--) {
-				if (pushes[k].struct_page)
-					continue;
 				if (pushes[k].raw >= (unsigned int)ain->nr_functions)
 					continue;
+				/* prev 是 SWAP 时一定是 `PUSHLOCALPAGE; SWAP; PUSH n; SWAP; ASSIGN`
+				 * 里的**局部槽号**，不是 fno。 */
 				if (pushes[k].prev_op == PUSH || pushes[k].prev_op == F_PUSH ||
-				    pushes[k].prev_op == S_PUSH)
+				    pushes[k].prev_op == S_PUSH || pushes[k].prev_op == SWAP)
 					continue;
 				uint16_t nx = pushes[k].next_op;
-				if (nx != CALLMETHOD && nx != F_PUSH && nx != S_PUSH && nx != PUSH)
+				/* SWAP/DUP2/DUP_X2 不能收：`PUSH 2; SWAP; …` 这种成员号/槽号
+				 * 会被误认成 fno=2，实测把一条 `local2.xxx()` 打成了
+				 * `message::detail::GetReadMessageTextColor`。 */
+				if (nx != CALLMETHOD && nx != F_PUSH && nx != S_PUSH &&
+				    nx != PUSH && nx != SWAP)
 					continue;
 				hit = k;
 				break;
@@ -607,6 +615,7 @@ static void usage(void)
 	puts("        --stat-method    Histogram CALLMETHOD/CALLFUNC arguments and exit");
 	puts("        --struct <name|no>  Dump a structure's member table and exit");
 	puts("        --dump-switch <no>  Dump a switch's case table and exit");
+	puts("        --dump-delegate <no> Dump a delegate type's signature and exit");
 	puts("        --encoding       Specify the game's character encoding. sjis (default) or gbk");
 	puts("        --font-mincho    Specify the path to the mincho font to use (path[:index] for .ttc)");
 	puts("        --font-gothic    Specify the path to the gothic font to use (path[:index] for .ttc)");
@@ -642,6 +651,7 @@ enum {
 	LOPT_STAT_METHOD,
 	LOPT_STRUCT,
 	LOPT_DUMP_SWITCH,
+	LOPT_DUMP_DELEGATE,
 	LOPT_ECHO_MESSAGE,
 	LOPT_ENCODING,
 	LOPT_FONT_MINCHO,
@@ -678,6 +688,7 @@ int main(int argc, char *argv[])
 	char *encoding = NULL;
 	char *struct_query = NULL;
 	int dump_switch_no = -1;
+	int dump_delegate_no = -1;
 
 	char *font_mincho = NULL;
 	char *font_gothic = NULL;
@@ -695,6 +706,7 @@ int main(int argc, char *argv[])
 			{ "stat-method",    no_argument,       0, LOPT_STAT_METHOD },
 			{ "struct",        required_argument, 0, LOPT_STRUCT },
 			{ "dump-switch",   required_argument, 0, LOPT_DUMP_SWITCH },
+			{ "dump-delegate", required_argument, 0, LOPT_DUMP_DELEGATE },
 			{ "echo-message",  no_argument,       0, LOPT_ECHO_MESSAGE },
 			{ "encoding",      required_argument, 0, LOPT_ENCODING },
 			{ "font-mincho",   required_argument, 0, LOPT_FONT_MINCHO },
@@ -739,6 +751,9 @@ int main(int argc, char *argv[])
 			break;
 		case LOPT_DUMP_SWITCH:
 			dump_switch_no = atoi(optarg);
+			break;
+		case LOPT_DUMP_DELEGATE:
+			dump_delegate_no = atoi(optarg);
 			break;
 		case LOPT_DISASM: {
 			unsigned long ds = 0, dl = 0x400;
@@ -882,6 +897,41 @@ int main(int argc, char *argv[])
 	/* [D403] `--dump-switch <no>`：把 `ain->switches[no]` 的 case 表原样倒出来。
 	 * 相位状态机全是 `SWITCH <no>`，而 `--disasm` 只显示编号、不显示表，
 	 * 读流程时只能猜「这个 case 对应哪个 Phase 值」。和 `--struct` 同性质。 */
+	/* [D428] `--dump-delegate <no>`：委托类型签名。
+	 * `DG_CALLBEGIN n` 用 `delegate_argument_slots()` 从栈上取 dg_page，
+	 * 槽数取决于每个参数占几槽（AIN_IFACE/WRAP/OPTION 占两槽）。
+	 * 不知道签名时读 DG_CALLBEGIN 的栈布局只能猜。 */
+	if (dump_delegate_no >= 0) {
+		if (dump_delegate_no >= ain->nr_delegates) {
+			fprintf(stderr, "delegate %d out of range (nr=%d)\n",
+			        dump_delegate_no, ain->nr_delegates);
+		} else {
+			struct ain_function_type *dg = &ain->delegates[dump_delegate_no];
+			int slots = 0, args = 0;
+			printf("delegate %d: %s  ret=%d args=%d vars=%d\n",
+			       dump_delegate_no, dg->name ? dg->name : "?",
+			       (int)dg->return_type.data, dg->nr_arguments,
+			       dg->nr_variables);
+			while (args < dg->nr_arguments && slots < dg->nr_variables) {
+				enum ain_data_type t = dg->variables[slots].type.data;
+				printf("  arg%-2d slot%-2d type=%-2d %-16s struc=%d rank=%d\n",
+				       args, slots, (int)t,
+				       dg->variables[slots].name ? dg->variables[slots].name : "",
+				       dg->variables[slots].type.struc,
+				       dg->variables[slots].type.rank);
+				args++;
+				slots++;
+				if (t == AIN_IFACE || t == AIN_WRAP || t == AIN_OPTION)
+					while (slots < dg->nr_variables &&
+					       dg->variables[slots].type.data == AIN_VOID)
+						slots++;
+			}
+			printf("  => delegate_argument_slots = %d\n", slots);
+		}
+		ain_free(ain);
+		return 0;
+	}
+
 	if (dump_switch_no >= 0) {
 		if (dump_switch_no >= ain->nr_switches) {
 			fprintf(stderr, "switch %d out of range (nr=%d)\n",
@@ -908,7 +958,9 @@ int main(int argc, char *argv[])
 
 	if (disasm) {
 		/* 反汇编只读 ain 结构，不需要 init_libraries()（那会连带加载 .ex 文件） */
-		NOTICE("disasm 0x%08zx..0x%08zx", disasm_start, disasm_start + disasm_len);
+		NOTICE("disasm 0x%08zx..0x%08zx  code_size=0x%zx nr_functions=%d",
+		       disasm_start, disasm_start + disasm_len, ain->code_size,
+		       ain->nr_functions);
 		ain_disasm(stdout, ain, disasm_start, disasm_len);
 		ain_free(ain);
 		return 0;

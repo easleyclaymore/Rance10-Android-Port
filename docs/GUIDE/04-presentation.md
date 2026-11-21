@@ -355,6 +355,41 @@ RunIScene(f1 = lambda: new SceneQuestSelect(type),
 「跑一次 `SceneQuestSelect` 并取回结果」。真正的关卡列表加载在 phase 4 的
 `QuestList.Load(3) + RunMultiQuest` 里，两者是两个阶段。
 
+### 4.5.11 委托成员默认是「空集合」，不是空值
+
+AIN v12 里一个 `delegate` 类型的字段/变量，初值**不是 `-1`**，而是一张
+`nr_vars == 0` 的 `DELEGATE_PAGE`（`src/page.c` 的 `default_value()`，D112）。
+所以：
+
+```
+foreach (f in someEmptyDelegate) f()      ; 迭代 0 次
+```
+
+是**正常**的。此时 `DG_CALLBEGIN` 压 index 0、`DG_CALL` 在 `delegate_get(page,0)`
+上失败并跳到 `end`，于是探针打一行
+
+```
+[dgm] MISS dg_no=1021 page=116560 idx=0 nr=0 obj0=-1 seq0=-1 now0=0 ip=0x3D9DAE
+```
+
+**`nr=0` 读作「空集合」**，与 `nr=-1`（真的没有页）是两件事。而且这条日志
+在无过滤时全局限流 40 条，**出现几次完全取决于它排在前面的有多少，不能当次数用**。
+
+这个区别很要紧：`BattleCardButton.m9` 被当成「委托丢了」查了很久，
+实际它是 `DG_BattleCardButton_OnClickSkill = (string, int)` 的**扇出端口**：
+
+```
+LargeSkillButton 被点
+  → lambda 37032            （X_GETENV 取出集合注册的 dg，转调）
+    → LargeSkillButtonCollection 的 dg
+      → lambda 37011        （BattleCardButton@InitSkillButtonCollection 注册的）
+        → foreach (f in m9) f(cardId, skillIndex)     ← 这里
+```
+
+`m9` 在**输出侧**：它广播「这张卡的某个技能被点了」，没有订阅者时就是空集合。
+把它当成点击入口去找，方向就反了 —— 真正的入口是 `LargeSkillButton@SetOnClickEvent`(25350)
+写进去的 `m3`。
+
 ## 4.6 字符出来了但显示方框：先分码表、再分字体
 
 多字节编码的引擎里，「文字没显示」至少有三层，症状却几乎一样：纹理尺寸正常、
