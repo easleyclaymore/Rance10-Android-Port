@@ -187,6 +187,31 @@ return
 判据很直接 —— `EndWaitForClick`(7112) 的调用者列表里就有 `SceneStack@Exit`(29658)。
 读函数要读到 `RETURN`，不能读到「看起来做完的那一句」。
 
+### 4.5.4 `Overlay@Fade` 有两条路，`dg` 可能比 `Join` 还早
+
+`Overlay@FadeOut(from, to, dg)` 只是转调 `Overlay@Fade`(22643)，后者是：
+
+```
+SetShow(1)
+if (GetAlpha() == 0) {        ; 已经全透明
+    SetShow(0)
+    foreach (f in dg) f()     ; ← dg 当场执行
+    return
+}
+Parts@Motion(…)               ; 否则启动补间，dg 在动画完成时由 CASTask 调
+```
+
+所以 `FadeOut(1500, dg(SceneStack@Exit))` 里的「1500ms」只在 overlay 当前**不透明**时成立；
+如果它已经是 `alpha = 0`，`Exit` 会立刻执行。
+
+这条语义反转了一个很自然的假设：**`Exit` 未必发生在 `Join` 之后，它可能更早。**
+如果 `Exit` 先跑完，`m7 = true` 和 `global2 = 1` 都在等待开始前就设好了，
+`WaitForClick` 第一轮就会从出口 2 退出 —— 那才是正常路径。
+
+反过来说，实测里「`Exit` 触发了但 `Join` 不返回」就不能再往这条链上找原因：
+`Exit` 已经把两个出口都打开了，剩下的只可能是 `Join` 读的 `m7` 和 `Exit` 写的
+`m7` 不是同一个实例字段。这一层静态分析到此为止。
+
 ## 4.6 字符出来了但显示方框：先分码表、再分字体
 
 多字节编码的引擎里，「文字没显示」至少有三层，症状却几乎一样：纹理尺寸正常、
