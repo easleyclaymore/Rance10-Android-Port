@@ -1014,6 +1014,54 @@ PUSHSTRUCTPAGE ; PUSH 0 ; REF ; PUSH 0 ; PUSH <command> ; ASSIGN ; POP
 
 **验收判据**：敌 HP 从 9000 掉到 8152、AP 从 5 掉到 0，一次点击一次。
 
+## 3.33 「回合为什么不推进」——先看 `isActionAvailable`
+
+`RunSelectedSkill` 的**结尾**才是回合闸门，形状是：
+
+```
+ProcessPlayerAction(local10)
+this.m6 = local6
+if (CheckEndBattle(1)) return;          // 战斗结束就直接走人
+if (isActionAvailable()) {
+    selector.SetControlEnable(1);       // 还有人能动 → 只是把选择器打开
+} else {
+    ProcessPostPlayerTurn();            // 没人能动 → 收尾、换回合
+}
+```
+
+所以「放完一次技能、敌人掉血了，但 Round 还是 1/10」**不是 bug** ——
+只要队里还有人能行动，回合就不该推进。判断该不该担心，只看一条：
+`24886 ProcessPostPlayerTurn` 有没有被调过。
+
+`ProcessPostPlayerTurn`(24886) 的语义链（按调用顺序）：
+
+```
+PartyChangeRound@UpdateOnTurnEnd
+CheckEndBattle
+ComboView@Hide
+Party@_Leaders → LeaderCardCollection@UpdateSkillNotUsedRound
+RecentUsedSkill@Reset                       ← 清掉「刚用过什么」
+BattleSkillSelector@SetControlEnable
+BadConditions → BadConditionGroup@DecRound  ← 异常状态减回合
+CheckEndBattle
+Party@_Leaders → LeaderCardCollection@ResetState
+BattleSkillSelector@UpdateSelectable
+BattleScenes::RunBattlePhase                ← 回合演出
+SceneBattle@ProcessEnemyBadCondition
+SceneBattle@AegisEffects → DecCount / RunAutoSkill
+CheckEndBattle
+SceneBattle@RunAutoHeal
+SceneBattle@ProcessEnemyAction              ← 敌人行动
+```
+
+`CheckEndBattle` 在这个函数里出现 **三次**（开头、异常状态后、护盾后），
+分别对应「玩家打完就死光了」「状态伤害致死」「AutoSkill 致死」三种结束路径。
+**不要以为一次战斗只会判一次胜负。**
+
+**验收判据**：连续两次出手后 `CheckEndBattle` 返回真 →
+`RunSelectedSkill` 直接 return（不再碰 `isActionAvailable`），
+活动全部卸载、画面切到战后场景、`ERROR` 计数 0。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
