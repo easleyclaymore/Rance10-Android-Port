@@ -92,6 +92,39 @@ python3 tools/offline/ain_dec.py /tmp/ain_full.txt 24897 27558
 会退化成 `# RAW`。**读算法用 `ain_show.py --calls` 拿调用序列更可靠**，
 伪代码只用来确认控制流形状。
 
+## --dump-hll + 导出名交叉核对（找「死条目」）
+
+`HLL_TODO_EXPORT` 只说明「这个名字我没实现」，它区分不了两件完全不同的事：
+
+1. 引擎真没写这个功能；
+2. **功能写了，但导出名注册在错的库里**（D164 的 `Parts_SetNumeral*`、D444 的
+   `KiwiSoundEngine.GetMixer*` 都是这一类）。这类条目在源码里看着"已实现"，
+   运行时却照报 `Unimplemented library function`，而且**改的时候容易改错地方**。
+
+判据来自 AIN 侧的声明，不来自源码：
+
+```bash
+# 每个 HLL 声明：库名 / 库内序号 / 实参个数 / 名字 / 返回类型
+build-sdl3/src/xsystem4 --nodebug --encoding gbk --dump-hll . > /tmp/ainhll.tsv
+```
+
+然后跟 C 侧对：
+
+- `HLL_LIBRARY(Name, ...)` 决定**哪个 .c 文件实现哪个库**；
+- `HLL_*EXPORT*(AinName, c_func)` 决定这个库导出了哪些名字。
+
+对每条声明 `(lib, name)`：如果 `lib` 所在的文件没导出 `name`，但**别的** hll 文件
+导出了同名符号 → 就是死条目。2026-11-21 这样扫出 8 条（7 个混音器 + `GetOSInfo`），
+补齐后启动时未实现导出从 347 降到 339。
+
+两个容易踩的坑：
+
+- **正则别只写 `HLL_EXPORT`**：`HLL_EXPORT_NRT`（按返回类型分重载）会被漏掉，
+  `Math.Min/Max/Abs` 于是全成了假阳性。
+- **`ret` 是 `enum ain_data_type` 的数值，不是字符串**：`47` 是 `AIN_BOOL`，
+  `12` 才是 `AIN_STRING`，`10` 是 `AIN_INT`。把 47 当字符串会得出「签名不匹配」
+  的错误结论 —— 我第一遍就是这么误判的。
+
 ## gsave_dump — 存档检查器
 
 不跑游戏就能判断"我们写出去的档，自己能不能读回来"。

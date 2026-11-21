@@ -623,6 +623,7 @@ static void usage(void)
 	puts("        --dump-switch <no>  Dump a switch's case table and exit");
 	puts("        --dump-delegate <no> Dump a delegate type's signature and exit");
 	puts("        --dump-signatures   Dump every AIN function's arity and variable count");
+	puts("        --dump-hll          Dump every AIN HLL declaration (lib, fno, name, ret)");
 	puts("        --encoding       Specify the game's character encoding. sjis (default) or gbk");
 	puts("        --font-mincho    Specify the path to the mincho font to use (path[:index] for .ttc)");
 	puts("        --font-gothic    Specify the path to the gothic font to use (path[:index] for .ttc)");
@@ -660,6 +661,7 @@ enum {
 	LOPT_DUMP_SWITCH,
 	LOPT_DUMP_DELEGATE,
 	LOPT_DUMP_SIGNATURES,
+	LOPT_DUMP_HLL,
 	LOPT_ECHO_MESSAGE,
 	LOPT_ENCODING,
 	LOPT_FONT_MINCHO,
@@ -698,6 +700,7 @@ int main(int argc, char *argv[])
 	int dump_switch_no = -1;
 	int dump_delegate_no = -1;
 	bool dump_signatures = false;
+	bool dump_hll = false;
 
 	char *font_mincho = NULL;
 	char *font_gothic = NULL;
@@ -717,6 +720,7 @@ int main(int argc, char *argv[])
 			{ "dump-switch",   required_argument, 0, LOPT_DUMP_SWITCH },
 			{ "dump-delegate", required_argument, 0, LOPT_DUMP_DELEGATE },
 			{ "dump-signatures", no_argument, 0, LOPT_DUMP_SIGNATURES },
+			{ "dump-hll",        no_argument, 0, LOPT_DUMP_HLL },
 			{ "echo-message",  no_argument,       0, LOPT_ECHO_MESSAGE },
 			{ "encoding",      required_argument, 0, LOPT_ENCODING },
 			{ "font-mincho",   required_argument, 0, LOPT_FONT_MINCHO },
@@ -767,6 +771,9 @@ int main(int argc, char *argv[])
 			break;
 		case LOPT_DUMP_SIGNATURES:
 			dump_signatures = true;
+			break;
+		case LOPT_DUMP_HLL:
+			dump_hll = true;
 			break;
 		case LOPT_DISASM: {
 			unsigned long ds = 0, dl = 0x400;
@@ -910,6 +917,29 @@ int main(int argc, char *argv[])
 	/* [D403] `--dump-switch <no>`：把 `ain->switches[no]` 的 case 表原样倒出来。
 	 * 相位状态机全是 `SWITCH <no>`，而 `--disasm` 只显示编号、不显示表，
 	 * 读流程时只能猜「这个 case 对应哪个 Phase 值」。和 `--struct` 同性质。 */
+	/* [D443] `--dump-hll`：AIN 侧**声明**的每个 HLL 函数（库名 / 库内序号 / 名字 /
+	 * 实参个数 / 返回类型）。用途是跟 C 侧导出表做交叉核对：
+	 *
+	 * `HLL_TODO_EXPORT` 只是"这个名字我没有实现"，它不能区分下面两种完全不同的情况：
+	 *   ① 引擎真的没写这个功能；
+	 *   ② 功能写了，但**导出名和 AIN 里的名字对不上**（D164 的 `Parts_SetNumeral*`
+	 *      就是这样：以为实现的都是死条目，真被调的还在未实现清单里）。
+	 * 有了这份声明表 + `nm`/源码里的导出名，②类可以直接扫出来。
+	 */
+	if (dump_hll) {
+		for (int i = 0; i < ain->nr_libraries; i++) {
+			struct ain_library *lib = &ain->libraries[i];
+			for (int j = 0; j < lib->nr_functions; j++) {
+				struct ain_hll_function *f = &lib->functions[j];
+				printf("%s\t%d\t%d\t%s\t%d\n", lib->name, j,
+				       (int)f->nr_arguments, f->name ? f->name : "",
+				       (int)f->return_type.data);
+			}
+		}
+		ain_free(ain);
+		return 0;
+	}
+
 	/* [D438] `--dump-signatures`：每个 AIN 函数的 (fno, nr_args, nr_vars, 名字)。
 	 *
 	 * 为什么需要：读 `CALLFUNC <fno>` 时，反汇编里**没有实参个数**，而

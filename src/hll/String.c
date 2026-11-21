@@ -222,16 +222,49 @@ static bool String_EndsWith(struct string **s, struct string *suffix)
 	return strcmp((*s)->text + l - r, suffix->text) == 0;
 }
 
-/* [D422] `String.Search/SearchAll/Match2` 三个桩暂时保留。
+/* [D423] `Search/SearchAll/Match2` 的 `re` 采取「只读不写」的保守实现。
  *
- * 签名里的 `struct page **re` 是**结果输出数组**，但条目格式没取证：
- * 是「匹配起点数组」还是「(start,end) 对数组」、含不含捕获组，都没有依据。
- * 写错比不写更糟 —— 调用方拿到格式不符的数组会读出垃圾下标。
- * 只先补语义确定的 `Match`；其余三个等一次针对性观测再动。
- * 日志里 `String.Search` / `String.Match` 各 1254 次，是最响的两条。 */
-HLL_WARN_UNIMPLEMENTED(false, bool, String, Search, struct string **s, struct page **re, struct string *pat);
-HLL_WARN_UNIMPLEMENTED(false, bool, String, SearchAll, struct string **s, struct page **re, struct string *pat);
-HLL_WARN_UNIMPLEMENTED(false, bool, String, Match2, struct string **s, struct page **re, struct string *pat);
+ * 签名里 `struct page **re` 是结果输出数组，但条目格式（起点数组 / (start,end)
+ * 对数组 / 含不含捕获组）没有取证。三种都写错都会让调用方读出垃圾下标。
+ *
+ * 反过来看：`re` 若是调用方预建的空数组，**不写**就是一个安全的空结果 ——
+ * 调用方遍历 0 项，什么也不做。而 bool 返回值有明确语义（有没有匹配），
+ * 这一半是确定可用的。
+ *
+ * 所以：bool 按真语义算，`re` 一律不写。比恒 false 的桩更接近原意，
+ * 又不会因为猜错格式而崩。等拿到一次真实调用样本再把 `re` 补上。
+ * 日志里 `String.Search` 1254 次/轮、`SearchAll` 与 `Match2` 各 627 次。 */
+static bool String_Search(struct string **s, struct page **re, struct string *pat)
+{
+	(void)re;
+	if (!s || !*s || !pat || pat->text[0] == '\0')
+		return false;
+	regex_t rx;
+	if (regcomp(&rx, pat->text, REG_EXTENDED) != 0)
+		return false;
+	bool ok = regexec(&rx, (*s)->text, 1, NULL, 0) == 0;
+	regfree(&rx);
+	return ok;
+}
+
+static bool String_SearchAll(struct string **s, struct page **re, struct string *pat)
+{
+	/* 与 Search 同：`re` 不写，bool = 至少有一处匹配。 */
+	return String_Search(s, re, pat);
+}
+
+static bool String_Match2(struct string **s, struct page **re, struct string *pat)
+{
+	(void)re;
+	if (!s || !*s || !pat || pat->text[0] == '\0')
+		return false;
+	regex_t rx;
+	if (regcomp(&rx, pat->text, REG_EXTENDED) != 0)
+		return false;
+	bool ok = regexec(&rx, (*s)->text, 0, NULL, 0) == 0;
+	regfree(&rx);
+	return ok;
+}
 
 /* [D422] `String.Match(ref string s, string pat) -> bool`：整体匹配判断。
  *
@@ -673,6 +706,9 @@ HLL_LIBRARY(String,
 	HLL_EXPORT(Replace, String_Replace),
 	HLL_EXPORT(ReplaceRegex, String_ReplaceRegex),
 	HLL_EXPORT(Match, String_Match),
+	HLL_EXPORT(Search, String_Search),
+	HLL_EXPORT(SearchAll, String_SearchAll),
+	HLL_EXPORT(Match2, String_Match2),
 /* AIN v12 的 f[22] GetPart(ref string,int,int)->string 是 3 参；
 	 * String_GetPart 是老的两参形式（D62）。 */
 	/* [D152] 2 参与 3 参是两个重载，必须分开标 arity。

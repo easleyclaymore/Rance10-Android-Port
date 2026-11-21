@@ -27,6 +27,24 @@
 #include "xsystem4.h"
 #include "hll.h"
 #include "system4/file.h"
+#include "pal.h"
+
+/* [D444] `string SystemService.GetOSInfo()`（AIN 库 SystemService f[60]，
+ * args=0 / ret=12=AIn_STRING）。
+ *
+ * 注意形状与 `PCInfo.GetOSInfo` **不同**：那个是 `void GetOSInfo(ref string)`，
+ * 靠出参回填；这个是 0 参直返。所以不能复用 PCInfo 的那个函数，得单独包一层。
+ * 底层数据同一个来源：`pal_get()->info->os_description()`。
+ *
+ * 实现前它是未实现导出，启动时每次刷一条
+ * `Unimplemented library function: SystemService.GetOSInfo`。 */
+static struct string *SystemService_GetOSInfo(void)
+{
+	const char *desc = pal_get()->info->os_description();
+	if (!desc)
+		desc = "";
+	return make_string(desc, strlen(desc));
+}
 
 static int SystemService_GetMixerName(int n, struct string **name)
 {
@@ -843,6 +861,7 @@ HLL_LIBRARY(SystemService,
 	    HLL_EXPORT(GameVariable_IsExist, SS_GameVariable_IsExist),
 	    HLL_EXPORT(_PreLink, SystemService_PreLink),
 	    HLL_EXPORT(_ModuleInit, SystemService_ModuleInit),
+	    HLL_EXPORT(GetOSInfo, SystemService_GetOSInfo),
 	    HLL_EXPORT(GetMixerNumof, mixer_get_numof),
 	    HLL_EXPORT(GetMixerName, SystemService_GetMixerName),
 	    HLL_EXPORT(GetMixerVolume, mixer_get_volume),

@@ -1100,6 +1100,63 @@ if (Round.IsLimit)       → 回合上限（平局/强制结束）
 以及各个 `BattleSceneSet*` 自己）。所以排查「敌人明明死了却不结算」时，
 不要去改 `getBattleResultType` —— 那里根本没有敌方单位这个概念。
 
+## 3.35 战斗子系统的骨架：**回合循环是互递归，不是 while**
+
+大多数人第一反应会去找 `while (!结束) { 一回合 }`。兰斯10 没有这种东西。
+真实骨架是三层：
+
+```
+BattleSceneSetNormal@Process(27588)
+  └─ BattleScenes::RunBattle(25945)          = Scenes::RunIScene(-1, dg{ new SceneBattle })
+       └─ SceneBattle@Run(24882)             布景 + StartRound + SceneStack@Join
+            └─ SceneBattle@StartRound(24883) 一回合的准备
+                 └─ SceneBattle@ProcessPostPlayerTurn(24886)
+                      └─ SceneBattle@StartRound(24883)   ← 又回去了
+```
+
+`StartRound` 的两个调用者就是这条闭环的两端：`36932`（`SceneBattle@Run` 里那个
+启动 lambda）和 `24886`（`ProcessPostPlayerTurn` 的末尾）。**没有循环指令，
+循环是互相调用形成的**。这有两个直接后果：
+
+- 退出只能靠 `CheckEndBattle` 在每一层 `RETURN`，一条 return 就把这一层
+  连同它下面所有层的递归一起收掉；
+- 回合数一多，AIN 调用栈会真的变深。查「打到第 N 回合崩栈」时，
+  先数 `StartRound` 的嵌套层数，不要先怀疑 VM 的帧分配。
+
+`StartRound`(24883, 302 行) 的完整顺序：
+
+```
+CheckEndBattle(0)                  ← 出口 1
+ShowRound
+Ap.Recover                        ← 每回合恢复行动点
+SetNewEnemyAction                 ← 敌人本回合要干什么，先定好
+Combo.Value = 0
+Round.Value
+RunInitialBadCondition
+RunInitialSkill                   ← 开场技能
+PartyChangeRound.IsEnable → TutorialAdv.ShowFirstChangeParty
+AdvInsertion → BattleInsertionProcessor.Process
+CheckEndBattle(0)                  ← 出口 2
+CheckHastle → RunPlayerCardInsertion
+CheckEndBattle(0)                  ← 出口 3
+ProcessPlayerBadCondition
+AegisEffects → DecCount → RunAutoSkill
+CheckEndBattle(0)                  ← 出口 4
+RunAutoHeal(0)
+RunAutoBoost
+BattleScenes::RunBattlePhase(0)    ← 回合开始演出
+if (isActionAvailable()) { LeaderStateCalculator.Calc(); selector.SetControlEnable(1); }
+else                      { ProcessPostPlayerTurn(); }     ← 闭环
+```
+
+**`CheckEndBattle` 在这里出现 4 次，参数全是 0**；而 `RunSelectedSkill` 里那次是
+`CheckEndBattle(1)`。这个参数是「要不要播胜负演出」：回合准备阶段只想知道
+「还打不打」，真结束了由 `RunSelectedSkill` 或 `ProcessPostPlayerTurn` 去播。
+
+四层递归、四个出口，任何一个出口漏判症状都一样 —— 战斗卡住不动、画面正常、
+无报错。**「战斗不结束」这种问题，先确认 `CheckEndBattle` 的返回值，
+再确认是哪一层没有 `RETURN`，不要去改 `getBattleResultType`。**
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。

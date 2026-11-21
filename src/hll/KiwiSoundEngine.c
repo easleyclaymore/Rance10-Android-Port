@@ -21,6 +21,8 @@
 #include "asset_manager.h"
 #include "audio.h"
 #include "audio_meta.h"
+#include "mixer.h"
+#include "xsystem4.h"   /* config.mixer_volumes */
 
 static int kiwi_global_focus = 0;
 
@@ -112,17 +114,81 @@ static int rance9_wav_prepare(int ch, int num)
 
 static void KiwiSoundEngine_PreLink(void);
 
-/* KiwiSoundEngine.GetMixerMute(group, ref bool mute)，AIN 库21 的 f[35]。
- * [HACK][D119-MIXER] Minimal implementation: audio is never muted by the
- * 引擎里没有逐混音器的静音状态，所以报「没静音」，并把 false 写进
- * ref 形参。待重构：在 audio.c 里记下每个混音器的静音状态，并补上 setter。
- * 已登记进技术债。 */
+/* [D444] 混音器状态族：**引擎里一直有真实现，只是注册错了库**。
+ *
+ * `mixer.c` 提供 `mixer_get_numof/name/volume/mute` 与对应的 setter，
+ * `SystemService.c` 也照着 `ref` 出参的形状包了一层，但那 7 个导出注册在
+ * `SystemService` 库里；而 AIN 把它们声明在 `KiwiSoundEngine` 库里
+ * （`--dump-hll` 可直接看到：`KiwiSoundEngine GetMixerName args=2 ret=47(AIN_BOOL)`）。
+ * 于是运行时恒报 `Unimplemented library function: KiwiSoundEngine.GetMixerName`。
+ *
+ * 顺带把 `GetMixerMute` 的假实现换成真的：原来写死 `*mute = false; return false;`
+ * （注释说"引擎里没有逐混音器的静音状态"），但 `mixer.h` 里 **`mixer_get_mute`
+ * 一直存在**。假实现会让「静音了却仍按有音量播放」这类问题查不出来。
+ *
+ * 签名对照（args / ret 取自 `--dump-hll`）：
+ *   GetMixerNumof         0 / int
+ *   GetMixerName          2 / bool   (ref string 出参)
+ *   GetMixerVolume        2 / bool   (ref int 出参)
+ *   GetMixerDefaultVolume 2 / bool   (ref int 出参)
+ *   SetMixerName          2 / bool
+ *   SetMixerVolume        2 / bool
+ *   SetMixerMute          2 / bool
+ *   GetMixerMute          2 / bool   (ref bool 出参)
+ */
+static int KiwiSoundEngine_GetMixerNumof(void)
+{
+	return mixer_get_numof();
+}
+
+static bool KiwiSoundEngine_GetMixerName(int group, struct string **name)
+{
+	const char *r = mixer_get_name(group);
+	if (!r)
+		return false;
+	if (name)
+		*name = make_string(r, strlen(r));
+	return true;
+}
+
+static bool KiwiSoundEngine_SetMixerName(int group, struct string *name)
+{
+	return mixer_set_name(group, name ? name->text : "") != 0;
+}
+
+static bool KiwiSoundEngine_GetMixerVolume(int group, int *volume)
+{
+	return mixer_get_volume(group, volume) != 0;
+}
+
+static bool KiwiSoundEngine_SetMixerVolume(int group, int volume)
+{
+	return mixer_set_volume(group, volume) != 0;
+}
+
+/* 「默认音量」= 配置表里的初值（`config.mixer_volumes`），不是当前音量：
+ * 当前音量会被用户/存档改掉，而调用方（设置界面「恢复默认」）要的是初值。 */
+static bool KiwiSoundEngine_GetMixerDefaultVolume(int group, int *volume)
+{
+	if (group < 0 || group >= config.mixer_nr_channels || !volume)
+		return false;
+	*volume = config.mixer_volumes[group];
+	return true;
+}
+
+static bool KiwiSoundEngine_SetMixerMute(int group, bool mute)
+{
+	return mixer_set_mute(group, mute ? 1 : 0) != 0;
+}
+
 static bool KiwiSoundEngine_GetMixerMute(int group, bool *mute)
 {
-	(void)group;
+	int m = 0;
+	if (mixer_get_mute(group, &m) == 0)
+		return false;
 	if (mute)
-		*mute = false;
-	return false;
+		*mute = m != 0;
+	return true;
 }
 
 HLL_LIBRARY(KiwiSoundEngine,
@@ -202,7 +268,14 @@ HLL_LIBRARY(KiwiSoundEngine,
 	    HLL_EXPORT(GetGroupVolume, audio_get_group_volume),
 	    HLL_EXPORT(MillisecondsToSamples, KiwiSoundEngine_MillisecondsToSamples),
 	    HLL_EXPORT(GetSoundFileName, KiwiSoundEngine_GetSoundFileName),
-	    HLL_EXPORT(GetMixerMute, KiwiSoundEngine_GetMixerMute)
+	    HLL_EXPORT(GetMixerMute, KiwiSoundEngine_GetMixerMute),
+	    HLL_EXPORT(GetMixerNumof, KiwiSoundEngine_GetMixerNumof),
+	    HLL_EXPORT(GetMixerName, KiwiSoundEngine_GetMixerName),
+	    HLL_EXPORT(SetMixerName, KiwiSoundEngine_SetMixerName),
+	    HLL_EXPORT(GetMixerVolume, KiwiSoundEngine_GetMixerVolume),
+	    HLL_EXPORT(SetMixerVolume, KiwiSoundEngine_SetMixerVolume),
+	    HLL_EXPORT(GetMixerDefaultVolume, KiwiSoundEngine_GetMixerDefaultVolume),
+	    HLL_EXPORT(SetMixerMute, KiwiSoundEngine_SetMixerMute)
 	);
 
 static void KiwiSoundEngine_PreLink(void)
