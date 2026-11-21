@@ -1033,6 +1033,41 @@ if (isActionAvailable()) {
 只要队里还有人能行动，回合就不该推进。判断该不该担心，只看一条：
 `24886 ProcessPostPlayerTurn` 有没有被调过。
 
+**`isActionAvailable` 的判据与 AP 无关**（`chain1`/`round2` 实测：AP 已经 5→0，
+它仍返回真）。它只看两件：
+
+```
+LeaderCard.State → LeaderState.IsActionEnable == (m0 == -1 || m0 == 0)
+Party._Leaders   → LeaderCardCollection.GetAvailableInstance(...)
+```
+
+`IsActionEnable` 是 `LeaderState` 这个**状态位集合**的派生态，不是「这回合行动过没有」：
+
+| 方法 | 含义 |
+|---|---|
+| `SetStun` / `IsStun` | 眩晕 |
+| `SetStone` / `IsStone` | 石化 |
+| `SetDown` / `IsDown` | 倒地 |
+| `SetBoost` / `IsBoost` | 强化 |
+| `SetChanged` / `IsChanged` | 变身 |
+| `IsNoState` / `IsActionEnable` | 无任何异常状态 |
+| `ResetActionState` | 单独的重置入口 |
+
+所以 AP 耗尽后「点卡没反应」是正常的：选择器被重新打开（`SetControlEnable(1)`），
+但没有任何技能付得起 AP。此时要让回合推进，走的是**防御键**：
+
+```
+SceneBattle@OnClickDefence(24899)
+  → selector.SetControlEnable(...)
+  → BattleContext.Ap.Value
+  → isActionAvailable()
+  → ProcessPostPlayerTurn()        ← 直接推进
+```
+
+即「防御」在兰斯10 里等价于「这个角色放弃行动」，而不是一个减伤状态。
+`ProcessPostPlayerTurn` 的三个调用者（`StartRound` / `RunSelectedSkill` / `OnClickDefence`）
+正好覆盖了回合推进的全部三条路径。
+
 `ProcessPostPlayerTurn`(24886) 的语义链（按调用顺序）：
 
 ```
@@ -1156,6 +1191,39 @@ else                      { ProcessPostPlayerTurn(); }     ← 闭环
 四层递归、四个出口，任何一个出口漏判症状都一样 —— 战斗卡住不动、画面正常、
 无报错。**「战斗不结束」这种问题，先确认 `CheckEndBattle` 的返回值，
 再确认是哪一层没有 `RETURN`，不要去改 `getBattleResultType`。**
+
+## 3.36 战斗里那三个按钮：绑定关系可以直接从 AIN 反推
+
+`SceneBattle@InitViewObjects`(24882 调用的 `lambda 36935`) 里有一段连续的
+`DG_NEW_FROM_METHOD + ::add`，把三个方法挂到 `BattleSkillSelector` 的事件上：
+
+```
+selector.OnClickPartyEvent   += dg(SceneBattle@OnClickParty 24900)
+selector.OnClickTurnEndEvent += dg(SceneBattle@ProcessPostPlayerTurn 24886)   ← 直接推回合
+selector.OnClickDefenceEvent += dg(SceneBattle@OnClickDefence 24899)
+```
+
+三者的语义差别很大：
+
+| 按钮 | 绑定 | 行为 |
+|---|---|---|
+| 队伍 | `OnClickParty`(24900) | 换人 |
+| **回合结束** | **`ProcessPostPlayerTurn`(24886)** | **不经过角色卡，直接推进整个玩家回合** |
+| 防御 | `OnClickDefence`(24899) | 让**当前角色**放弃行动，然后再判 `isActionAvailable` |
+
+所以「回合怎么结束」一共有三条路，全都汇到 `ProcessPostPlayerTurn`：
+`StartRound` 的收尾、`RunSelectedSkill` 在没人能行动时、以及**回合结束键直接调**。
+这也解释了为什么「AP 花光后点卡没反应」：选择器仍开着，但玩家该按的是
+「回合结束」，而不是继续点卡。
+
+**查这类「按钮对应哪个方法」的问题，不要靠点坐标试。** 方法是：
+
+1. `grep "arg=<fno> "` 找这个方法的**常量**出现在哪（只会有 1～2 处）；
+2. 看那处的上下文，一定是 `PUSHSTRUCTPAGE; PUSH <fno>; DG_NEW_FROM_METHOD; … ::add`；
+3. 用「该地址所在函数」反查注册者（`SceneBattle@InitViewObjects` 的 lambda）。
+
+`--who` 对这类方法会报 **0 个调用者** —— 因为它从来没被直接调用，只作为委托值存在。
+看到 0 调用者别急着说「死代码」，先去搜常量。
 
 ## 3.13 一个提醒
 
