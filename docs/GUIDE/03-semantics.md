@@ -896,15 +896,87 @@ else if (btn == 2) foreach (f in m8) f(m1, x, y)
 ...
 ```
 
-而它的上游是 `CPartsMessageManager@CallDelegateMouseClick(fs)`(7978)，
-再上游是消息队列（`PopMessage`）。所以「点了一个部件」在 AIN 里是
+而它的上游是 `CPartsMessageManager@CallDelegateMouseClick`(7978)，
+再上游是消息队列。所以「点了一个部件」在 AIN 里是
 **消息 → CallDelegateMouseClick → CallFunctionMouseClick → m7 foreach** 这条链。
 
+**重要的边界：这条链不需要引擎写一行派发代码。** 我第一次看到 `m7` 时以为
+引擎缺一条「扫 struct 299 找 m7」的分支，白白登记了一条债。实际是：
+
+```
+引擎侧                                 AIN 侧
+parts_msg_push(parts, CLICK_AIN, …)  →  CPartsMessageManager@PopMessage
+                                        = CALLHLL 27 PartsEngine.PopMessage
+                                     →  UpdateMessage(8294) = global.m1.Update()
+                                     →  CallDelegate(type) → CallDelegateMouseClick
+                                     →  GetFunctionSet(消息里的部件号)
+                                     →  CallFunctionMouseClick(btn,x,y) → DG_CALLBEGIN 135
+```
+
+`PopMessage` 是 `CALLHLL`，所以队列**确实**在引擎里（`src/parts/message.c`）；
+但「按部件号找 FunctionSet、再逐个调 `m7`」全在 AIN 里。引擎唯一的责任是
+**把点击消息带上正确的部件号推出去**。判断这类问题的方法很简单：
+顺着 AIN 往上找到第一条 `CALLHLL`，那条 `CALLHLL` 之上是引擎，之下全是 AIN。
+
 **`AFL_Parts_AddMouseLClickEvent`(6892) 运行期是在被调用的** ——
-2026-11-21 实测 27 次（`XSYS4_FN_WATCH=6892`），D337 那条「本作运行期 0 次调用」
-是错的。用它的正是 `ActivityButton@0`（老式按钮）：构造时把自己生成的
-lambda 37568 挂到部件上。所以**技能按钮这类 `ActivityButton` 走的不是
-`Parts@OnClick`，而是 `CPartsFunctionSet.m7`**。
+2026-11-21 实测 27 次（`XSYS4_FN_WATCH=6892,6998`，两个都在 27），D337 那条
+「本作运行期 0 次调用」是错的。用它的正是 `ActivityButton@0`（老式按钮）：
+构造时把自己生成的 lambda 37568 挂到部件上。所以**技能按钮这类 `ActivityButton`
+走的不是 `Parts@OnClick`，而是 `CPartsFunctionSet.m7`**。
+
+那 27 次是在菜单里发生的（那轮没进战斗），但已经足够证明这条路径是活的：
+`m7` 会被填、派发会跑，问题只剩「点击有没有落到正确的部件号上」。
+
+## 3.31 `AddConstructProcess` 的命令号是从 setter 里扫出来的
+
+合成队列（construction process）不按名字调，只按一个整数 `command` 分发：
+
+```
+PartsEngine.add_construction_process(parts_no, state, command, interp,
+                                    sx,sy,sw,sh, dx,dy,…, text, cg, …)
+```
+
+`command` 的名字在 AIN 里看不到 —— 没有枚举、没有符号。第一次遇到的报错
+就是一句 `unknown command 23`，光看这一个数字，既不能搜也判断不了该不该实现。
+
+**正确做法：去反汇编 `CASConstructionProcess@SetXxx`，看它把什么常量写进
+`ints[2]`。** 这些 setter 是 fno 48..77 连续的一段，每个函数开头都是同一个形状：
+
+```
+PUSHSTRUCTPAGE ; PUSH 0 ; REF ; PUSH 0 ; PUSH <command> ; ASSIGN ; POP
+                                  ^ints   ^索引     ^命令号
+```
+
+扫一遍得到的完整映射（**这张表是实测的，不是推的**）：
+
+| cmd | setter | cmd | setter |
+|---|---|---|---|
+| 0 | SetCreate | 15 | SetGrayFilter |
+| 1 | SetCreatePixelOnly | 16 | SetAddFilter |
+| 2 | SetCreateCG | 17 | SetMulFilter |
+| 3 | SetFill | 18 | SetDrawLine |
+| 4 | SetFillAlphaColor | 19 | SetCutCGAlphaBlend |
+| 5 | SetFillAMap | 20 | SetCutCGScaleAlphaBlend |
+| 6 | SetFillWithAlpha | 21 | SetCutCGOnlyAlpha |
+| 7 | SetDrawText | 22 | SetCutCGScaleOnlyAlpha |
+| 8 | SetCopyText | **23** | **SetAlphaBlendText** |
+| 9 | SetFillGradationHorizon | 24 | SetOnlyAlphaText |
+| 10 | SetDrawRect | 25 | SetMulAMapGradationHorizon |
+| 11 | SetCutCGBlend | 26 | SetMulAMapGradationVertical |
+| 12 | SetCutCGCopy | 27 | SetHBlurFilter |
+| 13 | SetCutCGScaleBlend | 28 | SetVBlurFilter |
+| 14 | SetCutCGScaleCopy | 29 | SetCGBlend（按 CG 原尺寸画）|
+
+三条能直接用的结论：
+
+- **编号顺序 ≠ 声明顺序。** `SetDrawText` 是第 24 个声明的方法，命令号却是 7；
+  `SetCGBlend` 声明在 12 位，命令号是 29。别按类里的顺序推。
+- **`SetAlphaBlendText`(23) 与 `SetDrawText`(7) 是同一实现。** 引擎的
+  `build_draw_text` 用 `gfx_render_text(…, true)`（混合），`build_copy_text` 才是
+  覆盖模式；「alpha blend 画字」= 混合画字。战斗里每次点技能都刷的那条
+  `unknown command 23`，补上它就没了。
+- **报错要带名字。** 把这张表塞进 `default:` 分支打印成
+  `unknown command 23 (SetAlphaBlendText)` —— 下一个踩的人不用再扫一遍 30 个 setter。
 
 ## 3.13 一个提醒
 

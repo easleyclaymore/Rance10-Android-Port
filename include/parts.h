@@ -47,6 +47,7 @@ bool PE_PartsCovers(int parts_no, int x, int y);
 void PE_DebugCovers(int x, int y);
 /* [D341] root_no 的子树里有没有部件覆盖 (x,y)。 */
 bool PE_SubtreeCovers(int root_no, int x, int y);
+bool PE_SubtreeBounds(int root_no, int *x, int *y, int *w, int *h, int *n);
 bool PE_SetPartsCG(int parts_no, struct string *cg_name, int sprite_deform, int state);
 bool PE_SetPartsCGThread(int parts_no, struct string *cg_name, int state);
 bool PE_IsThreadLoading(int parts_no, int state);

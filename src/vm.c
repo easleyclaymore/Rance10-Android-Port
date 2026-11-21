@@ -2047,6 +2047,15 @@ static void vm_dbg_lsb(void)
 			NOTICE("[pev]     卡片部件号 m7->%d m8->%d", a, b);
 			if (a > 0) PE_DebugPartsInfo(a);
 			if (b > 0) PE_DebugPartsInfo(b);
+			/* [D434] m7/m8 本体是 0x0 的布局锚点，光看它们不知道卡画在哪。
+			 * 把子树并集包围盒打出来，「该点哪个像素」才有答案。 */
+			int bx, by, bw, bh, bn;
+			if (a > 0 && PE_SubtreeBounds(a, &bx, &by, &bw, &bh, &bn))
+				NOTICE("[pev]       m7 子树 %d 件 bounds=(%d,%d,%d,%d)",
+				       bn, bx, by, bw, bh);
+			if (b > 0 && PE_SubtreeBounds(b, &bx, &by, &bw, &bh, &bn))
+				NOTICE("[pev]       m8 子树 %d 件 bounds=(%d,%d,%d,%d)",
+				       bn, bx, by, bw, bh);
 		}
 	}
 }

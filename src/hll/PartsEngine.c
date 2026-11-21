@@ -265,13 +265,52 @@ static void PartsEngine_add_construction_process(union vm_value *ints,
 	 * CG 名（`カード／ランス／基本` 等），尺寸在 CG 本身。实测 171 次，全部
 	 * 落在卡片部件上——卡片立绘不出的直接原因就是它被当 unknown 丢掉。
 	 * 传 dw/dh=0，由 `build_draw_cut_cg` 回退到 texture 尺寸。 */
+	/* [D436] 19..28 的编号是扫出来的，不是猜的：对每个
+	 * `CASConstructionProcess@SetXxx`(fno 48..77) 反汇编，取它写进
+	 * `ints[2]` 的那个常量，得到完整映射
+	 *   19 CutCGAlphaBlend   20 CutCGScaleAlphaBlend
+	 *   21 CutCGOnlyAlpha    22 CutCGScaleOnlyAlpha
+	 *   23 AlphaBlendText    24 OnlyAlphaText
+	 *   25 MulAMapGradationHorizon  26 MulAMapGradationVertical
+	 *   27 HBlurFilter        28 VBlurFilter
+	 * 其中 23 是战斗里每次点技能都刷 `unknown command 23` 的那个。
+	 *
+	 * `SetAlphaBlendText` 语义上就是「混合模式画字」，与 case 7 的
+	 * `SetDrawText` 同实现（`build_draw_text` 用 `gfx_render_text(…, true)`
+	 * 混合；`SetCopyText` 才是覆盖）。所以直接复用。 */
+	case 23:  // CASConstructionProcess::SetAlphaBlendText
+		PE_AddDrawTextToPartsConstructionProcess(parts_no,
+				dx, dy, text, font_type, font_size,
+				font_r, font_g, font_b, bold_weight,
+				edge_r, edge_g, edge_b, edge_weight,
+				char_space, line_space, state);
+		break;
 	case 29:  // SetDrawCG (natural size at dx,dy)
 		PE_AddDrawCutCGToPartsConstructionProcess(parts_no, cg_name,
 				dx, dy, 0, 0, 0, 0, 0, 0, interp_type, state);
 		break;
-	default:
-		WARNING("AddConstructProcess: unknown command %d", command);
+	default: {
+		/* [D436] 带上名字再报。只报数字时，「unknown command 23」既不能
+		 * 搜、也不能判断该不该实现 —— 光为了解这一个数字就得再扫一遍
+		 * 全部 setter 的常量。 */
+		static const char *const cproc_names[30] = {
+			"SetCreate", "SetCreatePixelOnly", "SetCreateCG", "SetFill",
+			"SetFillAlphaColor", "SetFillAMap", "SetFillWithAlpha",
+			"SetDrawText", "SetCopyText", "SetFillGradationHorizon",
+			"SetDrawRect", "SetCutCGBlend", "SetCutCGCopy",
+			"SetCutCGScaleBlend", "SetCutCGScaleCopy", "SetGrayFilter",
+			"SetAddFilter", "SetMulFilter", "SetDrawLine",
+			"SetCutCGAlphaBlend", "SetCutCGScaleAlphaBlend",
+			"SetCutCGOnlyAlpha", "SetCutCGScaleOnlyAlpha",
+			"SetAlphaBlendText", "SetOnlyAlphaText",
+			"SetMulAMapGradationHorizon", "SetMulAMapGradationVertical",
+			"SetHBlurFilter", "SetVBlurFilter", "SetCGBlend",
+		};
+		WARNING("AddConstructProcess: unknown command %d (%s)", command,
+		        (command >= 0 && command < 30) ? cproc_names[command]
+		                                       : "?");
 		break;
+	}
 	}
 }
 

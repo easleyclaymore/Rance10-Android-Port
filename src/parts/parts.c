@@ -1907,6 +1907,49 @@ bool PE_SubtreeCovers(int root_no, int x, int y)
 	return false;
 }
 
+/* [D434] `root_no` 子树里所有「有图形尺寸」的件的**并集包围盒**。
+ *
+ * 为什么需要：技能卡的 `m7`/`m8` 是 0x0 的布局锚点（实测 `hb=(740,884,0,0)`），
+ * 光看它们不知道卡片画在哪、更不知道该点哪个像素。`PE_SubtreeCovers` 只能回答
+ * 「这个点算不算在卡里」，回答不了「卡在哪」。点不中时缺的正是后者。
+ * 与 `PE_PartsCovers` 用同一套坐标口径（补父的 global 偏移）。 */
+bool PE_SubtreeBounds(int root_no, int *x, int *y, int *w, int *h, int *n)
+{
+	if (root_no <= 0)
+		return false;
+	int x0 = 0x7fffffff, y0 = 0x7fffffff;
+	int x1 = -0x7fffffff, y1 = -0x7fffffff, cnt = 0;
+	struct parts *p;
+	PARTS_LIST_FOREACH(p) {
+		if (!PE_PartsIsUnder(p->no, root_no))
+			continue;
+		Rectangle hb = p->states[PARTS_STATE_DEFAULT].common.hitbox;
+		if (p->parent) {
+			hb.x += p->parent->global.pos.x;
+			hb.y += p->parent->global.pos.y;
+		}
+		if (hb.w <= 0 || hb.h <= 0)
+			continue;
+		cnt++;
+		if (hb.x < x0)
+			x0 = hb.x;
+		if (hb.y < y0)
+			y0 = hb.y;
+		if (hb.x + hb.w > x1)
+			x1 = hb.x + hb.w;
+		if (hb.y + hb.h > y1)
+			y1 = hb.y + hb.h;
+	}
+	if (!cnt)
+		return false;
+	if (x) *x = x0;
+	if (y) *y = y0;
+	if (w) *w = x1 - x0;
+	if (h) *h = y1 - y0;
+	if (n) *n = cnt;
+	return true;
+}
+
 /* [D347 诊断] 打印所有覆盖 (x,y) 且有图形尺寸的部件（不限可见性）。
  * 技能卡点不中时用它看"到底有哪些件压在这个点上"。 */
 void PE_DebugCovers(int x, int y)
