@@ -241,13 +241,21 @@ task.SetPos(-300.0, 0, 0, 0, 1)    ; x 从 -300 滑到 0
 task.SetAlpha(0.0, 1.0, 0)         ; 同时淡入
 ```
 
-三个按钮（`m4` / `m3` / `m2`）各一遍，然后
-`PartsMotionTask@SetOnFinishEvent(dg)`(29719) 把完成回调挂到其中一个任务上。
+三个按钮的方向**各不相同**——按调用顺序分别是：
+
+| 按钮 | `SetPos` 起点 |
+|---|---|
+| `m4` | `(-300, 0)` 从左侧 |
+| `m3` | `(300, 0)` 从右侧 |
+| `m2` | `(0, 100)` 从下方 |
+
+（`0xc3960000` = -300.0、`0x43960000` = 300.0、`0x42c80000` = 100.0。）
+
+三段之后，`PartsMotionTask@SetOnFinishEvent(dg)`(29719) 把完成回调挂到其中一个任务上。
 全函数只出现一次 `SetOnFinishEvent`，所以 `@OnFadeInButtonFinishEvent`
 （截图 + 自动存档）整体只触发一次。
 
-`SetPos` 五个参数里第一个是 `0xc3960000`，也就是 **-300.0**，后三个 `0.0`、最后一个 `1`；
-`SetAlpha` 三参数是 `(0.0, 1.0, 0)`。这就是「从屏幕左侧滑入并淡入」。
+`SetAlpha` 三参数恒为 `(0.0, 1.0, 0)`，即同时淡入。三个方向的滑动 + 淡入构成入场。
 
 挂回调的那个任务（`local9`）的构造在 `0x36c1a4` 的 `REFREF + PUSH 5 + ADD` 里，
 目前只读到「从某个结构引用偏移 5 取出来」这一层，没有再往下拆 —— 但
@@ -304,6 +312,26 @@ RunIScene(lambda):
 这条链上每一环现在都有字节码依据。`DG_CALL 1035` 的委托来源写成
 `local3.RefRef[0]`（某个数组的第 0 项），没有再往下拆——它是收尾用的，
 不影响主链路判断。
+
+### 4.5.9 每帧回调的链：`View_Update` → `parts::detail::Update`
+
+注册在 `AFL_Parts_AddBeginUpdateEvent` 的委托（`WaitFrame` 的 `CheckWaitExit` 就是其中一个）
+**不是**引擎在 C 层遍历的，而是一条纯 AIN 链：
+
+```
+AFL_View_Update(18716)
+  → view::detail::View_Update(18766)
+    → parts::detail::Update(8292)
+      → parts::detail::CallBeginUpdateEvent(8281)
+        → parts::detail::CallPartsUpdateEvent(8279, global6, …)
+          → 全局数组里的每个委托
+```
+
+`WaitForClick` 的自旋每轮都调 `AFL_View_Update`，所以 `WaitFrame` 那 4 帧计数
+**在自旋里照样推进**，不依赖 `vm_frame_pump` 的 64 条指令间隔。
+
+这条链也把两个自旋的关系说清了：`WaitFrame` 与 `WaitForClick` 共用同一个
+`View_Update`，前者靠 `CheckWaitExit` 数 4 帧退出，后者靠点击号退出，互不阻塞。
 
 ## 4.6 字符出来了但显示方框：先分码表、再分字体
 
