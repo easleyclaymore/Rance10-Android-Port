@@ -1225,6 +1225,92 @@ selector.OnClickDefenceEvent += dg(SceneBattle@OnClickDefence 24899)
 `--who` 对这类方法会报 **0 个调用者** —— 因为它从来没被直接调用，只作为委托值存在。
 看到 0 调用者别急着说「死代码」，先去搜常量。
 
+## 3.37 技能效果号：从 `IsExist(集合, 常量)` 的调用点反推
+
+技能的效果是**按编号查表**的，没有名字可读：
+
+```
+effects = skill.Effects
+if (effects.IsExist(56)) { … }        ; 56 = ?
+```
+
+编号本身在 AIN 里就是一个 `int`，所以想「弄清语义」只能靠**用途反推**。
+可以自动扫，但规则必须严格，否则全是假阳性。
+
+**正确规则：只认「`CALLMETHOD …EffectCollection@IsExist` 的**前一条**
+就是 `PUSH <常量>`」的调用点。** 说明：AIN 的实参是紧挨着 `CALLMETHOD` 压的，
+中间夹一条 `REF`/`SWAP` 就说明那个常量是**别的**东西（接收者、索引、或上一条
+表达式的操作数）。
+
+我第一版用的是「往回找最近一个 `PUSH`，最多 10 条，遇到别的调用就停」，
+结果把 `PlayerSkill@GetHealType` 的**取函数号**当成了效果号，整张表都不可信。
+收紧之后 22 处无歧义，抽验两处（65/66、56）都对得上。
+
+| 效果号 | 谁在查它 | 含义 |
+|---|---|---|
+| 1 | `SkillAttackRatioCalculator::GetRatio` / `SacrificeFinder` | 攻击倍率修正 |
+| 2 | `SkillAttackRatioCalculator::GetRatio` / `BadConditionGroup@AddBySkill` | 附加异常状态 + 倍率 |
+| 4 | `PlayerAction@GetAttackCount` | 多段攻击（段数）|
+| 7 | `AvoidanceCalculator@IsAttackHitConstantly…` | 必中 |
+| 8 | `PlayerAttackDamageCalculator@CheckWeakAttack` | 弱点攻击 |
+| 21 / 22 / 23 | `EnemyTypeChecker::Check` | 敌人类型判定（3 种）|
+| 46 | `DamageCalculationProcess::IsExistSpecialHalfDamage` | 半减伤害 |
+| 53 / 56 / 133 | `BattleProcess@ConvertPlayerSkill` | 技能转换（56 同时是伤害）|
+| **56** | **`SceneBattle@RunSelectedSkill`** | **有伤害演出，才走 `DamageEffect@RunEffect`** |
+| 65 / 66 | `PlayerSkill@GetHealType` | 治疗类型（两种）|
+| 126 / 127 | `SimpleBattlePartyBonus@GetSimpleBattleSkillEffect` | 简略战斗的加成 |
+| 137 | `AegisEffectGroup` | 护盾信息块 |
+| 140 | `AutoCaptureProcess` | 自动捕获 |
+| 149 | `SkillEffectProcessLeaderState` | 角色状态类效果 |
+
+「处理侧」一共 23 个 `SkillEffectProcess<X>@Process` 类，名字就是语义：
+
+```
+Absorption / AddAegisEffect / AddCombo / AlterRound / Assasination / Boost /
+DamageSelf / DecAp / DeleteAegisEffect / DeleteBadCondition / EnemyActionAbort /
+ForceDraw / ForceUsed / HandOfClausen / Healing / LeaderState / PostDown /
+PostRandomDown / PostReaction / RankUp / RecoverAp / ShowEnemyInformation / Transform
+```
+
+**判据的用法**：「技能打了没伤害」先查 `IsExist(effects, 56)`；
+「技能该加状态没加」查 2；「多段攻击只打一下」查 4。
+
+## 3.38 「技能 → 掉血」的完整链路：五层，每层职责不同
+
+上一条链路只到「演出」，真正把血扣掉的是另一条。两条都从
+`RunSelectedSkill` 出发，容易混在一起：
+
+```
+SceneBattle@RunSelectedSkill(24898)
+  ├─ DamageEffect@RunEffect(24839)         ← 演出：DamageView@Reset + BattleAcitonEffect@Run/Join
+  └─ SceneBattle@ProcessPlayerAction(24906) ← 结算：
+       └─ SceneBattle@ProcessAttack(24909)
+            ├─ DamageEffect@RunEffect        （再来一次演出）
+            ├─ SceneBattle@ShowLogPreReflection
+            ├─ SceneBattle@ShowMiss          ← 未命中走这里
+            ├─ PlayerAttackProcess@Process(27256)
+            │    └─ PlayerAttackProcess@ProcessAttack(27257)
+            │         └─ DamageCalculator::CalcAttack(26909)
+            │              └─ DamageCalculator::CalcPlayerAttack(26910)
+            │                   └─ PlayerAttackDamageCalculator@Calc(26951)   ← 唯一读 Enemy@Hp 的地方
+            └─ SceneBattle@ProcessSkillEffect(24919)   ← 23 个 SkillEffectProcess 在这里跑
+```
+
+三条能直接用的判据：
+
+- **`DamageEffect@RunEffect` 跑过 ≠ 掉血过。** 它只做演出（`DamageView@Reset` +
+  `BattleAcitonEffect`）。要确认真的结算，看 `PlayerAttackProcess@Process`。
+- **`SceneBattle@ProcessAttack` 有两个调用者**：`ProcessPlayerAction`（玩家打）
+  和 `ProcessEnemySkillAction`（敌人打）。敌我共用同一条结算链，
+  两侧的差别只在 `DamageCalculator::CalcAttack` 里按 `CalcPlayerAttack` /
+  `CalcEnemyAttack` 分叉。
+- **游戏自己的拼写是 `BattleAcitonEffect`（少一个 i）**，`Aciton` 不是笔误。
+  按 `ActionEffect` 搜是全空的 —— 这种拼写错误在按名字抓符号时最费时间。
+
+`PlayerAttackProcess` 是标准「过程类」：`@0` 构造 / `@Process` 逐帧推进 /
+`@ProcessPost` 收尾 / `@SpecificLog` 出日志。敌方的 `EnemyActionView@StartAction`
+也是这个模式（它只做 `EraseFront` + `SetIndex`，真正的动作靠过程队列）。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
