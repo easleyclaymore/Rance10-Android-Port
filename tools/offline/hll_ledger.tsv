@@ -94,7 +94,7 @@ PartsEngine.Parts_SetComment	L3	写 pe_comments 旁路表（strdup，上限 PE_C
 PartsEngine.Parts_SetParentPartsNumber	L3	D194：运行时挂父立即 RefreshGlobalTree，防子树 global.z 停在建树瞬间
 PartsEngine.Parts_SetPartsCG	L3	parts_cg_set：换图 + 改 state 类型 + dirty；D310 纹理转存证明图正确
 PartsEngine.Parts_SetPassCursor	L3	pass_cursor 参与 click_eligible=clickable||!pass_cursor，直接影响命中；12 屏与对话框点击命中与预期一致
-PartsEngine.Parts_SetSoundName	L0	音频后端未接（KiwiSoundEngine 未移植），只存名字无产出；等音频通路再实现
+PartsEngine.Parts_SetSoundName	L2	存取闭环成立（D494）：AIN 签名 (int,string,int slot)、槽号实证 2/3（AIN 包装 7651/7653 立即数，配对 getter 7652/7654），状态挂 parts_widget；播放副作用待音频通路
 PartsEngine.Parts_SetText	L3	写文本并重排版；12 屏 1/2/3 行段落与说话人切换均正确
 PartsEngine.Parts_SetTextCharSpace	L3	字距写入并被渲染采用（D306 字号补偿后 12 屏无「半个字」）
 PartsEngine.PopMessage	L3	弹出队头并释放，队列前进；空队是空操作（[mpop] 实测）
@@ -106,8 +106,8 @@ PartsEngine.SetComponentPosZ	L3	parts_set_z：local.z 变化即重算 global.z �
 PartsEngine.SetComponentShow	L3	层号走 ctrl_stack.show（D128），部件走 local.show；D311 serial 实测 show/hide 序列与 AIN 意图一致
 PartsEngine.SetComponentType	L3	类型变更时 parts_state_reset 重建状态 + 写 component_type（1-based state）
 PartsEngine.SetDelegateIndex	L3	写 parts.delegate_index；后续 CallDelegate 按它取 FunctionSet（s161 实测 di 一致）
-PartsEngine.SetEnableInputProcess	L0	契约未定。D165 试过映射到 clickable，238/242 次 enable=0 把按钮全关掉、只加载 27 个活动后卡死，已回退。需行为实验（[EIP-NOT-CLICKABLE]）
-PartsEngine.SetKeyWaitShow	L0	两个调用点都是薄封装（activityeditor / message::キー待ち表示設定），未找到可见载体；猜成 parts.show 有误隐藏风险，暂缓
+PartsEngine.SetEnableInputProcess	L1	契约半钉（D496 离线 xref）：AIN 侧只写不读——detail::Set(8255) 静态 xref 仅 3 处且全是类方法转发、转发自身无静态调用点；IsInputPartsActive(7243) 按类型 {4,7,11} 过滤不读此 flag ⇒ 它是原版引擎 C++ 输入处理器的参与开关。修复方向：存旁路表，在输入派发路径对输入组件族（type 4/7/11）生效，不碰 clickable（D165 教训）
+PartsEngine.SetKeyWaitShow	L1	契约钉死（D496）：在指定部件（消息窗）上显示/隐藏按键等待指示（▼）。判据：调用点 0x196ab4 的实参 = CMessageWindowManager@GetMessageWindowPartsNumber 的返回值；0x22fd8 = activityeditor 对 type==10 实例的分支。实现待消息窗渲染侧的指示器挂钩
 PartsEngine.SetWantSaveBackScene	L3	写 want_save_back_scene，决定 SaveBackScene 的收录范围（读取端默认关，D310）
 PassRegister.RegistText	L3	有序插入 + write_register 落盘，幂等
 String.Contains	L2	子串存在性；470 次/章

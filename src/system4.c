@@ -959,10 +959,19 @@ int main(int argc, char *argv[])
 	 * 没有这张表就只能猜 —— 而猜错一个，整条「哪个场景被创建」的结论就废了。
 	 */
 	if (dump_structs) {
+		/* [D496] 第 4 列起补**成员类型表**（名字 + 类型码），与
+		 * --dump-hll 的参数类型列同理：存档序列化（savedata.c）判断
+		 * "泛型数组能不能从声明侧定型"时，需要知道 AIN 到底把成员
+		 * 声明成了 array<int> 还是 array<?>。只打类型码够用，
+		 * 结构体成员的 struc 另走 --dump-structs 的行号查。 */
 		for (int i = 0; i < ain->nr_structures; i++) {
 			struct ain_struct *st = &ain->structures[i];
-			printf("%d\t%d\t%s\n", i, st->nr_members,
+			printf("%d\t%d\t%s", i, st->nr_members,
 			       st->name ? st->name : "");
+			for (int j = 0; j < st->nr_members; j++)
+				printf("\t%s:%d", st->members[j].name ? st->members[j].name : "",
+				       (int)st->members[j].type.data);
+			putchar('\n');
 		}
 		ain_free(ain);
 		return 0;

@@ -659,11 +659,16 @@ static int PartsEngine_CreateUserPartsNumber(void)
  * **238 次是 enable=0**（活动初始化时统一"先关一遍"），于是活动文件里
  * 靠 `点击許可` 打开的按钮全被关掉，连编队界面都进不去。
  *
- * 结论：`输入处理开关` ≠ `可点击`。前者是"AIN 自己要不要派发"，后者是
- * "这个部件在活动里声明为按钮"。在没有弄清 AIN 侧怎么用这个开关之前，
- * 保持空桩比猜一个映射安全。
+ * [D496] 离线 xref 把契约钉到了"AIN 侧只写不读"：
+ * `parts::detail::SetEnableInputProcess(8255)` 的静态调用点只有 3 处，
+ * 全是 Parts 类方法转发（7124 / 12792 一族），而这些转发自身**没有任何
+ * 静态调用点**（虚表派发）；`parts::IsInputPartsActive(7243)`（AIN 侧的
+ * 输入组件过滤）按类型 {4,7,11} 判定、根本不读这个 flag。⇒ 开关的消费
+ * 方在**原版引擎的 C++ 输入处理器**里，AIN 只是转存。
  *
- * 已登记 TECH_DEBT `[EIP-NOT-CLICKABLE]`。 */
+ * 修复方向（待实现，见台账 L1）：存旁路表，在引擎输入派发路径对**输入
+ * 组件族**（type 4/7/11）生效；不碰 clickable——D165 的教训正是
+ * 「输入处理开关 ≠ 可点击」。 */
 static void PartsEngine_SetEnableInputProcess(int parts_no, int enable)
 {
 	if (getenv("XSYS4_DBG_EIP"))
