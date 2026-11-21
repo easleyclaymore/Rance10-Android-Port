@@ -978,6 +978,42 @@ PUSHSTRUCTPAGE ; PUSH 0 ; REF ; PUSH 0 ; PUSH <command> ; ASSIGN ; POP
 - **报错要带名字。** 把这张表塞进 `default:` 分支打印成
   `unknown command 23 (SetAlphaBlendText)` —— 下一个踩的人不用再扫一遍 30 个 setter。
 
+## 3.32 一次「点技能卡」在 AIN 里到底走了什么
+
+把 `FN_WATCH` 挂在整条链上跑一次，得到的不是推断而是**顺序**：
+
+| 序 | fno | 函数 | 干什么 |
+|---|---|---|---|
+| 1 | — | 部件点击消息 | `parts_msg_push(parts, CLICK_AIN, x, y, key)` |
+| 2 | 37029 | `LargeSkillButton@InitParts` 的 lambda | `foreach (f in m3) f(m0)` |
+| 3 | 24897 | `SceneBattle@OnClickSkill` | 关选择器 + `ShowUseApCount` + **`CreateEndTask`** |
+| 4 | 36936 | OnClickSkill 内联的 lambda | `RunSelectedSkill(cap0, cap1)` |
+| 5 | 24898 | `SceneBattle@RunSelectedSkill` | 下面整条 |
+| 6 | 27558 | `SkillUsingHelper::UseSelectionSkill` | **扣 AP** |
+| 7 | 26752 | `RecentUsedSkill@Set` | 记「刚用过什么」 |
+| 8 | 25172 | `BattleSkillSelector@UpdateSelectable` | 刷新可选状态 |
+| 9 | 28327 | `PlayerSkillEffectCollection@IsExist(effects, 56)` | 有没有 56 号效果 |
+| 10 | 24839 | `DamageEffect@RunEffect` | **真正的伤害演出** |
+| 11 | 24906 | `SceneBattle@ProcessPlayerAction` | 玩家行动收尾 |
+| 12 | 24955 | `SceneBattle@CheckEndBattle` | 判胜负 |
+| 13 | 24886 | `SceneBattle@ProcessPostPlayerTurn` | 全队行动完才轮到 |
+
+三个容易看漏的细节：
+
+- **`OnClickSkill` 不直接调 `RunSelectedSkill`。** 它先 `CreateEndTask(lambda 36936)`，
+  把执行推迟到「本任务末尾」。所以这两个 fno 永远成对出现、且 `RunSelectedSkill`
+  总在同一个点击的后面 —— 看到「OnClickSkill 跑了但 RunSelectedSkill 没跑」时，
+  该查的是 `CreateEndTask` 的队列有没有被清空，而不是选择器。
+- **扣 AP 在 `UseSelectionSkill` 里，不在 `RunSelectedSkill` 开头。** 它的调用序列是
+  `BattleContext.Ap.Value` → `SkillApCostCalculator::Calc(cardId, skillIndex)` →
+  `ActionPoint::Set(AP - cost)`，**没有一行碰伤害**。想找「为什么打了没伤害」，
+  在这个函数里找是白找。
+- **`IsExist(effects, 56)` 的 `56` 是硬编码的效果类型号。** 技能没带 56 号效果时
+  整支 `DamageEffect@RunEffect` 会被跳过，表现就是「AP 扣了、演出放了、敌人不掉血」。
+  这是「打了没伤害」最省事的一条判据：先看 `24839` 有没有被调。
+
+**验收判据**：敌 HP 从 9000 掉到 8152、AP 从 5 掉到 0，一次点击一次。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。

@@ -622,6 +622,7 @@ static void usage(void)
 	puts("        --struct <name|no>  Dump a structure's member table and exit");
 	puts("        --dump-switch <no>  Dump a switch's case table and exit");
 	puts("        --dump-delegate <no> Dump a delegate type's signature and exit");
+	puts("        --dump-signatures   Dump every AIN function's arity and variable count");
 	puts("        --encoding       Specify the game's character encoding. sjis (default) or gbk");
 	puts("        --font-mincho    Specify the path to the mincho font to use (path[:index] for .ttc)");
 	puts("        --font-gothic    Specify the path to the gothic font to use (path[:index] for .ttc)");
@@ -658,6 +659,7 @@ enum {
 	LOPT_STRUCT,
 	LOPT_DUMP_SWITCH,
 	LOPT_DUMP_DELEGATE,
+	LOPT_DUMP_SIGNATURES,
 	LOPT_ECHO_MESSAGE,
 	LOPT_ENCODING,
 	LOPT_FONT_MINCHO,
@@ -695,6 +697,7 @@ int main(int argc, char *argv[])
 	char *struct_query = NULL;
 	int dump_switch_no = -1;
 	int dump_delegate_no = -1;
+	bool dump_signatures = false;
 
 	char *font_mincho = NULL;
 	char *font_gothic = NULL;
@@ -713,6 +716,7 @@ int main(int argc, char *argv[])
 			{ "struct",        required_argument, 0, LOPT_STRUCT },
 			{ "dump-switch",   required_argument, 0, LOPT_DUMP_SWITCH },
 			{ "dump-delegate", required_argument, 0, LOPT_DUMP_DELEGATE },
+			{ "dump-signatures", no_argument, 0, LOPT_DUMP_SIGNATURES },
 			{ "echo-message",  no_argument,       0, LOPT_ECHO_MESSAGE },
 			{ "encoding",      required_argument, 0, LOPT_ENCODING },
 			{ "font-mincho",   required_argument, 0, LOPT_FONT_MINCHO },
@@ -760,6 +764,9 @@ int main(int argc, char *argv[])
 			break;
 		case LOPT_DUMP_DELEGATE:
 			dump_delegate_no = atoi(optarg);
+			break;
+		case LOPT_DUMP_SIGNATURES:
+			dump_signatures = true;
 			break;
 		case LOPT_DISASM: {
 			unsigned long ds = 0, dl = 0x400;
@@ -903,6 +910,30 @@ int main(int argc, char *argv[])
 	/* [D403] `--dump-switch <no>`：把 `ain->switches[no]` 的 case 表原样倒出来。
 	 * 相位状态机全是 `SWITCH <no>`，而 `--disasm` 只显示编号、不显示表，
 	 * 读流程时只能猜「这个 case 对应哪个 Phase 值」。和 `--struct` 同性质。 */
+	/* [D438] `--dump-signatures`：每个 AIN 函数的 (fno, nr_args, nr_vars, 名字)。
+	 *
+	 * 为什么需要：读 `CALLFUNC <fno>` 时，反汇编里**没有实参个数**，而
+	 * `function_call()` 是按 `function_argument_slots(f)` 弹栈的。不知道 arity，
+	 * 静态还原调用就只能猜 —— 猜错一个，后面整段伪代码的栈全是歪的。
+	 * 而 AIN 表里 `nr_args` / `nr_vars` 是现成的，直接导出来，让离线工具
+	 * 有确定信息可用。 */
+	if (dump_signatures) {
+		for (int i = 0; i < ain->nr_functions; i++) {
+			struct ain_function *fn = &ain->functions[i];
+			char *nm = fn->name;
+			/* 名字里有空格会破坏 "列" 的解析，换成下划线。 */
+			if (nm) {
+				for (char *c = nm; *c; c++)
+					if (*c == ' ' || *c == '\t' || *c == '\n')
+						*c = '_';
+			}
+			printf("%d\t%d\t%d\t%s\n", i, fn->nr_args, fn->nr_vars,
+			       nm ? nm : "");
+		}
+		ain_free(ain);
+		return 0;
+	}
+
 	/* [D428] `--dump-delegate <no>`：委托类型签名。
 	 * `DG_CALLBEGIN n` 用 `delegate_argument_slots()` 从栈上取 dg_page，
 	 * 槽数取决于每个参数占几槽（AIN_IFACE/WRAP/OPTION 占两槽）。

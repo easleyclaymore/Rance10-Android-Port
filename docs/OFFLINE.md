@@ -61,6 +61,37 @@
 #   STRUCT [618] ILoadableQuestMapObject members=0 iface=1
 ```
 
+## ain_dec — 把反汇编渲染成结构化伪代码
+
+`--disasm` 的输出一行一条指令。一个方法动辄 300+ 行，其中一半是
+`PUSHLOCALPAGE / PUSH 2 / REF / DELETE / SWAP / ASSIGN` 这种「给 local2 赋值」
+的固定花纹。人眼读这种流，读三条就忘了上面是什么。
+
+`tools/offline/ain_dec.py` 只做四件**确定**的事：
+
+1. 访问器还原：`PUSHLOCALPAGE; PUSH k; REF` → `local<k>`；
+   `PUSHSTRUCTPAGE; PUSH k; REF` → `this.m<k>`；
+   `PUSHLOCALPAGE; X_GETENV; PUSH k; REF` → `cap<k>`（闭包捕获）
+2. 调用还原：`CALLMETHOD n` 的 obj / fno / 实参按 AIN 压栈顺序还原成
+   `obj.Method(a1, a2, …)`；`PUSHSTRUCTPAGE; PUSH <fno>; …` 还原成隐式 `this.`
+3. 控制流分块：`IFZ/IFNZ + 跳转` → `if (…) { }`，`JUMP` → `goto LABEL`
+4. 赋值折叠：`ASSIGN` → `target = value`
+
+**不确定的地方不猜**：栈空了写 `?`，认不出的指令原样打 `# RAW <op>`。
+宁可露出「这里我没懂」，也不要写一句看起来合理但是错的伪代码。
+
+```bash
+# 先导签名表（CALLFUNC 的实参个数反汇编里没有，必须从 AIN 表拿）
+build-sdl3/src/xsystem4 --nodebug --encoding gbk --dump-signatures . > /tmp/ainsig.tsv
+# 再渲染
+python3 tools/offline/ain_dec.py /tmp/ain_full.txt 24897 27558
+```
+
+**已知局限**：`SWAP / DUP2 / DUP_X2 / DELETE / SP_INC` 是 AIN 的引用计数舞蹈，
+工具只做近似处理，遇到 `local2 = …` 这类「读旧值→DELETE→写新值」的惯用法
+会退化成 `# RAW`。**读算法用 `ain_show.py --calls` 拿调用序列更可靠**，
+伪代码只用来确认控制流形状。
+
 ## gsave_dump — 存档检查器
 
 不跑游戏就能判断"我们写出去的档，自己能不能读回来"。
