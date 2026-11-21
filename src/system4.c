@@ -481,8 +481,14 @@ static void ain_disasm(FILE *f, struct ain *ain, size_t start, size_t len)
 				/* SWAP/DUP2/DUP_X2 不能收：`PUSH 2; SWAP; …` 这种成员号/槽号
 				 * 会被误认成 fno=2，实测把一条 `local2.xxx()` 打成了
 				 * `message::detail::GetReadMessageTextColor`。 */
+				/* `obj.Method(localVar)` 的编码是
+				 *   `PUSH <fno>; PUSHLOCALPAGE; PUSH k; REF; CALLMETHOD n`
+				 * 所以 fno 后面也可能是 PUSHLOCALPAGE / PUSHGLOBALPAGE /
+				 * PUSHSTRUCTPAGE。漏掉它们时 `CreateButton` 这类
+				 * 「传局部/全局变量作实参」的调用一条都定不出来。 */
 				if (nx != CALLMETHOD && nx != F_PUSH && nx != S_PUSH &&
-				    nx != PUSH && nx != SWAP)
+				    nx != PUSH && nx != SWAP && nx != PUSHLOCALPAGE &&
+				    nx != PUSHGLOBALPAGE && nx != PUSHSTRUCTPAGE)
 					continue;
 				hit = k;
 				break;

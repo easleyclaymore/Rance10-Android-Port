@@ -819,15 +819,53 @@ XSYS4_SOFT_STUB=1 XSYS4_STUB_LOG=/tmp/stub.log
 |---|---|---|
 | 把立即数当函数号 | 全表名字是假的，`nargs=1` 恰好等于某个真 fno | 立即数是 nargs |
 | 排除「`PUSHSTRUCTPAGE` 后的 `PUSH`」 | 方法调用几乎全变 `?` | `PUSHSTRUCTPAGE` 是**零操作数**指令，后面那条 `PUSH` 是独立指令，正是 fno |
-| 顺手把 `SWAP/DUP2` 也算进「fno 后面可能跟的指令」 | `PUSH 2; SWAP` 被认成 `fno=2` | 只认 `CALLMETHOD / PUSH / F_PUSH / S_PUSH`；成员号靠「下一条是 `REF`」挡 |
+| 顺手把 `SWAP/DUP2` 也算进「fno 后面可能跟的指令」 | `PUSH 2; SWAP` 被认成 `fno=2` | 只认 `CALLMETHOD / PUSH / F_PUSH / S_PUSH / SWAP / PUSHLOCALPAGE / PUSHGLOBALPAGE / PUSHSTRUCTPAGE`；成员号靠「下一条是 `REF`」挡 |
+| 漏掉 `PUSHLOCALPAGE` | `obj.Method(localVar)` 全部定不出名，`CreateButton` 0 个调用者 | `PUSH <fno>; PUSHLOCALPAGE; PUSH k; REF; CALLMETHOD n` 是传局部变量实参的标准编码 |
 
-改对之后，`Rance10.ain` 全量 50338 条 `CALLMETHOD` 里 **28048 条**能静态定名，
-其余 22290 条是「fno 来自变量」的动态派发，只能打印 `?`。
+四处都修对之后，`Rance10.ain` 全量 50338 条 `CALLMETHOD` 里 **37969 条**能静态定名
+（75.4%），其余 12369 条是「fno 来自变量」的动态派发，只能打印 `?`。
 
 **代码区实际有 14.5MB**（`code_size=0xde56f2`，`nr_functions=37698`），
 而 `--disasm 0:0x700000` 那种写法只覆盖前一半。5MB 之后是**剧本脚本段**：
 整段只有 `MSG <串号>; CALLFUNC <handler>`，所以那一段的 `CALLMETHOD` 是 0 条 ——
 看到「后 9MB 没有一条方法调用」不是 dump 坏了，是那里本来就只有台词。
+
+## 3.29 五个委托套起来的点击链：从部件到技能卡
+
+兰斯10 的「点技能卡」不是一次调用，是**五层委托依次转发**。每一层都是
+`delegate` 字段 + `foreach`，没有任何一层直接调业务函数：
+
+| 层 | 谁是入口 | 它做什么 |
+|---|---|---|
+| ① 部件 | `AFL_Parts_AddMouseLClickEvent(partsNo, dg)` | 引擎在部件被左键点时回调 `dg` |
+| ② 按钮 | `ActivityButton@0` 生成的 lambda 37568 | `SystemSound::Click(); foreach (f in m6) f()` |
+| ③ 技能按钮 | `LargeSkillButton@SetOnClickEvent` 写 `m3` | lambda 37029 = `foreach (f in m3) f(m0)` |
+| ④ 集合 | `LargeSkillButtonCollection@SetOnClickEvent` | lambda 37032 = `X_GETENV → 转调` |
+| ⑤ 卡 | `BattleCardButton@InitSkillButtonCollection` | lambda 37011 = `foreach (f in m9) f(cardId, skillIndex)` |
+
+对应的委托签名（`--dump-delegate` 可查）：
+
+```
+1015 DG_SkillButtonOnClick          (string, int)
+1020 DG_BattleCardButton_OnClick    (int)
+1021 DG_BattleCardButton_OnClickSkill (string, int)
+1022 DG_BattleCardButton_OnHoverSkill (bool, string, int)
+```
+
+两条容易读错的细节：
+
+- **`ActivityButton@SetOnClickEvent` 用的是 `DG_PLUSA`（追加），不是 `DG_ASSIGN`。**
+  所以 `m6` 是累加的，同一个按钮可以有多个订阅者；而 `LargeSkillButton@SetOnClickEvent`
+  用的是 `DG_ASSIGN`（覆盖）。两种写法混在同一族类里，看名字看不出来。
+- **`BattleCardButton@Init` 在 `SetOnClickSkillEvent` 之前跑。** `CreateButton` 的顺序是
+  `new 772 → SetPos/SetZ → Init(leaderCard) → SetOnClickCardEvent → SetOnClickSkillEvent`。
+  `Init` 里的 `InitSkillButtonCollection` 会 `foreach (f in m9)`，而那一刻 `m9` 还是
+  默认的空委托页 —— 所以 `[dgm] MISS dg_no=1021 nr=0 ip=0x3D9DAE` **在构造期出现是必然的**，
+  一次 `CreateButton` 一条。它不是故障，是「先广播（0 个订阅者）后订阅」的顺序。
+
+`CreateButton` 全项目只有两个调用者：`BattleCardButtonCollection@Init` 与
+`BattleCardButtonCollection@UpdateCardOne`。**两条创建路径**意味着同一个位置上的按钮
+可能被重建；排查「赋值到底落在哪个实例上」时，必须比 `slot` 而不只是比成员号。
 
 ## 3.13 一个提醒
 
