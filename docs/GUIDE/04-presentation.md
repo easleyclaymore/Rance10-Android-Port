@@ -110,6 +110,32 @@ if (local >= tl->graphic.count) continue;   /* v15 的 count 恒为 0 */
 
 自动化测试里要留足等待：等"目标界面已加载"的标志出现，再点击，再等 2~3 帧才截图。
 
+### 4.5.1 场景退出要两个条件同时成立
+
+把 `SceneStack`（函数号 29645–29668）整个读一遍，字段其实很少：
+
+| 成员 | 是什么 |
+|---|---|
+| `m6` = `LayerPartsNumber` | 本场景的图层号；`AddLayer()` 里等于 `AFL_Parts_AddLayer(-1)` |
+| `m7` = `IsFinish` | `Exit()` 唯一做的事就是把它置真 |
+| `m1` / `m2` | `WaitFrame()` 的帧计数与「等待结束」就绪位 |
+| `IsShow` | **不是字段**：`AFL_Parts_IsLayerShow(m6)` 的返回值 |
+| `IsActive` | **不是字段**：`AFL_Parts_GetActiveLayer() == m6` |
+
+`Join()` 的循环是 `while (!m7) WaitForClick(0)`，所以「场景结束」需要两件事都发生：
+
+1. `Exit()` 把 `m7` 置真（本作走的是 `Overlay@FadeOut(1500, dg(SceneStack@Exit))` 这条回调）
+2. 一次能被 `WaitForClick` 消费的点击 —— 它唯一的 break 是 `GetClickNumber() > 0`
+
+**只做到第 1 件，场景不会退出。** 画面会停在淡出后的状态，`[act] loaded` 不再增长，
+看起来像「点按钮没反应」，实际是循环还在等一次点击来喂饱 `Join`。
+
+`WaitFrame()` 同样不是「等一帧」：它新建图层 → 把 `m1`/`m2` 清零 →
+把 `CheckWaitExit` 挂成 `AFL_Parts_AddBeginUpdateEvent` 的每帧回调 → 隐藏图层 →
+自旋到 `m2` 变 1（`CheckWaitExit` 的条件是 `m1 > 3`，即连续 4 帧，或回调参数 `< 17`）→
+撤回调、显示图层、删图层。它是**节流 4 帧**，不是同步一帧；
+跑测里「画面几十毫秒才动一下」多半就是它。
+
 ## 4.6 字符出来了但显示方框：先分码表、再分字体
 
 多字节编码的引擎里，「文字没显示」至少有三层，症状却几乎一样：纹理尺寸正常、
