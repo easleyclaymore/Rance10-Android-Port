@@ -79,6 +79,7 @@ EX 静态绝对坐标按子部件高度累加垂直重排（实测 `0→1080→1
 
 | 项 | 数量 | 处置 |
 |---|---|---|
+| `[BATTLE-FULL-RUN]` 打不完整场战斗 | — | 能进战斗/出手/掉血/因 CheckEndBattle 退出，但 `RunBattleResult`(25947) 从不命中 ⇒ 到不了结算屏。根因不是引擎 bug，是**回合推不动**：兰斯10 没有「回合结束」按钮（左下只有 换人/速度/操作类型/MENU，实拍帧确认），玩家回合要所有角色都行动过才结束（3.33），而 AP 队伍共享、花完只剩防御。下一步：`XSYS4_DUMP_BTN=1` 打出全部 TextButton 的部件号/命中盒，逐个点配 `XSYS4_PARTS_EVENT_DBG=1` 看 `[pev]` 是否落到 24899 `OnClickDefence`；打通后验 `25947` → `new SceneBattleResult` 出图。判据：`FN_WATCH=25947` 命中 1 次 |
 | `[SYSINFO-STUB]` SystemService 的 12 条占位桩 | 12 | **已确认不影响流程，冻结**。`GetPlatformType` 唯一消费者是 `enquate::detail::CSystemInfo@Set`（系统信息页）；`SetWaitVSyncMode`/`GetWaitVSyncMode`/`IsHookCloseApp` 在 AIN 里 `CALLHLL` 命中 0 次；其余只影响窗口位置/截图。真要做时窗口状态可从 `gfx` 的 `SDL_Window` 取（需先加公共访问器） |
 | `[HACK-POC]` 标记 | **232 处**（`PartsEngine.c` 200、`SystemService.c` 27…） | 只加断言与日志，不改逻辑；等能跑到结局后集中清算 |
 | `[VIEW-CFG]` | 1 | 渲染分辨率写死 1920×1080（`AliceStart.ini`），改为平台配置注入 |

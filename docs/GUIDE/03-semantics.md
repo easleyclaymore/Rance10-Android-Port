@@ -1561,6 +1561,43 @@ parts::AddProcessList                ← 真正的动作演出交给过程队列
 所以「敌人不动」要先分清是**没选到动作**（`Require` / `Evaluate` 那条）
 还是**选了但演出没跑**（过程队列那条）。判据：`EnemyActionView@Set` 有没有被调。
 
+## 3.44 战斗分两种，结算也分两套 —— 别拿一套的结论套另一套
+
+`BattleSceneSet@IsSimple::get` = **`this.m3 == 1`**，`BattleSceneSet@RunBattle`(27585)
+就按它二分：
+
+```
+if (IsSimple) {
+    BattleSceneSetSimple@Process(27594)
+      → SimpleBattleParty@PickCard                    ← 简单模式自动挑卡
+      → BattleScenes::RunSimpleBattle(25952)
+      → 输：Scenes::RunGameOver
+      → 赢：BattleScenes::RunSimpleBattleResult(25953)
+             → new SceneSimpleBattleResult（struct 791，3 个成员）
+} else {
+    BattleSceneSetNormal@Process(27588)
+      → BattleScenes::RunBattle(25945) → SceneBattle（struct 732）
+      → 按 BattleResult.Type 分叉
+         RunBattleResult(25947) → new SceneBattleResult（struct 786，10 个成员）
+         Scenes::RunGameOver
+}
+```
+
+四个必须分清的点：
+
+- **两个结算场景是不同的结构**：`SceneBattleResult`(786) 与
+  `SceneSimpleBattleResult`(791)。成员数 10 vs 3 —— 简单结算只显示一行结果，
+  没有经验/宝物列表。
+- **简单模式会自己挑卡**（`SimpleBattleParty@PickCard`），
+  所以「我没点卡但打了」在简单战斗里是正常的。
+- **判断当前是哪一种，看 `m3`**，不要看画面像不像。运行时判据最简单：
+  `FN_WATCH=27588,27594`，哪个命中就是哪种。我们那条杂鱼节点实测是
+  **Normal（27588 命中、27594 从未）**。
+- **`RunBattleResult` 不是无条件走**：`BattleSceneSetNormal@Process` 里
+  `BattleScenes::RunBattle` 返回后还要读 `BattleResult.Type` 再分叉，
+  输了走 `Scenes::RunGameOver`。所以「打完没结算」先看 Type 是不是没置上
+  （见 3.34：`getBattleResultType` 只查我方 HP 和回合上限）。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。

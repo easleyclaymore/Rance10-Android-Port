@@ -2718,12 +2718,22 @@ void vm_pump_parts_click(void)
 				PE_PartsBrief(pn, &ty, &pw, &ph, &saw, &sah);
 				int fsz = -1;
 				PE_GetPartsFontSize(pn, &fsz, 1);
+				/* [D462] 把**父容器**的矩形也打出来。
+				 * 兰斯10 的战斗按钮实测是 0x0（`hb=(9,982,0,0)`），
+				 * 点击永远落不到它身上，只能靠 `vm_pump_parts_click`
+				 * 的"点在容器里 → 取容器内按钮"兜底（D337）。
+				 * 而兜底要求点进**父容器**的矩形 —— 不打出父的矩形，
+				 * 就只能靠猜坐标，这正是之前一直点不中的原因。 */
+				int par = PE_PartsParent(pn);
+				int phx = 0, phy = 0, phw = 0, phh = 0;
+				if (par > 0)
+					PE_PartsHitbox(par, &phx, &phy, &phw, &phh);
 				NOTICE("[btn] #%d slot=%d parts=%d dg=%d st=%d w=%d h=%d "
 				       "sa=%dx%d hb=(%d,%d,%d,%d) maxw=%d id=%d fs=%d "
-				       "uc=%d par=%d",
+				       "uc=%d par=%d parhb=(%d,%d,%d,%d)",
 				       btn_dumps, (int)i, pn, dg, ty, pw, ph, saw, sah,
 				       hx, hy, hw, hh, p->values[6].i, p->values[1].i, fsz,
-				       PE_PartsUcFlags(pn), PE_PartsParent(pn));
+				       PE_PartsUcFlags(pn), par, phx, phy, phw, phh);
 				nb++;
 			}
 			NOTICE("[btn] #%d total=%d", btn_dumps, nb);
