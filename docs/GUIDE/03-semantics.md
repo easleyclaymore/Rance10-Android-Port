@@ -471,6 +471,32 @@ stack.WaitFrame()                  ; 节流 4 帧
 所以「点完回合开始之后去哪」，答案在 `GameChapterN@Run` 的下一轮 switch，
 既不在 `RunISceneWithAssistant` 里，也不在 `SceneTurnStart` 自己身上。
 
+## 3.16 第一章的相位表：回合开始是 4，选关是 6
+
+`GameChapter1@Run` 里对 `Phase` 赋值 17 次，按地址顺序切开就是一张流程图
+（每一行是「做完这些、然后进这个相位」）：
+
+| 进 phase | 之前调了 |
+|---|---|
+| 2 | `QuestScenes::RunStackedMapQuest` |
+| 3 | `Scenes::RunResult` |
+| **4** | **`Scenes::RunTurnStart`** |
+| 5 / 6 / 7 | （无场景调用） |
+| 8 / 11 | `Scenes::RunFoodTicket` |
+| 15 | `Scenes::RunResult` |
+| 3（回环） | `Scenes::RunBrave` |
+
+phase 6 那一段里就是 `SelectQuest(0)`。它的返回值是 `ref array<string>`，
+但调用方紧接着 `S_ASSIGN; DELETE` 把它丢掉了 —— **选中的关不在返回值里**，
+真正的交接是 `GameContext` 的字段和这条相位链。
+
+这张表把「卡在回合开始屏」的影响说清了：phase 4 的 `RunTurnStart` 不返回，
+phase 5 之后的东西一行都跑不到。所以它不是一个界面卡了，是整条链停在原地。
+
+**读这张表的方法**（可复用到其它章节）：找 `Phase` setter 的调用点
+（`PUSH <fno>; PUSH <value>; DUP_X2; CALLMETHOD 1`，取 `PUSH` 的下一条 `PUSH` 才是值），
+按地址排序，逐段列出 `CALLFUNC` 的 `Scenes::Run*` / `QuestScenes::Run*`。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
