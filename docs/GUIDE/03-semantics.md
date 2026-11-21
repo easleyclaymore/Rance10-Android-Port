@@ -431,7 +431,7 @@ JUMP         DG_CALL
 
 **这里有个陷阱。** `DG_CALL` 宽 10、有两个操作数，而 `--disasm` 曾只打第一个
 （`arg=1034`），肉眼很容易把它读成「无限重复调用同一个委托」。
-`Scenes::Run` 就是这么被误读的 —— 它实际的形状是：
+`Scenes::RunISceneWithAssistant` 就是这么被误读的 —— 它实际的形状是：
 
 ```
 stack = new SceneStack()
@@ -441,9 +441,35 @@ stack.WaitFrame()                  ; 节流 4 帧
 ```
 
 真正把控制权交还给玩家、并且一直阻塞到场景结束的，是 lambda 里那句
-`stack.Join()`（见 4.5.1）。**`Scenes::Run` 自己不检查 `IsFinish`。**
-所以「场景结束」之后要发生什么，取决于 `Run` 返回后调用方的那条 AIN 语句，
+`stack.Join()`（见 4.5.1）。**`RunISceneWithAssistant` 自己不检查 `IsFinish`。**
+所以「场景结束」之后要发生什么，取决于它返回后调用方的那条 AIN 语句，
 不在执行器里 —— 找错地方会一直盯着一个不该负责的函数。
+
+
+**名字勘误**：这个项目里**没有**名为 `Scenes::Run` 的函数。26379 与 26385 都是
+`Scenes::RunIScene`（后者是带返回值的那份），26386 才是
+`Scenes::RunISceneWithAssistant` —— 它开头那句 `22687()`
+（`AssistantView@ParentPartsNumber::get`）就是在给助手视图找父容器。
+把 26386 当成「场景执行器本体」会一直找不到 `IsFinish` 的消费点。
+
+## 3.15 主线不是一条链，是「章节状态机 + 地图事件分发」
+
+从字节码扫出来的入口层只有四层：
+
+| 层 | 函数 | 作用 |
+|---|---|---|
+| 主循环 | `Rance10@RunLocalGame` | 最外层 |
+| 章节 | `GameChapter1/2/3@Run` | 相位 `switch`，每轮挑一个界面进去 |
+| 地图 | `QuestMapSystemEventDispatcher::Run` | 地图上的事件（战斗/剧情/选关） |
+| 场景 | `Scenes::RunXxx` / `QuestScenes::RunXxx` | 单个界面，内部 `Join` 阻塞 |
+
+`GameChapter1@Run` 能进的界面只有五个：`RunResult`、`RunTurnStart`、
+`RunFoodTicket`、`RunBrave`、`RunStackedMapQuest`。**它没有直接调
+`RunBattleSceneSet`** —— 战斗走的是
+`GameChapter1@SelectQuest` → `QuestMapSystemEventDispatcher::Run` 这条支线。
+
+所以「点完回合开始之后去哪」，答案在 `GameChapterN@Run` 的下一轮 switch，
+既不在 `RunISceneWithAssistant` 里，也不在 `SceneTurnStart` 自己身上。
 
 ## 3.13 一个提醒
 
