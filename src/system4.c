@@ -434,6 +434,16 @@ static void ain_disasm(FILE *f, struct ain *ain, size_t start, size_t len)
 		fprintf(f, "0x%08zx: %-18s", addr, instr->name);
 		if (w >= 6)
 			fprintf(f, " arg=%-8u(0x%x)", raw, raw);
+		/* [D400] `DG_CALL <dg_no> <end_addr>` 宽 10、有两个操作数。
+		 * 第二个是「委托链走完之后的跳转目标」：`delegate_call()` 在
+		 * `!dg_ok`（index 越界）时执行 `instr_ptr = get_argument(1)`。
+		 * 旧版这里只打第一个操作数，于是 AIN 的标准 foreach 写法
+		 *   `DG_CALLBEGIN n / DG_CALL n,END / JUMP DG_CALL`
+		 * 在反汇编里看起来像**死循环**，`Scenes::Run` 就是这样被误读的。
+		 * 只补打印，不改语义。 */
+		if (opcode == DG_CALL && w >= 10)
+			fprintf(f, " dg=%u end=0x%06x", raw,
+			        LittleEndian_getDW(ain->code, addr + 6));
 
 		if (opcode == CALLHLL) {
 			uint32_t lib = LittleEndian_getDW(ain->code, addr + 2);

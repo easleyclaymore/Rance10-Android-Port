@@ -215,7 +215,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
     **一个 TextButton 是四个部件**：锚点 `900000062`(0×0) → 容器 `900000063` → 底板 flat `900000064`(476×78) + 文字。
     所以「点中底板」要按 **`PE_PartsIsUnder(被点件, 锚点)`** 匹配 —— 参数顺序反了就是全屏按钮都点不动（D397）。
 
-38. **`CALLMETHOD` 的立即数是实参个数，不是函数号** —— VM 用 `stack_peek(nargs)` 取 fno（栈布局 `[obj,fno,args…]`）。`--disasm` 曾把立即数当 fno 打印，全表名字都错（`nargs=0`→`NULL`、`nargs=1`→`GetMessageSpeedRate`），照它读出的调用链会整体跑偏（TURNSTALL 就这么走了两周）。现在回溯最近常量 `PUSH` 还原，回溯不到打 `?`——见到 `?` 别编名字。结构成员用 `--struct <名字|号>` 查，`m4.m2.m5` 这类嵌套要先确认类型。
+38. **`CALLMETHOD` 的立即数是实参个数，不是函数号** —— VM 用 `stack_peek(nargs)` 取 fno（栈布局 `[obj,fno,args…]`）。`--disasm` 曾把立即数当 fno 打印，全表名字都错（`nargs=0`→`NULL`、`nargs=1`→`GetMessageSpeedRate`），照它读出的调用链会整体跑偏（TURNSTALL 就这么走了两周）。现在回溯最近常量 `PUSH` 还原，回溯不到打 `?`——见到 `?` 别编名字。结构成员用 `--struct <名字|号>` 查，`m4.m2.m5` 这类嵌套要先确认类型。 **`DG_CALL` 同理**：宽 10、两个操作数 `dg_no, end_addr`，第二个是委托链走完后的跳转目标（`!dg_ok ⇒ instr_ptr = get_argument(1)`）；只读第一个会把 `DG_CALLBEGIN/DG_CALL/JUMP` 这个 foreach 误读成死循环（D400）.
 
 39. **场景结束 = `IsFinish` + 一次命中任何部件的点击**。`SceneTurnStart@Run` 末尾就是 `m_sceneStack.Join()`，而 `Join` = `RegisterEvent; while(!IsFinish) WaitForClick(0); Release`；`WaitForClick`(8309) 只在 `GetClickNumber() > 0` 时返回（`clicked_parts` 由 `parts_input_update` 命中按下时写、`PE_EndInput` 清 0）。所以「按钮派发跑了、`FadeOut`/`SceneStack@Exit` 也跑了」**不等于**场景退出 —— 还差一次点击来喂饱 `Join` 的 while。`parts::IsInputPartsActive`(7243) 判的是 {TEXTBOX,MLTEXTBOX,SPINBOX}=4/7/11 且取反，**不是**按钮判据，恒 false 是正常值（D398）。
 ---
@@ -223,7 +223,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **248**（未标注 32）｜ HLL 源码口径 **3520 / 4614（76.3%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 109 / 38** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **248**（未标注 32）｜ HLL 源码口径 **3520 / 4614（76.3%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 110 / 38** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
 <!-- STATS:END -->
 
 最常用的：

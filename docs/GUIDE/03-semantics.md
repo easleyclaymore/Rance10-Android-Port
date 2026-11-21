@@ -414,6 +414,37 @@ XSYS4_DBG_EIP=1 ...
 这一轮的最终决定是把空桩**恢复**，并把探针留着（默认关）——
 下次有人再觉得"这条明明可以一行实现"时，能在两分钟内看到 238:4 的分布。
 
+## 3.14 委托 foreach 是「两条指令 + 一个回跳」
+
+AIN 里遍历一个委托链的标准写法只有三行：
+
+```
+DG_CALLBEGIN n          ; [dg_page, args…] → [args…, dg_page, 0]
+DG_CALL      n, END     ; 调第 index 条，index++；越界时 ip = END
+JUMP         DG_CALL
+```
+
+`DG_CALLBEGIN` 把 `dg_index` 压成 0；`DG_CALL` 每执行一次把栈上的 index 加一；
+`delegate_call()` 在 `delegate_get()` 取不到条目（index 越界）时执行
+`instr_ptr = get_argument(1)` —— **第二个操作数就是循环出口**。
+所以那行 `JUMP` 回到 `DG_CALL` 不是死循环，是 foreach 的下一轮。
+
+**这里有个陷阱。** `DG_CALL` 宽 10、有两个操作数，而 `--disasm` 曾只打第一个
+（`arg=1034`），肉眼很容易把它读成「无限重复调用同一个委托」。
+`Scenes::Run` 就是这么被误读的 —— 它实际的形状是：
+
+```
+stack = new SceneStack()
+foreach (f in lambda) f(stack)     ; 建场景
+stack.WaitFrame()                  ; 节流 4 帧
+…                                  ; 场景运行
+```
+
+真正把控制权交还给玩家、并且一直阻塞到场景结束的，是 lambda 里那句
+`stack.Join()`（见 4.5.1）。**`Scenes::Run` 自己不检查 `IsFinish`。**
+所以「场景结束」之后要发生什么，取决于 `Run` 返回后调用方的那条 AIN 语句，
+不在执行器里 —— 找错地方会一直盯着一个不该负责的函数。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
