@@ -747,6 +747,28 @@ BattleHpBar.ResetBaseValue()              ; 25120
 `SelectorFocusCardCollection.Run`(25243) → `waitTime`(29822)。
 真正的按钮实例在 `SelectorFocusCardCollection` 那一侧建。
 
+## 3.25 `BattleCardButton` 的两个委托字段：m8 与 m9
+
+| 成员 | 写入者 | 动作 |
+|---|---|---|
+| `m8` | `SetOnClickCardEvent`(25255) | `this.m8 = dg`，只有一句 `DG_ASSIGN` |
+| `m9` | `SetOnClickSkillEvent`(25256) | `this.m9 = dg`，同样只有 `DG_ASSIGN` |
+| — | `@0()`(25244) | 只初始化 `m0 = 0` |
+| — | `Init`(25248) | 建子件、`InitAsDummy`、设 alpha，**不碰 m8/m9** |
+| — | `InitSkillButtonCollection`(25266) | `DG_CALLBEGIN 1021 / DG_CALL 1021` —— 只**遍历** m9 |
+
+`REF` 对未初始化字段直接返回 `-1`，**不做懒创建**（`case REF` 就是 `stack_push(_v->i)`）。
+而 `DG_ASSIGN` 在 `dst_i <= 0` 时会**整个丢弃赋值**。
+
+所以 `m8` / `m9` 的**第一次** `SetOnClickXxxEvent`，如果目标还是初始的 `-1`，
+这次赋值就落不进去。这两个字段必须先被别处实体化成真实委托页，赋值才生效。
+
+对照实测 `[dgm] MISS dg_no=1021 … nr=0`：这说明派发那一刻 `m9` 是一个
+**已存在但 0 条目**的委托页，而不是 `-1`（`-1` 会打印 `nr=-1`）。
+所以 m9 确实被实体化过，只是条目没进去 ——
+这与「赋值被丢弃」（先 -1 后实体化）和「实体化晚于赋值」两种情形都相容。
+要分辨只需要一次针对性观测：在 `DG_ASSIGN` 打到 `m9` 时打印 `dst_i` 的实值。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
