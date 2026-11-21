@@ -14,9 +14,10 @@ tools/
 ├── MAP.md               ← 本文
 ├── lib/common.sh        ← 路径锚点 + 共用函数（die / PY / need_* / find_free_display）
 │
-├── run/                 ← 跑测（9 个）
+├── run/                 ← 跑测（10 个）
+│   ├── smoke.sh              **冒烟：固定配方 + 日志断言，退出码即结论**（quick 100s / full 11min）
 │   ├── run-headless.sh       Xvfb 壳：隔离 + 限内存 + 调 run-live
-│   ├── run-live.sh           动作序列引擎（340 行，核心）
+│   ├── run-live.sh           动作序列引擎（核心）
 │   ├── run-local.sh          本机真实窗口（能看到鼠标动）
 │   ├── run-rance10.sh        早期入口，保留兼容
 │   ├── baseline.sh           「全默认配置」基线

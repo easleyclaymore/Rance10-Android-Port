@@ -11,7 +11,7 @@
 | | |
 |---|---|
 | **阶段** | **第一章可从头一路点击/快进走到战斗，全程无后门（D386）**：标题 → 序章 37 句 ADV → 图鉴框 → 巨舰遗迹任务 → 战况播报（逐国，需 Ctrl 快进 + 点掉弹出的图鉴框）→ `Game/Battle` 完整界面。战斗内点角色卡可展开技能列表、伤害能结算（敌 HP 9000→8303）。**技能卡用鼠标点仍不中**（`BattleCardButton.m9` 空委托 + 命中矩形 1×1，D372–D375） |
-| **最大卡点** | `[TURNSTALL]` **回合开始屏（TURN 1）死循环**：进程 CPU 101%、画面静止、日志不涨。链为 `SceneStack@Join` 等 `IsFinish` → 只有 `Exit` 能置 → 由 `FadeOut` → `OnFadeInButtonFinishEvent` → `Overlay@Fade` 的 onFinish → `PartsMotionTask@IsFinish` → `CASTask@IsEndTask`，而 CAS task 只在 Init 时 `Execute` 一次、之后没有每帧驱动 ⇒ onFinish 永不触发。**这是「回合循环 → 作戦 → 出撃 → 战斗」这条路的最后一道墙**（序章→战斗 那条已经通了，见 `[CH1-CLEAR]`）|
+| **最大卡点** | `[TURNSTALL]` **回合开始屏（TURN 1）停住**。D389 已解掉原来的**死循环**（进程从 `R`/CPU 101% 变正常等待，`OnFinishFadeIn` 能触发）：根因是 `GetMotionBeginFrame/EndMotionFrame` 未实现 → `CASTask@IsEndTask` 恒 false → `Overlay@Fade` 的 onFinish 永不触发 → `SceneStack@Join` 空转。**仍卡**在 `FadeInButton`(23461) 的按钮淡入完成回调（`FadeOut`(23464) 0 次 ⇒ 场景不退出）。这是「回合循环 → 作戦 → 出撃 → 战斗」的最后一道墙 |
 | **次级卡点** | `[BATTLE-STALL]` 战斗卡在最后一段 UI→AIN：`SceneBattle@OnClickSkill` 之后整条链（`ShowUseApCount → CreateEndTask → RunSelectedSkill → ProcessPlayerAction`）用确定性驱动验证**全部正常**，缺的是「点技能卡」这一下——`m9` 空委托 + 命中件 1×1，见台账 |
 | **本轮做过的** | **D385–D386 通了「第一章 → 战斗」这条路**：① 新增跑测动作 `skip:<ms>[:x,y]`（按住 Ctrl 快进 + 期间点掉图鉴框），一条命令 10 分钟从标题跑到 `Game/Battle`；② `SetLayoutBoxPadding` 原来是空实现、4 个 `GetLayoutBoxPadding*` 根本没导出（兰斯10 走静态链接，`CALLHLL` 那套 case 分派进不去），已修；③ 导出 `GetPartsCGSurfaceArea`。另记：截图上看着「布局错乱」的画面多数是**动画中间帧**，等 2 秒会自己排好 —— 先等再判。<br>**D346–D375 把「点技能卡」钉到两个具体字段**：AIN 侧点击链其实完整（`ActivityButton` 37568 → LSB 37029 → collection 37032 → `BattleCardButton` 37011 → `m9.DG_CALL`），断在 `m9` 是**空委托页**（`[dgm] MISS dg_no=1021 nr=0`）；命中件 `SmallSkillButton01:0/Normal` 的矩形是 `1×1`，且 EX 里就没有四角负载（`[actrect]` 0 条）。顺带修掉 `ain_xref` 漏 CALLMETHOD 的盲区（`tools/offline/ain_callers.py`）。<br>**发布**：`.github/workflows/build.yml` 云编译，`v*` tag 自动出二进制并建 Release（`v0.1.0-preview.2`，自带 SDL3+GLEW，解压即用）|
 | **判据** | 画面一律用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S，且 alt+s 前空 ≥1.5s，否则会丢帧）；层/归属看 `[ctrl] SetActive id=N -> idx=M` 与 `[ctrl] layer … parts:` 清单；HLL 进展看 `python3 tools/offline/hll_hotness.py --todo ../logs/live_<tag>.log` 的输出是否为 0 |
@@ -111,13 +111,17 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 
 ## 2. 现状
 
-启动链 / 活动子系统 / 场景栈 / 帧循环、标题界面（D131/D141）、第一章任务地图、
-任务信息面板（D142/D143/D149）、部队编成完整渲染（D177，0 内部错误 / 0 double free）、
-存档 gsave 写读 + 原版 v8 读入（`AFConfig.asd` 34 全局）、剧情 ADV 与第一章战斗
-（D214/D215）、ADV 正文渲染（D216/D217）、VS 对阵与战斗 UI（D224）均通。
-第一章链路 + 画面全验收完成，无已知卡点；剩余 H025 观感项与图鉴，
-下一阶段首个卡点 H038（战斗回合切换淡出层）见 §0。
-详见 §0 与 `TECH_DEBT.md`。
+**「现在卡在哪」只有一处定义：§0。** 本节只列**已经打通的能力**，不写状态结论
+（历史上这里写过一份「无已知卡点」，与 §0 的 `[TURNSTALL]` 直接打架 —— 第二份状态
+就是过期源头的典型）。
+
+已打通：启动链 / 活动子系统 / 场景栈 / 帧循环、标题界面（D131/D141）、第一章任务地图、
+任务信息面板（D142/D143/D149）、部队编成完整渲染（D177）、存档 gsave 写读 + 原版 v8 读入、
+剧情 ADV（D214–D217）、VS 对阵与战斗 UI（D224）、
+**从标题一路点击/快进走到 `Game/Battle`，全程无后门（D386）**、
+回合开始的 `SceneTurnStart` 演出能走完（D389）。
+
+未打通的部分、当前卡点与判据见 §0 与 `TECH_DEBT.md`。
 
 ---
 
@@ -214,7 +218,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **246**（未标注 31）｜ HLL 源码口径 **3322 / 4512（73.6%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 129 / 38** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **246**（未标注 31）｜ HLL 源码口径 **3322 / 4512（73.6%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 111 / 38** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
 <!-- STATS:END -->
 
 最常用的：

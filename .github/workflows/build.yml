@@ -171,13 +171,18 @@ jobs:
             exit 1
           fi
 
-      - name: Smoke test
+      - name: Smoke test (binary starts and exits cleanly)
         run: |
           file build/src/xsystem4
           ls -lh build/src/xsystem4
           # --version 是受支持的参数，打印后就退出；仍然 unset DISPLAY，
           # 避免任何情况下真的去起窗口（runner 没有显示服务）。
           env -u DISPLAY -u WAYLAND_DISPLAY ./build/src/xsystem4 --version
+          # CI 只能证明「二进制能启动并正常退出」—— 有功能断言的冒烟需要游戏数据
+          # （标题 → 第一章 → 任务简报 → 回合开始 → 战斗），在本地或有数据的机器上跑：
+          #     tools/run/smoke.sh quick   # 约 100 秒
+          #     tools/run/smoke.sh full    # 约 11 分钟
+          # 两者都用日志断言 + 退出码给结论，不看截图。
 
       - name: Package
         id: pkg
