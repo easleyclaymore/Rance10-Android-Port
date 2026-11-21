@@ -2051,6 +2051,18 @@ void PE_DebugPartsInfo(int parts_no)
 	       p->global.pos.x, p->global.pos.y,
 	       p->local.pos.x, p->local.pos.y,
 	       p->parent ? p->parent->no : -1);
+	/* [D478] origin_offset：`hitbox` 含它、`global.pos` 不含，
+	 * 而子件的绝对位置 = `hitbox + parent.global.pos`。若父件的
+	 * origin_offset 非 0（原点模式是中心/右下），这个公式就漏了一段，
+	 * 嵌套深一层就偏一段。把父的 oo 打出来即可判定。 */
+	NOTICE("[pev]     mw=%d mw_show=%d linked=%d",
+	       p->message_window ? 1 : 0, parts_message_window_show ? 1 : 0,
+	       p->linked_to);
+	NOTICE("[pev]     oo=(%d,%d) mode=%d parent_oo=(%d,%d)",
+	       st->common.origin_offset.x, st->common.origin_offset.y,
+	       p->origin_mode,
+	       p->parent ? p->parent->states[PARTS_STATE_DEFAULT].common.origin_offset.x : 0,
+	       p->parent ? p->parent->states[PARTS_STATE_DEFAULT].common.origin_offset.y : 0);
 	/* [D470] 祖先链：判断「这个件属于哪个活动/是不是上个场景的残留」。
 	 * 部件号段会复用，只看自己的号分不清；沿 parent 打到根，
 	 * 配合 z 与 show 才能定性。 */
@@ -2958,13 +2970,17 @@ void PE_SetShow(int parts_no, bool show)
 	/* [D311] 900000390..900000430 这一段是 ADV 的合成层（地图 CG / 背景 / 立绘 /
 	 * 消息框），show 与 hide 都要记：只记 hide 会漏掉「谁又把它显示回来」，
 	 * 而本轮正是卡在「hide 过之后画面里 vis 仍是 1」。 */
-	if (parts_no >= 900000390 && parts_no <= 900000430 &&
-	    getenv("XSYS4_CTRL_DBG")) {
+	/* [D479] 范围从 900000390..430 扩到**全部 AIN 部件**，并给独立开关
+	 * `XSYS4_SHOW_DBG`。原因：查「某个件凭什么是 show=1」时，
+	 * 只覆盖一段号会把目标漏在外面 —— `900000228` 就正好在 390 之前，
+	 * 于是「它有没有被 AIN 调过 SetShow」这个问题一直没法回答。 */
+	if ((getenv("XSYS4_CTRL_DBG") || getenv("XSYS4_SHOW_DBG")) &&
+	    parts_no >= 900000001) {
 		static int n2;
 		struct parts *sp2 = parts_try_get(parts_no);
-		if (n2++ < 2000)
-			NOTICE("[ctrl] setshow parts=%d show=%d serial=%u", parts_no,
-			       (int)show, sp2 ? sp2->serial : 0u);
+		if (n2++ < 4000)
+			NOTICE("[show] parts=%d show=%d serial=%u fno=%d", parts_no,
+			       (int)show, sp2 ? sp2->serial : 0u, hll_current_fno());
 	}
 	if (!show && getenv("XSYS4_CTRL_DBG")) {
 		/* [D243] 限流从 200 提到 3000：场景切换阶段本身就能打出 200 条以上，
