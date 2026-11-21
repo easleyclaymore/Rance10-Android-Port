@@ -658,6 +658,41 @@ Scenes::RunBattleSceneSet(a, b)             ; 26388
 **只有 `RunBattleSceneSet` 一个入口**，不存在第二条路 —— 排查「为什么没进战斗」时
 只要看这一条链有没有走到，不必去找别的分支。
 
+## 3.22 战斗：从 Open 到 GameOver
+
+`BattleSceneSet@Open`(27582) → `RunBattle`(27585) → 按类型分两条：
+
+```
+RunBattle():
+    if (…)
+        return new BattleSceneSetSimple().Run()   ; 类 979
+    else
+        return new BattleSceneSetNormal().Run()   ; 类 978
+```
+
+`BattleSceneSetNormal@Process`(27588) 是一场完整战斗的全过程：
+
+```
+SnapShotSaveManager.Save(…)          ; 26444 —— 开局存快照（胜负后可重试）
+BattleScenes.RunBattle()             ; 25945 —— 战斗主循环
+BattleBonusCalculator.Calc()         ; 24818 —— 战利品
+Music.FadeOut()
+switch (BattleResult.Type) {         ; SWITCH 431
+    胜: if (章节匹配) BattleScenes.RunBattleResult()
+    负: Scenes.RunGameOver()         ; 26411
+}
+```
+
+**`Open` 里有一条显式的失败分支**：`BattleInitializer::Init`(24823) 返回假时走
+`DialogScenes::RunTestDialog`(26046)。也就是说**战斗打不开会弹对话框，而不是静默卡住**。
+
+这条判据很实用：如果「战斗没进、也没有弹框」，那说明连 `Open` 都没走到，
+问题在它上游（`RunBattleSceneSet` → `BattleSceneSet.Open` 这一段），
+不必去怀疑战斗内部。
+
+`BattleInitializer::Init` 本体很短：`Init`(24821) → `EnemyCreator::Create`(24853) →
+读 `BattleResult.Type`(27289) / `BattleContext.GetPlayer().Hp`(26640) 判胜负初值。
+
 ## 3.13 一个提醒
 
 这一层最容易陷入"补函数"的自我感动：日志报一个未实现，就写一个实现，看起来很勤奋。
