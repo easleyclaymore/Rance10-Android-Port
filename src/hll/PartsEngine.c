@@ -261,6 +261,19 @@ static void PartsEngine_add_construction_process(union vm_value *ints,
 		PE_AddDrawLineToPartsConstructionProcess(parts_no, sx, sy, dx, dy,
 				r, g, b, a, state);
 		break;
+	/* [D496] cmd=19 SetCutCGAlphaBlend。判据：FUNC 60(SetCutCGBlend) 与
+	 * FUNC 74(SetCutCGAlphaBlend) 反汇编逐指令对照 —— 成员写入序列完全
+	 * 一致（m0=命令号、strings[1]=CG 名、m6/m7/m2/m3/m4/m5/m10/m11/m1
+	 * 全部同 local 同序），唯一差异是写进 m0 的命令常量 11 vs 19。
+	 * 所以字段布局与 cmd 11 相同，执行语义取「带 alpha 混合的等比
+	 * cut-CG 绘制」= 与 case 11 同实现。11/19 在原版引擎若还有别的
+	 * 差别，判据只能来自跑测对照（贴图错色/透明度不对时再查）。
+	 * 实测 323 次（旧日志 270+53），全部来自战斗卡片绘制路径。 */
+	case 19:  // CASConstructionProcess::SetCutCGAlphaBlend (equal scale)
+		PE_AddDrawCutCGToPartsConstructionProcess(parts_no, cg_name,
+				dx, dy, dw, dh, sx, sy, dw, dh,
+				interp_type, state);
+		break;
 	/* [D184] cmd=29 是 Rance10 的「按 CG 原尺寸绘制」：`d=dx,dy,0,0` 且带
 	 * CG 名（`カード／ランス／基本` 等），尺寸在 CG 本身。实测 171 次，全部
 	 * 落在卡片部件上——卡片立绘不出的直接原因就是它被当 unknown 丢掉。

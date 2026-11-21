@@ -128,6 +128,11 @@ static int32_t add_value_to_gsave(enum ain_data_type type, union vm_value val, s
 	case AIN_DELEGATE:
 	case AIN_LONG_INT:
 	case AIN_FLOAT:
+	/* [D496] 枚举在 VM 值空间就是整数。此前落 default 返回 -1（unset）：
+	 * 枚举全局每次 GroupSave/ResumeSave 都被写成"未设置"，读档即丢 ——
+	 * 全日志 10449 条 `Unhandled type: enum#92` 就是这条路径。 */
+	case AIN_ENUM:
+	case AIN_ENUM2:
 		return val.i;
 	case AIN_STRING:
 		/* [L2] 在 gsave 的值空间里 -1 就是「未设置」
@@ -362,6 +367,11 @@ static union vm_value json_to_vm_value(enum ain_data_type type, enum ain_data_ty
 	case AIN_INT:
 	case AIN_BOOL:
 	case AIN_LONG_INT:
+	/* [D496] 枚举按整数往返 */
+	case AIN_ENUM:
+	case AIN_ENUM2:
+	/* [D496] 委托按整数往返（与 gsave 写入端对称） */
+	case AIN_DELEGATE:
 		if (!cJSON_IsNumber(json)) {
 			invalid_save_data("Not a number", json);
 			return vm_int(0);
@@ -601,6 +611,14 @@ static union vm_value gsave_to_vm_value(struct gsave *save, enum ain_data_type t
 	case AIN_BOOL:
 	case AIN_LONG_INT:
 	case AIN_FLOAT:
+	/* [D496] 枚举按整数往返（与写入端 add_value_to_gsave 对称） */
+	case AIN_ENUM:
+	case AIN_ENUM2:
+		return vm_int(value);
+	case AIN_DELEGATE:
+		/* [D496] 委托写入端存的是原始槽值（val.i），读端按 int 还原。
+		 * 此前落 default 报 "Unhandled data type: hll_delegate"
+		 * （struc=-1 的 HLL 委托类型名），委托全局读档即丢（116 次）。 */
 		return vm_int(value);
 	case AIN_STRING:
 		{

@@ -210,10 +210,14 @@ static inline float get_argument_float(int n)
 uint32_t get_switch_address(int no, int val);
 uint32_t get_strswitch_address(int no, struct string *str);
 
+#endif /* VM_PRIVATE */
+
+/* 睡眠存档（VM 全量快照）。不只是 vm.c 的 syscall 在用：HLL 侧
+ * `system.ResumeSave/ResumeLoad`（src/hll/system.c，[D496]）也直接调，
+ * 所以必须放在 VM_PRIVATE 守卫之外。 */
 int vm_save_image(const char *key, const char *path);
 void vm_load_image(const char *key, const char *path);
 struct page *vm_load_image_comments(const char *key, const char *path, int *success);
 int vm_write_image_comments(const char *key, const char *path, struct page *comments);
 
-#endif /* VM_PRIVATE */
 #endif /* SYSTEM4_VM_H */

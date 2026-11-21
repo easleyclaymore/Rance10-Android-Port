@@ -17,15 +17,34 @@
 
 /* ---------------- 存档 / 读档（空桩） ---------------- */
 
-static bool System_ResumeSave(struct string *a, struct string *b, int *c)
+/* [D496] `bool system.ResumeSave(string key, string file, ref int n)` /
+ * `void system.ResumeLoad(string key, string file)`。
+ *
+ * 这是**睡眠存档**（VM 全量快照：堆 + 调用栈 + 栈），不是 GroupSave 那种
+ * 按全局组的选择性存档 —— 底层走 resume.c 的 `vm_save_image`/`vm_load_image`
+ * （文件是 00.asd 这类自动挂起档，json/rsave 双格式）。
+ * 上游在 syscall SYS_RESUME_SAVE 里接的是同一对函数：ref int 收
+ * `vm_save_image` 的返回值，bool 返回成功。D127 当年只接了 GroupSave
+ * 一族，这对漏了 —— 实测 268 次 `not implemented (…, 00.asd)`。
+ *
+ * 注意 ResumeLoad 的语义是**整个 VM 状态原地替换**（调用栈都会换掉），
+ * 所以它只可能出现在游戏启动时"从上次挂起继续"那条路上 —— 那时当前
+ * 的调用栈本来就该被丢弃，与上游 syscall 行为一致。 */
+static bool System_ResumeSave(struct string *key, struct string *file, int *n)
 {
-	WARNING("system.ResumeSave: not implemented (%s, %s)", a ? a->text : "", b ? b->text : "");
-	return false;
+	if (!key || !file)
+		return false;
+	int r = vm_save_image(key->text, file->text);
+	if (n)
+		*n = r;
+	return r != 0;
 }
 
-static void System_ResumeLoad(struct string *a, struct string *b)
+static void System_ResumeLoad(struct string *key, struct string *file)
 {
-	WARNING("system.ResumeLoad: not implemented (%s, %s)", a ? a->text : "", b ? b->text : "");
+	if (!key || !file)
+		return;
+	vm_load_image(key->text, file->text);
 }
 
 static bool System_ResumeWriteComment(struct string *a, struct string *b, struct page **c)

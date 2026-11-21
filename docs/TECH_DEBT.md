@@ -91,6 +91,9 @@ EX 静态绝对坐标按子部件高度累加垂直重排（实测 `0→1080→1
 
 | 现象 | 根因 | 契约/位置 |
 |---|---|---|
+| 全日志 268 条 `system.ResumeSave: not implemented (…, 00.asd)` | 睡眠存档（VM 全量快照）的 HLL 外壳没接：D127 只接了 GroupSave 一族，`resume.c` 的 `vm_save_image/vm_load_image` 一直在，只差转发；顺带把声明移出 `vm.h` 的 `VM_PRIVATE` 守卫 | D496 / `hll/system.c`（上游 syscall SYS_RESUME_SAVE 同一对函数） |
+| 全日志 10449 条 `Unhandled type: enum#92` + 116 条 `hll_delegate` | 存档序列化三处 switch（写 `add_value_to_gsave`、读 `gsave_to_vm_value`/`json_to_vm_value`）没有 `AIN_ENUM/AIN_ENUM2/AIN_DELEGATE` 的 case，枚举/委托全局每次存档都被写成 unset，读档即丢 | D496 / `savedata.c` 三处 case 补齐，按整数往返 |
+| 全日志 323 条 `AddConstructProcess: unknown command 19` | FUNC 60(SetCutCGBlend) 与 FUNC 74(SetCutCGAlphaBlend) 逐指令 diff：成员写入完全一致，唯一差异是命令常量 11 vs 19 → cmd 19 与 cmd 11 同字段布局、同实现（带 alpha 混合的等比 cut-CG） | D496 / `PartsEngine.c` case 19；11/19 若有别的差别只能跑测对照 |
 | `[QUEST-EVENT-EMPTY]` | 两个根因：① `string_format` 把 `%%` 当格式前缀跳过，`ResolveStringNodeId`(28494) 的 `%%0%dD` 产出 `3D` 而非 `%03D`，编号 `００１` 生不出来；② `Array.Find` 对 `a_type=AIN_ARRAY_STRING` 走整数分支比 heap slot，`００１` 明明在列表里却恒 -1。二者叠加使 KeyBase 变成 `任务数据.<地图>.`（缺编号段），`GetQuestEventList` 查不到事件 → `23486` 提前返回 | **已清零（D202）** |
 | `Array.Find` 谓词 unref 越界 SIGSEGV（`s20/s22`） | 元素里是垃圾槽号 `821768443`，而 `heap_unref` 只挡 `slot <= 0`、**没挡上界** → `heap[slot].ref` 越界读 | D241 / `heap.c` 加上界检查 + 限流告警；**`s26` 实测生效**：`heap_unref: slot 821768443 越界（heap_size=110592），忽略`，同配方不再段错误；坏槽来源见 `[BAD-SLOT-REF]` |
 | 战斗开始演出 flat 卡在 frame 2/15，战斗永远进不了可操作状态 | `PE_GoFramePartsFlat()` 的**向前定位**分支（`frame_no >= current`）没清 `root_state->stopped`，而 `flat_advance_layer()` 的增量是 `stopped ? 0 : 1` —— `pending_seek_delta` 明明被消费了，帧却原地不动（`is_stop` 是 flat 文件 op=2 的正常语义，停住后必须靠 AIN 调 GoFrame 继续）。附带：这张演出 flat 的 `global.z` 被 AIN 置顶到 `1<<30+1125`，会压住 `开始按钮`（`z=13`），所以演出不播完就点不到任何东西 | D239 / `flat.c` 向前分支补 `stopped=false`。**已验证生效**：`s32` 的 `[flatf] no=900000705 frame=14`（end=15，末帧），修复前是 2 | 
