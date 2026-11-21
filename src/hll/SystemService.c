@@ -106,9 +106,7 @@ static bool SystemService_SetHideMouseCursorByGame(bool hide)
 }
 
 //bool SystemService_GetHideMouseCursorByGame(void);
-HLL_WARN_UNIMPLEMENTED(false, bool, SystemService, SetUsePower2Texture, bool use);
 //bool SystemService_GetUsePower2Texture(void);
-HLL_WARN_UNIMPLEMENTED(true, bool, SystemService, SetAntiAliasingMode, int mode);
 //int SystemService_GetAntiAliasingMode(void);
 
 enum window_settings_asect_ratio {
@@ -448,17 +446,18 @@ static void SystemService_ShowWaitMessage(int show)
 	(void)show;
 }
 /* AIN SystemService f[7] GetDefaultViewWidth。[HACK-POC D91] Android/SystemService 占位桩。 */
+/* [D394] 原来恒 0。`GetDefaultViewWidth` 是「基准视图宽度」，AIN 用它算
+ * 缩放比；返回 0 会让整屏按 0 尺寸排版。用 config 的视图尺寸（启动时由
+ * `--view-width` / ini 定下），语义上就是「默认值」。 */
 static int SS_Stub_GetDefaultViewWidth(void)
 {
-
-	return 0;
+	return config.view_width;
 }
 
 /* AIN SystemService f[8] GetDefaultViewHeight。[HACK-POC D91] Android/SystemService 占位桩。 */
 static int SS_Stub_GetDefaultViewHeight(void)
 {
-
-	return 0;
+	return config.view_height;
 }
 
 /* AIN SystemService f[13] SetViewSize。[HACK-POC D91] Android/SystemService 占位桩。 */
@@ -525,6 +524,40 @@ static int SS_Stub_GetWaitVSyncMode(void)
 {
 
 	return 0;
+}
+
+/* [D394] 成对的 set/get：原来 `SetUsePower2Texture` 是 `HLL_WARN_UNIMPLEMENTED(false,…)`
+ * —— **返回 false 告诉 AIN「设置失败」**，于是 AIN 会走降级分支（换纹理规格）；
+ * `SetAntiAliasingMode` 则返回 true 但什么都不存，`Get` 还是未注册。
+ *
+ * 这类「假成功 / 假失败」比空桩更坏：它让 AIN 的判定**看起来成立**，
+ * 但状态是假的。这里改成真的存一个值，让 Get 能原样取回。
+ *
+ * 两个开关对我们没有实际渲染效果（引擎不做 MSAA、纹理规格由我们自己管），
+ * 所以「接受设置、记住值、返回成功」就是正确语义 —— 不是 hack。 */
+static bool ss_use_power2 = false;
+static int ss_aa_mode = 0;
+
+static bool SystemService_SetUsePower2Texture(bool use)
+{
+	ss_use_power2 = use;
+	return true;
+}
+
+static bool SystemService_GetUsePower2Texture(void)
+{
+	return ss_use_power2;
+}
+
+static bool SystemService_SetAntiAliasingMode(int mode)
+{
+	ss_aa_mode = mode;
+	return true;
+}
+
+static int SystemService_GetAntiAliasingMode(void)
+{
+	return ss_aa_mode;
 }
 
 /* [D393] SystemService 的变量系统（GameVariable / SystemVariable）。
@@ -771,9 +804,9 @@ HLL_LIBRARY(SystemService,
 	    HLL_EXPORT(SetHideMouseCursorByGame, SystemService_SetHideMouseCursorByGame),
 	    HLL_TODO_EXPORT(GetHideMouseCursorByGame, SystemService_GetHideMouseCursorByGame),
 	    HLL_EXPORT(SetUsePower2Texture, SystemService_SetUsePower2Texture),
-	    HLL_TODO_EXPORT(GetUsePower2Texture, SystemService_GetUsePower2Texture),
+	    HLL_EXPORT(GetUsePower2Texture, SystemService_GetUsePower2Texture),
 	    HLL_EXPORT(SetAntiAliasingMode, SystemService_SetAntiAliasingMode),
-	    HLL_TODO_EXPORT(GetAntiAliasingMode, SystemService_GetAntiAliasingMode),
+	    HLL_EXPORT(GetAntiAliasingMode, SystemService_GetAntiAliasingMode),
 	    HLL_EXPORT(SetWindowSetting, SystemService_SetWindowSetting),
 	    HLL_EXPORT(GetWindowSetting, SystemService_GetWindowSetting),
 	    HLL_EXPORT(SetMouseCursorConfig, SystemService_SetMouseCursorConfig),

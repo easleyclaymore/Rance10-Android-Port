@@ -218,7 +218,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **246**（未标注 31）｜ HLL 源码口径 **3326 / 4516（73.6%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 111 / 38** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **246**（未标注 31）｜ HLL 源码口径 **3328 / 4516（73.7%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 111 / 38** ｜ 影响面 / 子模块补丁 **33 / 2** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
 <!-- STATS:END -->
 
 最常用的：
@@ -312,6 +312,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 | ③ 附件 | `notes/` | **上游自带**英文技术笔记（`system4` / `parts-engine` / `language-update`，来自 upstream 提交 `cc199dc Add notes directory`，2023-04）；讲的是 System4/PartsEngine **格式与接口的跨游戏演进**，不是兰斯10 移植结论。原位保留、**不纳管**（不随本项目管理，也不得当作结论引用） | 查格式语义时可参考，**结论一律以 `docs/GUIDE/` 为准** |
 | ③ 附件 | `test/Source/`、`tools/patches/`、`tools/dev/patches/` 下的 `README.md` | **上游自带**占位说明；原位保留、不纳管（`tools/MAP.md` 已说明 `tools/dev/patches` 是「只读参照，不要重跑」） | 不读 |
 | ④ 生成 | `docs/MANUAL/` | 官方手册全文 md + 随附图片（`gen-manual.py` 生成，禁止手改） | 全文检索 / 对照界面基准时 |
+| ④ 生成 | `docs/STUBS.md` | HLL 未实现桩工单（`gen-stubs.py` 生成）：三种桩形态（TODO / WARN / STUB）+ 按文件分组 + 「日志里真的被调用过」标注。**填桩从这里领活** | 要填桩 / 看还剩多少时 |
 | ④ 生成 | `docs/SWITCHES.md` | 开关总表（`gen-switches.py` 生成） | 查开关用途 |
 | ④ 生成 | `docs/STATS.md` | 项目数字（`gen-doc-numbers.py` 生成，`--check` 校验） | 核对数字 |
 | 历史 | `archive/` | 全文 / 取证链 / 阶段报告（含原 `PROJECT.md`、`HLL-GAP.md`），**只读** | 需要完整证据时 |
