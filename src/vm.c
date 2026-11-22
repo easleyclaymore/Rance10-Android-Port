@@ -2006,7 +2006,18 @@ void vm_dbg_alloc_trace(int struct_no, int slot)
  */
 static bool pe_click_want_pending;
 static bool pe_click_on = true, pe_click_init;
-static bool pe_click_reent;
+/* [D498] 派发重入**深度**，不是布尔。
+ *
+ * 原来用布尔：第一次点击（打开标题 MENU）的 lambda 里 AIN 进了
+ * `SceneStack@Join` 的 `while(!IsFinish) WaitForClick` 长循环，`vm_call`
+ * 迟迟不返回，`pe_click_reent` 就一直是 true —— 菜单里此后所有点击
+ * 都被 `vm_pump_parts_click` 丢掉（实测 1341 次「pump 跳过 reent=1」）。
+ * 而引擎侧没有 `function_set` 绑定，AIN 的 `GetFunctionSet` 路径恒空，
+ * `vm_pump` 是唯一派发通道 ⇒ 菜单里的按钮全部点不动。
+ *
+ * 改成深度计数：允许在 AIN 等待循环里再派发一层（嵌套 `vm_call` 本来就
+ * 支持，`call_stack` 是数组）。上限 4 层挡住病态递归。 */
+static int pe_click_depth;
 static int pe_click_parts, pe_click_x, pe_click_y;
 
 void vm_request_parts_click(int parts_no, int x, int y)
@@ -2863,8 +2874,13 @@ void vm_pump_parts_click(void)
 	static bool logged;
 	static int n_dispatch;
 
-	if (!pe_click_want_pending || pe_click_reent || !ain)
+	if (!pe_click_want_pending || pe_click_depth >= 4 || !ain) {
+		/* [D498] 为什么这次点击没派发（深度上限 / 没有请求）。 */
+		if (getenv("XSYS4_PARTS_EVENT_DBG") && pe_click_want_pending)
+			NOTICE("[pev] pump 跳过：pending=%d depth=%d ain=%p",
+			       pe_click_want_pending, pe_click_depth, (void*)ain);
 		return;
+	}
 	pe_click_want_pending = false;
 	int no = pe_click_parts, x = pe_click_x, y = pe_click_y;
 
@@ -3202,16 +3218,57 @@ void vm_pump_parts_click(void)
 			}
 		}
 	}
+	/* [D498] 落在装饰层上 → 沿父链上溯找可派发的按钮。
+	 *
+	 * 设置菜单实测：点击 (1394,828) 被 `900000242` 抢走 —— 它是菜单项
+	 * 的**高亮底板 CG**（st=1, 512x91, z=113），比真正的按钮宿主
+	 * `900000149`（st=12, 196x40, z=111）高一层。CG 上没有任何 AIN
+	 * 对象，候选为 0 ⇒ 点击被静默吞掉，菜单里所有按钮都点不动。
+	 *
+	 * 原版里这类「装饰件压在按钮上」是常态（按钮底板/高亮/发光），
+	 * 所以不能只对 TextButton 做容器兜底（D337），要按**父链**逐级
+	 * 重试：点中装饰件 → 问它的父、祖父……哪个号上有带委托的 Parts /
+	 * TextButton 对象。层数上限 6 防止病态树。 */
+	if (!nc) {
+		int pno = PE_PartsParent(no);
+		for (int depth = 0; depth < 6 && pno > 0 && !nc; depth++) {
+			int hit_parts = -1;
+			if (parts_st >= 0 && onclick_fno >= 0 &&
+			    ain->functions[onclick_fno].nr_args == 3) {
+				for (size_t i = 1; i < heap_size; i++) {
+					struct page *p = heap[i].page;
+					if (!p || p->type != STRUCT_PAGE ||
+					    p->index != parts_st)
+						continue;
+					if (p->nr_vars < 8 || p->values[0].i != pno)
+						continue;
+					if (vm_delegate_count(p->values[7].i) <= 0)
+						continue;
+					hit_parts = (int)i;
+					break;
+				}
+			}
+			if (hit_parts > 0) {
+				cand[nc++] = hit_parts;
+				nparts++;
+				if (getenv("XSYS4_PARTS_EVENT_DBG"))
+					NOTICE("[pev] click=%d 落在装饰件上 -> 上溯父 %d 命中 Parts slot=%d",
+					       no, pno, hit_parts);
+				break;
+			}
+			pno = PE_PartsParent(pno);
+		}
+	}
+	/* [D498] 候选为 0 也要打（原来 `if (!nc) return;` 在打印之前，
+	 * 恰好把最需要排查的「点了但一个对象都没匹配上」藏掉了）。 */
+	if (!logged && getenv("XSYS4_PARTS_EVENT_DBG")) {
+		logged = true;
+		NOTICE("[pev] click=%d -> %d 个候选对象（TextButton %d）", no, nc, ntbtn);
+	}
 	if (!nc)
 		return;
 
-	if (!logged && getenv("XSYS4_PARTS_EVENT_DBG")) {
-		logged = true;
-		NOTICE("[pev] click=%d -> %d 个候选对象（TextButton %d）",
-		       no, nc, ntbtn);
-	}
-
-	pe_click_reent = true;
+	pe_click_depth++;
 	for (int k = 0; k < nc; k++) {
 		int slot = cand[k];
 		if (slot <= 0 || (size_t)slot >= heap_size || !heap[slot].page)
@@ -3276,7 +3333,7 @@ void vm_pump_parts_click(void)
 			}
 		}
 	}
-	pe_click_reent = false;
+	pe_click_depth--;
 }
 
 void vm_call(int fno, int struct_page)

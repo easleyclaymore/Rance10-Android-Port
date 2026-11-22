@@ -221,6 +221,25 @@ grep 'CommonMenu' ../logs/live_cfgmenu.log
   派发时扫（vm.c:2922），且只列 TextButton；CommonMenu 的复选框是
   CheckBox 部件（D174 旁路表族），不在清单里。交互深度考古待续。
 
+### 设置菜单里的交互（现状 D498）
+
+菜单是**两栏**：左栏 8 个导航项（加载/ALTC/快进/剧情回顾/场景回顾/消除对话框/
+更换/存档）+「返回」+「あらすじモード」复选框；右栏 6 项（关闭游戏/回到标题界面/
+收集/指南/设置/重新战斗）+ Help。屏上坐标由 `[parts]` 快照给：
+`Game/CommonMenu/CommonMenu` 的 `900000098..106` 是左栏（196x40，x=0），
+`900000113..121` 是右栏（196x40，x=1296），`900000108` 是复选框（60x60）。
+
+- **左栏可用**：AIN 自己的 `WaitForClick`+`EndInput` 轮询，点「加载」(150,173)
+  右栏就切到存档列表界面（`自动SAVEデータ` / `任意SAVEデータ` / `关闭`）。
+- **右栏仍点不动**：菜单项是 `MenuContext`/`ActivityButton`（GUIEngine 的 AIN
+  组件），不是 `Parts`/`TextButton`，引擎侧又没有「部件号→FunctionSet」绑定，
+  所以 `[pev]` 恒「候选 0」。见 `[MENU-CLICK]`。
+- **两个已修的坑**：① `pe_click_reent` 布尔被菜单的 `WaitForClick` 长循环卡死，
+  菜单内所有点击都派发不出去（现为深度计数）；② 点「设置」(1394,828) 会先被
+  512x91 的高亮底板 CG 抢走，现按「装饰 CG 让位到 uc 宿主」处理。
+- 截图配方（**必须用引擎自截图**，X11 抓屏在 GL 直绘下常空）：
+  `XSYS4_SHOT_DIR=/tmp/x ... SEQ="wait:5000;click:108,1002;wait:9000;engineshot;wait:2000"`
+
 ### 我要知道「这个函数到底有没有被调用」
 
 ### 我要知道「这个函数到底有没有被调用」

@@ -30,6 +30,20 @@ static bool prev_clicking = false;
 /* [D336] 本帧刚捕获到一次点击（`EndInput` 会把 clicked_parts 清零，
  * 所以驱动 TextButton 必须紧跟捕获，不能等到帧末）。 */
 static bool g_just_clicked;
+
+/* [D498] 「装饰 CG 让位」开关（默认开）。
+ *
+ * 判据与用途见 click_eligible 处的注释：按钮的高亮/底板 CG 压在按钮
+ * 宿主上时，让点击穿过它落到宿主。`XSYS4_DECOR_PASS=0` 回退旧行为。 */
+static bool parts_decor_pass_enabled(void)
+{
+	static int on = -1;
+	if (on < 0) {
+		const char *e = getenv("XSYS4_DECOR_PASS");
+		on = !(e && !strcmp(e, "0"));
+	}
+	return on;
+}
 // 最近一次（完整）点击到的部件号
 static int clicked_parts = 0;
 // 本次（部分）点击到的部件号
@@ -383,6 +397,18 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	 * 的门控成对——D261 的教训：判据必须成对改）。 */
 	if (parts_input_disabled(parts))
 		hover_blocking = false;
+	/* [D498] 装饰 CG 让位（与下面 click_eligible 的同款判据成对）。 */
+	if (parts_decor_pass_enabled() &&
+	    parts->states[parts->state].type == PARTS_CG &&
+	    !parts->clickable && !parts->pass_cursor) {
+		struct parts *pp = parts->parent;
+		for (int d = 0; d < 4 && pp; d++, pp = pp->parent) {
+			if (pp->uc_object) {
+				hover_blocking = false;
+				break;
+			}
+		}
+	}
 	if (is_hovered && hover_blocking)
 		*hover_consumed = true;
 	/* [D309] 第一个（z 最高、可见、命中）的部件即「光标指向的部件」，
@@ -497,6 +523,29 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	 * hover_blocking 门控成对）。 */
 	if (parts_input_disabled(parts))
 		click_eligible = false;
+	/* [D498] **装饰 CG 让位**：设置菜单实测，点「设置」被
+	 * `900000242`（st=1 CG，512x91 高亮底板，z=113）抢走 —— 它比真正的
+	 * 按钮宿主 `900000149`（st=12 LayoutBox，uc=MenuContext，z=111）高
+	 * 一层，身上没有任何 AIN 对象，于是点击被静默吞掉（`[pev] 候选 0`）。
+	 *
+	 * 判据：`PARTS_CG` + `ck=0` + `pc=0`，且**父链上有带 uc 的宿主**——
+	 * 这正是「按钮的装饰底板压在按钮上」的形态。让位后点击落到 z 次高的
+	 * 宿主上（遍历本来就是 z 降序）。全屏背景 CG 没有 uc 祖先，不受影响；
+	 * 「点击任意处继续」用的是 flat/LayoutBox，同样不受影响。 */
+	if (parts_decor_pass_enabled() &&
+	    parts->states[parts->state].type == PARTS_CG &&
+	    !parts->clickable && !parts->pass_cursor) {
+		struct parts *pp = parts->parent;
+		for (int d = 0; d < 4 && pp; d++, pp = pp->parent) {
+			if (pp->uc_object) {
+				click_eligible = false;
+				if (getenv("XSYS4_INPUT_DBG") && d < 2)
+					NOTICE("[inp]   装饰CG让位 no=%d -> uc 宿主 %d",
+					       parts->no, pp->no);
+				break;
+			}
+		}
+	}
 	/* [D338] 与 hover 拦截同一判据（见上）。只放 hover 不改这里，
 	 * 仍会被它抢走 `click_down_parts`。 */
 	if (pe_needs_shape && pe_no_shape)

@@ -2205,6 +2205,25 @@ int PE_FindClickableAt(int x, int y)
 		 * 于是它挡住了真正的技能卡，派发到它身上后没有任何按钮对象。 */
 		if (p->global.alpha <= 0)
 			continue;
+		/* [D498] 装饰 CG 不能当兜底目标（与 input.c 的「装饰CG让位」
+		 * 同一判据）：`PARTS_CG` + `ck=0` + `pc=0`，且父链上有带 uc 的
+		 * 宿主。设置菜单的「设置」按钮被 512x91 高亮底板 CG 抢走，
+		 * 让位到宿主 149 后，D338 的几何改派又用本函数挑回底板，
+		 * 点击于是又打空。 */
+		static int decor_pass = -1;
+		if (decor_pass < 0) {
+			const char *e = getenv("XSYS4_DECOR_PASS");
+			decor_pass = !(e && !strcmp(e, "0"));
+		}
+		if (decor_pass && p->states[p->state].type == PARTS_CG &&
+		    !p->clickable && !p->pass_cursor) {
+			struct parts *pp = p->parent;
+			bool over_uc = false;
+			for (int d = 0; d < 4 && pp; d++, pp = pp->parent)
+				if (pp->uc_object) { over_uc = true; break; }
+			if (over_uc)
+				continue;
+		}
 		Rectangle hb = p->states[PARTS_STATE_DEFAULT].common.hitbox;
 		if (p->parent) {
 			hb.x += p->parent->global.pos.x;
