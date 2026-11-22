@@ -132,6 +132,8 @@ struct activity_part {
 	int w, h;              /* explicit 尺寸, 0 when absent */
 	/* [D217] 消息窗口组件的 种类別情报（EX 原文见 MessageWindow01.pactex） */
 	int text_area[4];      /* 文本エリア = (470,233,0,0) */
+	char *part_text;       /* [D498] 文本パーツ 的 `文本` leaf（asra 设置页面的标签全在这里烘焙） */
+	int text_align;        /* [D498] `文本位置`（对齐模式） */
 	int font_size;         /* 字体尺寸 = 39（此前退化成默认 16px） */
 	int font_color[3];     /* 字体色 = (255,255,255) */
 	int char_space, line_space; /* 文字间距 = -2 / 行间距 = 7 */
@@ -744,6 +746,24 @@ static void parse_part_fields(struct ex_tree *node, struct activity_part *part)
 		 * 文本エリア=(470,233,0,0) / 字体尺寸=39 / 字体色=白 /
 		 * 文字间距=-2 / 行间距=7。缺了它们，正文只剩 16px 默认字，
 		 * 再加上底板 CG 没加载，画面上就只有名牌没有消息框。 */
+		/* [D498] 文本パーツ：标签文字直接烘焙在 EX 里（asra 设置页面的
+		 * 「消息速度」「ＡＵＴＯ模式」等全是这种部件）。此前一个字段
+		 * 都不读，画面上只剩装饰框没有字。 */
+		if (part->type == ACT_COMP_TEXT) {
+			part->part_text = get_string(type_info, "文本");
+			if (!part->part_text)
+				part->part_text = get_string(src, "文本");
+			part->text_align = 0;
+			get_int(type_info, "文本位置", &part->text_align);
+			part->font_size = 0;
+			get_int(type_info, "字体尺寸", &part->font_size);
+			part->font_color[0] = part->font_color[1] = part->font_color[2] = 255;
+			get_int_list(type_info, "字体色", part->font_color, 3);
+			ACT_DEBUG("[act] TEXT part '%s' text='%s' align=%d size=%d",
+				   part->name,
+				   part->part_text ? part->part_text : "(null)",
+				   part->text_align, part->font_size);
+		}
 		if (part->type == ACT_COMP_MESSAGE_WINDOW) {
 			memset(part->text_area, 0, sizeof(part->text_area));
 			get_int_list(type_info, "文本エリア", part->text_area, 4);
@@ -1175,6 +1195,18 @@ static int build_part(struct activity_part *part, int parent_no)
 	 * （`s79/s80` 候选表里 `hb=(0,0,1920,1080)` 就是它），正文与立绘
 	 * 自然都看不见。面板/表单也是同类（EX 里同样带 ＣＧ名）。
 	 * 按钮不算：它带的是 `フラット名`，走 `set_part_flat()`。 */
+	/* [D498] 文本パーツ：把 EX 烘焙的标签文字设进去。PE_SetText 会把
+	 * state 转成 PARTS_TEXT，文字渲染走 parts_text 管线（字号先用
+	 * 引擎默认；EX 的 字体尺寸/字体色 字段已解析，等 parts 层支持
+	 * 逐部件字号后再接上）。 */
+	if (part->type == ACT_COMP_TEXT && part->part_text && *part->part_text) {
+		struct string *txt = cstr_to_string(part->part_text);
+		bool ok = PE_SetText(part->parts_no, txt, 1);
+		free_string(txt);
+		ACT_DEBUG("[act] %s parts_no=%d text set=%d align=%d",
+			  part->name, part->parts_no, ok, part->text_align);
+	}
+
 	if (part->cg_name && *part->cg_name &&
 	    (part->type == ACT_COMP_CG ||
 	     part->type == ACT_COMP_MESSAGE_WINDOW ||
@@ -1453,9 +1485,16 @@ struct activity *activity_get(const char *name)
 	return find_activity(name);
 }
 
+/* [D498] Asra 设置页面按 `.pact` 路径查询（AIN：`Asra\设置／０１／消息速度页面.pact`），
+ * 档案条目是 `.pactex`。asset 层的 basename 匹配同时吸收这个扩展名差异与路径
+ * 分隔符差异（AIN 用 `/`，档案用 `\`），装载直接走 get_by_name 即可。
+ * 存在性检查唯一的坑是**实例号**：`….pact:N` 的 basename 与页面本体相同，
+ * 会全部命中 —— AIN 的 GetFreeName 枚举空闲实例号会死循环（实测 1267 万行
+ * 日志风暴、画面黑屏）。所以这里拒绝带 `:` 的名字；`IsExistActivity` 的
+ * 文件兜底只在名字不含 `:` 时才调到这里。 */
 bool activity_is_exist_file(const char *file)
 {
-	if (!file || !*file)
+	if (!file || !*file || strchr(file, ':'))
 		return false;
 	int id = -1;
 	return asset_exists_by_name(ASSET_PACT, file, &id);
@@ -1468,6 +1507,7 @@ static void free_part(struct activity_part *part)
 	free(part->children);
 	free(part->name);
 	free(part->cg_name);
+	free(part->part_text);
 	free(part->flat_name);
 	free(part->uc_object);
 	free(part->uc_params);
@@ -1631,6 +1671,8 @@ bool activity_read(struct string *name, struct string *file)
 		return false;
 
 	int id = -1;
+	/* basename 匹配（见 activity_is_exist_file 注释）：扩展名与路径分隔符
+	 * 差异都由它吸收；实例号歧义由 IsExistActivity 的 ':' 守卫挡住。 */
 	struct archive_data *ad = asset_get_by_name(ASSET_PACT, file->text, &id);
 	if (!ad || !ad->data) {
 		ACT_DEBUG("[act] '%s' not found in PACT archive", file->text);

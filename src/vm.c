@@ -268,6 +268,20 @@ void global_set(int varno, union vm_value val, bool call_dtors)
 			vm_stack_trace();
 		}
 	}
+	/* [D498] advengine 延迟文本三旗标 + 延迟文本 Map（26/27）：
+	 * `IsPartsDelay = global<28> && global<29>`，为真时 ＣＳ＿文本設定
+	 * 把文本塞进 global<26>/27 的 Map 而不是 Parts_SetText —— 设置界面
+	 * 的标签全在这个队列里出不来。XSYS4_GDELAY_DBG=1 追写入。 */
+	if ((varno == 26 || varno == 27 || varno == 28 || varno == 29) &&
+	    getenv("XSYS4_GDELAY_DBG")) {
+		static int n;
+		if (n++ < 40) {
+			NOTICE("[gdelay] global<%d> = %d ip=0x%zX",
+			       varno, val.i, instr_ptr);
+			if (n < 12)
+				vm_stack_trace();
+		}
+	}
 	switch (ain->globals[varno].type.data) {
 	case AIN_STRING:
 	case AIN_STRUCT:
@@ -2521,10 +2535,21 @@ void vm_pump_auto_click(uint32_t now)
 	static int ms = -1, ax = -1, ay = -1, right;
 	static uint32_t last, start_at;
 	static unsigned long n;
+	/* [D498] `XSYS4_AUTO_CLICK_N=<总次数>`：点满即停。位置列表是**循环**的，
+	 * 不限次数的话序列会一直搅局（反复开关菜单/反复点设置项），状态永远
+	 * 不收敛。设 N=位置数 即「每个位置点一次」，序列完全确定。 */
+	static int max_n = -1;
+	if (max_n < 0) {
+		const char *m = getenv("XSYS4_AUTO_CLICK_N");
+		max_n = (m && *m) ? atoi(m) : -1;
+	}
+	if (max_n >= 0 && n >= (unsigned long)max_n)
+		return;
 	/* [D378] 支持位置**列表**：`<ms>:x1,y1;x2,y2;...`（最多 8 个），按顺序轮着点。
 	 * 地图这类「点哪个节点才推进」的界面，一次跑测就能把候选位置全试一遍，
 	 * 不用为每个坐标单独跑一轮（一轮 2~4 分钟）。 */
 	static int px[64], py[64], np, pi;
+	static int pr[64];
 	if (ms < 0) {
 		ms = atoi(e);
 		if (ms <= 0)
@@ -2541,6 +2566,13 @@ void vm_pump_auto_click(uint32_t now)
 					break;
 				px[np] = x;
 				py[np] = atoi(cm + 1);
+				/* [D498] 每位置右键标记：`x,y,r`（引导的「右键进标题」
+				 * 也要注入化，xdotool 整条链都不可靠）。 */
+				{
+					const char *semi = strchr(cm + 1, ';');
+					const char *rr = strstr(cm + 1, ",r");
+					pr[np] = rr && (!semi || rr < semi);
+				}
 				np++;
 				p = strchr(cm, ';');
 				if (p)
@@ -2569,12 +2601,13 @@ void vm_pump_auto_click(uint32_t now)
 	last = now;
 	int tx = np ? px[pi] : ax;
 	int ty = np ? py[pi] : ay;
+	int tr = np ? pr[pi] : right;
 	if (np)
 		pi = (pi + 1) % np;
 	mouse_set_pos(tx, ty);
-	mouse_inject_click(right != 0);
+	mouse_inject_click(tr != 0);
 	if (n++ < 5 || n % 40 == 0)
-		NOTICE("[aclk] #%lu click (%d,%d)%s", n, tx, ty, right ? " right" : "");
+		NOTICE("[aclk] #%lu click (%d,%d)%s", n, tx, ty, tr ? " right" : "");
 }
 
 /* [D388] XSYS4_AUTO_CALL=<fno>[:<frames>] —— 到第 <frames> 帧直接调一次无参 AIN 函数。
@@ -3876,7 +3909,10 @@ static void system_call(enum syscall_code code)
 			ok_cancel_buttons,
 			NULL
 		};
+		/* SDL3 返回 true = 成功（原来写反了：每次成功都打 WARNING）。 */
 		if (SDL_ShowMessageBox(&mbox, &result)) {
+			// 成功，result 即按钮 id
+		} else {
 			WARNING("Error displaying message box");
 		}
 		free(utf);
@@ -3959,7 +3995,10 @@ static void system_call(enum syscall_code code)
 			stop_continue_buttons,
 			NULL
 		};
+		/* SDL3 返回 true = 成功（原来写反了：每次成功都打 WARNING）。 */
 		if (SDL_ShowMessageBox(&mbox, &result)) {
+			// 成功，result 即按钮 id
+		} else {
 			WARNING("Error displaying message box");
 		}
 		free(utf);

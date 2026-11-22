@@ -8,6 +8,7 @@
 #include <SDL3/SDL.h>
 
 #include "system4/string.h"
+#include "system4/utfsjis.h"
 
 #include "hll.h"
 #include "vm.h"
@@ -175,14 +176,48 @@ static struct string *System_MsgBox(struct string *s)
 {
 	if (s)
 		printf("[MsgBox] %s\n", s->text);
+	/* [D498] 菜单「关闭游戏」等确认走真对话框（原先只 printf，AIN 拿到
+	 * 返回值就继续——在真实显示器上用户根本看不到提示）。按钮 id 与
+	 * vm.c 的 SYS_MSGBOX_OK_CANCEL 同口径：OK=1 / Cancel=0。 */
+	char *utf = s ? sjis2utf(s->text, s->size) : NULL;
+	SDL_ShowSimpleMessageBox(0, "xsystem4", utf ? utf : "", NULL);
+	free(utf);
 	return string_dup(s ? s : &EMPTY_STRING);
 }
+
+static const SDL_MessageBoxButtonData system_ok_cancel_buttons[] = {
+	{ SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "OK" },
+	{ SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Cancel" },
+};
 
 static int System_MsgBoxOkCancel(struct string *s)
 {
 	if (s)
 		printf("[MsgBoxOkCancel] %s\n", s->text);
-	return 1; /* 1 = OK */
+	/* [D498] 原来恒返回 1(OK)——菜单「关闭游戏」点一下就真退了。
+	 * 现在弹真对话框。无 WM 的 Xvfb 里 SDL 弹窗会失败 → result 保持
+	 * 0(Cancel)，跑测安全；真实显示器上用户可以选。 */
+	int result = 0;
+	char *utf = s ? sjis2utf(s->text, s->size) : NULL;
+	const SDL_MessageBoxData mbox = {
+		SDL_MESSAGEBOX_INFORMATION,
+		NULL,
+		"xsystem4",
+		utf ? utf : "",
+		SDL_arraysize(system_ok_cancel_buttons),
+		system_ok_cancel_buttons,
+		NULL
+	};
+	/* SDL3 返回 true = 成功（vm.c 的 SYS_MSGBOX_OK_CANCEL 一直把成功当
+	 * 失败打了 WARNING，顺手一起修）。 */
+	if (SDL_ShowMessageBox(&mbox, &result)) {
+		// result: 1=OK, 0=Cancel（AIN 口径与之一致）
+	} else {
+		WARNING("MsgBoxOkCancel: SDL dialog failed (%s)", SDL_GetError());
+		result = 0;
+	}
+	free(utf);
+	return result;
 }
 
 static struct string *System_Error(struct string *s)

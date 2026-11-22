@@ -4402,46 +4402,63 @@ static bool ctrl_active_restore(void)
 	return on;
 }
 
-int PE_AddController(int index)
+/* [D498] 在栈位置 `no` 处建一层（`no == nr_controllers` 即压栈）。
+ * 由 `PE_AddController` 的两个入口共用：
+ *   - index == -1（SceneStack@AddLayer 传 0xffffffff）：压栈；
+ *   - index = 已有层的稳定 ID（parts::AddTopLayer）：插到该层正上方。
+ * 插入时 no 及以上的数组元素整体上移，属于这些层的部件 `controller_no`
+ * 同步 +1（SYSTEM_OVERLAY 不动）——与 `PE_RemoveController` 弹出时的左移成对。 */
+static int add_controller_at(int no)
 {
-	if (index != -1)
-		VM_ERROR("index != -1 not supported (got %d)", index);
-	/* [D312] 这条断言原本假设「活动层永远是栈顶」—— 因为当年
-	 * `SetActiveController` 是空实现，active 只可能在 `PE_AddController`
-	 * 里被改，自然恒等于栈顶。
-	 *
-	 * 现在 setter 真的生效了（AIN 的 `parts::detail::SetActiveLayer` 会把
-	 * 活动层切到低层），紧接着再 `AddLayer` 就会命中这里。实测：
-	 * `NetworkConfirmation` 装载后 `AddLayer` 直接 VM_ERROR 退出。
-	 *
-	 * `AddLayer` 自身的契约是「压一层并让它成为活动层」—— 函数末尾本来就会
-	 * `ctrl_stack.active = no`。所以这里不再当作致命错误，只留痕并继续，
-	 * 由函数末尾把 active 归位到新栈顶。 */
-	if (ctrl_stack.nr_controllers > 0 &&
-			ctrl_stack.active != ctrl_stack.nr_controllers - 1) {
+	int nr = ctrl_stack.nr_controllers;
+	if (nr >= PARTS_CONTROLLER_STACK_MAX)
+		VM_ERROR("controller stack overflow");
+	int old_active = ctrl_stack.active;
+	if (nr > 0 && old_active != nr - 1) {
+		/* [D312] active 不在栈顶不再当作致命错误：AddLayer 的契约就是
+		 * 「建一层并让它成为活动层」，函数末尾会把 active 归位。 */
 		if (getenv("XSYS4_CTRL_DBG"))
 			NOTICE("[ctrl] AddLayer 前 active=%d 不在栈顶(%d)，按压栈语义归位",
-			       ctrl_stack.active, ctrl_stack.nr_controllers - 1);
+			       old_active, nr - 1);
 	}
-	if (ctrl_stack.nr_controllers >= PARTS_CONTROLLER_STACK_MAX)
-		VM_ERROR("controller stack overflow");
 
-	/* [D498 层探针] 谁在建层？`SceneStack@InnerInit` 会 `AddLayer` 并
-	 * `global<315> = this`，而 `SceneStack@Join` 才注册整屏点击委托。
-	 * 「谁建了层却没进 Join」只能靠调用栈回答。 */
-	if (getenv("XSYS4_LAYER_DBG")) {
-		NOTICE("[layer] AddController -> idx=%d id=%d（AIN 栈：）",
-		       ctrl_stack.nr_controllers, ctrl_stack.next_id);
-		vm_stack_trace();
+	/* 腾位：no 及以上上移一格（压栈时 no == nr，循环体不执行）。 */
+	for (int i = nr; i > no; i--) {
+		ctrl_stack.show[i] = ctrl_stack.show[i - 1];
+		ctrl_stack.opaque[i] = ctrl_stack.opaque[i - 1];
+		ctrl_stack.id[i] = ctrl_stack.id[i - 1];
+		ctrl_restore[i] = ctrl_restore[i - 1];
 	}
-	int no = ctrl_stack.nr_controllers++;
-	ctrl_restore[no] = ctrl_stack.active;
+	ctrl_stack.nr_controllers++;
+	/* 被上移层里的部件同步 +1（压栈时没有这种层）。
+	 * 先搬部件再挂 pending——pending 部件随后会被显式指到新层。 */
+	if (no < nr) {
+		struct parts *pp;
+		PARTS_LIST_FOREACH(pp) {
+			if (pp->controller_no != PARTS_CONTROLLER_SYSTEM_OVERLAY &&
+			    pp->controller_no >= no && pp->controller_no < nr)
+				pp->controller_no++;
+		}
+		/* 旧活动层若在插入点上方，它的下标也变了。 */
+		if (old_active >= no)
+			old_active++;
+	}
+
+	ctrl_restore[no] = old_active;
 	ctrl_stack.opaque[no] = false;
 	ctrl_stack.show[no] = true;
 	/* [D129] 返回稳定 ID，不是栈下标。AIN 会把它存进
 	 * SceneStack.LayerPartsNumber，之后与 GetActiveLayer() 比较。 */
 	ctrl_stack.id[no] = ctrl_stack.next_id++;
 	ctrl_stack.active = no;
+
+	/* [D498 层探针] 谁在建层？（XSYS4_LAYER_DBG，默认关） */
+	if (getenv("XSYS4_LAYER_DBG")) {
+		NOTICE("[layer] AddController -> idx=%d id=%d（AIN 栈：）",
+		       no, ctrl_stack.id[no]);
+		vm_stack_trace();
+	}
+
 	/* [D289] 把 Load 期间建出的部件迁到刚建好的这一层。
 	 * 这正是 AIN `Activity@Load → SceneStack@AddLayer` 顺序下想要的归属：
 	 * 部件属于「即将用它的那一层」，而不是「上一层」。
@@ -4474,6 +4491,40 @@ int PE_AddController(int index)
 	}
 	/* [D316] 上游返回栈下标；D129 返回稳定 id。见 layer_idx_mode()。 */
 	return layer_idx_mode() ? no : ctrl_stack.id[no];
+}
+
+int PE_AddController(int index)
+{
+	if (index != -1) {
+		/* [D498] 语义（由 parts::AddTopLayer 反汇编定案）：
+		 *   parts::AddTopLayer() =
+		 *       AddLayer(GetLayerID(NumofLayer() - 1))
+		 * 参数是**已有层的稳定 ID**，新层插到它正上方（AddTopLayer =
+		 * 在栈顶再叠一层）。index == -1 仍是「压栈」。
+		 * 传了不存在的 ID 不杀进程，退化为压栈（与 RemoveController 对
+		 * stale id 的宽容一致——界面反复进出时 AIN 可能拿旧 id）。 */
+		int pos = -1;
+		for (int i = 0; i < ctrl_stack.nr_controllers; i++) {
+			if (ctrl_stack.id[i] == index) {
+				pos = i;
+				break;
+			}
+		}
+		if (pos < 0) {
+			if (getenv("XSYS4_CTRL_DBG")) {
+				NOTICE("[ctrl] AddController(id=%d) 无此层（nctrl=%d），退化为压栈",
+				       index, ctrl_stack.nr_controllers);
+				vm_stack_trace();
+			}
+			index = -1;
+		} else {
+			if (getenv("XSYS4_CTRL_DBG"))
+				NOTICE("[ctrl] AddController(id=%d) -> 插到 idx=%d 上方",
+				       index, pos);
+			return add_controller_at(pos + 1);
+		}
+	}
+	return add_controller_at(ctrl_stack.nr_controllers);
 }
 
 // 从栈上移除位置 `index` 处的控制器，释放属于它的所有

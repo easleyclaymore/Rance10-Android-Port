@@ -200,6 +200,19 @@ bool PE_SetText(int parts_no, struct string *text, int state)
 		return false;
 
 	struct parts *parts = parts_get(parts_no);
+	/* [D498 探针] XSYS4_TEXT_SET_DBG=1：设置界面标签空白——
+	 * 看每笔 SetText 写给了哪个件、内容、以及该件当前的可见性/位置。 */
+	if (getenv("XSYS4_TEXT_SET_DBG")) {
+		static int n;
+		if (n++ < 600)
+			NOTICE("[stx] no=%d st=%d vis=%d a=%d pos=(%d,%d) wh=%dx%d text=\"%s\"",
+			       parts_no, state + 1, (int)parts->global.show,
+			       (int)parts->global.alpha,
+			       parts->global.pos.x, parts->global.pos.y,
+			       parts->states[parts->state].common.w,
+			       parts->states[parts->state].common.h,
+			       text ? text->text : "(null)");
+	}
 	parts_text_clear(parts, state);
 	parts_text_append(parts, parts_get_text(parts, state), text);
 	/* 记录原文供渲染层做"是否与内建控件标签重复"的判定。 */

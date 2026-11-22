@@ -4688,6 +4688,15 @@ static int PartsEngine_IsExistActivity(struct string *name)
 	if (!name || !name->text)
 		return 0;
 	bool exists = activity_exists(name->text);
+	/* [D498] 文件兜底只对**不带实例号**的路径做：`….pact:N` 是
+	 * GetFreeName 的实例枚举，basename 匹配会让任意 N 都命中 → 死循环。 */
+	if (!exists && !strchr(name->text, ':')) {
+		/* [D498] AIN 也会用**文件路径**问（Asra 设置页面
+		 * `Asra\设置／０１／消息速度页面.pact`）——注册表没有时按
+		 * 档案存在性兜底（activity_is_exist_file 内含 .pact→.pactex
+		 * 扩展名解析）。返回 0 会让设置界面整页跳过装载。 */
+		exists = activity_is_exist_file(name->text);
+	}
 	if (getenv("XSYS4_PE_DBG"))
 		NOTICE("[pe-act] IsExistActivity('%s') = %d", name->text, exists);
 	return exists;
@@ -4826,7 +4835,19 @@ static int PE_Act_IsExistActivityPartsByName(struct string *name, struct string 
 	struct activity *act = name ? activity_get(name->text) : NULL;
 	if (!act || !parts_name || !parts_name->text)
 		return 0;
-	return activity_find_parts(act, parts_name->text) != NULL;
+	int found = activity_find_parts(act, parts_name->text) != NULL;
+	/* [D498] 设置界面标签空白排查：SetTextForParts 先在这里早退。
+	 * 看它拿的活动名/部件名与注册名是否错位；顺带打延迟文本三旗标
+	 * （IsPartsDelay = global<28> && global<29>，为真时文本进队列
+	 * 不进 Parts_SetText）。 */
+	if (getenv("XSYS4_ACT_DBG")) {
+		static int n;
+		if (n++ < 30)
+			NOTICE("[act] IsExistPartsByName('%s','%s') = %d | g28=%d g29=%d",
+			       name->text, parts_name->text, found,
+			       global_get(28).i, global_get(29).i);
+	}
+	return found;
 }
 
 static int PE_Act_IsExistActivityPartsByNumber(struct string *name, int parts_no)

@@ -60,6 +60,9 @@ struct asset_manager {
 	bool (*exists_by_name)(struct asset_manager *manager, const char *name, int *id_out);
 	struct archive_data *(*get_by_id)(struct asset_manager *manager, int id);
 	struct archive_data *(*get_by_name)(struct asset_manager *manager, const char *name, int *id_out);
+	/* [D498] 精确匹配（只有 AFA 管理器实现；ALD 无名字表，保持 NULL）。 */
+	bool (*exists_by_name_exact)(struct asset_manager *manager, const char *name, int *id_out);
+	struct archive_data *(*get_by_name_exact)(struct asset_manager *manager, const char *name, int *id_out);
 };
 
 // XXX：《大帝国》《Shaman's Sanctuary》的 AFAv1 也走这里
@@ -117,6 +120,22 @@ struct archive_data *asset_get_by_name(enum asset_type type, const char *name, i
 	if (!assets[type]->get_by_name)
 		ERROR("get_by_name not supported on this archive type");
 	return assets[type]->get_by_name(assets[type], name, id_out);
+}
+
+/* [D498] 精确匹配包装：不支持的管理器（ALD）安静返回 false/NULL，
+ * 让调用方走自己的回退，而不是 ERROR 杀进程。 */
+bool asset_exists_by_name_exact(enum asset_type type, const char *name, int *id_out)
+{
+	if (!assets[type] || !assets[type]->exists_by_name_exact)
+		return false;
+	return assets[type]->exists_by_name_exact(assets[type], name, id_out);
+}
+
+struct archive_data *asset_get_by_name_exact(enum asset_type type, const char *name, int *id_out)
+{
+	if (!assets[type] || !assets[type]->get_by_name_exact)
+		return NULL;
+	return assets[type]->get_by_name_exact(assets[type], name, id_out);
 }
 
 struct cg *asset_cg_load(int id)
@@ -259,6 +278,36 @@ static struct archive_data *afa_get_by_name(struct asset_manager *_manager, cons
 	return NULL;
 }
 
+static struct archive_data *afa_get_by_name_exact(struct asset_manager *_manager, const char *name,
+		int *id_out)
+{
+	struct asset_manager_afa *manager = (struct asset_manager_afa*)_manager;
+
+	for (unsigned i = 0; i < MAX_ARCHIVES && manager->archives[i]; i++) {
+		struct archive_data *data = archive_get_by_name(&manager->archives[i]->ar, name);
+		if (data) {
+			if (id_out)
+				*id_out = data->no + 1;
+			return data;
+		}
+	}
+	return NULL;
+}
+
+static bool afa_exists_by_name_exact(struct asset_manager *_manager, const char *name, int *id_out)
+{
+	struct asset_manager_afa *manager = (struct asset_manager_afa*)_manager;
+
+	for (unsigned i = 0; i < MAX_ARCHIVES && manager->archives[i]; i++) {
+		if (archive_exists_by_name(&manager->archives[i]->ar, name, id_out)) {
+			if (id_out)
+				*id_out += 1;
+			return true;
+		}
+	}
+	return false;
+}
+
 static bool afa_exists_by_name(struct asset_manager *_manager, const char *name, int *id_out)
 {
 	struct asset_manager_afa *manager = (struct asset_manager_afa*)_manager;
@@ -322,6 +371,8 @@ static void afa_init(enum asset_type type, char *file)
 	manager->manager.get_by_id = afa_get_by_id;
 	manager->manager.exists_by_name = afa_exists_by_name;
 	manager->manager.get_by_name = afa_get_by_name;
+	manager->manager.exists_by_name_exact = afa_exists_by_name_exact;
+	manager->manager.get_by_name_exact = afa_get_by_name_exact;
 	manager->archives[0] = ar;
 	assets[type] = &manager->manager;
 

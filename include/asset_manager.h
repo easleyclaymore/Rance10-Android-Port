@@ -36,6 +36,11 @@ void asset_manager_init(void);
 bool asset_manager_load_archive(enum asset_type type, const char *archive_name);
 bool asset_exists(enum asset_type type, int no);
 bool asset_exists_by_name(enum asset_type type, const char *name, int *id_out);
+/* [D498] 精确名字查找。asset 层的 `*_by_name` 走 **basename** 语义（忽略扩展名
+ * 与大小写），会让 `Asra\….pact:N`（任意实例号）全部命中 —— AIN 的
+ * `GetFreeName` 找空闲实例号会死循环（实测 1267 万行日志风暴）。 */
+bool asset_exists_by_name_exact(enum asset_type type, const char *name, int *id_out);
+struct archive_data *asset_get_by_name_exact(enum asset_type type, const char *name, int *id_out);
 struct archive_data *asset_get(enum asset_type type, int no);
 struct archive_data *asset_get_by_name(enum asset_type type, const char *name, int *id_out);
 
