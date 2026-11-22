@@ -22,6 +22,8 @@
 #include "system4/file.h"
 #include "system4/savefile.h"
 #include "system4/string.h"
+#include <time.h>
+static clock_t gsave_t_last;
 
 #include "savedata.h"
 #include "vm.h"
@@ -565,6 +567,15 @@ static union vm_value gsave_to_vm_value(struct gsave *save, enum ain_data_type t
 static struct gsave_flat_array *gsave_load_array(struct gsave *save, struct page *page, struct gsave_flat_array *flat_array)
 {
 	assert(page->type == ARRAY_PAGE);
+	/* [D498 探针] 数组物化节拍：区分「struct 卡住」与「数组环」。 */
+	if (getenv("XSYS4_GSAVE_TIME")) {
+		static int nr_arrays_done;
+		if (nr_arrays_done && nr_arrays_done % 100 == 0)
+			NOTICE("[gsave-time] arrays=%d +%dms", nr_arrays_done,
+			       (int)((clock()-gsave_t_last)*1000/CLOCKS_PER_SEC));
+		nr_arrays_done++;
+		gsave_t_last = clock();
+	}
 	if (page->array.rank > 1) {
 		for (int i = 0; i < page->nr_vars; i++)
 			flat_array = gsave_load_array(save, heap_get_page(page->values[i].i), flat_array);
@@ -649,6 +660,20 @@ static union vm_value gsave_to_vm_value(struct gsave *save, enum ain_data_type t
 				VM_ERROR("Bad save file: structure name mismatch");
 			int slot = alloc_struct(struct_type);
 			struct page *page = heap[slot].page;
+			/* [D498 探针] 大存档挂起定位：记录物化节拍。XSYS4_GSAVE_TIME=1 时
+			 * 每 500 条打一行（计数/结构名/耗时 ms），用于区分「慢」与「死循环」。 */
+			if (getenv("XSYS4_GSAVE_TIME")) {
+				static int nr_done; static clock_t last;
+				if (nr_done && nr_done % 25 == 0) {
+					clock_t now = clock();
+					NOTICE("[gsave-time] records=%d struct=%s +%ldms",
+					       nr_done, st->name, (long)((now-last)*1000/CLOCKS_PER_SEC));
+					last = now;
+				} else if (nr_done == 0) {
+					last = clock();
+				}
+				nr_done++;
+			}
 			for (int i = 0; i < rec->nr_indices; i++) {
 				struct gsave_keyval *kv = &save->keyvals[rec->indices[i]];
 				const char *field_name = sd ? sd->fields[i].name : kv->name;
@@ -738,6 +763,13 @@ static union vm_value gsave_to_vm_value(struct gsave *save, enum ain_data_type t
 
 int load_globals_from_gsave(struct gsave *save, const char *keyname, const char *group_name, int *n)
 {
+	/* [D498 探针] 进入即打：区分「没进函数」与「进了卡住」。 */
+	if (getenv("XSYS4_GSAVE_TIME"))
+		NOTICE("[gsave-time] enter load_globals_from_gsave key=%s group='%s' want='%s' "
+		       "nr_globals=%u nr_records=%u nr_keyvals=%u",
+		       save->key, save->group ? save->group : "(null)",
+		       group_name ? group_name : "(null)",
+		       save->nr_globals, save->nr_records, save->nr_keyvals);
 	if (strcmp(keyname, save->key))
 		VM_ERROR("Attempted to load save data with wrong key: %s", display_sjis0(keyname));
 	if (!group_name)
@@ -760,6 +792,10 @@ int load_globals_from_gsave(struct gsave *save, const char *keyname, const char 
 			display_sjis0(group_name), display_sjis0(save->group));
 	}
 
+	if (getenv("XSYS4_GSAVE_TIME"))
+		NOTICE("[gsave-time] ain->nr_globals=%d first-global=%s type=%d",
+		       ain->nr_globals, display_sjis0(save->globals[0].name),
+		       save->globals[0].type);
 	for (struct gsave_global *g = save->globals; g < save->globals + save->nr_globals; g++) {
 		int global_index = ain_get_global(ain, g->name);
 		if (global_index < 0) {
@@ -787,7 +823,14 @@ int load_globals_from_gsave(struct gsave *save, const char *keyname, const char 
 			       ok ? save->arrays[g->value].nr_flat_arrays : -99);
 		}
 		bool call_dtors = false; // Destructors for old objects should not be called.
+		clock_t t0 = getenv("XSYS4_GSAVE_TIME") ? clock() : 0;
 		global_set(global_index, gsave_to_vm_value(save, type->data, type->struc, type->rank, g->value), call_dtors);
+		if (getenv("XSYS4_GSAVE_TIME")) {
+			long ms = (long)((clock()-t0)*1000/CLOCKS_PER_SEC);
+			if (ms > 20)
+				NOTICE("[gsave-time] global=%s type=%s took %ldms",
+				       display_sjis0(g->name), ain_strtype(ain, type->data, type->struc), ms);
+		}
 		if (n)
 			(*n)++;
 	}
@@ -806,7 +849,11 @@ int load_globals(const char *keyname, const char *filename, const char *group_na
 	switch (error) {
 	case SAVEFILE_SUCCESS:
 		free(path);
-		retval = load_globals_from_gsave(save, keyname, group_name, n);
+		if (getenv("XSYS4_GSAVE_TIME"))
+		NOTICE("[gsave-time] gsave_read done, calling materialize");
+	retval = load_globals_from_gsave(save, keyname, group_name, n);
+	if (getenv("XSYS4_GSAVE_TIME"))
+		NOTICE("[gsave-time] materialize done retval=%d n=%d", retval, n ? *n : -1);
 		gsave_free(save);
 		return retval;
 	case SAVEFILE_INVALID_SIGNATURE:

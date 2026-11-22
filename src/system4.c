@@ -968,9 +968,15 @@ int main(int argc, char *argv[])
 			struct ain_struct *st = &ain->structures[i];
 			printf("%d\t%d\t%s", i, st->nr_members,
 			       st->name ? st->name : "");
-			for (int j = 0; j < st->nr_members; j++)
+			for (int j = 0; j < st->nr_members; j++) {
 				printf("\t%s:%d", st->members[j].name ? st->members[j].name : "",
 				       (int)st->members[j].type.data);
+				/* [D498] AIN_STRUCT(13) 成员补 struc 编号——alloc_struct
+				 * 对 13 型成员急切递归预分配，类型图成环即死循环
+				 * （大存档挂起的根因）。有编号才能离线走环检测。 */
+				if (st->members[j].type.data == AIN_STRUCT)
+					printf("/%d", st->members[j].type.struc);
+			}
 			putchar('\n');
 		}
 		ain_free(ain);
