@@ -4202,8 +4202,10 @@ void PE_DebugDumpParts(const char *tag)
 			for (size_t i = 0; i < st->flat.nr_libraries; i++)
 				if (st->flat.textures[i].handle)
 					cgn++;
-			NOTICE("[parts] %s   flat no=%d loaded=%d root=%d hdr=%dx%d fps=%d tl=%zu libs=%zu cg=%zu frame=%d end=%d adv=%d stop=%d",
-			       tag, p->no, st->flat.flat != NULL, st->flat.root_state,
+			NOTICE("[parts] %s   flat no=%d name='%s' loaded=%d root=%d hdr=%dx%d fps=%d tl=%zu libs=%zu cg=%zu frame=%d end=%d adv=%d stop=%d",
+			       tag, p->no,
+			       st->flat.name ? st->flat.name->text : "",
+			       st->flat.flat != NULL, st->flat.root_state,
 			       st->flat.flat ? st->flat.flat->hdr.width : -1,
 			       st->flat.flat ? st->flat.flat->hdr.height : -1,
 			       st->flat.flat ? st->flat.flat->hdr.fps : -1,
