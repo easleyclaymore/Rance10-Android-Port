@@ -107,7 +107,7 @@ PartsEngine.SetComponentShow	L3	层号走 ctrl_stack.show（D128），部件走 
 PartsEngine.SetComponentType	L3	类型变更时 parts_state_reset 重建状态 + 写 component_type（1-based state）
 PartsEngine.SetDelegateIndex	L3	写 parts.delegate_index；后续 CallDelegate 按它取 FunctionSet（s161 实测 di 一致）
 PartsEngine.SetEnableInputProcess	L3	已实现（D496）：flag 挂 struct parts 尾（默认 true，不参与 save.c 顺序序列化）；input.c 对组件类型显式 ∈ {4,7,11} 的部件门控 hover_blocking/click_eligible（is_hovered 不动，D490 教训），不碰 clickable（D165 教训）。XSYS4_EIP_GATE=0 回退。契约证据：AIN 只写不读（8255 xref 全是转发；IsInputPartsActive 按类型过滤）。判据已落实（d497_eip0 vs d497_smoke A/B）：两轮活动数一致（36）、任务地图可进；[eip] 探针 206/217 次 enable=0 全部 MISS（部件未创建）→ 闸在主路径惰性，11 次 enable=1 命中真实部件
-PartsEngine.SetKeyWaitShow	L2	存取闭环成立（D496）：状态挂 parts_widget（keywait_cg/flat/x/y/z/show），IsKeyWaitShow 读回；调用方证据 = _CMsgKeyWait@_PreCommand→show(0)/_PostCommand→show(1)（693 次/章）。渲染挂钩待证据：SetKeyWaitCGName/FlatName/Pos 运行期 0 次命中，引擎默认 ▼ 素材与闪烁节奏不可知，不猜
+PartsEngine.SetKeyWaitShow	L2	存取闭环成立（D496）：状态挂 parts_widget（keywait_cg/flat/x/y/z/show），IsKeyWaitShow 读回；调用方证据 = _CMsgKeyWait@_PreCommand→show(0)/_PostCommand→show(1)（693 次/章）。渲染挂钩待证据：SetKeyWaitCGName/FlatName/Pos 运行期 0 次命中，引擎默认 ▼ 素材与闪烁节奏不可知，不猜。D498 勘误补注：AIN fno 7588（キー表示設定）是**另一个函数**——SetComponentShow 的 AIN 包装（标题淡入编排用它隐藏 900000040/41/43/52，XSYS4_SHOW_DBG 实证）；与本条（真正的按键等待指示，调用点 0x22fd8/0x196ab4）是两条独立链，勿混淆
 PartsEngine.SetWantSaveBackScene	L3	写 want_save_back_scene，决定 SaveBackScene 的收录范围（读取端默认关，D310）
 PassRegister.RegistText	L3	有序插入 + write_register 落盘，幂等
 String.Contains	L2	子串存在性；470 次/章
