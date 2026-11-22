@@ -216,3 +216,4 @@ XSYS4_WIDGET_SELFTEST	[D396 诊断，默认关] `=1` 启动 3 秒后跑一次控
 XSYS4_MOVIE_DBG	PartsMovie 族（部件内嵌视频）的创建/轮询轨迹（D497）
 XSYS4_CPROC_DBG	GetPartsConstructionProcess 合成读回挂账的触达轨迹（D497）
 XSYS4_EIP_GATE	SetEnableInputProcess 门控总闸；=0 回退到"输入组件不门控"（D496）
+XSYS4_GSAVE_TIME	gsave 装载四级节拍探针（enter/数组/记录/全局计时，D498 大存档挂起定位）

@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **257** 个开关，其中 **36** 个没有就近注释。
+共 **258** 个开关，其中 **36** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -66,7 +66,7 @@
 | 呈现与输入 | `XSYS4_ACT_CLICKABLE_ALL` | `src/parts/activity.c:1158` | 把所有**活动文件里声明**的部件标为可点（运行时建的 900000xxx 不受影响） |
 | 呈现与输入 | `XSYS4_ACT_DBG` | `src/parts/activity.c:765` | 活动装载与点击派发诊断 |
 | 呈现与输入 | `XSYS4_ACT_DEBUG` | `src/parts/activity.c:1717` | 活动诊断的旧开关 |
-| 呈现与输入 | `XSYS4_ACT_GEOM` | `src/hll/PartsEngine.c:4857` | [D360 诊断，默认关] `AFL_Activity_GetPartsNumber` 每查到一个部件号就把它的矩形/可见性打出来 —— 一次跑测即可拿到「按名字找到的部件到底在屏幕哪里」 |
+| 呈现与输入 | `XSYS4_ACT_GEOM` | `src/hll/PartsEngine.c:4861` | [D360 诊断，默认关] `AFL_Activity_GetPartsNumber` 每查到一个部件号就把它的矩形/可见性打出来 —— 一次跑测即可拿到「按名字找到的部件到底在屏幕哪里」 |
 | 呈现与输入 | `XSYS4_ACT_PART_DBG` | `src/parts/parts.c:3003` | 打印活动部件的建造解析（名字/类型/尺寸/表示領域/flat 名）与 300 号段之后的 SetPos/SetZ |
 | 呈现与输入 | `XSYS4_ACT_RELEASE_DGLIST` | `src/parts/activity.c:1530` | [D270 已转正] ReleaseActivity 的 EraseNumberList 出参不再丢弃：把被释放部件的 delegate_index 写回 AIN，供 CPartsMessageManager@ReleaseFunctionSetList 销掉消息分发表里的委托（否则释放后的委托仍可命中，号复用时调到上一次活动的处理器）；默认生效，=0 回退做 A/B |
 | 呈现与输入 | `XSYS4_ACT_RELEASE_DGLIST_DBG` | `src/parts/activity.c:1519` | [诊断] 打印每次 ReleaseActivity 释放的活动名、部件数与实际写回 EraseNumberList 的委托下标个数；用来证明 D270 的修复不是死代码（个数恒 0 就说明出参本来没被 AIN 用） |
@@ -175,7 +175,8 @@
 | 其它 | `XSYS4_FULLSCREEN` | `src/video.c:293` | [D377 默认关] `=1` 启动即真全屏（无边框/无标题栏），`=0` 强制窗口化（覆盖 .xsys4rc 的 fullscreen）。运行期仍可用 F11 切换 |
 | 其它 | `XSYS4_G14_WATCH` | `src/vm.c:4471` | [诊断] 只在 global[14] 的值变化时打印 ip/旧值/新值/栈/调用栈（抓单例被覆写） |
 | 其它 | `XSYS4_GL_DBG` | `src/video.c:269` | [诊断] 启动时打印实际 GL vendor/renderer/version —— 判断有没有用上硬件加速的唯一硬证据（llvmpipe=软件，Mesa Intel=硬件） |
-| 其它 | `XSYS4_GSAVE_DBG` | `src/savedata.c:780` | 〔摘〕所以按可打印的类型名分类。 |
+| 其它 | `XSYS4_GSAVE_DBG` | `src/savedata.c:816` | 〔摘〕所以按可打印的类型名分类。 |
+| 其它 | `XSYS4_GSAVE_TIME` | `src/savedata.c:571` | gsave 装载四级节拍探针（enter/数组/记录/全局计时，D498 大存档挂起定位） |
 | 其它 | `XSYS4_HEAP_LIVE_LIMIT` | `src/heap.c:107` | 堆存活槽上限，超了报警 |
 | 其它 | `XSYS4_HLL_ARGDBG` | `src/ffi.c:985` | 打印 HLL 调用的实际参数值（排查"参数顺序/位宽错"时用） |
 | 其它 | `XSYS4_HLL_HIST` | `src/vm.c:146` | — |
@@ -239,7 +240,7 @@
 | 其它 | `XSYS4_REF_AT` | `src/vm.c:4233` | — |
 | 其它 | `XSYS4_RELEASE_RECURSIVE` | `src/parts/parts.c:2947` | [D219 已转正] PE_ReleaseParts 递归释放整棵部件子树（原 parts_release 只把子部件摘链不释放，对话框关掉后文字层残留，H025/[LAYER-LEAK]）；默认生效，=0 回退做 A/B |
 | 其它 | `XSYS4_RSS_LIMIT` | `src/vm.c:3959` | 进程 RSS 上限，超了报警 |
-| 其它 | `XSYS4_SAVE_GROUP_ANY` | `src/savedata.c:754` | — |
+| 其它 | `XSYS4_SAVE_GROUP_ANY` | `src/savedata.c:786` | — |
 | 其它 | `XSYS4_SHOT_DIR` | `src/screenshot.c:178` | [诊断] 指定目录后按 Alt+S 让引擎用 glReadPixels 直接 dump GL main surface 为 shot_NNN.png，绕过 zenity 文件框与 X11 合成；GL 直绘下 x11grab/import 只能拿到全黑 framebuffer，画面判据以此为准（GUIDE 1.13） |
 | 其它 | `XSYS4_SHOT_PARTS_DUMP` | `src/screenshot.c:184` | [诊断] 配合 XSYS4_SHOT_DIR：每次引擎自截图时打一次部件快照（layer_show / cover / 每部件 vis）+ 同帧 CG 绘制日志（最近 12 次调用的 alpha / multiply_color / scale / 纹理尺寸、以及两次截图之间的绘制次数）；按截图时刻触发而非全程探针，避免拖慢帧率改变剧情时序；需配 XSYS4_PARTS_DUMP_MIN=900000300 / MAX=1000 |
 | 其它 | `XSYS4_SHOW_DBG` | `src/parts/parts.c:3068` | 〔摘〕于是「它有没有被 AIN 调过 SetShow」这个问题一直没法回答。 |
