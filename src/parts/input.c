@@ -472,6 +472,10 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	if (prev_clicking && !cur_clicking && click_down_parts == parts->no) {
 		clicked_parts = parts->no;
 		g_just_clicked = true;
+		/* [D498 点击流探针] 捕获时刻。与 POLL/CLR 配对，用来判断
+		 * 「点击号被读到之前是不是已经被 EndInput 清掉了」。 */
+		if (getenv("XSYS4_CLICK_FLOW"))
+			NOTICE("[flow] CAP parts=%d began=%d", clicked_parts, parts_began_click);
 		/* [D114] 每一次捕获到的点击都要排 CLICK/KEY_UP 消息，
 		 * 不只是可点击的部件。AIN 那边在部件消息管理器上注册了
 		 * 「整屏」鼠标委托（AFL_Parts_AddWholeMouseLClickEvent）；
@@ -981,6 +985,8 @@ void PE_EndInput(void)
 	 * GetClickNumber 没有 ⇒ AIN 在 DoInput 窗口里没轮询点击号。 */
 	if (getenv("XSYS4_INPUT_DBG") && clicked_parts)
 		NOTICE("[inp] EndInput (clicked=%d)", clicked_parts);
+	if (getenv("XSYS4_CLICK_FLOW") && clicked_parts)
+		NOTICE("[flow] CLR was=%d", clicked_parts);
 	parts_began_click = false;
 	clicked_parts = 0;
 	drag_state_reset();
@@ -1000,6 +1006,8 @@ int PE_GetClickPartsNumber(void)
 	 * "GetClickNumber 恒为 0、AIN 没轮询点击"的结论 —— 其实是探针自己
 	 * 哑了（同一个坑第四次）。现在：非零必打，另加每 300 次一条心跳，
 	 * 用来确认 AIN 到底还在不在轮询。 */
+	if (getenv("XSYS4_CLICK_FLOW") && clicked_parts)
+		NOTICE("[flow] POLL -> %d began=%d", clicked_parts, parts_began_click);
 	if (getenv("XSYS4_INPUT_DBG")) {
 		static int n = 0;
 		if (clicked_parts)

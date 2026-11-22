@@ -68,7 +68,7 @@ void parts_msg_push(struct parts* parts, int type, const char *fmt, ...)
 	 * （全屏 m0 的整屏委托 = 菜单/按钮回调的总入口）。只在前 4 次打。 */
 	if (type == PARTS_MSG_MOUSE_CLICK_AIN && getenv("XSYS4_FSL_DBG")) {
 		static int fn;
-		if (fn++ < 4)
+		if (fn++ < 16)
 			vm_debug_fslist();
 	}
 	if (parts && getenv("XSYS4_FORCE_DI0")) {

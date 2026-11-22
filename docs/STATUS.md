@@ -223,7 +223,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **262**（未标注 38）｜ HLL 源码口径 **3576 / 4645（77.0%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 128 / 46** ｜ 影响面 / 子模块补丁 **33 / 3** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **264**（未标注 38）｜ HLL 源码口径 **3576 / 4645（77.0%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 128 / 46** ｜ 影响面 / 子模块补丁 **33 / 3** ｜ 默认基线 `d292fix2`: `acts=36 / err=0 / core=0 / quest_map=1`。
 <!-- STATS:END -->
 
 最常用的：
@@ -312,6 +312,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 | ③ 知识 | `docs/OFFLINE.md` | 离线工具参数/模式 + HLL 全量普查方法 | 用离线工具时 |
 | ③ 知识 | `docs/GUIDE/` | 深层方法论与契约，对外成书。**定位是「判据与陷阱」，不是状态**：它只在**修订记录**里引用 D 号（说明"这一版补了哪条判据"），正文不写当前进度/卡点。读它要判据，读 `STATUS.md` 要现状 —— 两者不要互相替代 | 要判据 / 方法论时 |
 | ③ 知识 | `tools/MAP.md` | `tools/` 目录分层与脚本分工 | 加 / 找脚本时 |
+| ③ 知识 | `tools/offline/ex_dump.c` | EX（.pactex 明文）块结构 dumper：块数/类型/标量/列表/表格，用来回答「活动文件那个元数据块在第几块、是什么」（D498：EndKey 列表就是这么找的） | 活动文件元数据缺失时 |
 | ③ 知识 | `tools/offline/flat_dump.c`（+.md 用法） | flat 关键帧/时间线离线分析器：逐帧 pos/scale/area/origin/align/alpha（flat 渲染对不齐时先看声明形态，D498 标题按钮即此类） | flat 渲染对不齐时 |
 | ③ 知识 | `tools/offline/flat_talt_dump.c` | flat **TALT 图集**分析器：解出内嵌图集（AJP/QNT）成 PPM+alpha、按 meta 区域算内容包围盒、库名/meta 名按 hex 打出（meta 名 XOR 0x55 才是真名）。图集子区域画错时先看它 | TALT 图集/子区域渲染异常时 |
 | ③ 知识 | `docs/PROJECT-MANAGEMENT.md` | 工程管理复盘，**面向用户/管理者；AI 会话不读** | 带团队 / 立规矩 / 复盘 |
