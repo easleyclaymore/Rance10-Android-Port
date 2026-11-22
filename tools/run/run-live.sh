@@ -162,6 +162,22 @@ find_wid() {
     done
     xwininfo -root -children 2>/dev/null | awk '/"xsystem4"/{w=$1} END{print w}'
 }
+# [D498] 每次要与窗口交互前都**重新解析** WID（带重试）。
+# 引擎在无 WM 的 Xvfb 里会间歇性地把窗口从 root 的子窗口表里挪走/重建
+# （SDL 侧 wid 不变、无 DESTROYED 事件），启动时缓存的 `$WID` 很快就失效。
+# `click()` 在 D149/D178 已经每次重解析，但 `engineshot`/`key` 分支一直
+# 在用旧 id —— 这正是 D376 记录的「第一张 shot 之后不再有第二张」。
+refresh_wid() {
+    local fresh=""
+    for _ in 1 2 3 4 5 6 7 8; do
+        fresh=$(find_wid)
+        [ -n "$fresh" ] && break
+        sleep 0.06
+    done
+    [ -n "$fresh" ] && WID="$fresh"
+    return 0
+}
+
 WID=""
 for _ in $(seq 1 60); do
     WID=$(find_wid)
@@ -208,6 +224,7 @@ click() { # click <view_x> <view_y> <button>
     # 焦点落到 root(1135)，点击根本进不了输入层（`[inp] clicking=1` 一次都没有）。
     # 外部轮询同一 display 全程能看到 xsystem4 窗口 —— 所以窗口没消失，是 id 换了。
     # 现在每次点击重新解析当前窗口 id，并对它重新聚焦/抬升。
+    refresh_wid
     local curwid="$WID" freshwid
     # [D498] 解析窗口 id 要**重试**。
     #
@@ -264,6 +281,11 @@ click() { # click <view_x> <view_y> <button>
         echo "--- DISPLAY=${DISPLAY:-unset} Xvfb_pids=$(pgrep Xvfb 2>/dev/null | tr '\n' ' ') game_pid=${GAMEPID:-unknown}" >&2
         echo "--- live xsystem4 windows: $(xwininfo -root -children 2>/dev/null | awk '/"xsystem4"/{print $1}' | tr '\n' ' ')" >&2
     fi
+    # [D498-A] 试着在 move 与 down 之间加 0.25s 的间隔（q1..q3），结果
+    # **3/3 全失败**：这 0.25s 里引擎会先处理新位置的 MOUSE_ENTER/悬停态，
+    # AIN 的输入窗口恰好在那时关闭，按下沿就整个丢了。回退成「move 后
+    # 立刻按下」—— 按下沿与位置变化同帧到达，反而稳定（uc1 实证）。
+    # 记录在这里，防止以后再踩。
     xdotool mousedown "$3" >/dev/null 2>&1 || true
     # [D245] 0.12s 在 llvmpipe 下只有约 1.5 帧（实测 13.5fps → 74ms/帧），
     # 按下态落在帧边界上时整帧采样不到，40 次点击只有 9 次产生 EndInput。
@@ -414,6 +436,9 @@ if [ -n "${RANCE10_LIVE_SEQ:-}" ]; then
                 # 都是这样：第一张 shot 之后不再有任何 `[shot-engine]`，
                 # 日志也不再增长，而进程还活着。当时只有 `windowactivate`
                 # 带了 timeout，漏了紧跟着的 `windowfocus` 与 `key alt+s`。
+                # [D498] 另外 `engineshot` 一直用启动时缓存的 `$WID`——引擎
+                # 中途重建窗口后它就失效了，第二张 shot 永远拍不到。先重解析。
+                refresh_wid
                 [ -n "$WID" ] && timeout -k 1 3 xdotool windowactivate --sync "$WID" >/dev/null 2>&1 || true
                 [ -n "$WID" ] && timeout -k 1 2 xdotool windowfocus --sync "$WID" >/dev/null 2>&1 || true
                 # 点击后焦点可能已变，先走焦点路径再退回直接投递到窗口
@@ -425,6 +450,7 @@ if [ -n "${RANCE10_LIVE_SEQ:-}" ]; then
             # 「不论是否已读，强制快进」，AIN 用 key_is_down(VK_CONTROL)
             # 检测，短促的 key: 无效，必须成对使用。
             keydown|keyup)
+                refresh_wid
                 [ -n "$WID" ] && timeout -k 1 2 xdotool windowfocus --sync "$WID" >/dev/null 2>&1 || true
                 xdotool "$act" "$arg" >/dev/null 2>&1 || true
                 sleep "$CLICK_SLEEP"

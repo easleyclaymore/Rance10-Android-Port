@@ -7427,6 +7427,13 @@ void vm_sleep(int ms)
 
 _Noreturn void vm_exit(int code)
 {
+	/* [D498] `XSYS4_EXIT_DBG=1`：谁在退出？设置菜单点「设置」后引擎会
+	 * 自己退（无崩溃、无 VM_ERROR），必须知道是 SDL_QUIT 还是 AIN 主循环
+	 * 走完了。 */
+	if (getenv("XSYS4_EXIT_DBG")) {
+		NOTICE("[exit] vm_exit(code=%d)", code);
+		vm_stack_trace();
+	}
 	/* [D282] 退出时汇总被跟踪函数的**真实调用次数**（不受打印限流影响）。 */
 	if (getenv("XSYS4_CALL_TRACE_TOTAL"))
 		for (int i = 0; i < call_trace_n; i++)
