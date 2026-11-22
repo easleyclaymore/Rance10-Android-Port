@@ -2238,6 +2238,119 @@ static void vm_dbg_fs(int parts_no)
 	       parts_no, hit, total);
 }
 
+/* [D498] 读 AIN 侧 `CPartsMessageManager.m_FunctionSetList` 的运行时内容。
+ *
+ * 为什么必须读它：引擎侧只负责把 (parts_no, delegate_index) 放进消息，
+ * AIN 的 `CPartsMessageManager@CallDelegate` 用 **delegate_index 当数组
+ * 下标** 取 FunctionSet：
+ *     if (di < 0) return false;            // 丢弃
+ *     if (Numof(list) <= di) return false; // 丢弃
+ *     fs = list[di];  switch(type) -> fs@CallFunctionMouseClick
+ * 所以「菜单里点了没反应」只有两种可能：di 越界，或 list[di] 不是那个
+ * 按钮的 FunctionSet（部件号复用时 di 被后来的实例覆盖）。
+ * 这个探针把 list 的长度和前几十个槽的 m_PartsNumber 打出来对账。 */
+static void vm_dbg_fslist(void)
+{
+	static int mgr_st = -2;
+	if (mgr_st == -2)
+		mgr_st = vm_struct_named("parts::detail::CPartsMessageManager");
+	if (mgr_st < 0) {
+		NOTICE("[fslist] CPartsMessageManager 结构未找到");
+		return;
+	}
+	int found = 0;
+	for (int g = 0; g < ain->nr_globals && found < 2; g++) {
+		struct ain_variable *v = &ain->globals[g];
+		if (v->type.data != AIN_STRUCT || v->type.struc != mgr_st)
+			continue;
+		found++;
+		int mslot = global_get(g).i;
+		struct page *mp = (mslot > 0 && (size_t)mslot < heap_size)
+				  ? heap[mslot].page : NULL;
+		if (!mp || mp->type != STRUCT_PAGE || mp->nr_vars < 2) {
+			NOTICE("[fslist] global=%d mslot=%d 不是结构页", g, mslot);
+			continue;
+		}
+		int aslot = mp->values[1].i;
+		struct page *ap = (aslot > 0 && (size_t)aslot < heap_size)
+				  ? heap[aslot].page : NULL;
+		if (!ap || ap->type != ARRAY_PAGE) {
+			NOTICE("[fslist] global=%d m1=%d 不是数组页", g, aslot);
+			continue;
+		}
+		NOTICE("[fslist] global=%d mgr=%d list=%d 元素数=%d",
+		       g, mslot, aslot, ap->nr_vars);
+		/* m0 = m_WholeFunctionSet：整屏委托（AddWholeMouseLClickEvent）
+		 * 全挂在这上面。它的 m7 为空 = 整屏点击没有任何回调。 */
+		{
+			int wslot = mp->values[0].i;
+			struct page *wp = (wslot > 0 && (size_t)wslot < heap_size)
+					  ? heap[wslot].page : NULL;
+			if (wp && wp->type == STRUCT_PAGE) {
+				int wpn = wp->nr_vars > 1 ? wp->values[1].i : -1;
+				int wm7 = wp->nr_vars > 7 ? wp->values[7].i : -1;
+				char wf[128] = "";
+				int wc = vm_delegate_count(wm7);
+				if (wc > 0) {
+					struct page *dp = (wm7 > 0 && (size_t)wm7 < heap_size)
+							  ? heap[wm7].page : NULL;
+					if (dp && dp->type == DELEGATE_PAGE) {
+						int off = 0;
+						for (int k = 0; k < dp->nr_vars / 3 && k < 6; k++)
+							off += snprintf(wf + off,
+								sizeof(wf) - off, " f%d",
+								dp->values[k * 3 + 1].i);
+					}
+				}
+				NOTICE("[fslist] m0(whole) slot=%d m1(parts)=%d m7cnt=%d%s",
+				       wslot, wpn, wc, wf);
+			} else {
+				NOTICE("[fslist] m0(whole) slot=%d 非结构", wslot);
+			}
+		}
+		/* 元素是 ref struct -> 每元素一个槽号？按 AIN_ARRAY 语义：
+		 * array<struct> 的元素就是堆槽号，一个 int 一个元素。 */
+		int shown = 0;
+		for (int i = 0; i < ap->nr_vars && shown < 70; i++) {
+			/* 只看 188..200 段（149 的 FS 在下标 193）+ 少量采样 */
+			if (!((i >= 188 && i <= 202) || i == 0 || i == 4))
+				continue;
+			int slot = ap->values[i].i;
+			struct page *sp = (slot > 0 && (size_t)slot < heap_size)
+					  ? heap[slot].page : NULL;
+			if (!sp || sp->type != STRUCT_PAGE) {
+				NOTICE("[fslist]   [%d] slot=%d 非结构", i, slot);
+				shown++;
+				continue;
+			}
+			int pn = sp->nr_vars > 1 ? sp->values[1].i : -1;
+			/* m7 = <MouseLClickEvent>：直接把这个槽的委托打出来，
+			 * 回答「149 的 FS 上到底有没有点击回调」。 */
+			int m7 = sp->nr_vars > 7 ? sp->values[7].i : -1;
+			int m7cnt = vm_delegate_count(m7);
+			char funs[96] = "";
+			if (m7cnt > 0) {
+				struct page *dp = (m7 > 0 && (size_t)m7 < heap_size)
+						  ? heap[m7].page : NULL;
+				if (dp && dp->type == DELEGATE_PAGE) {
+					int off = 0;
+					for (int k = 0; k < dp->nr_vars / 3 && k < 4; k++)
+						off += snprintf(funs + off,
+							sizeof(funs) - off, " f%d",
+							dp->values[k * 3 + 1].i);
+				}
+			}
+			NOTICE("[fslist]   [%d] slot=%d m1(parts)=%d m7cnt=%d%s",
+			       i, slot, pn, m7cnt, funs);
+			shown++;
+		}
+	}
+	if (!found)
+		NOTICE("[fslist] 没有全局变量是这个类型");
+}
+
+void vm_debug_fslist(void) { vm_dbg_fslist(); }
+
 /* [D471] 打出 (x,y) 处 **z 最高的 N 个可见件**及其祖先链。
  *
  * 用途：回答「我点的这个像素，究竟被谁拿走了」。
@@ -3184,6 +3297,7 @@ void vm_pump_parts_click(void)
 		       no, nparts, ntbtn, nlsb);
 		PE_DebugCovers(x, y);
 		vm_dbg_lsb();
+		vm_dbg_fslist();
 		/* [D465] 战斗操作键是 ActivityButton（部件号在 m4），
 		 * 点不中时把它们的部件号打出来，好知道该点哪里。 */
 		vm_dbg_abtn();

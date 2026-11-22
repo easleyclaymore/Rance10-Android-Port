@@ -115,6 +115,7 @@ struct page *get_struct_page(int frame_no);
 
 int vm_string_ref(struct string *s);
 int vm_copy_page(struct page *page);
+void vm_debug_fslist(void);
 union vm_value vm_copy(union vm_value v, enum ain_data_type type);
 
 int vm_execute_ain(struct ain *program);

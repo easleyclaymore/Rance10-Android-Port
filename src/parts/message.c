@@ -61,6 +61,23 @@ void parts_msg_push(struct parts* parts, int type, const char *fmt, ...)
 	 * SceneStack@Join 的 SceneStack@Exit 也就永远不被调用。 */
 	msg->parts_no = parts ? parts->no : 0;
 	msg->delegate_index = parts ? parts->delegate_index : 0;
+	/* [D498 受控实验] XSYS4_FORCE_DI0=1：点击消息的 di 一律置 0
+	 * （全屏 FunctionSet），验证「di 越界导致 CallDelegate 静默丢弃」
+	 * 这一条。仅实验用，默认关。 */
+	/* [D498] 每次点击消息推送时打一遍 AIN 的 FunctionSet 表
+	 * （全屏 m0 的整屏委托 = 菜单/按钮回调的总入口）。只在前 4 次打。 */
+	if (type == PARTS_MSG_MOUSE_CLICK_AIN && getenv("XSYS4_FSL_DBG")) {
+		static int fn;
+		if (fn++ < 4)
+			vm_debug_fslist();
+	}
+	if (parts && getenv("XSYS4_FORCE_DI0")) {
+		static int n;
+		if (n++ < 12)
+			NOTICE("[di0] parts=%d di %d -> 0 (type=%d)",
+			       parts->no, msg->delegate_index, type);
+		msg->delegate_index = 0;
+	}
 	/* [D123 实验开关] 把标题段的点击消息改投到指定 part（用它的 parts_no
 	 * 和 delegate_index），用来验证"委托注册在子活动按钮 part 上"。
 	 * 只对 >= 1000001040 的标题段生效，避免把网络确认框的 OK 也改投，

@@ -1940,8 +1940,9 @@ void PE_SetDelegateIndex(int parts_no, int delegate_index)
 		NOTICE("[dgidx] set parts=%d di=%d", parts_no, delegate_index);
 	/* [D334] 只对回想对话框段打 AIN 调用栈，回答「是谁在配置这些按钮」。
 	 * 限 3 次：一次跑测里这段会被设很多遍，栈会把日志冲爆。 */
-	if (getenv("XSYS4_DGIDX_DBG") && parts_no >= 900000560 &&
-	    parts_no <= 900000600) {
+	if (getenv("XSYS4_DGIDX_DBG") &&
+	    ((parts_no >= 900000560 && parts_no <= 900000600) ||
+	     (parts_no >= 900000100 && parts_no <= 900000260))) {
 		static int nstack;
 		if (nstack++ < 3)
 			vm_stack_trace();
