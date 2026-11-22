@@ -312,6 +312,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 | ③ 知识 | `docs/OFFLINE.md` | 离线工具参数/模式 + HLL 全量普查方法 | 用离线工具时 |
 | ③ 知识 | `docs/GUIDE/` | 深层方法论与契约，对外成书。**定位是「判据与陷阱」，不是状态**：它只在**修订记录**里引用 D 号（说明"这一版补了哪条判据"），正文不写当前进度/卡点。读它要判据，读 `STATUS.md` 要现状 —— 两者不要互相替代 | 要判据 / 方法论时 |
 | ③ 知识 | `tools/MAP.md` | `tools/` 目录分层与脚本分工 | 加 / 找脚本时 |
+| ③ 知识 | `tools/offline/flat_dump.c`（+.md 用法） | flat 关键帧/时间线离线分析器：逐帧 pos/scale/area/origin/align/alpha（flat 渲染对不齐时先看声明形态，D498 标题按钮即此类） | flat 渲染对不齐时 |
 | ③ 知识 | `docs/PROJECT-MANAGEMENT.md` | 工程管理复盘，**面向用户/管理者；AI 会话不读** | 带团队 / 立规矩 / 复盘 |
 | ③ 知识 | `docs/MANUAL-INDEX.md` | 官方手册索引 + 图片陷阱 + 验收判据（**不含当前状态**） | 对照手册验收界面 / 查按键时 |
 | ③ 知识 | `.github/` | CI 与发布资产：`workflows/build.yml`（云编译 + tag 发布）、`release-notes.md`（Release 页正文，随每次发版改）、`README-RUN.txt` / `run.sh`（二进制包内的运行说明与启动包装） | 改 CI / 发版时 |
