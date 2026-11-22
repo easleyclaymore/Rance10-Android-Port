@@ -836,11 +836,21 @@ static void render_flat_cg(struct parts *parts, Texture *tex,
 	// 避免 3D 旋转过的精灵被近/远平面裁掉。
 	render_m[0][2] = render_m[1][2] = render_m[2][2] = render_m[3][2] = 0.0f;
 	glm_translate(render_m, (vec3){ align[0], align[1], 0.0f });
-	// area_x/area_y 只选纹理图集里的子矩形，
-	// 不应该改变屏幕上的位置。这次平移正好抵消
-	// 子矩形左上角本来会引入的偏移。
-	glm_translate(render_m, (vec3){ -(float)key->area_x, -(float)key->area_y, 0.0f });
-	glm_scale(render_m, (vec3){ tex->w, tex->h, 1.0f });
+	/* [D498] 几何尺寸 = **area 裁剪尺寸**，且**不做 -area 平移**。
+	 * 旧代码 scale(tex->w,tex->h) + translate(-area_x,-area_y)：
+	 * 采样 rect 虽然裁对了子区域，几何却是整纹理大小再被 area 平移
+	 * 推出屏外——标题按钮 flat（外框 200x200 + 球 154x154 两个 TALT
+	 * meta 区域）因此「球径 2 倍 + 金环偏移 + 游离红球」。
+	 * 正确语义：把 area 子图按其自身尺寸画在层关键帧 pos 处。
+	 * area 未指定的普通 flat（area=0x0）不受影响。
+	 * 图集情形（[D200] TALT 回退，一张图集装多层）：rect 已把采样
+	 * 限制到子区域，但几何仍按整纹理缩放会把每层画成整图大小——
+	 * 标题按钮 flat（外框 200x200 @(0,0) + 球 154x154 @(224,0) 两个
+	 * meta 区域）因此球被画成 378x200、外框整体跑偏（用户报告的
+	 * 「球径 2 倍 + 金环偏移」）。area 未指定的普通 flat 不受影响。 */
+	float draw_w = key->area_width ? (float)key->area_width : (float)tex->w;
+	float draw_h = key->area_height ? (float)key->area_height : (float)tex->h;
+	glm_scale(render_m, (vec3){ draw_w, draw_h, 1.0f });
 
 	parts_render_texture(tex, render_m, &rect, ctx->alpha, ctx->add_color, ctx->mul_color,
 			ctx->draw_filter, parts->global.alpha_clipper_parts_no);
@@ -892,10 +902,16 @@ static void render_flat_item(struct parts *parts, struct parts_flat *f,
 			struct talt_entry *e = &f->flat->talt_entries[0];
 			/* 第 N 条 GRAPHIC timeline 对应第 N 个 metadata 区域。
 			 * 不裁剪就会把整张 QNT 图集画出来（编队界面曾因此盖上一大块深色）。 */
-			int gidx = 0;
-			for (size_t q = 0; q < tl_idx; q++)
-				if (f->flat->timelines[q].type == FLAT_TIMELINE_GRAPHIC)
-					gidx++;
+			int gidx = 0, nr_g = 0;
+			for (size_t q = 0; q < f->flat->nr_timelines; q++)
+				if (f->flat->timelines[q].type == FLAT_TIMELINE_GRAPHIC) {
+					if (q < tl_idx)
+						gidx++;
+					nr_g++;
+				}
+			/* [D498 实验] 图集区域与 timeline 的对应可能按 png 名序而非
+			 * timeline 序——反转配对做 A/B。 */
+			gidx = nr_g - 1 - gidx;
 			if (tex->handle && gidx < (int)e->nr_meta) {
 				struct talt_metadata *m = &e->metadata[gidx];
 				struct flat_key_data_graphic k = *key;
