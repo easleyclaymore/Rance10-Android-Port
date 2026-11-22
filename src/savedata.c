@@ -777,19 +777,18 @@ int load_globals_from_gsave(struct gsave *save, const char *keyname, const char 
 	if (!save->group)
 		save->group = strdup("");
 	if (strcmp(group_name, save->group)) {
-		/* [D139] 原版日文存档的 group 是 Shift-JIS（コレクション），
-		 * 本地化 AIN 的 global group 是 GBK（收藏），两者按字节永远不等。
-		 * 这是语言差异，不是存档损坏。默认仍严格拒绝；做「导入 PC 原版
-		 * 通关档」这类实验时可设 XSYS4_SAVE_GROUP_ANY=1 降为告警。 */
+		/* [D139→D498 改判] 原版日文存档的 group 是 Shift-JIS（コレクション），
+		 * 本地化 AIN 的 global group 是 GBK（收藏），两者按字节永远不等——
+		 * 语言差异，不是存档损坏。原先是 VM_ERROR 严格拒绝 + GROUP_ANY 逃生口，
+		 * 但 boot 期 VM_ERROR 在这条路径上既不打印也不退出（[BIG-SAVE-BOOT-HANG]
+		 * 的假死元凶，机制待查），地雷性质大于保护价值 → 一律 WARNING 放行。
+		 * XSYS4_SAVE_GROUP_ANY 保留为无害兼容开关。 */
 		static int group_any = -1;
 		if (group_any < 0)
 			group_any = getenv("XSYS4_SAVE_GROUP_ANY") ? 1 : 0;
-		if (!group_any)
-			VM_ERROR("Attempted to load save data with wrong group name: '%s'",
-				 display_sjis0(group_name));
-		WARNING("save group mismatch (expected '%s', file has '%s'); "
-			"accepted because XSYS4_SAVE_GROUP_ANY=1",
-			display_sjis0(group_name), display_sjis0(save->group));
+		WARNING("save group mismatch (expected '%s', file has '%s')%s",
+			display_sjis0(group_name), display_sjis0(save->group),
+			group_any ? "; accepted (XSYS4_SAVE_GROUP_ANY=1)" : "; accepted [D498]");
 	}
 
 	if (getenv("XSYS4_GSAVE_TIME"))
@@ -799,8 +798,14 @@ int load_globals_from_gsave(struct gsave *save, const char *keyname, const char 
 	for (struct gsave_global *g = save->globals; g < save->globals + save->nr_globals; g++) {
 		int global_index = ain_get_global(ain, g->name);
 		if (global_index < 0) {
-			WARNING("invalid global name %s", display_sjis0(g->name));
-			return 0;
+			/* [D498] 名字对不上的 global 跳过并告警，不再整次失败——
+			 * 继承档 globals[0] 是空名字条目（写入端缺陷），一个坏条目
+			 * 不该把 359 个全局全废掉；跳过的条目保持未初始化值。 */
+			static int nr_badname;
+			if (nr_badname++ < 5)
+				WARNING("invalid global name '%s'; skipping entry",
+					display_sjis0(g->name ? g->name : ""));
+			continue;
 		}
 		struct ain_type *type = &ain->globals[global_index].type;
 		if (type->data != g->type) {
