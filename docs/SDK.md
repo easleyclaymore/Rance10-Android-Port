@@ -190,10 +190,14 @@ D182 已砍掉前置耗时：`AUTO_MAP` 时跳过无效的右键循环，序列�
   Chapter1 全流程（ClearPoint 选择屏→任务地图）由它打通。
 - 按钮美术 = TextButton 子件的 PARTS_FLAT（200x200 红球 / 194x92 金框，
   全部 loaded=1）；label 是名字叫 "Text" 的 PARTS_TEXT 子件。
-- **已知缺陷（D498 待修）**：id2/3/4 三个按钮不渲染（flat 全在、容器
-  ButtonBase1/2 已淡入，卡在按钮自身 SetAlpha 动画任务未推进——缺失
-  集合 z=23..38 连续段）；按钮 label 渲染成点线（文本内容本身是点，
-  SetText 未被标题路径调用的证据成立，真 label 来源待考古）。
+- **结构（D498 定）**：每个按钮 = UC TextButton 宿主（196x40 命中框 + label，
+  `pos` 是命中框左上角，按钮中心 = 框中心）→ 容器 → 预览 flat(200x200)
+  + 预览 text。**预览件不按自己的 pos 摆**：flat 画布以命中框中心对齐，
+  内建占位圆盘让位（`XSYS4_TITLE_UI_FIX=0` 回退）。
+- **已知缺陷**：id2/3/4 三个按钮不渲染（flat 全在、容器 ButtonBase1/2
+  已淡入，卡在按钮自身 SetAlpha 动画任务未推进——缺失集合 z=23..38 连续段）；
+  按钮 label 渲染成点线（文本内容本身是点，SetText 未被标题路径调用的证据
+  成立，真 label 来源待考古）。
 
 ### 打开游戏内设置菜单（CommonMenu / コンフィグ）
 

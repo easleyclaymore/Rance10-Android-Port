@@ -332,6 +332,34 @@ static void render_uc_rect(int x, int y, int w, int h, SDL_Color c)
 static struct texture uc_btn_round, uc_btn_flat;
 static bool uc_btn_ready;
 
+/* [D498] 向上找最近的「带 label 的内建控件宿主」（UC TextButton）。
+ * 标题按钮的预览 flat 就挂在这种宿主下；命中框尺寸即按钮热区。 */
+static struct parts *parts_find_uc_host(struct parts *parts)
+{
+	struct parts *p = parts;
+	for (int depth = 0; depth < 8 && p; depth++, p = p->parent) {
+		if (p->uc_object && p->uc_label && *p->uc_label)
+			return p;
+	}
+	return NULL;
+}
+
+/* [D498] 子树里有没有「可见的 flat 部件」。
+ * 内建控件宿主下若有可见 flat，说明按钮美术由该 flat 提供，
+ * 内建占位圆盘就不要再画（否则两层叠出双影）。 */
+static bool parts_has_visible_flat(struct parts *parts)
+{
+	if (parts->states[parts->state].type == PARTS_FLAT &&
+	    parts->global.show && parts->global.alpha > 0)
+		return true;
+	struct parts *child;
+	PARTS_FOREACH_CHILD(child, parts) {
+		if (parts_has_visible_flat(child))
+			return true;
+	}
+	return false;
+}
+
 static void uc_btn_build(void)
 {
 	if (uc_btn_ready)
@@ -478,8 +506,12 @@ static void parts_render_user_component(struct parts *parts)
 	if (ui_fix) {
 		const char *style = parts_get_user_component_data(parts, "__style");
 		bool round = style && strcmp(style, "round") == 0;
-		uc_btn_build();
-		render_uc_button(x, y, w, h, round, hover);
+		/* [D498] 宿主下已有可见 flat（按钮美术由素材 flat 提供）时，
+		 * 内建占位圆盘不再绘制，只保留 label 文字。 */
+		if (!parts_has_visible_flat(parts)) {
+			uc_btn_build();
+			render_uc_button(x, y, w, h, round, hover);
+		}
 	} else if (hover) {
 		render_uc_rect(x, y, w, h, (SDL_Color){ 96, 108, 140, 235 });
 		render_uc_rect(x, y, w, 3, (SDL_Color){ 255, 246, 214, 255 });
@@ -495,11 +527,16 @@ static void parts_render_user_component(struct parts *parts)
 	}
 
 	if (parts->uc_text_valid) {
-		int tw = parts_uc_text_width(&parts->uc_text);
-		int th = parts_uc_text_height(&parts->uc_text);
-		parts->uc_text.common.origin_offset.x = (w - tw) / 2;
-		parts->uc_text.common.origin_offset.y = (h - th) / 2;
-		parts_render_text(parts, &parts->uc_text);
+		/* [D498] 宿主下有可见 flat 时，按钮素材的 z 高于宿主，
+		 * 文字在这里画会被球盖住；改由 parts_render_flat 在
+		 * flat 绘制之后补画（同一段代码，位置一致）。 */
+		if (!parts_has_visible_flat(parts)) {
+			int tw = parts_uc_text_width(&parts->uc_text);
+			int th = parts_uc_text_height(&parts->uc_text);
+			parts->uc_text.common.origin_offset.x = (w - tw) / 2;
+			parts->uc_text.common.origin_offset.y = (h - th) / 2;
+			parts_render_text(parts, &parts->uc_text);
+		}
 	}
 
 	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ZERO);
@@ -852,6 +889,43 @@ static void render_flat_cg(struct parts *parts, Texture *tex,
 	float draw_h = key->area_height ? (float)key->area_height : (float)tex->h;
 	glm_scale(render_m, (vec3){ draw_w, draw_h, 1.0f });
 
+	/* [D498 探针] flat 图层绘制参数（复用 XSYS4_FLAT_DBG 门）：每次 flat
+	 * CG 图层绘制打一行 no/tex/rect/draw/alpha/平移。用途：把截图上的
+	 * 每个色块对应到「哪个部件的哪层、按什么几何画的」。
+	 * 限流：只打 tex>=256 的图集层与每号前 16 次，避免刷屏。 */
+	if (getenv("XSYS4_FLAT_DBG")) {
+		static int layer_cnt[64], layer_ids[64], layer_nr;
+		static int layer_last_alpha[64];
+		int lslot = -1;
+		for (int i = 0; i < layer_nr; i++)
+			if (layer_ids[i] == parts->no) { lslot = i; break; }
+		if (lslot < 0 && layer_nr < 64) {
+			lslot = layer_nr++;
+			layer_ids[lslot] = parts->no;
+		}
+		if (lslot >= 0 && (layer_cnt[lslot] < 4 ||
+		                   layer_last_alpha[lslot] != (int)ctx->alpha)) {
+			layer_cnt[lslot]++;
+			layer_last_alpha[lslot] = (int)ctx->alpha;
+			/* 四角 = render_m 作用于单位方形的落点（屏幕空间真值） */
+			float quad[4][2];
+			for (int ci = 0; ci < 4; ci++) {
+				float u = (ci & 1) ? 1.0f : 0.0f, v = (ci & 2) ? 1.0f : 0.0f;
+				quad[ci][0] = render_m[0][0] * u + render_m[1][0] * v + render_m[3][0];
+				quad[ci][1] = render_m[0][1] * u + render_m[1][1] * v + render_m[3][1];
+			}
+			NOTICE("[flatcg] no=%d tex=%dx%d rect=(%d,%d %dx%d) draw=(%.0fx%.0f) "
+			       "a=%.0f lpos=(%.1f,%.1f) quad=(%.0f,%.0f)/(%.0f,%.0f)/(%.0f,%.0f)/(%.0f,%.0f)",
+			       parts->no, tex->w, tex->h,
+			       rect.x, rect.y, rect.w, rect.h,
+			       draw_w, draw_h,
+			       ctx->alpha * 255.0f,
+			       key->pos_x, key->pos_y,
+			       quad[0][0], quad[0][1], quad[1][0], quad[1][1],
+			       quad[2][0], quad[2][1], quad[3][0], quad[3][1]);
+		}
+	}
+
 	parts_render_texture(tex, render_m, &rect, ctx->alpha, ctx->add_color, ctx->mul_color,
 			ctx->draw_filter, parts->global.alpha_clipper_parts_no);
 
@@ -1034,6 +1108,35 @@ static void parts_render_flat(struct parts *parts, struct parts_flat *f)
 	glm_translate(ctx.matrix, (vec3){ parts->global.pos.x, parts->global.pos.y, 0 });
 	glm_rotate_z(ctx.matrix, glm_rad(parts->local.rotation.z), ctx.matrix);
 	glm_scale(ctx.matrix, (vec3){ parts->global.scale.x, parts->global.scale.y, 1.0f });
+
+	/* [D498] 标题菜单按钮的「预览 flat」位置修正。
+	 * EX 的 TextButton 活动里有两套东西：
+	 *   1) 内建控件宿主（196x40 命中框 + label）；
+	 *   2) 编辑器预览件：200x200 的「游戏开始/一般」flat + 预览文字。
+	 * 预览 flat 的 pos 是命中框左上角，直接按 pos 画，中心比按钮中心
+	 * （命中框中心）低 (200-40)/2 = 80px —— 屏幕上就是「圆盘在上、
+	 * 金环暗球在下」的上下双影（用户报告的「金环偏移 + 游离暗球」）。
+	 * 正确语义：flat 画布以命中框中心对齐，按钮美术由 flat 素材提供，
+	 * 内建占位圆盘让位（见 render_uc_component 的同款判据）。
+	 * 真正依赖 flat 当按钮美术的活动没有 UC 祖先，位置照旧。
+	 * XSYS4_TITLE_UI_FIX=0 回退（与 D141 同一个开关）。 */
+	{
+		static int flat_fix = -1;
+		if (flat_fix < 0) {
+			const char *e = getenv("XSYS4_TITLE_UI_FIX");
+			flat_fix = (e && *e == '0') ? 0 : 1;
+		}
+		struct parts *host = flat_fix ? parts_find_uc_host(parts) : NULL;
+		if (host && host != parts && f->flat) {
+			struct parts_common *hc = &host->states[host->state].common;
+			float cx = host->global.pos.x + hc->w / 2.0f;
+			float cy = host->global.pos.y + hc->h / 2.0f;
+			float fx = parts->global.pos.x + f->flat->hdr.width / 2.0f;
+			float fy = parts->global.pos.y + f->flat->hdr.height / 2.0f;
+			glm_translate(ctx.matrix, (vec3){ cx - fx, cy - fy, 0 });
+		}
+	}
+
 	ctx.alpha = parts->global.alpha / 255.0f;
 	glm_vec3_zero(ctx.add_color);
 	glm_vec3_one(ctx.mul_color);
@@ -1043,6 +1146,21 @@ static void parts_render_flat(struct parts *parts, struct parts_flat *f)
 	render_flat_layer(parts, f, f->root_state,
 			f->flat->timelines, f->flat->nr_timelines,
 			&ctx, ctx.matrix, &key_stack);
+
+	/* [D498] 按钮素材画完之后补画宿主 label：宿主 z 低于 flat，
+	 * 文字若在 UC 组件里画会被球体盖住（实测只剩 10% 亮度的压痕）。
+	 * 判据与 render_uc_component 相同（同一宿主、同一开关）。 */
+	{
+		struct parts *host = parts_find_uc_host(parts);
+		if (host && host != parts && host->uc_text_valid) {
+			struct parts_common *hc = &host->states[host->state].common;
+			int tw = parts_uc_text_width(&host->uc_text);
+			int th = parts_uc_text_height(&host->uc_text);
+			host->uc_text.common.origin_offset.x = (hc->w - tw) / 2;
+			host->uc_text.common.origin_offset.y = (hc->h - th) / 2;
+			parts_render_text(host, &host->uc_text);
+		}
+	}
 }
 
 static void parts_render_3dlayer(struct parts *parts, struct parts_3dlayer *l)

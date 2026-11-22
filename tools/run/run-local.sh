@@ -18,7 +18,7 @@ MAX_BYTES="${MAX_LOG_BYTES:-20000000}"
 # 任何子目录（run/ build/ env/）都不用改路径计算，只改这一行不用动。
 _d="$(dirname "$(realpath "$0")")"; while [ ! -f "$_d/lib/common.sh" ] && [ "$_d" != "/" ]; do _d="$(dirname "$_d")"; done; . "$_d/lib/common.sh"
 ROOT="$PORT_DIR"
-export XSYS4_DATA_DIR="${XSYS4_DATA_DIR:-$ROOT/xsystem4}"
+export XSYS4_DATA_DIR="${XSYS4_DATA_DIR:-$XSYS4_DIR}"
 
 # 真实桌面下用 SDL 自己的后端；只有当 X11 可用时才强制 x11/EGL。
 if [ -n "${DISPLAY:-}" ] && [ -z "${RANCE10_DISPLAY_MODE:-}" ]; then

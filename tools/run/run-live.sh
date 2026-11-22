@@ -55,7 +55,7 @@ CLICK_SLEEP="${RANCE10_CLICK_SLEEP:-1.2}"
 # 任何子目录（run/ build/ env/）都不用改路径计算，只改这一行不用动。
 _d="$(dirname "$(realpath "$0")")"; while [ ! -f "$_d/lib/common.sh" ] && [ "$_d" != "/" ]; do _d="$(dirname "$_d")"; done; . "$_d/lib/common.sh"
 ROOT="$PORT_DIR"
-export XSYS4_DATA_DIR="${XSYS4_DATA_DIR:-$ROOT/xsystem4}"
+export XSYS4_DATA_DIR="${XSYS4_DATA_DIR:-$XSYS4_DIR}"
 export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-x11}"
 export EGL_PLATFORM="${EGL_PLATFORM:-x11}"
 # [D249] 不再默认强制软件渲染。机器有 Intel UHD（/dev/dri/renderD128），

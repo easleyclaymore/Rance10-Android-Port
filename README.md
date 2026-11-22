@@ -202,6 +202,10 @@ python3 tools/gen-doc-numbers.py --check
   Android 阶段提供 JNI 实现。CI 里跑的就是这一条（`XSYS4_SKIP_DOC_GATE=1`）。
 - **跑测**：`tools/run/run-headless.sh` 是唯一入口（`run-live.sh` 会拒绝在真实桌面运行）。
   动作序列语法、日志前缀契约、诊断开关见 [`docs/SDK.md`](docs/SDK.md)。
+- **改了 `shaders/*.glsl` 不生效**：shader 是运行时从 `$XSYS4_DATA_DIR/shaders/` 读的。
+  run 脚本默认把它指向**脚本所在仓库**（`$XSYS4_DIR`），手动起引擎时也得对上，
+  否则改的是手头这份、跑的是别的检出（曾被旧检出覆盖，白查了一轮）。
+  sdl3 worktree 另需 `ENGINE_BIN=$PWD/build-sdl3/src/xsystem4`，不要漏。
 - **诊断开关**：`XSYS4_*` 环境变量，默认全关；总表由脚本生成，见 [`docs/SWITCHES.md`](docs/SWITCHES.md)。
 
 ## 仓库结构

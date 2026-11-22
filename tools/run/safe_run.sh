@@ -11,7 +11,7 @@ MAX_BYTES="${MAX_LOG_BYTES:-20000000}"
 # 任何子目录（run/ build/ env/）都不用改路径计算，只改这一行不用动。
 _d="$(dirname "$(realpath "$0")")"; while [ ! -f "$_d/lib/common.sh" ] && [ "$_d" != "/" ]; do _d="$(dirname "$_d")"; done; . "$_d/lib/common.sh"
 ROOT="$PORT_DIR"
-export XSYS4_DATA_DIR="${XSYS4_DATA_DIR:-$ROOT/xsystem4}"
+export XSYS4_DATA_DIR="${XSYS4_DATA_DIR:-$XSYS4_DIR}"
 # [N100] Xvfb has no DRI3; mesa falls back to surfaceless EGL and SDL creates
 # no X window at all (root 0 children, black screenshot, XTEST clicks lost).
 # Force the x11 platform on desktop Linux. Termux keeps its own X11+zink setup.

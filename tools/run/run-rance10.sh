@@ -14,7 +14,7 @@ set -u
 # 任何子目录（run/ build/ env/）都不用改路径计算，只改这一行不用动。
 _d="$(dirname "$(realpath "$0")")"; while [ ! -f "$_d/lib/common.sh" ] && [ "$_d" != "/" ]; do _d="$(dirname "$_d")"; done; . "$_d/lib/common.sh"
 PORT="$PORT_DIR"
-export XSYS4_DATA_DIR="${XSYS4_DATA_DIR:-$PORT/xsystem4}"
+export XSYS4_DATA_DIR="${XSYS4_DATA_DIR:-$XSYS4_DIR}"
 # [N100] desktop Linux: force the x11 EGL platform so SDL really creates a window.
 # Termux keeps its own Termux:X11 + zink/Turnip configuration untouched.
 # [L3] see safe_run.sh: RANCE10_PLATFORM / TERMUX_VERSION, no absolute path.
