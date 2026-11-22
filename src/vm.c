@@ -257,6 +257,17 @@ union vm_value global_get(int varno)
 
 void global_set(int varno, union vm_value val, bool call_dtors)
 {
+	/* [D498] 谁在写 `global<15>`（GUIEngine 活动更新的门控标志：
+	 * `CActivity@UpdateActivity` 只有 `IsClickEndKey() || global15 || arg1`
+	 * 才调活动的 Update 委托，而菜单里点按钮的检测就在那个委托里）。
+	 * 实测它恒 0 ⇒ 菜单的按钮检测永不执行。 */
+	if (varno == 15 && getenv("XSYS4_G15_DBG")) {
+		static int n;
+		if (n++ < 20) {
+			NOTICE("[g15] write value=%d ip=0x%zX", val.i, instr_ptr);
+			vm_stack_trace();
+		}
+	}
 	switch (ain->globals[varno].type.data) {
 	case AIN_STRING:
 	case AIN_STRUCT:
@@ -2277,6 +2288,33 @@ static void vm_dbg_fslist(void)
 		if (!ap || ap->type != ARRAY_PAGE) {
 			NOTICE("[fslist] global=%d m1=%d 不是数组页", g, aslot);
 			continue;
+		}
+		/* CActivity@UpdateActivity 的门控：`global<15>`（本帧有输入）
+		 * 与 `global<16>`（255 初值）。恒 0 ⇒ 活动的 Update 委托
+		 * (DG_CALL 167) 永远不会被调，按钮点击检测根本不跑。 */
+		NOTICE("[fslist] global15=%d global16=%d",
+		       global_get(15).i, global_get(16).i);
+		/* ActivityButton（结构 1078）：m4 = m_partsNumber，m2 = m_onClick
+		 * 委托，m6 = <OnClickEvent>。按钮点击检测就是拿
+		 * `PartsEngine.GetClickNumber` 与 m4 比。 */
+		{
+			int ab_st = vm_struct_named("ActivityButton");
+			if (ab_st >= 0) {
+				int shown_ab = 0;
+				for (size_t i = 1; i < heap_size && shown_ab < 24; i++) {
+					struct page *p2 = heap[i].page;
+					if (!p2 || p2->type != STRUCT_PAGE ||
+					    p2->index != ab_st || p2->nr_vars < 7)
+						continue;
+					int pn = p2->values[4].i;
+					int oc = vm_delegate_count(p2->values[2].i);
+					int oe = vm_delegate_count(p2->values[6].i);
+					NOTICE("[abtn] slot=%d parts=%d m_onClick=%d OnClickEvent=%d",
+					       (int)i, pn, oc, oe);
+					shown_ab++;
+				}
+				NOTICE("[abtn] 共列出 %d 个 ActivityButton", shown_ab);
+			}
 		}
 		NOTICE("[fslist] global=%d mgr=%d list=%d 元素数=%d",
 		       g, mslot, aslot, ap->nr_vars);
