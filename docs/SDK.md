@@ -167,6 +167,34 @@ D182 已砍掉前置耗时：`AUTO_MAP` 时跳过无效的右键循环，序列�
 
 ## 配方
 
+### 标题菜单（ゲームスタート UI）按钮全图
+
+标题 8 个按钮全部委托 `SceneTitle@OnClickMenu`(23448)：**先 `Result::set(实参)`，
+再按实参 SWITCH 336 分发**；boot 主环 (22576) 拿 RunTitle 的返回值 SWITCH 316：
+**case 0→Chapter1、3→Chapter2、4→Chapter3，其它值回标题循环**。
+
+| 按钮 id | TitleMenu::String | 语义 | OnClickMenu case 行为 | 坐标(1920x1080) |
+|---|---|---|---|---|
+| 0 | Chapter1 | **开始第一章** | RunClearPoint(0)（可用时）→Close | (548,718) 红球 |
+| 1 | Load | 读档 | FadeOut→RunLoad | (756,718) 红球 |
+| 2 | CardList | 卡片一览 | FadeOut→RunCardList | (758,963) 金框 |
+| 3 | Chapter2 | 开始第二章 | RunClearPoint(1)（可用时）→Close | (964,718) 红球 |
+| 4 | Chapter3 | 开始第三章 | 只 Close | (1172,718) 金框? |
+| 5 | Yakata | 屋敷 | FadeOut→RunYakata | (1178,963) 金框 |
+| 6 | Menu | 菜单/设置 | RunCommonMenu(0) | (10,982) 金框+NEW标 |
+| 7 | Enquite | 问卷/通信 | RunNetworkConfirmation | (968,963) 金框 |
+
+- `TitleMenu::String`(36014) 是条目类型→字符串的映射表；`Parse`(36015)
+  解析定义串；`OnClickMenu` 的 SWITCH **按条目类型分发**（0-7 全表见上）。
+- **开始游戏的按钮 = id0 红球，点击 (646,738)**——冒烟跑的固定点击点就是它，
+  Chapter1 全流程（ClearPoint 选择屏→任务地图）由它打通。
+- 按钮美术 = TextButton 子件的 PARTS_FLAT（200x200 红球 / 194x92 金框，
+  全部 loaded=1）；label 是名字叫 "Text" 的 PARTS_TEXT 子件。
+- **已知缺陷（D498 待修）**：id2/3/4 三个按钮不渲染（flat 全在、容器
+  ButtonBase1/2 已淡入，卡在按钮自身 SetAlpha 动画任务未推进——缺失
+  集合 z=23..38 连续段）；按钮 label 渲染成点线（文本内容本身是点，
+  SetText 未被标题路径调用的证据成立，真 label 来源待考古）。
+
 ### 打开游戏内设置菜单（CommonMenu / コンフィグ）
 
 标题菜单 8 个按钮全部委托到 `SceneTitle@OnClickMenu`(23448)，按按钮 id 经
