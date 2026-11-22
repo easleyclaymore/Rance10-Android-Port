@@ -164,11 +164,37 @@ static bool parts_input_disabled(struct parts *parts)
 	return ct == 4 || ct == 7 || ct == 11;
 }
 
+/* 输入是否只发给「活动层」（默认开，`XSYS4_INPUT_ACTIVE_LAYER=0` 回退）。
+ *
+ * 语义依据：`PartsEngine.Update` 是按**活动控制器**处理的 —— 只有活动层的
+ * 部件会被跑命中测试与消息派发。我们的移植一直没做这一层过滤，只用
+ * `clickable`/`pass_cursor` 这类逐件启发式兜，结果是**下层场景的按钮能
+ * 吃掉上层场景的点击**：D498 实测打开设置菜单后，点 (1500,828) 抓到的是
+ * 标题画面的 `900000048`（TextButton，坐标根本不在它的框里）—— 因为它属于
+ * 还在栈里的标题层，而菜单层才是 active。
+ *
+ * 注意：`PARTS_CONTROLLER_SYSTEM_OVERLAY` 是引擎自己的覆盖层，永远参与。 */
+static bool input_active_layer_only(void)
+{
+	static int on = -1;
+	if (on < 0) {
+		const char *e = getenv("XSYS4_INPUT_ACTIVE_LAYER");
+		on = !(e && !strcmp(e, "0"));
+	}
+	return on;
+}
+
 static struct parts **parts_input_collect(int *out_nr)
 {
 	int nr = 0;
 	struct parts *p;
+	int active_idx = -1;
+	if (input_active_layer_only())
+		active_idx = PE_get_active_controller_index();
 	PARTS_LIST_FOREACH(p) {
+		if (active_idx >= 0 && p->controller_no != active_idx &&
+		    p->controller_no != PARTS_CONTROLLER_SYSTEM_OVERLAY)
+			continue;
 		if (nr == input_z_cap) {
 			input_z_cap = input_z_cap ? input_z_cap * 2 : 64;
 			input_z_sorted = xrealloc_array(input_z_sorted, nr,

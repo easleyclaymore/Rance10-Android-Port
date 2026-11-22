@@ -4426,6 +4426,14 @@ int PE_AddController(int index)
 	if (ctrl_stack.nr_controllers >= PARTS_CONTROLLER_STACK_MAX)
 		VM_ERROR("controller stack overflow");
 
+	/* [D498 层探针] 谁在建层？`SceneStack@InnerInit` 会 `AddLayer` 并
+	 * `global<315> = this`，而 `SceneStack@Join` 才注册整屏点击委托。
+	 * 「谁建了层却没进 Join」只能靠调用栈回答。 */
+	if (getenv("XSYS4_LAYER_DBG")) {
+		NOTICE("[layer] AddController -> idx=%d id=%d（AIN 栈：）",
+		       ctrl_stack.nr_controllers, ctrl_stack.next_id);
+		vm_stack_trace();
+	}
 	int no = ctrl_stack.nr_controllers++;
 	ctrl_restore[no] = ctrl_stack.active;
 	ctrl_stack.opaque[no] = false;
@@ -4576,6 +4584,15 @@ void PE_set_active_controller(int controller_no)
 		 * 事件，不该 VM_ERROR(_Noreturn) 直接杀进程。 */
 		NOTICE("[ctrl] SetActiveLayer stale id=%d nctrl=%d", controller_no,
 		       ctrl_stack.nr_controllers);
+}
+
+/* [D498] 活动控制器的**栈下标**。
+ * `parts->controller_no` 写的是栈下标（`parts.c:232` 新建、`4460` 迁移都是），
+ * 而 `PE_get_active_controller()` 返回的是**稳定 ID**（AIN 口径）。输入层过滤
+ * 要跟 `controller_no` 比，所以必须拿下标，不能再走 id。 */
+int PE_get_active_controller_index(void)
+{
+	return ctrl_stack.active;
 }
 
 int PE_get_active_controller(void)

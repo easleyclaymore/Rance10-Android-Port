@@ -3019,6 +3019,49 @@ void vm_pump_auto_skill(void)
 
 void vm_pump_parts_click(void)
 {
+	/* [D498 层探针] 放在**早退之前**：要的是「每次点击那一刻」的层状态，
+	 * 而不是「派发成功那一刻」（菜单打开那次点击的采样点会落在建层之前）。 */
+	if (getenv("XSYS4_LAYER_DBG") && ain && pe_click_want_pending) {
+		static int lst_st = -2;
+		if (lst_st == -2)
+			lst_st = vm_struct_named("SceneStack");
+		if (lst_st >= 0) {
+			int act = PE_get_active_controller();
+			NOTICE("[layer] click parts=%d active=%d nctrl=%d",
+			       pe_click_parts, act, PE_get_nr_controllers());
+			for (size_t i = 1; i < heap_size; i++) {
+				struct page *p2 = heap[i].page;
+				if (!p2 || p2->type != STRUCT_PAGE ||
+				    p2->index != lst_st || p2->nr_vars < 8)
+					continue;
+				NOTICE("[layer]   stack slot=%d layer=%d lclick=%d "
+				       "isFinish=%d isActive=%d",
+				       (int)i, p2->values[6].i,
+				       vm_delegate_count(p2->values[3].i),
+				       p2->values[7].i,
+				       p2->values[6].i == act);
+			}
+			/* 菜单场景持有的 `m_sceneStack` 到底指向哪个栈：
+			 * `Run` 是 `Join(this.m_sceneStack)`，指错栈就等于在别人的
+			 * 层上等点击（IsActive 于是永远是假）。 */
+			static int scm_st = -2;
+			if (scm_st == -2)
+				scm_st = vm_struct_named("SceneCommonMenu");
+			if (scm_st >= 0) {
+				for (size_t i = 1; i < heap_size; i++) {
+					struct page *p2 = heap[i].page;
+					if (!p2 || p2->type != STRUCT_PAGE ||
+					    p2->index != scm_st || p2->nr_vars < 3)
+						continue;
+					NOTICE("[layer]   SceneCommonMenu slot=%d "
+					       "m_sceneStack=%d m_type=%d",
+					       (int)i, p2->values[1].i,
+					       p2->values[4].i);
+				}
+			}
+		}
+	}
+
 	static int parts_st = -2, onclick_fno = -2;
 	static int tbtn_st = -2, tbtn_lambda = -2;
 	static int lsb_st = -2, lsb_lambda = -2;
@@ -3034,35 +3077,6 @@ void vm_pump_parts_click(void)
 	}
 	pe_click_want_pending = false;
 	int no = pe_click_parts, x = pe_click_x, y = pe_click_y;
-
-	/* [D498 层探针] `SceneStack@IsActive` 的判据是
-	 * `GetActiveLayer() == this<LayerPartsNumber>`。
-	 * 整屏点击委托（`f37601`）第一句就是 `if (IsActive)`，
-	 * 它若为假，`SceneStack@<LClickEvent>` 永远不会被调 ——
-	 * 设置菜单的所有点击都停在这里。把每个 SceneStack 实例的
-	 * 层号与引擎当前 active 层并排打出来，一次判死。 */
-	if (getenv("XSYS4_LAYER_DBG")) {
-		static int lst_st = -2;
-		if (lst_st == -2)
-			lst_st = vm_struct_named("SceneStack");
-		if (lst_st >= 0) {
-			int act = PE_get_active_controller();
-			NOTICE("[layer] active=%d nctrl=%d", act,
-			       PE_get_nr_controllers());
-			for (size_t i = 1; i < heap_size; i++) {
-				struct page *p2 = heap[i].page;
-				if (!p2 || p2->type != STRUCT_PAGE ||
-				    p2->index != lst_st || p2->nr_vars < 8)
-					continue;
-				NOTICE("[layer]   stack slot=%d layer=%d lclick=%d "
-				       "isFinish=%d isActive=%d",
-				       (int)i, p2->values[6].i,
-				       vm_delegate_count(p2->values[3].i),
-				       p2->values[7].i,
-				       p2->values[6].i == act);
-			}
-		}
-	}
 
 	/* [D465] `XSYS4_DUMP_ABTN=1`：每次点击都先把 ActivityButton 实例打一遍
 	 * （前 3 次）。`[pev]` 那条只在**点不中**时才打 abtn，而战斗操作键的部件

@@ -776,6 +776,18 @@ static void fire_deferred_events(void)
 
 static void handle_window_event(SDL_Event *e)
 {
+	/* [D498] `XSYS4_WIN_DBG=1`：把窗口事件原样打出来。
+	 * 起因：打开设置菜单后再点击，《跑测脚本》报
+	 * `xwininfo -root -children` 为空、`grab failed` —— 引擎的 X 窗口
+	 * 在中途消失/重建，指针事件全落到 root。窗口到底是「被销毁」
+	 * 还是「被隐藏/移动」，只能靠 SDL 事件本身回答。 */
+	if (getenv("XSYS4_WIN_DBG")) {
+		int w = 0, h = 0;
+		SDL_GetWindowSize(sdl.window, &w, &h);
+		NOTICE("[win] type=0x%x wid=%u size=%dx%d focus=%d shown=%d",
+		       e->window.type, (unsigned)e->window.windowID, w, h,
+		       mouse_focus, keyboard_focus);
+	}
 	switch (e->window.type) {
 	case SDL_WINDOWEVENT_EXPOSED:
 		gfx_swap();

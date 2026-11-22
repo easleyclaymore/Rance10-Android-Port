@@ -700,6 +700,7 @@ static inline bool parts_no_is_layer(int no)
  * 用于验证这条不一致是不是残留层的成因。 */
 extern bool parts_vis_use_index;
 int PE_get_controller_index(int id);   /* [D481] 定义在 parts.c */
+int PE_get_active_controller_index(void);  /* [D498] 活动层栈下标 */
 
 /* [D483] 把部件的 `controller_no`（**稳定 ID**）映射成 `ctrl_stack` **下标**。
  *

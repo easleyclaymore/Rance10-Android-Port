@@ -209,7 +209,21 @@ click() { # click <view_x> <view_y> <button>
     # 外部轮询同一 display 全程能看到 xsystem4 窗口 —— 所以窗口没消失，是 id 换了。
     # 现在每次点击重新解析当前窗口 id，并对它重新聚焦/抬升。
     local curwid="$WID" freshwid
-    freshwid=$(find_wid)
+    # [D498] 解析窗口 id 要**重试**。
+    #
+    # 实测（Xvfb `:90`，无窗口管理器）：设置菜单打开的那一瞬间，
+    # `xwininfo -root -children` 会短暂返回 **0 children** —— 引擎的窗口
+    # 在这一刻不在 root 的子窗口表里（SDL/X11 的内部重排，不是它被销毁：
+    # SDL 侧全程 `wid=2`、无 DESTROYED/HIDDEN 事件）。原来的实现这时退回
+    # 启动时缓存的 `$WID`，于是 `mousemove` 落到 root（`window:1135`），
+    # 引擎收不到任何指针事件 —— 表现为「菜单里怎么点都没反应」。
+    #
+    # 重试 8 次 × 60ms ≈ 半秒；仍找不到才退回旧 WID。
+    for _ in 1 2 3 4 5 6 7 8; do
+        freshwid=$(find_wid)
+        [ -n "$freshwid" ] && break
+        sleep 0.06
+    done
     if [ -n "$freshwid" ]; then
         curwid="$freshwid"
     fi
