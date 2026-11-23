@@ -99,10 +99,12 @@ def scan_scripts(files):
                     found.append((rel, n, 'hardcoded Android path', line.strip()[:100]))
     return found
 
-# [D222] libsys4 是上游 submodule、无推送权限，关键修复只能以
-# patches/*.patch 入库（README 构建段写明 apply 步骤）。忘了 apply 时编译
-# 照样通过，但 AJP CG 尺寸 / gsave v8 / 泛型 ARRAY 会静默失效，症状极隐蔽。
-# 这里逐段核对补丁的新增行是否真的落在子模块工作树里；单独 clone 时 SKIP。
+# [D222 → D503] libsys4 原为上游 submodule、无推送权限，关键修复只能以
+# patches/*.patch 入库并在 clone 后 apply。D503 起改为 **vendored**：
+# subprojects/libsys4 是仓库内的普通目录（源码含全部补丁），不再需要 apply。
+# patches/*.patch 降级为「校验清单」——本函数核对 vendored 源码里是否真的
+# 还带着这些改动（AJP CG 尺寸 / gsave v8 / 泛型 ARRAY），防止有人复制
+# 目录或重生成时把它们弄丢。缺点：编译照样通过但语义静默失效，症状极隐蔽。
 def check_libsys4_patches():
     import glob
     pdir = os.path.join(ROOT, 'patches')

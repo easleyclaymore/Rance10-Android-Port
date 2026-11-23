@@ -12,10 +12,10 @@
 #
 # 做的事，按顺序：
 #   1. 摘掉 PYTHONPATH / PYTHONHOME —— 否则 meson 死在 ModuleNotFoundError: encodings
-#   2. 检查 subprojects/libsys4 是否已拉取（gitlink，空目录 = 忘了 --recurse-submodules）
-#   3. 应用 patches/ 里的 libsys4 补丁（幂等：已应用过会跳过）
-#   4. 用 pkg-config 检查依赖，缺什么就打印对应的 apt 包名
-#   5. meson setup + ninja
+#   2. 检查 subprojects/libsys4 源码是否在位（D503 起 vendored，随仓库分发；
+#      空目录 = checkout 不完整，不是忘了拉子模块）
+#   3. 用 pkg-config 检查依赖，缺什么就打印对应的 apt 包名
+#   4. meson setup + ninja
 #
 # 退出码：0 成功；1 构建失败；2 依赖/源码树不完整（先按提示装东西，不会白跑一遍编译）。
 set -uo pipefail
@@ -49,24 +49,12 @@ cd "$REPO" || die "进不去 $REPO"
 # 1. Python 环境隔离（踩过：桌面环境里 PYTHONHOME 指向别的解释器，meson 直接崩）
 unset PYTHONPATH PYTHONHOME PYTHONDONTWRITEBYTECODE
 
-# 2. libsys4 子模块
+# 2. libsys4（D503 起 vendored：普通目录，源码含全部历史补丁，无需 apply）
 if [ ! -f subprojects/libsys4/meson.build ]; then
-    echo "subprojects/libsys4 是空的 —— 先拉子模块：" >&2
-    echo "    git submodule update --init --recursive" >&2
+    echo "subprojects/libsys4 源码缺失 —— checkout 不完整。" >&2
+    echo "    D503 起它随仓库分发，不需要 submodule；请重新 clone 或 git checkout -- subprojects/libsys4" >&2
     exit 2
 fi
-
-# 3. 本地补丁（gsave v8 / ajp_get_metrics）。不应用会在链接期报 undefined reference。
-for p in patches/0001-libsys4-gsave-v8.patch patches/0002-libsys4-ajp-metrics.patch; do
-    [ -f "$p" ] || die "缺补丁文件 $p"
-    if git -C subprojects/libsys4 apply --check --reverse "$REPO/$p" >/dev/null 2>&1; then
-        echo "[patch] 已应用: $(basename "$p")"
-    elif git -C subprojects/libsys4 apply "$REPO/$p"; then
-        echo "[patch] 已应用: $(basename "$p")"
-    else
-        die "补丁打不上: $p（子模块工作树被改过？试试 git -C subprojects/libsys4 checkout .）"
-    fi
-done
 
 # 4. 依赖检查。pkg-config 名 → apt 包名（Debian/Ubuntu 24.04+）
 check_pc() {

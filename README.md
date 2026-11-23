@@ -77,13 +77,13 @@ tar xzf xsystem4-*.tar.gz && cd xsystem4-*
 ### 0. 一键
 
 ```sh
-git clone --recurse-submodules https://github.com/easleyclaymore/Rance10-Android-Port.git
+git clone https://github.com/easleyclaymore/Rance10-Android-Port.git
 cd Rance10-Android-Port
 tools/env/build.sh --check     # 先看缺什么（不会开始编译）
 tools/env/build.sh             # 装齐依赖后：meson setup + ninja，产物 build/src/xsystem4
 ```
 
-`build.sh` 会依次：摘掉 `PYTHONPATH`/`PYTHONHOME` → 确认 `libsys4` 子模块已拉取 →
+`build.sh` 会依次：摘掉 `PYTHONPATH`/`PYTHONHOME` → 确认 `libsys4` 源码在位（vendored，随仓库分发）→
 幂等应用 `patches/*.patch` → 用 pkg-config 检查依赖并打印对应的 apt 包名 → `meson` + `ninja`。
 它只是把下面几步串起来，读得懂就不必用它。
 
@@ -157,8 +157,8 @@ tools/env/build.sh --gl               # 强制桌面 GL + GLEW（与 Release 二
 | 现象 | 原因 / 解法 |
 |---|---|
 | `ModuleNotFoundError: No module named 'encodings'` | 桌面环境里 `PYTHONHOME`/`PYTHONPATH` 指向了别的解释器 → `env -u PYTHONHOME -u PYTHONPATH -u PYTHONDONTWRITEBYTECODE ninja -C build`（`build.sh` 已内置） |
-| 链接期 `undefined reference to 'ajp_get_metrics'` | `patches/` 里的 libsys4 补丁没打 → `git -C subprojects/libsys4 apply "$PWD/patches/0002-libsys4-ajp-metrics.patch"` |
-| `subprojects/libsys4` 是空目录 | clone 没带 `--recurse-submodules` → `git submodule update --init --recursive` |
+| 链接期 `undefined reference to 'ajp_get_metrics'` | vendored 的 `subprojects/libsys4` 被旧版目录覆盖了（D503 起源码随仓库分发、无需打补丁）→ `git checkout -- subprojects/libsys4` 后重编 |
+| `subprojects/libsys4` 是空目录 | 用了 D503 之前的旧提交/旧 clone → 更新到最新 `main`；老提交才需要 `git submodule update --init --recursive` |
 | `Dependency "sdl3" not found` | 见上一步；源码装的还要 `export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig` |
 | 游戏里中文变方块 | 没有 CJK 字体 → 装 `fonts-noto-cjk` 或 `libfontconfig-dev` 相关字体包 |
 
@@ -201,8 +201,8 @@ python3 tools/gen-doc-numbers.py --check
   头文件或硬编码绝对路径；平台服务经 `include/pal.h` 注入，Linux 实现在 `src/pal_linux.c`，
   Android 阶段提供 JNI 实现。**[D501] CI 跑完整门禁**（含文档数字与开关表）——它已经
   不依赖仓库外文件：`AGENTS.md` 与日志基线（`docs/baseline/`）都在仓库里。干净 clone 的
-  验证方式：`git clone --recursive && git -C subprojects/libsys4 apply $PWD/patches/*.patch`
-  之后跑 `check_core_deps.py` 必须 PASS。
+  验证方式：`git clone <repo>` 之后直接跑 `check_core_deps.py` 必须 PASS（D503 起 libsys4 随仓库分发，
+  没有 submodule、没有 apply 步骤）。
 - **发版前本地必过门**：`tools/run/smoke.sh quick`（约 100 秒，日志断言 + 退出码）；通过后
   自动写 `docs/baseline/baseline_<tag>.txt`，**提交它**——CI 与其他 clone 读这份基线算文档数字。
   `full` 档（约 11 分钟）在打 tag 前跑一次。
@@ -219,7 +219,7 @@ python3 tools/gen-doc-numbers.py --check
 | 路径 | 内容 | 入库 |
 |---|---|---|
 | `src/`, `include/`, `meson.build` | 引擎源码（VM / 渲染 / HLL 绑定） | 是 |
-| `subprojects/libsys4` | 上游子模块（gitlink）+ `patches/` 里的本地补丁 | 是 |
+| `subprojects/libsys4` | 引擎底层库（**vendored**，源码含历史补丁；`patches/` 仅作校验清单，不再 apply） | 是 |
 | `tools/` | 构建/跑测脚本、离线分析工具、门禁 | 是 |
 | `docs/` | 现状台账、方法论、工具链说明、生成物 | 是 |
 | `build*/`, 游戏目录, `logs/` | 编译产物、游戏本体（有版权）、跑测日志 | 否 |
