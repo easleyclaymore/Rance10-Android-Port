@@ -223,7 +223,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **276**（未标注 0）｜ HLL 源码口径 **3586 / 4652（77.1%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 140 / 46** ｜ 影响面 / 子模块补丁 **33 / 3** ｜ 默认基线 `d501`: `acts=35 / err=0 / core=0 / quest_map=0`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **276**（未标注 0）｜ HLL 源码口径 **3586 / 4652（77.1%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 141 / 46** ｜ 影响面 / 子模块补丁 **33 / 3** ｜ 默认基线 `d501`: `acts=35 / err=0 / core=0 / quest_map=0`。
 <!-- STATS:END -->
 
 最常用的：
