@@ -274,6 +274,14 @@ static int get_gsave_version(void)
 
 int save_globals(const char *keyname, const char *filename, const char *group_name, int *n_out)
 {
+	/* [D500] 写档归因探针：GameConfig.asd 的写档触发者是谁。
+	 * XSYS4_SAVE_DBG=1 时打 AIN 调用栈（每次写档一条，量很小）。 */
+	if (getenv("XSYS4_SAVE_DBG") && filename &&
+	    !strcmp(filename, "GameConfig.asd")) {
+		NOTICE("[save] GameConfig.asd key=%s group=%s", keyname,
+		       group_name ? group_name : "(null)");
+		vm_stack_trace();
+	}
 	int group = -1;
 	int nr_vars = 0;
 	if (group_name) {
