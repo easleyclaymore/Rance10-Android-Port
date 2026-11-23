@@ -3050,17 +3050,21 @@ void vm_pump_auto_skill(void)
 	vm_call(lsb_lambda, pick);
 }
 
-/* [D500-g] 活动步进实验通道（**默认关**，XSYS4_ACT_STEP=1 启用）。
- * 实测结论（actstep4-7）：**UpdateActivity(254) 不是单帧函数——它是
- * 活动的阻塞主循环**（RunSingle→250 调一次，254 内部自循环到活动
- * End：每轮 BeginInput→UpdateEvent 委托→查 global[15]→DG_CALL 167
- * 按钮检测→EndInput）。帧泵里调它会与现有 WaitForClick/消息队列
- * 流程打架（actstep6/actstep7 默认开时：标题卡住进不了主菜单，
- * 回归 36→1 loaded）。
- * 保留代码作诊断通道：XSYS4_ACT_STEP=1 时在帧泵里调 254，研究
- * 活动循环行为用。正确整合方式（WaitForClick 收编进 254 循环、
- * 或反之）待下一轮设计——这是活动体系残缺（行内按钮/把手动画/
- * 键盘导航）的修复入口。 */
+/* [D500-i] 活动步进（实验通道，XSYS4_ACT_STEP=1 启用，默认关）。
+ * 254 精确语义（at:7ad4 全文 + label=十进制地址解码）：
+ *   global[15]=0; global[16]=255; BeginInput(8305);
+ *   loop {
+ *     AFL_View_Update(18716);            // 推进一整帧（渲染/输入/部件/任务）
+ *     this.vtable[255]() || global[15] || FastEnd → 处理并继续
+ *     否则 EndInput(8306); return;       // 一帧空闲就退回
+ *   }
+ * 即「推进一帧 + 判断是否还要继续」的步进器。**它需要正确的 this**
+ * （PUSHSTRUCTPAGE 取当前帧 struct_page；250 调用时 this=CConfigView
+ * 实例 121）——不传 this 时 PUSHSTRUCTPAGE 取垃圾，m255 返回恒真
+ * ⇒ 无限循环卡死帧泵（actstep6 实测）。
+ * 本通道用 global[45]（OpenConfig 创建的 CConfigView 实例槽）作 this，
+ * 仅在配置页（global[45] 有效）时步进；标题等其他活动仍走现有
+ * WaitForClick 流程。 */
 void vm_pump_activity_step(uint32_t now)
 {
 	static int enabled = -1;
@@ -3068,16 +3072,6 @@ void vm_pump_activity_step(uint32_t now)
 	static bool stepping;
 	if (enabled < 0)
 		enabled = getenv("XSYS4_ACT_STEP") ? atoi(getenv("XSYS4_ACT_STEP")) : 0;
-	if (!enabled || stepping)
-		return;
-	if (getenv("XSYS4_ACT_STEP") && atoi(getenv("XSYS4_ACT_STEP")) > 1
-	    && activity_open_count() > 0) {
-		static int dbg_n;
-		if (dbg_n++ < 20)
-			NOTICE("[actstep] enter enabled=%d stepping=%d open=%d last=%u now=%u",
-			       enabled, stepping, activity_open_count(),
-			       last_step, now);
-	}
 	if (!enabled || stepping)
 		return;
 	if (activity_open_count() <= 0)
@@ -3088,10 +3082,38 @@ void vm_pump_activity_step(uint32_t now)
 	last_step = now;
 	if (254 >= ain->nr_functions || ain->functions[254].address == 0)
 		return;
+	/* this = CActivity 对象（struct 7）。actstepa 的 DUMP_AT 实证：
+	 * this=slot 50915 struct=7，m0=活动文件名、m1="…pact:0"、m2=EndKey 数组、
+	 * m3=委托。254 的 IsClickEndKey(255) 遍历 this.m2 —— 传错对象
+	 * （CConfigView struct=106 的 m2 是空串）会让 Numof 返回垃圾 ⇒ 死循环
+	 * （actstep9 实测 36→1 loaded）。按 m1 含 ".pact" 精确定位。 */
+	static int this_slot;
+	static int scan_age;
+	if (scan_age-- <= 0 || this_slot <= 0 ||
+	    (size_t)this_slot >= heap_size || !heap[this_slot].page ||
+	    heap[this_slot].page->type != STRUCT_PAGE ||
+	    heap[this_slot].page->index != 7) {
+		scan_age = 120;   /* 每 ~2s 重扫一次 */
+		this_slot = -1;
+		for (size_t i = 1; i < heap_size; i++) {
+			struct page *p = heap[i].page;
+			if (!p || p->type != STRUCT_PAGE || p->index != 7 ||
+			    p->nr_vars < 2)
+				continue;
+			int ms = p->values[1].i;
+			if (ms > 0 && (size_t)ms < heap_size && heap[ms].s &&
+			    heap[ms].s->text && strstr(heap[ms].s->text, ".pact")) {
+				this_slot = (int)i;
+				break;
+			}
+		}
+	}
+	if (this_slot <= 0)
+		return;   /* 没有活动对象：不步进 */
 	stepping = true;
 	stack_push(0);   /* arg0: dgReleasingObject = null 委托 */
 	stack_push(0);   /* arg1: FastEnd = false */
-	vm_call(254, -1);
+	vm_call(254, this_slot);
 	stepping = false;
 }
 
