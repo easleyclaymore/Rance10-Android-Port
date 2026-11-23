@@ -199,7 +199,13 @@ python3 tools/gen-doc-numbers.py --check
 
 - **可移植性门禁**：Core Layer（`vm.c` / `page.c` / `heap.c` / `ffi.c` / `pal.c`）不得出现 Linux-only
   头文件或硬编码绝对路径；平台服务经 `include/pal.h` 注入，Linux 实现在 `src/pal_linux.c`，
-  Android 阶段提供 JNI 实现。CI 里跑的就是这一条（`XSYS4_SKIP_DOC_GATE=1`）。
+  Android 阶段提供 JNI 实现。**[D501] CI 跑完整门禁**（含文档数字与开关表）——它已经
+  不依赖仓库外文件：`AGENTS.md` 与日志基线（`docs/baseline/`）都在仓库里。干净 clone 的
+  验证方式：`git clone --recursive && git -C subprojects/libsys4 apply $PWD/patches/*.patch`
+  之后跑 `check_core_deps.py` 必须 PASS。
+- **发版前本地必过门**：`tools/run/smoke.sh quick`（约 100 秒，日志断言 + 退出码）；通过后
+  自动写 `docs/baseline/baseline_<tag>.txt`，**提交它**——CI 与其他 clone 读这份基线算文档数字。
+  `full` 档（约 11 分钟）在打 tag 前跑一次。
 - **跑测**：`tools/run/run-headless.sh` 是唯一入口（`run-live.sh` 会拒绝在真实桌面运行）。
   动作序列语法、日志前缀契约、诊断开关见 [`docs/SDK.md`](docs/SDK.md)。
 - **改了 `shaders/*.glsl` 不生效**：shader 是运行时从 `$XSYS4_DATA_DIR/shaders/` 读的。
