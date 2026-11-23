@@ -4842,10 +4842,18 @@ static int PE_Act_IsExistActivityPartsByName(struct string *name, struct string 
 	 * 不进 Parts_SetText）。 */
 	if (getenv("XSYS4_ACT_DBG")) {
 		static int n;
-		if (n++ < 30)
+		if (n++ < 3000)
 			NOTICE("[act] IsExistPartsByName('%s','%s') = %d | g28=%d g29=%d",
 			       name->text, parts_name->text, found,
 			       global_get(28).i, global_get(29).i);
+		/* [D498] MISS 的前 6 次打 AIN 调用栈：回答「谁在枚举 SYS_* 值件、
+		 * 查完之后走哪条创建路径」。 */
+		static int nm;
+		if (!found && nm < 6) {
+			nm++;
+			NOTICE("[act] MISS 栈 #%d：", nm);
+			vm_stack_trace();
+		}
 	}
 	return found;
 }

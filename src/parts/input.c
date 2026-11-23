@@ -549,6 +549,18 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 
 	bool click_eligible = (parts->clickable || !parts->pass_cursor)
 		&& parts->global.alpha > 0;   /* [D490] 淡出件不捕获 */
+	/* [D498] **AIN 挂了回调的部件强制可捕获**。
+	 *
+	 * 语义依据：AIN 用 `AddMouseLClickEvent(partsNo, dg)` 给部件挂点击
+	 * 回调（设置界面的值按钮/把手 `SYS_消息速度按钮` 315 就是这种）——
+	 * 派发走「引擎推 (parts_no, di) 消息 → AIN CallDelegate(di)」，
+	 * 而 di 就是 `SetDelegateIndex` 登记的 FunctionSet 槽号。
+	 * 这类部件的 EX `点击許可` 全是 0（`ck=0`），默认判据把它排除 ⇒
+	 * 回调永远收不到点击（实测点把手三次全被下层 CG 313 吃掉）。
+	 * `delegate_index >= 0` 是「AIN 明确在这个部件上注册过回调」的
+	 * 直接证据，比任何 EX 字段都权威。 */
+	if (parts->delegate_index >= 0)
+		click_eligible = true;
 	/* [D496] 输入组件被 AIN 关掉输入处理时不捕获点击（与上面的
 	 * hover_blocking 门控成对）。 */
 	if (parts_input_disabled(parts))
