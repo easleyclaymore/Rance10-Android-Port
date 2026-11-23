@@ -113,6 +113,29 @@ errs=$(grep -acE "VM_ERROR|\*ERROR\*|double free|Segmentation" "$LOG")
 if [ "${errs:-0}" -eq 0 ]; then pass "0 个 VM_ERROR / ERROR / double free"
 else fail "有 $errs 条错误行（grep VM_ERROR|*ERROR*|double free）"; fi
 
+# [D501] 基线落盘：把本次结果写成 docs/baseline 可提交的格式。
+# 这是「日志基线进仓库」的产出端——CI/新 clone 的 gen-doc-numbers 读它，
+# 不再依赖本地 logs/。版本前跑一次 smoke quick 并提交该文件即可。
+acts=$(grep -ac "act\] loaded" "$LOG")
+mapn=$(grep -ac "scene_quest_map" "$LOG")
+BASEOUT="${SMOKE_BASELINE_OUT:-$SROOT/docs/baseline/baseline_$TAG.txt}"
+if [ "$FAILED" -eq 0 ]; then
+	{
+		echo "tag=$TAG"
+		echo "mode=$MODE"
+		echo "rc=0"
+		echo "double_free=0"
+		echo "errors=$errs"
+		echo "activities=$acts"
+		echo "out_of_bounds=0"
+		echo "core_dump=0"
+		echo "scene_quest_map=$mapn"
+		echo "saves=savedir/$TAG（本地 logs/，不随仓库分发）"
+		echo "log_lines_info=$(grep -ac "\[info\]" "$LOG" 2>/dev/null || echo 0)"
+	} >"$BASEOUT"
+	echo "  baseline 写入 $BASEOUT"
+fi
+
 if [ "$FAILED" -eq 0 ]; then
 	echo "RESULT: PASS ($MODE)"
 	exit 0
