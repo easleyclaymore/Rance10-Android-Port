@@ -243,9 +243,14 @@ def check_agent_context_file():
     ②**不许变成状态文档副本** —— 卡点的唯一定义在 STATUS §0，AGENTS.md
     里写一份拷贝必然过期，而照着过期卡点干活是 D264–D269 的原始病因。
     """
-    p = os.path.join(WS, "AGENTS.md")
+    # [D501] 优先查**仓库内**的 AGENTS.md：干净 clone（CI / 其他开发者）
+    # 没有工作区根，旧判据在那里必然 FAIL —— 门禁依赖仓库外文件是设计错误。
+    # 工作区根那份是 agent harness 注入用的部署副本，有就顺带检查一致性。
+    p = os.path.join(REPO, "AGENTS.md")
     if not os.path.exists(p):
-        return ["工作区根缺少 AGENTS.md —— 压缩上下文后没有任何东西"
+        p = os.path.join(WS, "AGENTS.md")
+    if not os.path.exists(p):
+        return ["缺少 AGENTS.md（仓库根与工作区根都没有）—— 压缩上下文后没有任何东西"
                 "保证模型知道核心目标是移植兰斯10（见 docs/STATUS.md 纪律 7 同源问题）"]
     txt = read(p)
     problems = []
