@@ -69,6 +69,27 @@ static int KiwiSoundEngine_MillisecondsToSamples(int ms, int samples_per_sec)
 	return (int)((int64_t)ms * samples_per_sec / 1000);
 }
 
+/* `int GetFreeSeID(int MinSeID, int MaxSeID)` / `int GetFreeID(int MinID, int MaxID)`：
+ * 在闭区间里找第一个「不存在」的通道号（判据 = IsExistSeID/IsExistID 即
+ * 对应池里有没有条目）。本作 AIN 静态 0 调用（ain_xref hlltop），
+ * 实现只为对齐 dump-hll 签名、消掉链接期告警；区间空返 0（0 号对两个池
+ * 都是合法 ID，调用方拿不到会自己 Prepare 失败）。 */
+static int KiwiSoundEngine_GetFreeSeID(int min_id, int max_id)
+{
+	for (int id = min_id; id <= max_id; id++)
+		if (!audio_se_exists(id))
+			return id;
+	return 0;
+}
+
+static int KiwiSoundEngine_GetFreeID(int min_id, int max_id)
+{
+	for (int id = min_id; id <= max_id; id++)
+		if (!audio_id_exists(id))
+			return id;
+	return 0;
+}
+
 static int KiwiSoundEngine_GetSoundFileName(int num, struct string **file_name)
 {
 	struct string *name = audio_meta_get_sound_name_by_number(num);
@@ -237,13 +258,13 @@ HLL_LIBRARY(KiwiSoundEngine,
 	    HLL_EXPORT(GetVoiceGroup, KiwiSoundEngine_GetVoiceGroup),
 	    HLL_EXPORT(GetGimicSEGroup, KiwiSoundEngine_GetGimicSEGroup),
 	    HLL_EXPORT(GetBackVoiceGroup, KiwiSoundEngine_GetBackVoiceGroup),
-	    HLL_TODO_EXPORT(GetFreeSeID, KiwiSoundEngine_GetFreeSeID),
+	    HLL_EXPORT(GetFreeSeID, KiwiSoundEngine_GetFreeSeID),
 	    HLL_EXPORT(IsExistSeID, audio_se_exists),
 	    HLL_EXPORT(SetSeParam, audio_se_set_params),
 	    HLL_EXPORT(PlaySe, audio_se_play),
 	    HLL_EXPORT(StopSe, audio_se_stop),
 	    HLL_EXPORT(IsPlaySe, audio_se_is_playing),
-	    HLL_TODO_EXPORT(GetFreeID, KiwiSoundEngine_GetFreeID),
+	    HLL_EXPORT(GetFreeID, KiwiSoundEngine_GetFreeID),
 	    HLL_EXPORT(IsExistID, audio_id_exists),
 	    HLL_EXPORT(Prepare, audio_prepare),
 	    HLL_EXPORT(Unprepare, audio_unprepare),

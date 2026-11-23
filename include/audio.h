@@ -24,6 +24,8 @@ void audio_init(void);
 void audio_reset(void);
 void audio_update(void);
 bool audio_play_sound(int sound_no);
+// 按资源名播一条一次性音效（Parts_PlaySound / 点击 miss 音）。
+bool audio_play_by_name(struct string *name);
 // 接管 dfile 的所有权。
 bool audio_play_archive_data(struct archive_data *dfile);
 

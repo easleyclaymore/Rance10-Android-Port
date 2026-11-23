@@ -380,6 +380,166 @@ struct string *PE_Parts_GetSoundName(int parts_no, int slot)
 	return make_string("", 0);
 }
 
+/* [D494] Parts_PlaySound：按槽号播部件音效名。AIN live 链（ain_xref）：
+ *   AFL_Parts_PlaySound(7117) / CSpriteParts@PlayClickSE(13737) /
+ *   CSpriteParts@PlayOnCursorSE(13736)
+ *   → parts::PlaySound(7227) / PlayClickSound(7229, state=3) /
+ *     PlayOnCursorSound(7228, state=2)
+ *   → `void PartsEngine.Parts_PlaySound(int no, int state)`。
+ * 槽空 / 槽超界 / 资源名不存在 → 静默 false（原引擎对无名槽同样不出声）。 */
+bool PE_Parts_PlaySound(int parts_no, int state)
+{
+	if (state < 0 || state >= PARTS_SOUND_NAME_SLOTS) {
+		WARNING("Parts_PlaySound: slot %d out of range", state);
+		return false;
+	}
+	struct parts_widget *w = PE_widget_peek(parts_no);
+	if (!w || !w->sound_name[state])
+		return false;
+	return audio_play_by_name(w->sound_name[state]);
+}
+
+/* [D494] 全局点击 miss 音（`SetClickMissSoundName` / `GetClickMissSoundName`）。
+ * AIN 里 setter 有 1 个调用点（dump-hll 表 [18]）；getter [19] 静态 0 调用。
+ * 引擎侧语义：点在不可点击区域时的反馈音。挂全局而非部件——它不针对
+ * 任何部件号。 */
+static struct string *click_miss_sound_name = NULL;
+
+void PE_SetClickMissSoundName(struct string *name)
+{
+	if (click_miss_sound_name)
+		free_string(click_miss_sound_name);
+	click_miss_sound_name = name ? string_dup(name) : NULL;
+}
+
+struct string *PE_GetClickMissSoundName(void)
+{
+	if (click_miss_sound_name)
+		return string_dup(click_miss_sound_name);
+	return make_string("", 0);
+}
+
+/* [D495] flat 音效变更表。字段语义见 parts_internal.h 的 [D495] 注释块；
+ * 这里只写操作本身。所有状态号超界一律告警并空操作（与 [D494] 槽位
+ * 同一套纪律）。 */
+static bool flat_sound_name_eq(struct string *a, struct string *b)
+{
+	return a && b && !strcmp(a->text, b->text);
+}
+
+static void flat_sound_change_clear_slot(struct parts_widget *w, int slot)
+{
+	for (int i = 0; i < w->nr_flat_sound_changes[slot]; i++) {
+		free_string(w->flat_sound_changes[slot][i].old_name);
+		free_string(w->flat_sound_changes[slot][i].new_name);
+	}
+	free(w->flat_sound_changes[slot]);
+	w->flat_sound_changes[slot] = NULL;
+	w->nr_flat_sound_changes[slot] = 0;
+}
+
+int PE_NumofFlatSound(int parts_no, int state)
+{
+	if (state < 0 || state >= PARTS_SOUND_NAME_SLOTS) {
+		WARNING("NumofFlatSound: state %d out of range", state);
+		return 0;
+	}
+	struct parts_widget *w = PE_widget_peek(parts_no);
+	return w ? w->nr_flat_sound_changes[state] : 0;
+}
+
+struct string *PE_GetFlatSoundName(int parts_no, int index, int state)
+{
+	if (state < 0 || state >= PARTS_SOUND_NAME_SLOTS) {
+		WARNING("GetFlatSoundName: state %d out of range", state);
+		return make_string("", 0);
+	}
+	struct parts_widget *w = PE_widget_peek(parts_no);
+	if (!w || index < 0 || index >= w->nr_flat_sound_changes[state])
+		return make_string("", 0);
+	return string_dup(w->flat_sound_changes[state][index].new_name);
+}
+
+void PE_Parts_ChangeFlatSound(int parts_no, struct string *old_name,
+		struct string *new_name, int state)
+{
+	if (state < 0 || state >= PARTS_SOUND_NAME_SLOTS) {
+		WARNING("Parts_ChangeFlatSound: state %d out of range", state);
+		return;
+	}
+	struct parts_widget *w = PE_widget(parts_no);
+	if (!w)
+		return;
+	// 同一 OldName 再变更：就地替换替身（原引擎的变更表是按名键控的）。
+	for (int i = 0; i < w->nr_flat_sound_changes[state]; i++) {
+		struct flat_sound_change *c = &w->flat_sound_changes[state][i];
+		if (flat_sound_name_eq(c->old_name, old_name)) {
+			free_string(c->new_name);
+			c->new_name = new_name ? string_dup(new_name) : NULL;
+			return;
+		}
+	}
+	int n = w->nr_flat_sound_changes[state];
+	struct flat_sound_change *next = xrealloc(w->flat_sound_changes[state],
+			(n + 1) * sizeof(struct flat_sound_change));
+	next[n].old_name = old_name ? string_dup(old_name) : NULL;
+	next[n].new_name = new_name ? string_dup(new_name) : NULL;
+	w->flat_sound_changes[state] = next;
+	w->nr_flat_sound_changes[state] = n + 1;
+}
+
+struct string *PE_GetProxyFlatSound(int parts_no, struct string *old_name,
+		int state)
+{
+	if (state < 0 || state >= PARTS_SOUND_NAME_SLOTS) {
+		WARNING("GetProxyFlatSound: state %d out of range", state);
+		return string_dup(old_name);
+	}
+	struct parts_widget *w = PE_widget_peek(parts_no);
+	if (w) {
+		for (int i = 0; i < w->nr_flat_sound_changes[state]; i++) {
+			struct flat_sound_change *c = &w->flat_sound_changes[state][i];
+			if (flat_sound_name_eq(c->old_name, old_name))
+				return string_dup(c->new_name);
+		}
+	}
+	// 没有变更记录：替身就是原名。
+	return string_dup(old_name);
+}
+
+void PE_ReturnChangeFlatSound(int parts_no, struct string *old_name, int state)
+{
+	if (state < 0 || state >= PARTS_SOUND_NAME_SLOTS) {
+		WARNING("ReturnChangeFlatSound: state %d out of range", state);
+		return;
+	}
+	struct parts_widget *w = PE_widget_peek(parts_no);
+	if (!w)
+		return;
+	int n = w->nr_flat_sound_changes[state];
+	for (int i = 0; i < n; i++) {
+		struct flat_sound_change *c = &w->flat_sound_changes[state][i];
+		if (!flat_sound_name_eq(c->old_name, old_name))
+			continue;
+		free_string(c->old_name);
+		free_string(c->new_name);
+		memmove(c, c + 1, (n - i - 1) * sizeof(struct flat_sound_change));
+		w->nr_flat_sound_changes[state] = n - 1;
+		return;
+	}
+}
+
+void PE_ClearChangeFlatSound(int parts_no, int state)
+{
+	if (state < 0 || state >= PARTS_SOUND_NAME_SLOTS) {
+		WARNING("ClearChangeFlatSound: state %d out of range", state);
+		return;
+	}
+	struct parts_widget *w = PE_widget_peek(parts_no);
+	if (w)
+		flat_sound_change_clear_slot(w, state);
+}
+
 /* [D496] 输入处理参与开关的存取（`SetEnableInputProcess` /
  * `IsEnableInputProcess`）。语义见 parts_internal.h 里字段注释与
  * input.c 的门控点。用 try_get：对不存在的部件号只记痕，不为设个
@@ -1482,6 +1642,9 @@ void PE_widget_free(struct parts_widget *w)
 	for (unsigned i = 0; i < PARTS_SOUND_NAME_SLOTS; i++)
 		if (w->sound_name[i])
 			free_string(w->sound_name[i]);
+	/* [D495] flat 音效变更表 */
+	for (unsigned i = 0; i < PARTS_SOUND_NAME_SLOTS; i++)
+		flat_sound_change_clear_slot(w, i);
 	/* [D496] 按键等待指示 */
 	if (w->keywait_cg)
 		free_string(w->keywait_cg);

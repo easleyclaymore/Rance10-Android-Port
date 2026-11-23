@@ -494,9 +494,29 @@ struct parts_widget {
 
 	/* --- 部件音效名（`Parts_SetSoundName`/`Parts_GetSoundName`，[D494]）---
 	 * 下标 = AIN 的槽号参数。反汇编实证只见过 2/3（AIN 包装 7651/7653 的
-	 * 立即数，配对 getter 7652/7654 同槽），容量按 4 留裕量；
-	 * 超界槽忽略并告警。名字不需要持久化（跟复选框状态同理）。 */
+ * 立即数，配对 getter 7652/7654 同槽），容量按 4 留裕量；
+ * 超界槽忽略并告警。名字不需要持久化（跟复选框状态同理）。
+ * 播放接线（[D494] 补全）：`PE_Parts_PlaySound` 按槽名经
+ * `audio_play_by_name` 走匿名通道；AIN 侧 live 链见 parts.c 该函数注释。 */
 	struct string *sound_name[PARTS_SOUND_NAME_SLOTS];
+
+	/* --- flat 音效变更表（FlatSound 家族，[D495]）---
+	 * FlatSound 族 HLL（NumofFlatSound 755 / GetFlatSoundName 756 /
+	 * Parts_ChangeFlatSound 757 / GetProxyFlatSound 758 /
+	 * ReturnChangeFlatSound 759 / ClearChangeFlatSound 760）维护的
+	 * 「每部件每状态已变更音效」表：`Parts_ChangeFlatSound(no, old, new,
+	 * state)` 把 old→new 记一条；`GetProxyFlatSound` 查 old 当前的替身；
+	 * `ReturnChangeFlatSound` 撤一条；`ClearChangeFlatSound` 全撤。
+	 * flat 档案本身没有 sound 段（libsys4 flat.c 解析器无此字段），所以
+	 * 变更表初始为空、`NumofFlatSound` 只数变更条目——AIN 包装
+	 * Ｐ＿フラットＣＧ変更リスト取得（fno=7510）正是拿 755/756 遍历
+	 * 变更列表。注：本作 AIN 里 CFlatParts@SoundNames 一族 0 静态调用者
+	 * （ain_xref call 9586..9590 实测），这是死链保真实现。 */
+	struct flat_sound_change {
+		struct string *old_name;   /* 变更前音效名（AIN 的 OldName） */
+		struct string *new_name;   /* 变更后音效名 */
+	} *flat_sound_changes[PARTS_SOUND_NAME_SLOTS];
+	int nr_flat_sound_changes[PARTS_SOUND_NAME_SLOTS];
 
 	/* --- 按键等待指示（キー待ち表示，[D496]）---
 	 * 消息窗一族：AIN `_CMsgKeyWait@_PreCommand` → show(0)（打字中）、

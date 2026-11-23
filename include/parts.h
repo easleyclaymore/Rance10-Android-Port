@@ -291,6 +291,21 @@ bool PE_IsCheckBoxEnable(int parts_no);
 /* [D494] 部件音效名（挂 parts_widget，槽号是 AIN 侧约定，实证 2/3） */
 void PE_Parts_SetSoundName(int parts_no, struct string *name, int slot);
 struct string *PE_Parts_GetSoundName(int parts_no, int slot);
+/* [D494] 按槽号播部件音效名（AIN live 链：parts::PlayClickSound(7229,
+ * state=3) / PlayOnCursorSound(7228, state=2) → Parts_PlaySound）。 */
+bool PE_Parts_PlaySound(int parts_no, int state);
+/* [D494] 全局点击 miss 音（SetClickMissSoundName / GetClickMissSoundName） */
+void PE_SetClickMissSoundName(struct string *name);
+struct string *PE_GetClickMissSoundName(void);
+/* [D495] flat 音效变更表（FlatSound 家族；本作 AIN 死链，保真实现） */
+int PE_NumofFlatSound(int parts_no, int state);
+struct string *PE_GetFlatSoundName(int parts_no, int index, int state);
+void PE_Parts_ChangeFlatSound(int parts_no, struct string *old_name,
+		struct string *new_name, int state);
+struct string *PE_GetProxyFlatSound(int parts_no, struct string *old_name,
+		int state);
+void PE_ReturnChangeFlatSound(int parts_no, struct string *old_name, int state);
+void PE_ClearChangeFlatSound(int parts_no, int state);
 /* [D496] 输入处理参与开关（默认 true；input.c 对组件类型 4/7/11 门控） */
 void PE_set_enable_input_process(int parts_no, bool enable);
 bool PE_get_enable_input_process(int parts_no);

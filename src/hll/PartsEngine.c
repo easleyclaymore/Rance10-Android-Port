@@ -1309,10 +1309,61 @@ static void PE_Noop_SetCheckBoxTextOriginPosMode(int a0, int a1)
 	(void)a1;
 }
 
-/* AIN SetClickMissSoundName：void SetClickMissSoundName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetClickMissSoundName(struct string * a0)
+/* [D494] 全局点击 miss 音（SetClickMissSoundName/GetClickMissSoundName），
+ * 转发 parts.c 的全局存储。getter 在 AIN 里静态 0 调用（ain_xref hlltop），
+ * setter 1 个调用点；补 getter 只为消掉链接期告警。 */
+static void PE_SetClickMissSoundName_fwd(struct string * a0)
 {
-	(void)a0;
+	PE_SetClickMissSoundName(a0);
+}
+
+static struct string *PE_GetClickMissSoundName_fwd(void)
+{
+	return PE_GetClickMissSoundName();
+}
+
+/* [D494] Parts_PlaySound：按槽号播部件音效名，转发 parts.c（live 链
+ * 与槽号语义见那里）。 */
+static void PE_Parts_PlaySound_fwd(int no, int state)
+{
+	PE_Parts_PlaySound(no, state);
+}
+
+/* [D495] flat 音效变更表（FlatSound 家族），转发 parts.c。证据链：
+ * AIN 包装 Ｐ＿フラットＣＧ変更系（fno=7510..7514）→ 本族 HLL 755..760；
+ * 但包装本身 0 静态调用者（ain_xref call 9586..9590 实测）＝死链保真，
+ * 实现按 parts_internal.h [D495] 注释的语义走。 */
+static int PE_NumofFlatSound_fwd(int no, int state)
+{
+	return PE_NumofFlatSound(no, state);
+}
+
+static struct string *PE_GetFlatSoundName_fwd(int no, int index, int state)
+{
+	return PE_GetFlatSoundName(no, index, state);
+}
+
+static void PE_Parts_ChangeFlatSound_fwd(int no, struct string *old_name,
+		struct string *new_name, int state)
+{
+	PE_Parts_ChangeFlatSound(no, old_name, new_name, state);
+}
+
+static struct string *PE_GetProxyFlatSound_fwd(int no, struct string *old_name,
+		int state)
+{
+	return PE_GetProxyFlatSound(no, old_name, state);
+}
+
+static void PE_ReturnChangeFlatSound_fwd(int no, struct string *old_name,
+		int state)
+{
+	PE_ReturnChangeFlatSound(no, old_name, state);
+}
+
+static void PE_ClearChangeFlatSound_fwd(int no, int state)
+{
+	PE_ClearChangeFlatSound(no, state);
 }
 
 /* AIN SetComboBoxCharSpace：void SetComboBoxCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
@@ -5739,7 +5790,12 @@ HLL_LIBRARY(PartsEngine,
 	     * 把技能列表打断）。语义与 `SetPartsFlat` 一致：
 	     * `(parts_no, cg_name, state)` 换掉该状态的 flat。 */
 	    HLL_EXPORT(Parts_ChangeFlatCG, PE_SetPartsFlat),
-	    HLL_TODO_EXPORT(Parts_ChangeFlatSound, PartsEngine_Parts_ChangeFlatSound),
+	    HLL_EXPORT(Parts_ChangeFlatSound, PE_Parts_ChangeFlatSound_fwd),
+	    HLL_EXPORT(NumofFlatSound, PE_NumofFlatSound_fwd),
+	    HLL_EXPORT(GetFlatSoundName, PE_GetFlatSoundName_fwd),
+	    HLL_EXPORT(GetProxyFlatSound, PE_GetProxyFlatSound_fwd),
+	    HLL_EXPORT(ReturnChangeFlatSound, PE_ReturnChangeFlatSound_fwd),
+	    HLL_EXPORT(ClearChangeFlatSound, PE_ClearChangeFlatSound_fwd),
 	    HLL_EXPORT(Parts_ClearPartsConstructionProcess, PE_ClearPartsConstructionProcess),
 	    HLL_EXPORT(Parts_AddCreateToPartsConstructionProcess, PE_AddCreateToPartsConstructionProcess),
 	    HLL_EXPORT(Parts_AddCreatePixelOnlyToPartsConstructionProcess, PE_AddCreatePixelOnlyToPartsConstructionProcess),
@@ -5801,6 +5857,7 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(Parts_SetRubyCharSpace, PE_Noop_Parts_SetRubyCharSpace),
 	    HLL_EXPORT(Parts_SetSoundName, PE_Parts_SetSoundName_fwd),
 	    HLL_EXPORT(Parts_GetSoundName, PE_Parts_GetSoundName_hll),
+	    HLL_EXPORT(Parts_PlaySound, PE_Parts_PlaySound_fwd),
 	    HLL_EXPORT(GetSystemOverlayController, PE_GetSystemOverlayController),
 	    HLL_EXPORT(CancelFormClose, PE_CancelFormClose),
 	    HLL_EXPORT(Parts_SetSwipeType, PE_Noop_Parts_SetSwipeType),
@@ -5824,7 +5881,8 @@ HLL_LIBRARY(PartsEngine,
 	    HLL_EXPORT(SetCheckBoxOverrideCheckedFlatName, PE_SetCheckBoxOverrideCheckedFlatName),
 	    HLL_EXPORT(SetCheckBoxOverrideFlatName, PE_SetCheckBoxOverrideFlatName),
 	    HLL_EXPORT(SetCheckBoxTextOriginPosMode, PE_SetCheckBoxTextOriginPosMode),
-	    HLL_EXPORT(SetClickMissSoundName, PE_Noop_SetClickMissSoundName),
+	    HLL_EXPORT(SetClickMissSoundName, PE_SetClickMissSoundName_fwd),
+	    HLL_EXPORT(GetClickMissSoundName, PE_GetClickMissSoundName_fwd),
 	    HLL_EXPORT(SetComboBoxCharSpace, PE_SetComboBoxCharSpace),
 	    HLL_EXPORT(SetComboBoxListBoxCharSpace, PE_SetComboBoxListBoxCharSpace),
 	    HLL_EXPORT(SetComboBoxListBoxHeight, PE_SetComboBoxListBoxHeight),

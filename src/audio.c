@@ -111,6 +111,9 @@ static struct channel *open_asset_channel(enum asset_type type, int no)
 // 把已经播完的通道清理掉。
 #define NR_ANONYMOUS_CHANNELS 64
 static int anonymous_channels[NR_ANONYMOUS_CHANNELS];
+// 按名播放（audio_play_by_name）走 `channels` 池，id 与 wav 池不是一个
+// 命名空间，单独记账；audio_update 同样负责回收。
+static int anonymous_named_channels[NR_ANONYMOUS_CHANNELS];
 
 void audio_init(void)
 {
@@ -125,6 +128,7 @@ void audio_init(void)
 
 	for (int i = 0; i < NR_ANONYMOUS_CHANNELS; i++) {
 		anonymous_channels[i] = -1;
+		anonymous_named_channels[i] = -1;
 	}
 
 	mixer_init();
@@ -149,6 +153,7 @@ void audio_reset(void)
 	}
 	for (int i = 0; i < NR_ANONYMOUS_CHANNELS; i++) {
 		anonymous_channels[i] = -1;
+		anonymous_named_channels[i] = -1;
 	}
 }
 
@@ -161,6 +166,12 @@ void audio_update(void)
 			if (!wav_is_playing(anonymous_channels[i])) {
 				wav_unprepare(anonymous_channels[i]);
 				anonymous_channels[i] = -1;
+			}
+		}
+		if (anonymous_named_channels[i] >= 0) {
+			if (!audio_is_playing(anonymous_named_channels[i])) {
+				audio_unprepare(anonymous_named_channels[i]);
+				anonymous_named_channels[i] = -1;
 			}
 		}
 	}
@@ -182,6 +193,34 @@ bool audio_play_sound(int sound_no)
 		}
 	}
 	WARNING("Failed to allocate anonymous audio channel");
+	return false;
+}
+
+// 按名字播一条一次性音效（匿名通道）。`Parts_PlaySound` / 点击 miss 音用。
+// 与 audio_play_sound 的区别：sound_no 是音频资源编号，这里是资源名
+// （Sound/VOICE 档案按名取，见 audio_open_named）。
+bool audio_play_by_name(struct string *name)
+{
+	if (!name || !name->text[0])
+		return false;
+	for (int i = 0; i < NR_ANONYMOUS_CHANNELS; i++) {
+		if (anonymous_named_channels[i] != -1)
+			continue;
+		int id = id_pool_get_unused(&channels);
+		if (id < 0) {
+			WARNING("Failed to allocate named audio channel");
+			return false;
+		}
+		if (!audio_prepare(id, name, false))
+			return false;
+		if (!audio_play(id)) {
+			audio_unprepare(id);
+			return false;
+		}
+		anonymous_named_channels[i] = id;
+		return true;
+	}
+	WARNING("Failed to allocate anonymous named audio channel");
 	return false;
 }
 
