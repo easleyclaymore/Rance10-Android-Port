@@ -233,3 +233,4 @@ XSYS4_USERCOMP_DBG	dump 前 3 个 USER_COMPONENT 部件的解析字段（组件�
 XSYS4_XSET_DBG	dump X 赋值拷贝前 20 次的现场（源/目标页），排查赋值语义
 XSYS4_INPUT_GATE	=1 恢复旧输入门：只有 AIN BeginInput 窗口内才处理按下沿（默认 0=等价原版，恒开）。菜单界面 AIN 不开窗口，开旧门会让点击全被吞
 XSYS4_TEXT_DIM_DBG	dump 文字度量结果为 0 的部件（字号/面/行数/首字符数）。判断「设置项没文字」是度量失败还是绘制/遮挡
+XSYS4_RENDER_SKIP_DBG	按部件号过滤的渲染准入探针：打印可见性/消息窗口/联动/show/z/类型/尺寸/alpha/文字行数/颜色/字号。判断「这个件没进渲染 vs 进了被挡」

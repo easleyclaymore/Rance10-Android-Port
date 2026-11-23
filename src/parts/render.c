@@ -1307,6 +1307,38 @@ void parts_render(struct parts *parts)
 			       parts_message_window_show ? 1 : 0,
 			       parts->linked_to, (int)parts->global.alpha);
 	}
+	/* [D513] 按部件号过滤的准入探针：`XSYS4_RENDER_SKIP_DBG=<no>`。
+	 * 用来回答「这个件到底没进渲染，还是进了被某道准入挡掉」——
+	 * 配置页选项框里的 TEXT 子件（160/64/68/84/88）就是这样：
+	 * 有尺寸、在 parts dump 里 vis=1，却从没进过 parts_render_text。
+	 * 注意：**只有 parts_render 真被调用时才会打印**，所以"没有输出"
+	 * 本身就意味着它不在渲染树里（或父链遍历时被跳过）。 */
+	if (getenv("XSYS4_RENDER_SKIP_DBG")) {
+		int want = atoi(getenv("XSYS4_RENDER_SKIP_DBG"));
+		if (parts->no == want) {
+			static int n;
+			if (n++ < 6)
+				{
+					struct parts_state *st = &parts->states[parts->state];
+					NOTICE("[rskip] no=%d vis=%d mw=%d mwshow=%d link=%d "
+					       "show=%d z=%d type=%d w=%d h=%d a=%d "
+					       "lines=%u rgb=(%d,%d,%d) size=%.1f uc=%s",
+					       parts->no, parts_is_visible(parts) ? 1 : 0,
+					       parts->message_window ? 1 : 0,
+					       parts_message_window_show ? 1 : 0,
+					       parts->linked_to, parts->global.show ? 1 : 0,
+					       parts->global.z, st->type,
+					       st->common.w, st->common.h,
+					       (int)parts->global.alpha,
+					       st->type == PARTS_TEXT ? st->text.nr_lines : 0u,
+					       st->type == PARTS_TEXT ? st->text.ts.color.r : -1,
+					       st->type == PARTS_TEXT ? st->text.ts.color.g : -1,
+					       st->type == PARTS_TEXT ? st->text.ts.color.b : -1,
+					       st->type == PARTS_TEXT ? st->text.ts.size : 0.0,
+					       parts->uc_object ? parts->uc_object : "-");
+				}
+		}
+	}
 	/* [D128] 图层整体隐藏时（AIN 的 SceneStack@IsShow）该层所有部件都不画。 */
 	if (!parts_is_visible(parts))
 		return;
