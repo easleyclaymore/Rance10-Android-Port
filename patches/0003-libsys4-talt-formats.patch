@@ -1,13 +1,17 @@
 diff --git a/src/flat.c b/src/flat.c
---- a/src/flat.c
-+++ b/src/flat.c
+--- a/src/flat.c	2026-11-23 16:18:57.290185202 +0800
++++ b/src/flat.c	2026-11-21 22:47:45.623802928 +0800
 @@ -19,6 +19,7 @@
+ #include "little_endian.h"
  #include "system4.h"
-+#include "system4/qnt.h"
  #include "system4/ajp.h"
---- a/src/flat.c
-+++ b/src/flat.c
-@@ -139,8 +140,17 @@
++#include "system4/qnt.h"
+ #include "system4/buffer.h"
+ #include "system4/file.h"
+ #include "system4/flat.h"
+@@ -136,8 +137,19 @@
+ 		fl->talt_entries[i].size = buffer_read_int32(&r);
+ 		fl->talt_entries[i].off = fl->talt.off + r.index + 8;
  
 -		if (strncmp(buffer_strdata(&r), "AJP", 4) != 0)
 -			WARNING("File in flat TALT section is not ajp format");
@@ -24,3 +28,6 @@ diff --git a/src/flat.c b/src/flat.c
 +				(unsigned char)buffer_strdata(&r)[1],
 +				(unsigned char)buffer_strdata(&r)[2],
 +				(unsigned char)buffer_strdata(&r)[3]);
+ 
+ 		buffer_skip(&r, fl->talt_entries[i].size);
+ 		buffer_align(&r, 4);

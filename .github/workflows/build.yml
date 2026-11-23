@@ -12,7 +12,7 @@ name: Build & Release
 #      所以下面先试 apt、失败就自己编 SDL3。
 #   2. `subprojects/libsys4` 是 gitlink（上游 nunuhara/libsys4 的 e2bf438），
 #      但本仓库对它有 4 个文件的本地补丁（gsave v8 / ajp_get_metrics）。
-#      拉下来之后必须按 README「获取源码」那节应用 `patches/000{1,2}-*.patch`，
+#      拉下来之后必须按 README「获取源码」那节应用 `patches/000{1,2,3}-*.patch`，
 #      否则 xsystem4 会在链接期找不到 `ajp_get_metrics`。
 
 on:
@@ -46,7 +46,8 @@ jobs:
         run: |
           git -C subprojects/libsys4 apply -v \
             "$GITHUB_WORKSPACE/patches/0001-libsys4-gsave-v8.patch" \
-            "$GITHUB_WORKSPACE/patches/0002-libsys4-ajp-metrics.patch"
+            "$GITHUB_WORKSPACE/patches/0002-libsys4-ajp-metrics.patch" \
+            "$GITHUB_WORKSPACE/patches/0003-libsys4-talt-formats.patch"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -76,7 +77,8 @@ jobs:
         run: |
           git -C subprojects/libsys4 apply -v \
             "$GITHUB_WORKSPACE/patches/0001-libsys4-gsave-v8.patch" \
-            "$GITHUB_WORKSPACE/patches/0002-libsys4-ajp-metrics.patch"
+            "$GITHUB_WORKSPACE/patches/0002-libsys4-ajp-metrics.patch" \
+            "$GITHUB_WORKSPACE/patches/0003-libsys4-talt-formats.patch"
 
       - name: Install build dependencies
         run: |

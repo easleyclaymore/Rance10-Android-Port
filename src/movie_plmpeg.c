@@ -254,6 +254,29 @@ int movie_get_position(struct movie_context *mc)
 	return ms;
 }
 
+/* [D500] PartsMovie 族的两个只读口（与 movie_ffmpeg.c 同语义）：
+ * 尺寸来自解码器（创建部件时定部件大小）；时长来自容器元数据，
+ * 拿不到时返回 0，调用方按"未知时长"处理。plmpeg 后端此前漏了
+ * 这两个实现 —— 本地有 ffmpeg 编 movie_ffmpeg.c 掩盖了它，
+ * CI（无 ffmpeg，走本后端）链接期才爆出来。 */
+void movie_get_size(struct movie_context *mc, int *w, int *h)
+{
+	if (w) *w = 0;
+	if (h) *h = 0;
+	if (!mc || !mc->plm)
+		return;
+	if (w) *w = plm_get_width(mc->plm);
+	if (h) *h = plm_get_height(mc->plm);
+}
+
+int movie_get_duration(struct movie_context *mc)
+{
+	if (!mc || !mc->plm)
+		return 0;
+	double d = plm_get_duration(mc->plm);
+	return (d > 0) ? (int)(d * 1000.0) : 0;
+}
+
 bool movie_set_volume(struct movie_context *mc, int volume)
 {
 	mc->volume = volume;
