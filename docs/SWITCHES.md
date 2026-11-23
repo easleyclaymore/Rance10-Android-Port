@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **270** 个开关，其中 **40** 个没有就近注释。
+共 **272** 个开关，其中 **40** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -16,7 +16,7 @@
 | 分组 | 开关 | 位置 | 用途 |
 |---|---|---|---|
 | 断点与快照 | `XSYS4_CALL_TRACE` | `src/vm.c:917` | 逗号分隔的 AIN 函数号；命中时打印调用点与返回地址（"有没有被调到"的第一手证据） |
-| 断点与快照 | `XSYS4_CALL_TRACE_TOTAL` | `src/vm.c:7477` | [诊断] 退出时汇总 `XSYS4_CALL_TRACE` 各函数的**真实调用次数**（不受"每 fno 8 站点 + 每 200 次一条"的打印限流影响）。**凡是要断言"某函数跑了 N 次"，必须用这个** —— D280/D281 两次把日志条数当次数，把 `View_Update` 的 1504 次误读成 10 次、把 `OnUpdate` 的 150 次误读成 0 次 |
+| 断点与快照 | `XSYS4_CALL_TRACE_TOTAL` | `src/vm.c:7495` | [诊断] 退出时汇总 `XSYS4_CALL_TRACE` 各函数的**真实调用次数**（不受"每 fno 8 站点 + 每 200 次一条"的打印限流影响）。**凡是要断言"某函数跑了 N 次"，必须用这个** —— D280/D281 两次把日志条数当次数，把 `View_Update` 的 1504 次误读成 10 次、把 `OnUpdate` 的 150 次误读成 0 次 |
 | 断点与快照 | `XSYS4_CENSUS` | `src/vm.c:1613` | 按函数做调用普查（与 FN_DUMP 互补） |
 | 断点与快照 | `XSYS4_DUMP_AT` | `src/vm.c:4274` | 在 `<十六进制地址>[,最多几次]` 处停下，打印帧名、this 各成员、局部变量和操作数栈 |
 | 断点与快照 | `XSYS4_FN_DUMP` | `src/vm.c:1019` | 函数调用次数统计与慢函数排行 |
@@ -59,7 +59,7 @@
 | 容器与内存 | `XSYS4_DG_MISS_DBG` | `src/vm.c:1827` | 委托 miss（找不到目标）时打印 |
 | 容器与内存 | `XSYS4_DG_MISS_FILTER` | `src/vm.c:1831` | 收窄 DG_MISS 输出 |
 | 容器与内存 | `XSYS4_DG_PAGE_DBG` | `src/vm.c:1768` | 委托页生命周期诊断 |
-| 容器与内存 | `XSYS4_MEM_STAT` | `src/vm.c:6951` | 堆内存与 RSS 实时统计 |
+| 容器与内存 | `XSYS4_MEM_STAT` | `src/vm.c:6969` | 堆内存与 RSS 实时统计 |
 | 呈现与输入 | `XSYS4_ACTIVE_CTRL_SET` | `src/parts/parts.c:4509` | `=0` 把 `PartsEngine.SetActiveController` 退回空实现（D312 前行为）。默认真设置活动层 |
 | 呈现与输入 | `XSYS4_ACTIVE_PARTS` | `src/parts/input.c:70` | [诊断] `PartsEngine.GetActiveParts` 返回光标指向的部件（默认开，D309）。`=0` 回退到旧桩（恒 0） |
 | 呈现与输入 | `XSYS4_ACT_BUILD_DBG` | `src/parts/activity.c:1438` | [诊断] 打印每个 activity 部件的 `no/name/parent/type`（前 3000 条）。用来把运行时部件号对号到 XML 里的名字，例如 `900000397 = ButtonDeffence` |
@@ -104,13 +104,13 @@
 | 自动化后门 | `XSYS4_AUTO_CLICK` | `src/vm.c:2531` | [D378 诊断，默认关] `<ms>[:<x>,<y>][:r]` 每隔 ms 在**引擎内**合成一次点击（mouse_inject_click，不经过 xdotool）。位置缺省为视图中心，`:r` 发右键。给「靠点击喂帧」的 ADV/战斗演出用 |
 | 自动化后门 | `XSYS4_AUTO_CLICK_DELAY` | `src/vm.c:2589` | [D378 诊断，默认关] `XSYS4_AUTO_CLICK` 的启动延迟（毫秒）；标题那几步必须靠 RANCE10_LIVE_SEQ 精确点击，自动点击在旁边乱点会把标题菜单开开关关 |
 | 自动化后门 | `XSYS4_AUTO_CLICK_N` | `src/vm.c:2543` | — |
-| 自动化后门 | `XSYS4_AUTO_MAP` | `src/vm.c:7005` | 无头跑测后门：自动推进到任务地图 |
-| 自动化后门 | `XSYS4_AUTO_MAP_DELAY` | `src/vm.c:7006` | 后门延迟（毫秒） |
+| 自动化后门 | `XSYS4_AUTO_MAP` | `src/vm.c:7023` | 无头跑测后门：自动推进到任务地图 |
+| 自动化后门 | `XSYS4_AUTO_MAP_DELAY` | `src/vm.c:7024` | 后门延迟（毫秒） |
 | 自动化后门 | `XSYS4_AUTO_MAP_ROUTE` | `src/vm.c:1402` | [后门] 地图稳定后直调 SceneQuestMap@StartMoveRoute(23606)，毫秒=延迟；写成 `<ms>:<repeat_ms>` 则周期性反复推路线（一章的剧情/战斗都是「地图→移动→事件」，单次只能推一个事件） |
 | 自动化后门 | `XSYS4_AUTO_PARTY` | `src/vm.c:1397` | 无头跑测后门：自动推进到部队编成 |
 | 自动化后门 | `XSYS4_AUTO_PARTY_CLOSE` | `src/vm.c:1422` | [后门] 卡片视图就绪后直调 SceneParty@Close(24301)，验证编队出口；=1 开启 |
 | 自动化后门 | `XSYS4_AUTO_PARTY_DELAY` | `src/vm.c:1398` | 后门延迟（毫秒） |
-| 自动化后门 | `XSYS4_AUTO_RUNPARTY` | `src/vm.c:7093` | [后门] 地图起来后直接调 Scenes::RunParty(1)，绕开地图 UI 直进编队界面；值=延迟毫秒 |
+| 自动化后门 | `XSYS4_AUTO_RUNPARTY` | `src/vm.c:7111` | [后门] 地图起来后直接调 Scenes::RunParty(1)，绕开地图 UI 直进编队界面；值=延迟毫秒 |
 | 自动化后门 | `XSYS4_AUTO_SKILL` | `src/vm.c:2690` | [D349/D373 诊断，默认关] 值=`<frames>[:<x>,<y>|:#<index>|:card|:cards]`。到点后派发技能卡：给坐标按子树选卡、`#n` 按序号、`card` 用第一个 BattleCardButton 的 (cardId,skillIndex) 直接调 SceneBattle@OnClickSkill、`cards` 每 600 帧轮流让每个卡放一次（最多 8 次）。用于把「链路问题」和「命中问题」分开验证 |
 | 自动化后门 | `XSYS4_AUTO_SKILL_MODE` | `src/vm.c:2999` | [D368 诊断，默认关] =lambda 时 `XSYS4_AUTO_SKILL` 用原来的 lambda 派发（37029）而不是直接调 OnClickSkill，用来 A/B 对比两条路 |
 | 自动化后门 | `XSYS4_NO_LAYER_COVER` | `src/parts/parts.c:1905` | 关闭「视觉地板」优化（怀疑遮挡算错时用） |
@@ -148,7 +148,7 @@
 | 其它 | `XSYS4_DUMP_TOPS` | `src/vm.c:4289` | 〔摘〕「条件是真是假」，而这类「条件永远为假」正是最难查的一类。 |
 | 其它 | `XSYS4_EIP_GATE` | `src/parts/input.c:153` | SetEnableInputProcess 门控总闸；=0 回退到"输入组件不门控"（D496） |
 | 其它 | `XSYS4_ENV_DBG` | `src/vm.c:4848` | — |
-| 其它 | `XSYS4_EXIT_DBG` | `src/vm.c:7472` | 〔摘〕走完了。 |
+| 其它 | `XSYS4_EXIT_DBG` | `src/vm.c:7490` | 〔摘〕走完了。 |
 | 其它 | `XSYS4_EX_DBG` | `src/hll/MainEXFile.c:527` | 〔摘〕所有任务都会被判成地图任务、剧情整段跳过——所以必须能看见。 |
 | 其它 | `XSYS4_EX_DUMP` | `src/parts/activity.c:919` | 按部件名 dump 整棵 EX 子树（查「尺寸」「表示領域」写在哪个键上）；值=部件名 |
 | 其它 | `XSYS4_EX_LAYOUT_BY_CONFIG` | `src/parts/activity.c:1011` | [诊断] 真布局盒（EX 声明 `レイアウトボックス`）按 `配置` 字段重排（0=FREE/1=纵向/2=横向），而不是 D214 的一律 FREE。用于解决 LargeSkillButton/CardApView 这类「子部件座标全在 (0,0)」的容器底板不显示 |
@@ -186,6 +186,7 @@
 | 其它 | `XSYS4_GL_DBG` | `src/video.c:269` | [诊断] 启动时打印实际 GL vendor/renderer/version —— 判断有没有用上硬件加速的唯一硬证据（llvmpipe=软件，Mesa Intel=硬件） |
 | 其它 | `XSYS4_GSAVE_DBG` | `src/savedata.c:821` | 〔摘〕所以按可打印的类型名分类。 |
 | 其它 | `XSYS4_GSAVE_TIME` | `src/savedata.c:571` | gsave 装载四级节拍探针（enter/数组/记录/全局计时，D498 大存档挂起定位） |
+| 其它 | `XSYS4_HANG_DBG` | `src/vm.c:6952` | 〔摘〕也会触发，别设成 3 次。 |
 | 其它 | `XSYS4_HEAP_LIVE_LIMIT` | `src/heap.c:107` | 堆存活槽上限，超了报警 |
 | 其它 | `XSYS4_HLL_ARGDBG` | `src/ffi.c:985` | 打印 HLL 调用的实际参数值（排查"参数顺序/位宽错"时用） |
 | 其它 | `XSYS4_HLL_HIST` | `src/vm.c:146` | — |
@@ -212,7 +213,7 @@
 | 其它 | `XSYS4_MOUSE_DBG` | `src/input.c:436` | [诊断] 打印 SDL 按钮事件（btn / state / clicks / pos / windowID）。用来二分「X 层没把 ButtonPress 交给 SDL」和「SDL 收到了但引擎丢边沿」：同一配方下无 `key:Shift_L` 激活时 `[mouse]` 一条都没有（`s27`），加激活后立即出现并点中 `900000716`（`s26`） |
 | 其它 | `XSYS4_MOVIE_DBG` | `src/hll/PartsEngine.c:4145` | PartsMovie 族（部件内嵌视频）的创建/轮询轨迹（D497） |
 | 其它 | `XSYS4_MSGF_FIX` | `src/hacks.c:328` | [D204] AIN v12 无 MSGF 段时按函数名把 msgf 解析到 "message"/3（Rance10: fno 6100）；默认开启，=0 关闭做 A/B |
-| 其它 | `XSYS4_MSGQ_DBG` | `src/parts/message.c:196` | 〔摘〕对其它值走 member1[delegate_index]。分派打空炮时必须先知道走的哪条。 |
+| 其它 | `XSYS4_MSGQ_DBG` | `src/parts/message.c:199` | 〔摘〕对其它值走 member1[delegate_index]。分派打空炮时必须先知道走的哪条。 |
 | 其它 | `XSYS4_MSGWIN_DBG` | `src/hll/PartsEngine.c:50` | [诊断] 打印消息窗口配置族 setter 的触达与实参（Active/Text/CGName/FlatName/TextArea/OriginPosMode/Space/Speed），每个函数限 20 条；用来判定「空桩是不是真被调用」 |
 | 其它 | `XSYS4_MSGWIN_FRAME_DBG` | `src/parts/render.c:1292` | [诊断] 打印消息窗口底板 CG（1920x300~500）是否进入 parts_render 及其 origin_offset / 准入字段；用来区分「没到渲染」与「画了看不见」 |
 | 其它 | `XSYS4_MSGWIN_FRAME_Z` | `src/parts/activity.c:1315` | [诊断] 消息窗口底板 frame 部件的 z 基线（默认 4900）。用来 A/B「底板到底画没画」：设 1 会让它排到地图后面，底部像素会明显变化 |
@@ -220,9 +221,10 @@
 | 其它 | `XSYS4_MSGWIN_TEXT_BASELINE` | `src/parts/activity.c:1345` | [诊断] 消息窗口正文 y 补偿一个字号（默认开）。`文本エリア.y` 是「首行顶边距窗口顶」，而文本件的 `origin_offset.y` 已是 `-字形高`，不补偿会高出整一个字，正文上半被名牌盖住（`s126` 的「半个字」）；`=0` 回退 |
 | 其它 | `XSYS4_MSG_DBG` | `src/parts/message.c:45` | 〔摘〕只打非悬停消息，否则前 60 条全被 MOUSE_ON 占满，看不到点击。 |
 | 其它 | `XSYS4_MSG_LINES` | `src/hll/PartsEngine.c:4014` | [诊断] 每开始一句新台词打一行 `[msgline] N`。剧情推进的唯一可量化指标，也是「卡住了没」的判据（D319） |
-| 其它 | `XSYS4_MSG_NO_SENTINEL` | `src/parts/message.c:192` | 〔摘〕这就是那个把 SceneStack@WaitFrame 卡死的忙循环。 |
-| 其它 | `XSYS4_MSG_POPDBG` | `src/parts/message.c:156` | 〔摘〕这里能看到 type=5 被 pop 而没有对应 dispatch。 |
-| 其它 | `XSYS4_MSG_TRACE` | `src/parts/message.c:171` | — |
+| 其它 | `XSYS4_MSG_NO_SENTINEL` | `src/parts/message.c:195` | 〔摘〕这就是那个把 SceneStack@WaitFrame 卡死的忙循环。 |
+| 其它 | `XSYS4_MSG_POPDBG` | `src/parts/message.c:158` | 〔摘〕pop」时必须看到它）。配 XSYS4_MSG_POPDBG_ON=1 才打印 MOUSE_ON。 |
+| 其它 | `XSYS4_MSG_POPDBG_ON` | `src/parts/message.c:159` | 〔摘〕pop」时必须看到它）。配 XSYS4_MSG_POPDBG_ON=1 才打印 MOUSE_ON。 |
+| 其它 | `XSYS4_MSG_TRACE` | `src/parts/message.c:174` | — |
 | 其它 | `XSYS4_NODE_DIGIT` | `src/vm.c:4169` | [D209 诊断后门] 把 QuestMapParamAccessor 的 KeyBase 末尾全角编号末位改成 0-9（００１→００２），仅在 23486 事件链生效；默认关，用于验证战斗链，不是正常游戏路径 |
 | 其它 | `XSYS4_NO_AUDIO` | `src/audio_mixer.c:727` | 关闭音频输出 |
 | 其它 | `XSYS4_NO_AUTO_MOTION` | `src/parts/motion.c:102` | =1 关闭「首次加 motion 自动开表」（D186），用于 motion 自动启动的 A/B |
@@ -259,9 +261,9 @@
 | 其它 | `XSYS4_SPLIT_DBG` | `src/hll/String.c:655` | [D292 诊断] 打印 `String.Split` 前 60 次调用的入参（原串 / 分隔符 / contain 标志）与切出的每一段；判据是「切开再拼回是否恒等」——立绘名少一个 `／` 就是这里 contain=1 没生效 |
 | 其它 | `XSYS4_SP_BALANCE` | `src/vm.c:3795` | 每次函数返回校验栈平衡（失败即报） |
 | 其它 | `XSYS4_SP_TRACE` | `src/vm.c:4490` | 环形缓冲记录栈指针变化，抓"玄学栈漂移" |
-| 其它 | `XSYS4_SP_WATCH` | `src/vm.c:7205` | 监视指定帧的栈指针 |
+| 其它 | `XSYS4_SP_WATCH` | `src/vm.c:7223` | 监视指定帧的栈指针 |
 | 其它 | `XSYS4_SRDBG` | `src/vm.c:5888` | 〔摘〕绝不会是一张活着的 ARRAY_PAGE。 |
-| 其它 | `XSYS4_STACK_SAMPLE` | `src/vm.c:7254` | 周期性采样调用栈（抓谁在长时间占栈） |
+| 其它 | `XSYS4_STACK_SAMPLE` | `src/vm.c:7272` | 周期性采样调用栈（抓谁在长时间占栈） |
 | 其它 | `XSYS4_STRICT_REF` | `src/vm.c:432` | 严格引用计数检查（会把"漏 ref/unref"变成显式报错） |
 | 其它 | `XSYS4_STRUCT_LIST` | `src/vm.c:6913` | [诊断] 按名字子串列出结构体及成员名。查「m7 是委托表还是哈希表」时，成员名比任何猜测都直接 |
 | 其它 | `XSYS4_STR_INT_DBG` | `src/hll/String.c:59` | 〔摘〕"取对了但字符串已经死了"。 |

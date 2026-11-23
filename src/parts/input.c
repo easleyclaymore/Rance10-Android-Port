@@ -1016,8 +1016,15 @@ void PE_BeginInput(void)
 	parts_began_click = true;
 }
 
+/* [D499] 输入心跳：AIN 主循环每帧调一次 EndInput。帧泵用它判断
+ * 「AIN 是否卡在某条委托/循环里」（XSYS4_HANG_DBG 看门狗，见 vm.c）。 */
+static uint32_t last_endinput_tick;
+
+uint32_t PE_last_endinput_tick(void) { return last_endinput_tick; }
+
 void PE_EndInput(void)
 {
+	last_endinput_tick = SDL_GetTicks();
 	/* [D158] 同样不设配额：只有"这一帧真的捕获到点击"才打。
 	 * 这行和 GetClickNumber 的非零行成对出现才对；只有 EndInput 有、
 	 * GetClickNumber 没有 ⇒ AIN 在 DoInput 窗口里没轮询点击号。 */

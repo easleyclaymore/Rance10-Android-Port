@@ -306,6 +306,8 @@ struct string *PE_GetProxyFlatSound(int parts_no, struct string *old_name,
 		int state);
 void PE_ReturnChangeFlatSound(int parts_no, struct string *old_name, int state);
 void PE_ClearChangeFlatSound(int parts_no, int state);
+/* [D499] 输入心跳（EndInput 每帧被 AIN 主循环调用；帧泵看门狗用） */
+uint32_t PE_last_endinput_tick(void);
 /* [D496] 输入处理参与开关（默认 true；input.c 对组件类型 4/7/11 门控） */
 void PE_set_enable_input_process(int parts_no, bool enable);
 bool PE_get_enable_input_process(int parts_no);

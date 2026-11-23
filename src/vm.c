@@ -6944,6 +6944,24 @@ void vm_frame_pump(void)
 	vm_pump_widget_selftest();
 	vm_pump_auto_skill();
 	vm_pump_auto_click(now);
+	/* [D499] AIN 主循环停摆看门狗（XSYS4_HANG_DBG）：EndInput 每帧由
+	 * AIN 主循环调用；停摆 >5s ⇒ VM 卡在某条委托/循环里（D498 设置菜单
+	 * 滑条点击实测：CAP 之后无 POLL/CLR，CPU 满速自旋）。每 5s dump 一次
+	 * AIN 调用栈；上限要留足——引导期的网络确认 WaitForClick（正常长等）
+	 * 也会触发，别设成 3 次。 */
+	if (getenv("XSYS4_HANG_DBG")) {
+		static uint32_t hang_last_dump;
+		static int hang_dumps;
+		uint32_t last_input = PE_last_endinput_tick();
+		if (last_input && now - last_input > 5000 && hang_dumps < 12
+				&& (!hang_last_dump || now - hang_last_dump >= 5000)) {
+			hang_last_dump = now;
+			hang_dumps++;
+			NOTICE("[hang] no EndInput for %ums — AIN 主循环停摆，dump #%d",
+			       now - last_input, hang_dumps);
+			vm_stack_trace();
+		}
+	}
 	/* [MEM] XSYS4_MEM_STAT=1：每约 2 秒打印一次虚拟机堆的构成。
 	 * 只看 RSS 分不清「槽泄漏（堆数组增长）」「页泄漏」「字符串泄漏」，
 	 * 这里遍历堆，把三类分别数出来。开销有上限：

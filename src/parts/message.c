@@ -152,8 +152,11 @@ void PE_PopMessage(void)
 		return;
 	struct parts_message *msg = STAILQ_FIRST(&msg_queue);
 	/* [D115] XSYS4_MSG_POPDBG=1：谁把消息弹掉了。点击消息若被悬停处理吃掉，
-	 * 这里能看到 type=5 被 pop 而没有对应 dispatch。 */
-	if (getenv("XSYS4_MSG_POPDBG") && msg->type != PARTS_MSG_MOUSE_ON)
+	 * 这里能看到 type=5 被 pop 而没有对应 dispatch。
+	 * [D499] 临时放开 MOUSE_ON（原排除是为省日志；查「悬停消息是否被
+	 * pop」时必须看到它）。配 XSYS4_MSG_POPDBG_ON=1 才打印 MOUSE_ON。 */
+	if (getenv("XSYS4_MSG_POPDBG") &&
+	    (msg->type != PARTS_MSG_MOUSE_ON || getenv("XSYS4_MSG_POPDBG_ON")))
 		NOTICE("[mpop] type=%d parts=%d", msg->type, msg->parts_no);
 	STAILQ_REMOVE_HEAD(&msg_queue, entry);
 	free(msg);
