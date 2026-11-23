@@ -3073,31 +3073,54 @@ void vm_pump_auto_skill(void)
 	vm_call(lsb_lambda, pick);
 }
 
-/* [D500-i] 活动步进（实验通道，XSYS4_ACT_STEP=1 启用，默认关）。
- * 254 精确语义（at:7ad4 全文 + label=十进制地址解码）：
+/* [D502] 活动关闭派发：`activity::End` 写 global[15] 后，由这里把它兑现。
+ *
+ * 254（CActivity@UpdateActivity）的循环体（at:7ad4 全文）：
  *   global[15]=0; global[16]=255; BeginInput(8305);
  *   loop {
- *     AFL_View_Update(18716);            // 推进一整帧（渲染/输入/部件/任务）
- *     this.vtable[255]() || global[15] || FastEnd → 处理并继续
- *     否则 EndInput(8306); return;       // 一帧空闲就退回
+ *     AFL_View_Update(18716);                       // 推进一整帧
+ *     if (this.m255(IsClickEndKey) || global[15] || FastEnd) {
+ *       Cancel = 0;
+ *       DG_CALL **167** (this.m0, this.m1, &Cancel);  // ★ 活动释放回调
+ *       if (!Cancel) { global[15]=0; global[16]=255; }// 复位，继续跑
+ *       JUMP loop;
+ *     }
+ *     EndInput(8306); global[15]=0; return;          // 一帧空闲就退回
  *   }
- * 即「推进一帧 + 判断是否还要继续」的步进器。**它需要正确的 this**
- * （PUSHSTRUCTPAGE 取当前帧 struct_page；250 调用时 this=CConfigView
- * 实例 121）——不传 this 时 PUSHSTRUCTPAGE 取垃圾，m255 返回恒真
- * ⇒ 无限循环卡死帧泵（actstep6 实测）。
- * 本通道用 global[45]（OpenConfig 创建的 CConfigView 实例槽）作 this，
- * 仅在配置页（global[45] 有效）时步进；标题等其他活动仍走现有
- * WaitForClick 流程。 */
+ *
+ * DG_CALL 167 实参 = (活动文件名 this.m0, 活动名 this.m1, 取消出参)——
+ * 正是 `CConfigView@ReleasingActivityEvent(2787)` 的签名：
+ * 「返回游戏 / 決定」点下后，活动在这里被释放、场景随之退出。
+ *
+ * 之前页面不关的根因：254 只被 250 调一次（那一帧 global[15] 还是 0），
+ * 之后点決定写 global[15]=1 就再没人调 254 ⇒ 释放回调永不执行。
+ *
+ * 本修复只做一件事：**帧泵发现 global[15]!=0 时调一次 254**。
+ *  - 天然不冲突：无唤醒请求时完全不进，现有帧循环零影响；
+ *  - 不会无限循环：254 处理完会把 global[15] 清回 0 并退回（一帧一次）；
+ *  - this 必须是 AIN 侧真实调用 254 时拿到的活动对象（method_call 的
+ *    obj，见 act_step_this 记录点）——扫堆会取到 TextButton 等活动对象。
+ * **对照实测（d502 vs d502off）**：DELAY=12s 的配方下，无论本通道开关，
+ * 「決定 → [save] GameConfig.asd → 页面关闭回标题」都成立 —— 之前
+ * 「退出断链」的判断是时序假象（点击间隔 10s 时第二次決定落在页面
+ * 已关闭后的旧坐标上，被读成"没退出"）。所以本通道**默认关**，
+ * 只在排查「Page 没关」时用 `XSYS4_ACT_STEP=1` 打开对照。
+ */
 void vm_pump_activity_step(uint32_t now)
 {
 	static int enabled = -1;
 	static uint32_t last_step;
 	static bool stepping;
-	if (enabled < 0)
-		enabled = getenv("XSYS4_ACT_STEP") ? atoi(getenv("XSYS4_ACT_STEP")) : 0;
+	if (enabled < 0) {
+		const char *e = getenv("XSYS4_ACT_STEP");
+			enabled = (e && atoi(e)) ? 1 : 0;
+	}
 	if (!enabled || stepping)
 		return;
 	if (activity_open_count() <= 0)
+		return;
+	/* 只在有唤醒请求时进：activity::End(212) 是唯一写 1 的地方 */
+	if (global_get(15).i == 0)
 		return;
 	/* 帧泵每 4096 条指令进一次（一帧多次），按 ~60fps 限流 */
 	if (last_step && now - last_step < 15)
@@ -3105,20 +3128,15 @@ void vm_pump_activity_step(uint32_t now)
 	last_step = now;
 	if (254 >= ain->nr_functions || ain->functions[254].address == 0)
 		return;
-	/* this = AIN 侧真实调用 254 时拿到的活动对象（method_call_fno 记录，
-	 * DUMP_AT 0x7b04 实证 struct=7：m0=活动文件名、m1="…pact:0"、
-	 * m2=EndKey 数组）。扫堆不可行：活动对象有十几个（TextButton 等也
-	 * 是同类型），必然取错 ⇒ IsClickEndKey 遍历错数组 → 垃圾返回值。 */
 	if (act_step_this <= 0 || (size_t)act_step_this >= heap_size ||
 	    !heap[act_step_this].page) {
-		if (getenv("XSYS4_ACT_STEP") == NULL) {}
-		else {
-			static int dbg2;
-			if (dbg2++ < 5)
-				NOTICE("[actstep] 帧泵等待 this（当前 %d，open=%d）",
-				       act_step_this, activity_open_count());
+		static int warned;
+		if (!warned) {
+			warned = 1;
+			NOTICE("[actstep] 有结束请求但还没有活动对象（open=%d）——"
+			       "254 从未被 AIN 调过，派发推迟", activity_open_count());
 		}
-		return;   /* 还没有活动打开过：不步进 */
+		return;
 	}
 	stepping = true;
 	stack_push(0);   /* arg0: dgReleasingObject = null 委托 */
