@@ -66,6 +66,8 @@ int bgm_unprepare(int id);
 int wav_play(int id);
 int bgm_play(int id);
 int wav_stop(int id);
+int wav_stop_all(void);   /* [D498] 停全部 wav 通道 */
+
 int bgm_stop(int id);
 bool wav_is_playing(int id);
 bool bgm_is_playing(int id);

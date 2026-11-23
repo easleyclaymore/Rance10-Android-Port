@@ -24,6 +24,7 @@
 #include "vm/page.h"
 #include "parts.h"
 #include "parts/parts_internal.h"   /* [D396] struct parts_widget */
+#include "audio.h"                   /* [D498] wav_stop_all */
 #include "asset_manager.h"
 #include "system4/archive.h"
 #include "system4/ex.h"
@@ -489,7 +490,15 @@ static int PartsEngine_PartsFunc(int func_id, struct page **array_int,
 #undef REQUIRE_INTS
 }
 
-HLL_WARN_UNIMPLEMENTED(, void, PartsEngine, StopSoundWithoutSystemSound);
+/* [D498] 停掉 PartsEngine 管的音效且**不播**「系统声」。
+ * 语义出处：设置界面打开时 AIN 调它（实测 cf 系列每次都打 Unimplemented）。
+ * 原来是 warn 桩，UI 音效在设置打开后继续响。 */
+static void PartsEngine_StopSoundWithoutSystemSound(void)
+{
+	int stopped = wav_stop_all();
+	if (getenv("XSYS4_FLAT_DBG"))
+		NOTICE("[snd] StopSoundWithoutSystemSound: stopped %d", stopped);
+}
 
 static void PartsEngine_PreLink(void);
 

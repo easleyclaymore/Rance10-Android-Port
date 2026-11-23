@@ -1381,6 +1381,20 @@ static int build_part(struct activity_part *part, int parent_no)
 			free(sep);
 			free(suffix);
 		}
+		/* [D498] flat 两种变体都失败、但部件带 ＣＧ名 时回退 CG 装载。
+		 * 实例：asra 设置页面的滑块 `SYS_信息速度滑块`（type=3），EX 的
+		 * フラット名 是目录名 `设置\シス／设置／计量`（档案里只有
+		 * `计量／栏／{DOWN,オン,一般,背景}.flat` 四个状态件），而它的
+		 * ＣＧ名 `シス／设置／计量` 指向 **AJP 动画**（Rance10CG2.
+		 * `シス／设置／计量.ajp`）——同页的「消息速度下地」就是走 CG
+		 * 分支用同一个 ajp 装载成功的（928x164）。 */
+		if (!flat_ok && part->cg_name && *part->cg_name) {
+			struct string *cg = cstr_to_string(part->cg_name);
+			flat_ok = PE_SetPartsCG(part->parts_no, cg, part->deform, 1);
+			free_string(cg);
+			ACT_DEBUG("[act] %s flat 失败回退 CG '%s' set=%d",
+				   part->name, part->cg_name, flat_ok);
+		}
 		ACT_DEBUG("[act] %s parts_no=%d pos=(%d,%d,%d) gpos=(%d,%d) show=%d alpha=%d "
 			  "mag=(%.2f,%.2f) click=%d flat='%s' set=%d size=%dx%d",
 			  part->name, part->parts_no, (int)part->x, (int)part->y,

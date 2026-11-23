@@ -257,6 +257,19 @@ static int pool_stop(struct id_pool *pool, int id)
 	return channel_stop(ch);
 }
 int wav_stop(int id) { return pool_stop(&wav, id); }
+
+/* [D498] 停掉 wav 池全部活动通道。`PartsEngine.StopSoundWithoutSystemSound`
+ * 用：设置界面打开时停掉 UI 音效且不播「系统声」。 */
+int wav_stop_all(void)
+{
+	int stopped = 0;
+	for (int id = id_pool_get_first(&wav); id >= 0;
+	     id = id_pool_get_next(&wav, id)) {
+		if (pool_stop(&wav, id))
+			stopped++;
+	}
+	return stopped;
+}
 int bgm_stop(int id) { return pool_stop(&bgm, id); }
 
 static int pool_is_playing(struct id_pool *pool, int id)
