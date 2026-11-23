@@ -16,6 +16,7 @@
 #include "asset_manager.h"
 #include "audio.h"
 #include "input.h"
+#include "parts.h"
 #include "xsystem4.h"
 #include "parts_internal.h"
 #include "vm.h"
@@ -661,6 +662,37 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	/* [D285 同上] hover 与 click 必须用同一判据（D261/D262 同型坑，已踩四次）。 */
 	if (getenv("XSYS4_CLICK_SKIP_INVISIBLE") && parts->global.alpha <= 0)
 		click_eligible = false;
+	/* [D499] 捕获转移：本帧点击已被捕获、而本部件（同样有资格）在
+	 * 视觉上更靠上 ⇒ 转移捕获。两种「更靠上」：
+	 *  ① 后代：本部件是已捕获者的后代（父子重叠，深处优先，D337 同源）；
+	 *  ② 同层 z 更高：兄弟重叠（配置页滑条行 900000283 z=43 与把手
+	 *     900000285 z=45 平级重叠），渲染时 z 高者画在上面，点击就该给它。
+	 *
+	 * 证据链（FSL_DBG 实测）：把手委托 f2801（CConfigView@ClickEvent）
+	 * 注册在 285 的 FunctionSet 上；部件表按插入序遍历，z 更低的 283
+	 * 先捕获 ⇒ CLICK_AIN 发给无委托的 283 ⇒ AIN CallDelegate 判
+	 * 「无委托」兜底删除 ⇒ 值切换点击永远丢失。 */
+	if (*click_consumed && cur_clicking && !prev_clicking && click_down_parts
+			&& click_eligible) {
+		bool take = PE_PartsIsUnder(parts->no, click_down_parts);
+		if (!take) {
+			struct parts *cap = parts_try_get(click_down_parts);
+			take = cap && cap->controller_no == parts->controller_no
+			    && parts->local.z > cap->local.z;
+		}
+		if (take) {
+			int prev_cap = click_down_parts;
+			click_down_parts = parts->no;
+			drag_parts = parts;
+			drag_initial_pos = parts->local.pos;
+			drag_start_cursor = cur_pos;
+			// KEY_TRIGGER 补给最终收点击者（祖先那条已发，无委托时无害）
+			parts_msg_push(parts, PARTS_MSG_KEY_TRIGGER, "i", VK_LBUTTON);
+			if (getenv("XSYS4_CLICK_FLOW"))
+				NOTICE("[flow] reCAP parts=%d <- %d (捕获转移)",
+				       parts->no, prev_cap);
+		}
+	}
 	if (!click_eligible || *click_consumed) {
 		if (!was_hovered)
 			audio_play_sound(parts->on_cursor_sound);
