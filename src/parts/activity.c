@@ -1411,6 +1411,37 @@ static int build_part(struct activity_part *part, int parent_no)
 			free(bar);
 			free(suffix);
 		}
+		/* [D505] 三态美术：flat 一般 装进 DEFAULT 后，把 オン/DOWN 分别
+		 * 装进 HOVERED(2)/CLICKED(3)。PE_SetPartsFlat 的 state 是 1-based
+		 * （内部 --state），parts 层的 hover/click 检测会自动切状态，
+		 * 不需要我们在 input 里手动换图。 */
+		if (flat_ok && part->type == ACT_COMP_HSCROLLBAR) {
+			static const struct { const char *zh; int state; } tri[] = {
+				{ "オン", 2 },   /* HOVERED */
+				{ "DOWN", 3 },   /* CLICKED */
+			};
+			char *sep = utf2sjis("／", strlen("／"));
+			char *bar = utf2sjis("栏", strlen("栏"));
+			if (sep && bar) {
+				for (int t = 0; t < 2; t++) {
+					char *st = utf2sjis(tri[t].zh, strlen(tri[t].zh));
+					if (!st)
+						continue;
+					char *v = xmalloc(strlen(part->flat_name)
+							  + strlen(sep) + strlen(bar)
+							  + strlen(sep) + strlen(st) + 1);
+					sprintf(v, "%s%s%s%s%s", part->flat_name,
+						sep, bar, sep, st);
+					bool ok = set_part_flat(part->parts_no, v, tri[t].state);
+					ACT_DEBUG("[act] %s HSCROLLBAR 状态%d '%s' set=%d",
+						  part->name, tri[t].state, v, ok);
+					free(v);
+					free(st);
+				}
+			}
+			free(sep);
+			free(bar);
+		}
 		/* [D498] flat 两种变体都失败、但部件带 ＣＧ名 时回退 CG 装载。
 		 * 实例：asra 设置页面的滑块 `SYS_信息速度滑块`（type=3），EX 的
 		 * フラット名 是目录名 `设置\シス／设置／计量`（档案里只有
