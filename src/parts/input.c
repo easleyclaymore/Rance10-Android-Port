@@ -268,6 +268,16 @@ void parts_input_reset_drag(struct parts *parts)
 		drop_target = NULL;
 }
 
+/* [D500-b] 父号判定：bind 前用 pending_parent，bind 后用 parent 指针。 */
+static int d500_parent_no(const struct parts *p)
+{
+	if (!p)
+		return -1;
+	if (p->parent)
+		return p->parent->no;
+	return p->pending_parent;
+}
+
 static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clicking,
 		int passed_time, bool *hover_consumed, bool *click_consumed)
 {
@@ -744,10 +754,42 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	 * ip=0xAA892 = 2790 的 DG_CALL），lambda 从引擎读 scroll_rate 再调
 	 * config::SetMessageSpeedRate 等 —— 引擎只管更新 rate，值域换算、
 	 * UI 回显与持久化全部由 AIN 侧既有链路完成。 */
-	if (click_eligible && (cur_clicking || prev_clicking)
-			&& PE_GetComponentType(parts->no, parts->state) == 3) {
-		struct parts_widget *w = PE_widget(parts->no);
-		Rectangle hhb = parts_hitbox_at(parts, parts->state);
+	int d500_ct = PE_GetComponentType(parts->no, parts->state + 1);
+	struct parts_widget *d500_w = NULL;
+	Rectangle d500_hb = parts_hitbox_at(parts, parts->state);
+	int d500_no = 0;
+	if (d500_ct == 3) {
+		d500_w = PE_widget(parts->no);
+		d500_no = parts->no;
+	} else {
+		/* [D500-b] 滑块逻辑件（组件类型 3）尺寸为 0 时（'SYS_信息速度
+		 * 滑块' 等，ACT_PART_DBG 实证 w=0 h=0），点击全部落在**行容器**
+		 * 上 —— 在兄弟部件里找滑块本体，把点击换算应用到它的 scroll。
+		 * 滑块的命中区域 = 行容器的 hitbox（值条整条可点，与原版
+		 * 「点值条任意处值跳到该处」的可观察行为一致）。 */
+		if (getenv("XSYS4_CLICK_FLOW") && cur_clicking && !prev_clicking)
+			NOTICE("[flow] d500 no=%d ct=%d pno=%d parent=%p",
+			       parts->no, d500_ct, d500_parent_no(parts),
+			       (void *)parts->parent);
+		int pno = d500_parent_no(parts);
+		struct parts *p2;
+		PARTS_LIST_FOREACH(p2) {
+			if (p2 == parts || d500_parent_no(p2) != pno)
+				continue;
+			if (p2->no == 900000284 || p2->no == 900000292 || p2->no == 900000300)
+				NOTICE("[flow] d500 cand no=%d ct=%d pno=%d st=%d",
+				       p2->no, PE_GetComponentType(p2->no, parts->state + 1),
+				       d500_parent_no(p2), parts->state);
+			if (PE_GetComponentType(p2->no, parts->state + 1) != 3)
+				continue;
+			d500_w = PE_widget_peek(p2->no);
+			d500_no = p2->no;
+			break;
+		}
+	}
+	if (click_eligible && (cur_clicking || prev_clicking) && d500_w) {
+		struct parts_widget *w = d500_w;
+		Rectangle hhb = d500_hb;
 		if (w && hhb.w > 0) {
 			int track = hhb.w - w->scroll.head_size - w->scroll.tail_size;
 			if (track > 0) {
@@ -761,18 +803,27 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 				w->scroll.scroll_pos = (int)(r * w->scroll.total_size);
 				if (getenv("XSYS4_CLICK_FLOW"))
 					NOTICE("[flow] hscroll no=%d rate=%f pos=%d",
-					       parts->no, r, w->scroll.scroll_pos);
+					       d500_no, r, w->scroll.scroll_pos);
 			}
 			/* 按住/释放沿都在本部件上：标记拖动中，挡住 BeginUpdate
 			 * 的「config→部件」覆盖（见 user_active 注释）。 */
 			w->scroll.user_active = true;
 		}
 	} else if (!cur_clicking && !prev_clicking) {
-		/* 释放后的第一帧：清除全部滑动条的用户操作标记（无从知道
-		 * 之前按的是哪个，全体清一次代价为零）。 */
+		/* 释放后的第一帧：清除用户操作标记（悬停通常仍在值条上，
+		 * 本部件或其兄弟滑块都可能持有标记，两处都清）。 */
 		struct parts_widget *w = PE_widget_peek(parts->no);
 		if (w)
 			w->scroll.user_active = false;
+		int pno = d500_parent_no(parts);
+		struct parts *p2;
+		PARTS_LIST_FOREACH(p2) {
+			if (p2 == parts || d500_parent_no(p2) != pno)
+				continue;
+			struct parts_widget *w2 = PE_widget_peek(p2->no);
+			if (w2)
+				w2->scroll.user_active = false;
+		}
 	}
 }
 
