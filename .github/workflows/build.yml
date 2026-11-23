@@ -57,23 +57,26 @@ jobs:
         # 手册检查在无游戏目录时会自动 SKIP，不影响结论。
         run: python3 tools/check_core_deps.py
 
-      - name: Gate — offline tools self-test (no game data needed)
-        # 无游戏也成立的子集：离线工具的用法校验路径（usage + 非 0 退出）。
-        # 只用 `tools/bin/` 里随仓库分发的预构建产物；CI 不构建它们。
+      - name: Gate — scripts self-test (no game data needed)
+        # 无游戏也成立的子集。三项都能在干净 clone 上真实执行：
+        #   ① 开关表自洽（每个 XSYS4_* 有用途说明）
+        #   ② 文档数字自洽（STATS/README 注入块与源码一致）
+        #   ③ smoke.sh 的错误路径：没有游戏目录时必须退出码 2 且给出明确原因，
+        #      而不是"看起来跑过了"。
         run: |
           set -x
-          for t in ain_at ain_audit ain_xref; do
-            if [ -x "tools/bin/$t" ]; then
-              tools/bin/$t >/dev/null 2>&1 && { echo "$t 无参数却返回 0"; exit 1; } || true
-              echo "$t usage 路径 OK"
-            else
-              echo "$t 未随仓库分发（跳过）"
-            fi
-          done
-          # 开关表与文档数字的自洽（gen-switches 是 gen-doc-numbers 的一部分，
-          # 这里单独跑一次给出更直接的失败信息）
-          python3 tools/gen-switches.py --check >/dev/null && echo "switches 全标注" \
-            || { echo "有未标注开关（见 docs/SWITCHES.md 的「用途」列 — 项）"; exit 1; }
+          python3 tools/gen-switches.py --check
+          python3 tools/gen-doc-numbers.py --check
+          set +e
+          RANCE10_GAME_DIR=/nonexistent-game-dir bash tools/run/smoke.sh quick >/tmp/smoke_nogame.log 2>&1
+          rc=$?
+          set -e
+          test "$rc" = "2" || { echo "smoke.sh 缺游戏目录应返回 2，实际 $rc"; cat /tmp/smoke_nogame.log; exit 1; }
+          # portability-gate 不构建引擎，先命中「找不到引擎二进制」是正常的；
+          # build job 里引擎存在时会命中「找不到游戏目录」。两者都必须 rc=2。
+          grep -qE "找不到引擎二进制|找不到游戏目录" /tmp/smoke_nogame.log \
+            || { echo "smoke.sh 环境缺失时没有给出可读原因"; cat /tmp/smoke_nogame.log; exit 1; }
+          echo "smoke.sh 环境缺失错误路径 OK（rc=2）"
 
   build:
     name: Build linux-x86_64
