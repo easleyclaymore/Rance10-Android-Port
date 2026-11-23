@@ -109,5 +109,40 @@ int main(int argc, char **argv)
 		}
 		return 0;
 	}
+	if (!strcmp(mode, "gscan")) {
+		/* [D500] gscan <global_no>：全文扫描「PUSHGLOBALPAGE; PUSH <no>; REF」
+		 * 序列（读），以及紧跟 ASSIGN/S_ASSIGN 的（写）。回答「这个全局
+		 * 变量谁读谁写」——例如 activity::End 写的 global[15] 找读者。 */
+		if (argc < 4) { fprintf(stderr,"usage: gscan <global_no>\n"); return 1; }
+		int want = atoi(argv[3]);
+		const char *func = "?";
+		for (int fi=0;fi<ain->nr_functions;fi++) {
+			struct ain_function *f=&ain->functions[fi];
+			if (!f->name || f->address==0 || f->address+2>ain->code_size) continue;
+			size_t ip=f->address, end=(fi+1<ain->nr_functions && ain->functions[fi+1].address>f->address)
+				? ain->functions[fi+1].address : ain->code_size;
+			func=f->name;
+			for(int i=0;i<200000 && ip+2<=end;i++) {
+				int raw=rd16(ain->code+ip); int op=raw & ~0xC000;
+				if(op<0||op>=NR_OPCODES) break;
+				if(op==0x061 /*FUNC*/ || op==0x062 /*EOF*/) break;
+				if(op==0x004 /*PUSHGLOBALPAGE*/ && ip+8<=ain->code_size
+				   && rd32(ain->code+ip+2)==want) {
+					/* 向后看 3 条：REF=读；ASSIGN/S_ASSIGN=写 */
+					size_t p=ip+2+4; const char *kind="?";
+					for(int k=0;k<3 && p+2<=end;k++) {
+						int r2=rd16(ain->code+p); int o2=r2 & ~0xC000;
+						if(o2==0x002 /*REF*/) kind="READ";
+						else if(o2==0x019 /*ASSIGN*/||o2==0x044 /*S_ASSIGN*/) kind="WRITE";
+						else if(o2!=0x000) break;
+						p+=instruction_width(o2);
+					}
+					printf("g[%d] %-6s %s fno=%d @0x%zx\n", want, kind, func, fi, ip);
+				}
+				ip+=instruction_width(op);
+			}
+		}
+		return 0;
+	}
 	fprintf(stderr,"unknown mode %s\n",mode); return 1;
 }
