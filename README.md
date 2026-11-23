@@ -83,9 +83,12 @@ tools/env/build.sh --check     # 先看缺什么（不会开始编译）
 tools/env/build.sh             # 装齐依赖后：meson setup + ninja，产物 build/src/xsystem4
 ```
 
-`build.sh` 会依次：摘掉 `PYTHONPATH`/`PYTHONHOME` → 确认 `libsys4` 源码在位（vendored，随仓库分发）→
-幂等应用 `patches/*.patch` → 用 pkg-config 检查依赖并打印对应的 apt 包名 → `meson` + `ninja`。
-它只是把下面几步串起来，读得懂就不必用它。
+`build.sh` 会依次：摘掉 `PYTHONPATH`/`PYTHONHOME` → 确认 `libsys4` 源码在位（D503 起 vendored，
+随仓库分发、**不需要 submodule 也不需要打补丁**）→ 用 pkg-config 检查依赖并打印对应的 apt 包名 →
+`meson` + `ninja`。它只是把下面几步串起来，读得懂就不必用它。
+
+> **构建入口是 meson（`build.sh` / 手写 `meson setup`）**。根目录的 `CMakeLists.txt` 是上游遗留的
+> 备选路径，它通过 `FetchContent` 从网络拉 cglm——离线环境会卡住，**不建议用**。
 
 ### 1. 依赖
 
