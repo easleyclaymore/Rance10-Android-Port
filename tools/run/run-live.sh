@@ -294,6 +294,66 @@ click() { # click <view_x> <view_y> <button>
     xdotool mouseup "$3" >/dev/null 2>&1 || true
 }
 
+# [D508] drag <view_x1> <view_y1> <view_x2> <view_y2>：按住拖动（滑块专用）。
+#
+# click() 只有「瞬时按放」，验证不了 HSCROLLBAR 的拖动跟随——input.c 的
+# D500 分支是按 `cur_clicking || prev_clicking` 每帧从指针位置重算
+# scroll_rate 的，没有真实的按下-移动序列就永远是「点一下跳一下」。
+# 这里按「move → down → 分步 move → up」发，步间隔 ≥2 帧（llvmpipe 74ms/帧
+# → 0.15s），保证 AIN 每帧都能看到按下的指针在新位置。
+# 坐标换算与 click() 同源（窗口几何每次重算，见 D149/D178）。
+drag() {
+    local x1="$1" y1="$2" x2="$3" y2="$4"
+    refresh_wid
+    local curwid="$WID" freshwid
+    for _ in 1 2 3 4 5 6 7 8; do
+        freshwid=$(find_wid)
+        [ -n "$freshwid" ] && break
+        sleep 0.06
+    done
+    [ -n "$freshwid" ] && curwid="$freshwid"
+    local gx=0 gy=0 gw="$WIN_W" gh="$WIN_H"
+    if [ -n "$curwid" ]; then
+        local geom
+        geom=$(xdotool getwindowgeometry --shell "$curwid" 2>/dev/null) || true
+        if [ -n "$geom" ]; then
+            gx=$(echo "$geom" | awk -F= '/^X=/{print $2}')
+            gy=$(echo "$geom" | awk -F= '/^Y=/{print $2}')
+            gw=$(echo "$geom" | awk -F= '/^WIDTH=/{print $2}')
+            gh=$(echo "$geom" | awk -F= '/^HEIGHT=/{print $2}')
+        fi
+    fi
+    if [ -n "$curwid" ]; then
+        timeout -k 1 2 xdotool windowfocus --sync "$curwid" >/dev/null 2>&1 || true
+        timeout -k 1 2 xdotool windowraise "$curwid" >/dev/null 2>&1 || true
+    fi
+    local wx wy
+    local -a WX=() WY=()
+    local step
+    for step in 0 1 2 3 4 5 6 7; do
+        local vx vy
+        read -r vx vy <<< "$(awk -v a="$x1" -v b="$y1" -v c="$x2" -v d="$y2" \
+            -v n="$step" 'BEGIN{ t=n/7.0; printf "%d %d", a+(c-a)*t, b+(d-b)*t }')"
+        read -r wx wy <<< "$(awk -v x="$vx" -v y="$vy" -v ww="$gw" -v wh="$gh" \
+            -v vw="$VIEW_W" -v vh="$VIEW_H" -v gx="$gx" -v gy="$gy" 'BEGIN{
+                s = ww/vw < wh/vh ? ww/vw : wh/vh;
+                ox = (ww-vw*s)/2; oy = (wh-vh*s)/2;
+                printf "%d %d", gx+ox+x*s, gy+oy+y*s
+            }')"
+        WX+=("$wx"); WY+=("$wy")
+    done
+    timeout -k 1 2 xdotool mousemove "${WX[0]}" "${WY[0]}" >/dev/null 2>&1 || true
+    timeout -k 1 2 xdotool mousedown 1 >/dev/null 2>&1 || true
+    sleep 0.15
+    for step in 1 2 3 4 5 6 7; do
+        timeout -k 1 2 xdotool mousemove "${WX[$step]}" "${WY[$step]}" >/dev/null 2>&1 || true
+        sleep 0.15
+    done
+    timeout -k 1 2 xdotool mouseup 1 >/dev/null 2>&1 || true
+    echo "DRAG view=$x1,$y1->$x2,$y2 steps=8 wid=$curwid"
+}
+
+
 # [D222] import -window 在 GL 直绘下会拿到过期的空 backing pixmap，产出
 # 390 字节的 1-bit 全黑图：它看起来像「画面全黑」，实际是截图失败。
 # H035 就是被这张空图骗出来的假象（H031 之后第二次）。小于 2KB 一律判失败。
@@ -412,6 +472,12 @@ if [ -n "${RANCE10_LIVE_SEQ:-}" ]; then
                     click "$cx" "$cy" 1
                     sleep 1.2
                 fi
+                ;;
+            # drag:<x1,y1,x2,y2>：按住从 (x1,y1) 拖到 (x2,y2)（滑块拖动验证用）
+            drag)
+                IFS=',' read -r dx1 dy1 dx2 dy2 <<< "$arg"
+                drag "$dx1" "$dy1" "$dx2" "$dy2"
+                sleep "$CLICK_SLEEP"
                 ;;
             click|rclick)
                 IFS=',' read -r cx cy <<< "$arg"
