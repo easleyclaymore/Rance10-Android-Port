@@ -3050,6 +3050,51 @@ void vm_pump_auto_skill(void)
 	vm_call(lsb_lambda, pick);
 }
 
+/* [D500-g] 活动步进实验通道（**默认关**，XSYS4_ACT_STEP=1 启用）。
+ * 实测结论（actstep4-7）：**UpdateActivity(254) 不是单帧函数——它是
+ * 活动的阻塞主循环**（RunSingle→250 调一次，254 内部自循环到活动
+ * End：每轮 BeginInput→UpdateEvent 委托→查 global[15]→DG_CALL 167
+ * 按钮检测→EndInput）。帧泵里调它会与现有 WaitForClick/消息队列
+ * 流程打架（actstep6/actstep7 默认开时：标题卡住进不了主菜单，
+ * 回归 36→1 loaded）。
+ * 保留代码作诊断通道：XSYS4_ACT_STEP=1 时在帧泵里调 254，研究
+ * 活动循环行为用。正确整合方式（WaitForClick 收编进 254 循环、
+ * 或反之）待下一轮设计——这是活动体系残缺（行内按钮/把手动画/
+ * 键盘导航）的修复入口。 */
+void vm_pump_activity_step(uint32_t now)
+{
+	static int enabled = -1;
+	static uint32_t last_step;
+	static bool stepping;
+	if (enabled < 0)
+		enabled = getenv("XSYS4_ACT_STEP") ? atoi(getenv("XSYS4_ACT_STEP")) : 0;
+	if (!enabled || stepping)
+		return;
+	if (getenv("XSYS4_ACT_STEP") && atoi(getenv("XSYS4_ACT_STEP")) > 1
+	    && activity_open_count() > 0) {
+		static int dbg_n;
+		if (dbg_n++ < 20)
+			NOTICE("[actstep] enter enabled=%d stepping=%d open=%d last=%u now=%u",
+			       enabled, stepping, activity_open_count(),
+			       last_step, now);
+	}
+	if (!enabled || stepping)
+		return;
+	if (activity_open_count() <= 0)
+		return;
+	/* 帧泵每 4096 条指令进一次（一帧多次），按 ~60fps 限流 */
+	if (last_step && now - last_step < 15)
+		return;
+	last_step = now;
+	if (254 >= ain->nr_functions || ain->functions[254].address == 0)
+		return;
+	stepping = true;
+	stack_push(0);   /* arg0: dgReleasingObject = null 委托 */
+	stack_push(0);   /* arg1: FastEnd = false */
+	vm_call(254, -1);
+	stepping = false;
+}
+
 void vm_pump_parts_click(void)
 {
 	/* [D498 层探针] 放在**早退之前**：要的是「每次点击那一刻」的层状态，
@@ -6938,6 +6983,7 @@ void vm_frame_pump(void)
 	/* [D337] 引擎捕获到的点击在这里派发给 AIN 侧的按钮对象
 	 * （`parts_update_mouse` 只登记，见 vm_request_parts_click）。 */
 	vm_pump_parts_click();
+	vm_pump_activity_step(now);
 	vm_pump_auto_battle_end();
 	vm_pump_auto_call();
 	vm_pump_auto_call_tick();

@@ -494,6 +494,9 @@ bool activity_release(const char *name);
  * `activity_release_ex(name, NULL)`。 */
 bool activity_release_ex(const char *name, struct page **erase_number_list);
 void activity_release_all(void);
+/* [D500-g] 已打开（CreateActivity 后未 Release）的活动计数。
+ * 帧泵据此每帧调 AIN 的 CActivity@UpdateActivity(254)（活动步进）。 */
+int activity_open_count(void);
 void activity_free(struct activity *act);
 bool activity_is_exist_file(const char *file);
 int activity_nr_parts(struct activity *act);

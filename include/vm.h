@@ -124,6 +124,9 @@ void vm_call(int fno, int struct_page);
  * 先 `vm_request_parts_click()` 登记，再由帧泵 `vm_pump_parts_click()` 消费。 */
 void vm_request_parts_click(int parts_no, int x, int y);
 void vm_pump_parts_click(void);
+/* [D500-g] 活动每帧步进：每帧调 AIN 的 UpdateActivity(254)
+ * （CreateActivity 打开的活动存在时；XSYS4_ACT_STEP=0 可关）。 */
+void vm_pump_activity_step(uint32_t now);
 /* [D344] 诊断后门：到点后直接调 SceneBattle@ProcessPostPlayerTurn。 */
 void vm_pump_auto_battle_end(void);
 /* [D349] 诊断后门：技能卡展开后直接派发第 N 个 LargeSkillButton。 */

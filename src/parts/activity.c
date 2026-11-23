@@ -214,6 +214,11 @@ static bool activity_debug = false;
 static bool activity_debug_checked = false;
 
 static struct activity *activity_list = NULL;
+/* [D500-g] 活动步进计数：CreateActivity 新建 +1，release 移除 -1。
+ * 帧泵每帧据此调 AIN 的 UpdateActivity(254)——原版由任务体系每帧
+ * 接口虚调用（CALLMETHOD 经 vtable，静态扫描不可见），我们的引擎
+ * 缺这条驱动 ⇒ 活动的按钮点击检测/把手动画/键盘导航全断。 */
+static int activity_open_cnt = 0;
 
 /* ------------------------------------------------------------------ */
 /* helpers                                                            */
@@ -1596,6 +1601,11 @@ bool activity_release_ex(const char *name, struct page **erase_number_list)
 		if ((*p)->name && name && !strcmp((*p)->name, name)) {
 			struct activity *dead = *p;
 			*p = dead->next;
+			if (activity_open_cnt > 0)
+				activity_open_cnt--;
+			if (getenv("XSYS4_ACT_STEP"))
+				NOTICE("[actstep] release '%s' open=%d",
+				       dead->name ? dead->name : "?", activity_open_cnt);
 			if (erase_number_list && act_release_dglist_enabled())
 				collect_activity_delegate_indices(dead, erase_number_list);
 			for (int i = 0; i < dead->nr_parts; i++)
@@ -1618,6 +1628,8 @@ void activity_release_all(void)
 	while (activity_list) {
 		struct activity *dead = activity_list;
 		activity_list = dead->next;
+		if (activity_open_cnt > 0)
+			activity_open_cnt--;
 		for (int i = 0; i < dead->nr_parts; i++)
 			PE_ReleaseParts(dead->flat[i]->parts_no);
 		activity_free(dead);
@@ -1708,6 +1720,11 @@ bool activity_read(struct string *name, struct string *file)
 	act->name = strdup(name->text);
 	if (!act->name[0])
 		act->name = strdup(file->text);
+	/* [D500-g] .pactex 装载路径的创建也要计数（CreateActivity HLL 只是
+	 * 另一条入口；配置页活动走这里）。同名替换由下方 release 抵消。 */
+	activity_open_cnt++;
+	if (getenv("XSYS4_ACT_STEP"))
+		NOTICE("[actstep] read '%s' open=%d", act->name, activity_open_cnt);
 
 	/* 元数据块大致按位置排，但块数会变（4/5/6 块），
 	 * 所以按类型遍历，而不是按下标。 */
@@ -1808,7 +1825,15 @@ struct activity *activity_create(const char *name)
 	act->name = strdup(name ? name : "");
 	act->next = activity_list;
 	activity_list = act;
+	activity_open_cnt++;
+	if (getenv("XSYS4_ACT_STEP"))
+		NOTICE("[actstep] create '%s' open=%d", act->name, activity_open_cnt);
 	return act;
+}
+
+int activity_open_count(void)
+{
+	return activity_open_cnt;
 }
 
 bool activity_add_parts(struct string *name, struct string *parts_name, int parts_no)
