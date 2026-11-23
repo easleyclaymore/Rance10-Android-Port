@@ -84,8 +84,14 @@ def load_manual():
 
 
 def nearby_comment(lines, idx):
-    """只看紧邻的上一两行。宁可标 `—` 也不给误导性说明。"""
-    for k in (idx - 1, idx - 2):
+    """向上最多 5 行找注释。宁可标 `—` 也不给误导性说明。
+
+    [D501] 项目约定注释以 `[Dxxx]` 起头、后面接**完整说明**（"为什么这么写"）。
+    旧逻辑一见 `[` 就当"只是根因编号"跳过，41 个开关因此假性未标注。
+    现在：`[Dxxx]` 后正文 >= 12 字符就整行采纳并保留编号前缀；
+    只有编号没正文（如 `[D164] 见 xxx */` 的裸标签）才跳过。
+    """
+    for k in range(idx - 1, max(-1, idx - 6), -1):
         if k < 0:
             break
         raw = lines[k].strip()
@@ -93,10 +99,16 @@ def nearby_comment(lines, idx):
         if not m:
             continue
         text = m.group(1).strip("* \t")
-        if not text or text.startswith("["):
-            continue   # "[D164] ..." 是根因编号，不是用途说明
-        if len(text) > 70:
-            text = text[:67] + "…"
+        if not text:
+            continue
+        tag = re.match(r"^(\[D\d+[^\]]*\])\s*(.*)$", text)
+        if tag:
+            body = tag.group(2)
+            if len(body) < 12:
+                continue   # 裸标签，不构成用途说明
+            text = text
+        if len(text) > 78:
+            text = text[:75] + "…"
         return text
     return ""
 
@@ -135,6 +147,12 @@ def main():
 
     if check_only:
         print("XSYS4 switches: %d total, %d undocumented" % (len(rows), undocumented))
+        # [D501] --list-undoc：把未标注的逐条列出来（名字 + 位置），
+        # 供补 tools/switch-desc.txt 时逐项处理，不用手工扫全表。
+        if "--list-undoc" in sys.argv:
+            for name, grp, where, comment, src in rows:
+                if src == "none":
+                    print("  %-34s %-28s %s" % (name, where, grp))
         return 0 if undocumented == 0 else 1
 
     by_group = defaultdict(list)

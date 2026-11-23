@@ -51,12 +51,29 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: No Linux-only headers / no hardcoded paths in Core Layer
-        # 文档 / 手册两项依赖开发工作区（父目录 AGENTS.md、游戏目录里的官方手册），
-        # CI 里永远不成立；跳过它们，只跑代码可移植性 + 补丁落地检查。
-        env:
-          XSYS4_SKIP_DOC_GATE: '1'
+      - name: Gate — portability + patches + doc numbers
+        # [D501] 文档门禁不再依赖仓库外文件（AGENTS.md 与日志基线已进仓库），
+        # 因此 CI 可以完整跑，不再用 XSYS4_SKIP_DOC_GATE 跳过。
+        # 手册检查在无游戏目录时会自动 SKIP，不影响结论。
         run: python3 tools/check_core_deps.py
+
+      - name: Gate — offline tools self-test (no game data needed)
+        # 无游戏也成立的子集：离线工具的用法校验路径（usage + 非 0 退出）。
+        # 只用 `tools/bin/` 里随仓库分发的预构建产物；CI 不构建它们。
+        run: |
+          set -x
+          for t in ain_at ain_audit ain_xref; do
+            if [ -x "tools/bin/$t" ]; then
+              tools/bin/$t >/dev/null 2>&1 && { echo "$t 无参数却返回 0"; exit 1; } || true
+              echo "$t usage 路径 OK"
+            else
+              echo "$t 未随仓库分发（跳过）"
+            fi
+          done
+          # 开关表与文档数字的自洽（gen-switches 是 gen-doc-numbers 的一部分，
+          # 这里单独跑一次给出更直接的失败信息）
+          python3 tools/gen-switches.py --check >/dev/null && echo "switches 全标注" \
+            || { echo "有未标注开关（见 docs/SWITCHES.md 的「用途」列 — 项）"; exit 1; }
 
   build:
     name: Build linux-x86_64
@@ -181,9 +198,12 @@ jobs:
           # 避免任何情况下真的去起窗口（runner 没有显示服务）。
           env -u DISPLAY -u WAYLAND_DISPLAY ./build/src/xsystem4 --version
           # CI 只能证明「二进制能启动并正常退出」—— 有功能断言的冒烟需要游戏数据
-          # （标题 → 第一章 → 任务简报 → 回合开始 → 战斗），在本地或有数据的机器上跑：
-          #     tools/run/smoke.sh quick   # 约 100 秒
-          #     tools/run/smoke.sh full    # 约 11 分钟
+          # （标题 → 第一章 → 任务简报 → 回合开始 → 战斗）。
+          # [D501] **发版前本地必过门**：
+          #     tools/run/smoke.sh quick   # 约 100 秒；通过后自动写
+          #                                # docs/baseline/baseline_<tag>.txt
+          #     git add docs/baseline/    # 基线随提交进仓库（CI 新 clone 读它）
+          #     tools/run/smoke.sh full    # 约 11 分钟，tag 前跑一次
           # 两者都用日志断言 + 退出码给结论，不看截图。
 
       - name: Package

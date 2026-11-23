@@ -217,3 +217,17 @@ XSYS4_MOVIE_DBG	PartsMovie 族（部件内嵌视频）的创建/轮询轨迹（D
 XSYS4_CPROC_DBG	GetPartsConstructionProcess 合成读回挂账的触达轨迹（D497）
 XSYS4_EIP_GATE	SetEnableInputProcess 门控总闸；=0 回退到"输入组件不门控"（D496）
 XSYS4_GSAVE_TIME	gsave 装载四级节拍探针（enter/数组/记录/全局计时，D498 大存档挂起定位）
+XSYS4_FLAT_TREE	部件号：dump 该 flat 的 timeline/状态树（帧、图层、库名）。flat 动画对不齐时先看它的声明形态
+XSYS4_FN_COVER	文件名：把 AIN 函数调用覆盖情况写成文件（每个 fno 是否被调到）。回答「哪些函数这辈子没跑过」
+XSYS4_FORCE_DI0	强制消息的 delegate_index 回退到 0（前 12 次）。诊断委托下标失效时的兜底行为，A/B 用
+XSYS4_HLL_HIST	HLL 库号：按实际调用统计该库各函数的热力（谁被调了多少次），配合 xsys4 hot 读
+XSYS4_IFACE_COPY_DBG	dump 前 4 次 iface 页拷贝的逐槽值。接口值占两槽（对象+虚表偏移），拷贝丢槽时看这里
+XSYS4_LVAR_DBG	fno:var 形式：监视某个函数某个局部变量每次取值。回答「这个变量到底是不是 -1」
+XSYS4_MGRBT	定点探针：在 ip 0x53f0-0x5424 区间打印句柄/this/成员值（D 系列调查残留，按需复用）
+XSYS4_MSG_TRACE	消息类型：跟踪消息派发的中间步骤（AIN 查表/过滤/放弃的位置），比只看 [mpop] 结果更有信息量
+XSYS4_PARTS_DUMP_MAX	parts dump 的条数上限（默认 400）。部件太多时调小，只看前 N 个
+XSYS4_PRED_BOUND	=0 关闭 Array Predicate 的越界保护（回退用）；默认开启，防止 Predicate 越过数组末尾
+XSYS4_PUMP_MASK	帧泵的指令间隔掩码（默认 0x3F=每 64 条指令检查一次时钟）。调小更细但更慢，A/B 帧率用
+XSYS4_RA_DBG	定点探针：在 ip 0x408f00-0x408f40 打印 R_ASSIGN 的源/目标页现场（D 系列调查残留）
+XSYS4_USERCOMP_DBG	dump 前 3 个 USER_COMPONENT 部件的解析字段（组件类型/参数），排查自定义组件装载
+XSYS4_XSET_DBG	dump X 赋值拷贝前 20 次的现场（源/目标页），排查赋值语义
