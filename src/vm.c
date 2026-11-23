@@ -1192,6 +1192,9 @@ static void function_call(int fno, int return_address)
 }
 
 /* vm_call 用：fno 由参数给出，栈上只有 [struct_page] */
+/* [D500-j] 见 method_call_fno 里的记录点与 vm_pump_activity_step。 */
+static int act_step_this = -1;
+
 static void method_call_fno(int fno, int return_address)
 {
 	function_call(fno, return_address);
@@ -1201,6 +1204,16 @@ static void method_call_fno(int fno, int return_address)
 	/* `this` 槽是在 function_call() 记下操作数深度之后才弹出的，
 	 * 所以帧的基线要再低一个值。 */
 	call_stack[call_stack_ptr-1].entry_sp = stack_ptr;
+	/* [D500-j] 记录 254（UpdateActivity）被 AIN 真实调用时拿到的 this
+	 * （=CActivity 活动对象，struct 7）。250 只在活动打开时调 254 一次，
+	 * 帧泵之后每帧用这个记住的 this 步进——比扫堆可靠（活动对象可能有
+	 * 十几个，TextButton 等也是「活动」）。 */
+	if (fno == 254 && struct_page > 0) {
+		act_step_this = struct_page;
+		if (getenv("XSYS4_ACT_STEP"))
+			NOTICE("[actstep] 254 this=slot %d struct=%d",
+			       struct_page, heap[struct_page].page->index);
+	}
 }
 
 /* CALLMETHOD 用：栈布局 [obj, fno, args...]，fno 在 args 下面一层 */
@@ -1496,6 +1509,16 @@ static void method_call(int nargs, int return_address)
 	}
 	stack_pop();                          /* 弹掉 fno */
 	int obj = stack_pop().i;              /* 弹 obj */
+	/* [D500-j] AIN v12 的 CALLMETHOD 全走这里（不是 method_call_fno）。
+	 * 254（UpdateActivity）被 250 调用时 obj 就是 CActivity 活动对象
+	 * （DUMP_AT 0x7b04 实证 struct=7）——记下来给帧泵每帧步进用。 */
+	if (fno == 254 && obj > 0) {
+		act_step_this = obj;
+		if (getenv("XSYS4_ACT_STEP"))
+			NOTICE("[actstep] 254 this=slot %d struct=%d", obj,
+			       heap_index_valid(obj) && heap[obj].page
+				       ? heap[obj].page->index : -1);
+	}
 	if (mcslot && (obj == 1 || mc_slots != nargs)) {
 		static int mc_n;
 		if (mc_n++ < 120)
@@ -3082,38 +3105,25 @@ void vm_pump_activity_step(uint32_t now)
 	last_step = now;
 	if (254 >= ain->nr_functions || ain->functions[254].address == 0)
 		return;
-	/* this = CActivity 对象（struct 7）。actstepa 的 DUMP_AT 实证：
-	 * this=slot 50915 struct=7，m0=活动文件名、m1="…pact:0"、m2=EndKey 数组、
-	 * m3=委托。254 的 IsClickEndKey(255) 遍历 this.m2 —— 传错对象
-	 * （CConfigView struct=106 的 m2 是空串）会让 Numof 返回垃圾 ⇒ 死循环
-	 * （actstep9 实测 36→1 loaded）。按 m1 含 ".pact" 精确定位。 */
-	static int this_slot;
-	static int scan_age;
-	if (scan_age-- <= 0 || this_slot <= 0 ||
-	    (size_t)this_slot >= heap_size || !heap[this_slot].page ||
-	    heap[this_slot].page->type != STRUCT_PAGE ||
-	    heap[this_slot].page->index != 7) {
-		scan_age = 120;   /* 每 ~2s 重扫一次 */
-		this_slot = -1;
-		for (size_t i = 1; i < heap_size; i++) {
-			struct page *p = heap[i].page;
-			if (!p || p->type != STRUCT_PAGE || p->index != 7 ||
-			    p->nr_vars < 2)
-				continue;
-			int ms = p->values[1].i;
-			if (ms > 0 && (size_t)ms < heap_size && heap[ms].s &&
-			    heap[ms].s->text && strstr(heap[ms].s->text, ".pact")) {
-				this_slot = (int)i;
-				break;
-			}
+	/* this = AIN 侧真实调用 254 时拿到的活动对象（method_call_fno 记录，
+	 * DUMP_AT 0x7b04 实证 struct=7：m0=活动文件名、m1="…pact:0"、
+	 * m2=EndKey 数组）。扫堆不可行：活动对象有十几个（TextButton 等也
+	 * 是同类型），必然取错 ⇒ IsClickEndKey 遍历错数组 → 垃圾返回值。 */
+	if (act_step_this <= 0 || (size_t)act_step_this >= heap_size ||
+	    !heap[act_step_this].page) {
+		if (getenv("XSYS4_ACT_STEP") == NULL) {}
+		else {
+			static int dbg2;
+			if (dbg2++ < 5)
+				NOTICE("[actstep] 帧泵等待 this（当前 %d，open=%d）",
+				       act_step_this, activity_open_count());
 		}
+		return;   /* 还没有活动打开过：不步进 */
 	}
-	if (this_slot <= 0)
-		return;   /* 没有活动对象：不步进 */
 	stepping = true;
 	stack_push(0);   /* arg0: dgReleasingObject = null 委托 */
 	stack_push(0);   /* arg1: FastEnd = false */
-	vm_call(254, this_slot);
+	vm_call(254, act_step_this);
 	stepping = false;
 }
 
