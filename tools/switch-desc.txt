@@ -231,3 +231,5 @@ XSYS4_PUMP_MASK	帧泵的指令间隔掩码（默认 0x3F=每 64 条指令检查
 XSYS4_RA_DBG	定点探针：在 ip 0x408f00-0x408f40 打印 R_ASSIGN 的源/目标页现场（D 系列调查残留）
 XSYS4_USERCOMP_DBG	dump 前 3 个 USER_COMPONENT 部件的解析字段（组件类型/参数），排查自定义组件装载
 XSYS4_XSET_DBG	dump X 赋值拷贝前 20 次的现场（源/目标页），排查赋值语义
+XSYS4_INPUT_GATE	=1 恢复旧输入门：只有 AIN BeginInput 窗口内才处理按下沿（默认 0=等价原版，恒开）。菜单界面 AIN 不开窗口，开旧门会让点击全被吞
+XSYS4_TEXT_DIM_DBG	dump 文字度量结果为 0 的部件（字号/面/行数/首字符数）。判断「设置项没文字」是度量失败还是绘制/遮挡

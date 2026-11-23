@@ -1892,6 +1892,25 @@ int activity_open_count(void)
 	return activity_open_cnt;
 }
 
+/* [D511] **菜单类活动**是否打开（`CommonMenu` / 配置页 `.pact`）。
+ *
+ * 用途：输入层的按下沿门（`parts_began_click`）在这两类界面里必须放宽——
+ * AIN 卡在菜单自己的循环里，既不调 BeginInput 也不调 EndInput，门会把
+ * 每一次点击都吞掉（用户实测「点菜单后所有按钮失灵」）。
+ * ATL/ADV/标题不在此列：那里 AIN 有正常的 Begin/EndInput 周期，
+ * 放宽反而会让过场里的点击误命中（d523/d524 实测：全局放宽后标题
+ * 「从头开始」不再进游戏）。 */
+bool activity_menu_open(void)
+{
+	for (struct activity *a = activity_list; a; a = a->next) {
+		if (!a->name)
+			continue;
+		if (strstr(a->name, "CommonMenu") || strstr(a->name, ".pact"))
+			return true;
+	}
+	return false;
+}
+
 bool activity_add_parts(struct string *name, struct string *parts_name, int parts_no)
 {
 	struct activity *act = find_activity(name ? name->text : NULL);

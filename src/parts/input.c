@@ -41,8 +41,15 @@ bool parts_began_click = false;
 static bool input_gate_open(void)
 {
 	const char *e = getenv("XSYS4_INPUT_GATE");
-	if (e && *e && atoi(e))
-		return parts_began_click;
+	if (e && *e)
+		return atoi(e) ? parts_began_click : true;   /* 显式覆盖（A/B） */
+	/* 默认**恒开**（等价原版 CParts_Update：每帧都处理鼠标，AIN 用
+	 * GetClickPartsNumber 轮询，没准备好就不读）。
+	 *
+	 * 为什么不再用 began 当门：d527 取证显示 Begin/EndInput **严重不成对**
+	 * （同一段里 1 个 Begin 配 3 个 End），多重等待循环（WaitForClick 的
+	 * DG_CALL 委托里再进 WaitForClick）会让这个标志长期停在 false，
+	 * 于是任何依赖它的门都会随机吞点击。 */
 	return true;
 }
 
@@ -1158,6 +1165,13 @@ bool PE_IsInputBegun(void)
 void PE_BeginInput(void)
 {
 	parts_began_click = true;
+	/* [D511 取证] 谁在开输入窗口。与 EndInput 成对看，才能解释
+	 * 「菜单界面 began 恒 0」到底是没开还是被谁关掉。 */
+	if (getenv("XSYS4_INPUT_DBG")) {
+		static int n;
+		if (n++ < 120)
+			NOTICE("[inp] BeginInput");
+	}
 }
 
 /* [D499] 输入心跳：AIN 主循环每帧调一次 EndInput。帧泵用它判断
@@ -1176,6 +1190,11 @@ void PE_EndInput(void)
 		NOTICE("[inp] EndInput (clicked=%d)", clicked_parts);
 	if (getenv("XSYS4_CLICK_FLOW") && clicked_parts)
 		NOTICE("[flow] CLR was=%d", clicked_parts);
+	if (getenv("XSYS4_INPUT_DBG")) {
+		static int n;
+		if (n++ < 120)
+			NOTICE("[inp] EndInput");
+	}
 	parts_began_click = false;
 	clicked_parts = 0;
 	drag_state_reset();

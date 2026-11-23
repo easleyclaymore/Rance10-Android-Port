@@ -497,6 +497,8 @@ void activity_release_all(void);
 /* [D500-g] 已打开（CreateActivity 后未 Release）的活动计数。
  * 帧泵据此每帧调 AIN 的 CActivity@UpdateActivity(254)（活动步进）。 */
 int activity_open_count(void);
+/* [D511] 菜单类活动（CommonMenu / 配置页 .pact）是否打开。 */
+bool activity_menu_open(void);
 void activity_free(struct activity *act);
 bool activity_is_exist_file(const char *file);
 int activity_nr_parts(struct activity *act);
