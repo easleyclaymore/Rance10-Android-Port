@@ -546,6 +546,10 @@ struct parts_widget {
 		int scroll_pos;        /* 像素位置（`GetVScrollbarScrollPos` 默认返回 PUSH 0） */
 		float scroll_rate;     /* 0..1 比率（默认返回 F_PUSH 0） */
 		int move_size_by_button;
+		/* [D500] 用户正在值条上按下/拖动：拖动期间 BeginUpdateEvent 的
+		 * 「config 值→部件 rate」同步必须跳过，否则每帧开头的覆盖会把
+		 * 点击换算出的 rate 冲回旧值（死锁在旧值，点击永远不生效）。 */
+		bool user_active;
 		struct string *cg_name, *flat_name;
 		struct string *ov_head_cg, *ov_tail_cg, *ov_bar_cg, *ov_bg_cg;
 		struct string *ov_head_flat, *ov_tail_flat, *ov_bar_flat, *ov_bg_flat;

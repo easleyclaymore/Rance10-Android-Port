@@ -2080,7 +2080,9 @@ static void PE_Set##PREFIX##ScrollPos(int no, int v) \
 static void PE_Set##PREFIX##ScrollRate(int no, float v) \
 { \
 	struct parts_widget *w = PE_widget(no); \
-	if (w) \
+	/* [D500] 用户正在值条上按下/拖动时，BeginUpdateEvent 的「config 值→
+	 * 部件 rate」同步不得覆盖点击换算出的 rate —— 否则死锁在旧值。 */ \
+	if (w && !w->scroll.user_active) \
 		w->scroll.scroll_rate = v; \
 } \
 static void PE_Set##PREFIX##MoveSizeByButton(int no, int v) \

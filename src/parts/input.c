@@ -735,6 +735,45 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	 * parts::detail::WaitForClick 会一直轮询 GetClickNumber() > 0。
 	 * 上面只对 click_eligible 的部件设 click_down_parts，
 	 * 所以这里仍然遵守 pass_cursor / 从前到后的消费顺序。 */
+
+	/* [D500] HSCROLLBAR（组件类型 3，activity.c 的 ACT_COMP_HSCROLLBAR）
+	 * 值条点击/拖动：点击位置 → scroll_rate（0..1）。
+	 *
+	 * AIN 的 CConfigView@EndUpdateEvent(2793) 每帧为每行滑条挂
+	 * SetHScrollRateForAsra(2790) 的写回委托（fix4 实测：Set 的调用点
+	 * ip=0xAA892 = 2790 的 DG_CALL），lambda 从引擎读 scroll_rate 再调
+	 * config::SetMessageSpeedRate 等 —— 引擎只管更新 rate，值域换算、
+	 * UI 回显与持久化全部由 AIN 侧既有链路完成。 */
+	if (click_eligible && (cur_clicking || prev_clicking)
+			&& PE_GetComponentType(parts->no, parts->state) == 3) {
+		struct parts_widget *w = PE_widget(parts->no);
+		Rectangle hhb = parts_hitbox_at(parts, parts->state);
+		if (w && hhb.w > 0) {
+			int track = hhb.w - w->scroll.head_size - w->scroll.tail_size;
+			if (track > 0) {
+				float r = (float)(cur_pos.x - hhb.x - w->scroll.head_size)
+					  / (float)track;
+				if (r < 0.0f)
+					r = 0.0f;
+				if (r > 1.0f)
+					r = 1.0f;
+				w->scroll.scroll_rate = r;
+				w->scroll.scroll_pos = (int)(r * w->scroll.total_size);
+				if (getenv("XSYS4_CLICK_FLOW"))
+					NOTICE("[flow] hscroll no=%d rate=%f pos=%d",
+					       parts->no, r, w->scroll.scroll_pos);
+			}
+			/* 按住/释放沿都在本部件上：标记拖动中，挡住 BeginUpdate
+			 * 的「config→部件」覆盖（见 user_active 注释）。 */
+			w->scroll.user_active = true;
+		}
+	} else if (!cur_clicking && !prev_clicking) {
+		/* 释放后的第一帧：清除全部滑动条的用户操作标记（无从知道
+		 * 之前按的是哪个，全体清一次代价为零）。 */
+		struct parts_widget *w = PE_widget_peek(parts->no);
+		if (w)
+			w->scroll.user_active = false;
+	}
 }
 
 void PE_UpdateInputState(int passed_time);
