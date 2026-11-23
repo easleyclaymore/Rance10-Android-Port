@@ -111,8 +111,23 @@ void parts_text_append(struct parts *parts, struct parts_text *t, struct string 
 		height += t->lines[i].height;
 	}
 	int width = ceilf(f_width);
-	if (!width || !height)
+	if (!width || !height) {
+		/* [D510] 「设置项没有文字」的直接判据：文字设进去了，
+		 * 但度量结果是 0 → parts_set_dims 不执行 → 渲染无尺寸。
+		 * 打印字号/面/行数/首字符宽度，用来区分「字体没加载」
+		 * 与「字符表为空」。 */
+		if (getenv("XSYS4_TEXT_DIM_DBG")) {
+			static int n;
+			if (n++ < 200)
+				NOTICE("[txd] no=%d w=%d h=%d lines=%d size=%.1f face=%d "
+				       "chars=%d txt='%s'",
+				       parts->no, width, height, t->nr_lines,
+				       t->ts.size, (int)t->ts.face,
+				       t->nr_lines ? t->lines[0].nr_chars : 0,
+				       text->text ? text->text : "");
+		}
 		return;
+	}
 
 	parts_set_dims(parts, &t->common, width, height);
 }

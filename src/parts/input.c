@@ -24,6 +24,28 @@
 // BeginClick 与 EndClick 之间为真
 bool parts_began_click = false;
 
+/* [D511] 输入窗口门（`parts_began_click`）的放宽判据。
+ *
+ * 原意（D120/D332）：AIN 没开输入窗口时不抢点击。实测在**菜单/活动界面**
+ * 这个前提不成立：`EndInput` 只有两个调用者 —— `WaitForClick` 退出时
+ * 与 `CActivity@UpdateActivity(254)`；进菜单后 AIN 卡在菜单自己的循环里，
+ * 既不调 BeginInput 也不调 EndInput，`began` 恒 0 ⇒ `parts_update_mouse`
+ * 对每一次按下沿直接 return，**真实鼠标点击也被吞掉**（用户实测：
+ * 「点了菜单，点返回，再点任何按钮都失灵」）。
+ *
+ * 原版没有这个门：`CParts_Update` 每帧都处理鼠标，AIN 用
+ * `GetClickPartsNumber` 轮询，没准备好的时候自然不读。
+ * 因此**默认等价原版**（恒开），旧门降级为 A/B 开关：
+ *   XSYS4_INPUT_GATE=1 → 恢复旧行为（只有 BeginInput 窗口内才处理按下沿）
+ * 保留旧行为的唯一理由是 D120/D332 时代的历史场景，需要时可用它对照。 */
+static bool input_gate_open(void)
+{
+	const char *e = getenv("XSYS4_INPUT_GATE");
+	if (e && *e && atoi(e))
+		return parts_began_click;
+	return true;
+}
+
 // 上次更新时的鼠标位置
 static Point parts_prev_pos = {0};
 // 上次更新时左键是否已经按下
@@ -470,7 +492,7 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	 *
 	 * 只放行**释放沿**：按下沿仍然要求窗口开着（否则会在 AIN 没准备接收时
 	 * 抢走点击）。D120 处理的是相反方向（按下在窗口外），这里是抬起在窗口外。 */
-	if (!parts_began_click && !(prev_clicking && !cur_clicking))
+	if (!input_gate_open() && !(prev_clicking && !cur_clicking))
 		return;
 
 	if (is_hovered && !was_hovered) {
@@ -850,7 +872,7 @@ void PE_UpdateInputState(int passed_time)
 	 * 这一轮拿到的脉冲不会被任何人用掉，却被永久清除——于是"BeginInput
 	 * 之前 0.2 秒到达的点击"必然丢失，表现为随机点不动。
 	 * 留着脉冲，等输入窗口开启后的第一轮再消费。 */
-	bool pulse = parts_began_click && mouse_consume_press_pulse();
+	bool pulse = input_gate_open() && mouse_consume_press_pulse();
 	bool cur_clicking = key_is_down(VK_LBUTTON) || pulse;
 	mouse_get_pos(&cur_pos.x, &cur_pos.y);
 

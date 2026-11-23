@@ -2629,8 +2629,11 @@ void vm_pump_auto_click(uint32_t now)
 		pi = (pi + 1) % np;
 	mouse_set_pos(tx, ty);
 	mouse_inject_click(tr != 0);
-	if (n++ < 5 || n % 40 == 0)
-		NOTICE("[aclk] #%lu click (%d,%d)%s", n, tx, ty, tr ? " right" : "");
+	/* [D512] 全量打印（带墙钟）：判「返回后点击失效」必须知道每次点击
+	 * 落在时间轴哪一段，只打前 5 次会把它误读成"没注入"。 */
+	if (n++ < 40 || n % 20 == 0)
+		NOTICE("[aclk] #%lu t=%ums click (%d,%d)%s", n, (unsigned)now,
+		       tx, ty, tr ? " right" : "");
 }
 
 /* [D388] XSYS4_AUTO_CALL=<fno>[:<frames>] —— 到第 <frames> 帧直接调一次无参 AIN 函数。
