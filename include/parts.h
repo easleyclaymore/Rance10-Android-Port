@@ -501,6 +501,8 @@ int activity_open_count(void);
 bool activity_menu_open(void);
 /* [D514] flat/CG 件的 EX `文本` 标签（单选组选项）。 */
 void PE_SetPartsCaption(int parts_no, const char *text);
+/* [D515] 记下 EX 声明的布局参数（独立于 state）。 */
+void parts_remember_layout_box(int parts_no, int layout_type, int align);
 void activity_free(struct activity *act);
 bool activity_is_exist_file(const char *file);
 int activity_nr_parts(struct activity *act);

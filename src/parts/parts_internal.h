@@ -646,6 +646,15 @@ struct parts {
 	 * 表现正是「设置项只有圆圈、没有文字」。 */
 	struct parts_text caption_text;
 	bool caption_valid;
+	/* [D515] 独立保存的布局盒数据。
+	 *
+	 * 装载时 `PE_SetComponentType` 把 state 0 设成 PARTS_LAYOUT_BOX，
+	 * 但 AIN 之后会调 SetPartsCG / SetComponentType 把同一个 state 改成
+	 * CG。`parts_do_layout()` 只看 states[0]，一旦被覆盖就再也不排版 ——
+	 * 3D 设置页 21 个容器（`被写界深度特效页面` 等）就是这样全叠在 (0,0)。
+	 * 这里把 EX 声明的布局参数单独存一份，state 变化不影响它。 */
+	struct parts_layout_box layout_box_data;
+	bool has_layout_box;
 	/* 用户组件的键值数据（EX 数据 = [k,v,k,v,...] 原样留存）。
 	 * 游戏侧通过 PartsEngine.GetUserComponentData(no,"参数") 之类读回去，
 	 * 控件真正的行为（点击、绘制）由游戏的 AIN 代码实现。 */
@@ -976,6 +985,7 @@ void parts_flat_emitter_resolve_layer(
 
 // layoutbox.c
 void parts_do_layout(struct parts *parts);
+void parts_layout_veto_static_children(int parts_no);
 
 // debug.c
 struct sprite;

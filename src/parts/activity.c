@@ -1046,11 +1046,22 @@ static int build_part(struct activity_part *part, int parent_no)
 	 * 不重排就全叠在原点。而 PANEL / FORM / 用户组件 是被
 	 * PE_SetComponentType 误映射成布局盒的静态容器（D214 的病灶），
 	 * 它们必须保持 FREE。开关隔离，默认沿用 D214 的旧行为。 */
+	/* [D515] 改为**默认开**：3D 设置页（Asra\设置／０８／３Ｄ页面）的
+	 * 21 个容器 EX `配置` 明确声明了纵向/横向，一律 FREE 会全部叠在 (0,0)。
+	 * 只对真 `ACT_COMP_LAYOUT_BOX` 生效，PANEL/FORM/用户组件 仍 FREE
+	 * （D214 的回想对话框病灶靠这一点隔离）。XSYS4_EX_LAYOUT_BY_CONFIG=0 回退。 */
 	static int ex_layout_by_cfg = -1;
 	if (ex_layout_by_cfg < 0) {
 		const char *e = getenv("XSYS4_EX_LAYOUT_BY_CONFIG");
-		ex_layout_by_cfg = e && *e && *e != '0';
+		ex_layout_by_cfg = !(e && *e == '0');
 	}
+	/* [D515] 记下 EX 的布局声明，state 被 AIN 改成 CG 后仍能排版。 */
+	if (part->type == ACT_COMP_LAYOUT_BOX)
+		parts_remember_layout_box(part->parts_no,
+					  part->layout_arrangement >= 0 &&
+					  part->layout_arrangement <= 2
+					  ? part->layout_arrangement
+					  : PARTS_LAYOUT_VERTICAL, 1);
 	if (ex_layout_free) {
 		if (part->type == ACT_COMP_LAYOUT_BOX && ex_layout_by_cfg &&
 		    part->layout_arrangement >= 0 && part->layout_arrangement <= 2)
@@ -1882,6 +1893,12 @@ bool activity_read(struct string *name, struct string *file)
 	 * PE_RefreshGlobalTree() 只挂父链 + 重算参数，不触发 layout
 	 * （layout 会覆盖 EX 给的绝对位置）。详见 parts.c。 */
 	PE_RefreshGlobalTree();
+
+	/* [D515b] EX 配置声明的布局盒逐盒过静态布局判定：直接子件有非零
+	 * 座标的是静态绝对布局（如设置页页签框架），撤回自动排版，
+	 * 否则每帧 parts_do_layout 会把 EX 绝对座标覆盖掉。 */
+	for (int i = 0; i < act->nr_parts; i++)
+		parts_layout_veto_static_children(act->flat[i]->parts_no);
 
 	/* 建树后的权威快照：此时父链与 global 参数都已成型，
 	 * gpos 就是渲染/命中真正用的坐标。 */

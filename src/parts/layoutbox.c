@@ -241,11 +241,78 @@ static void parts_layout_calc_size_vertical(struct parts_layout_box *lb, struct 
 	*out_h = max_col_h + lb->padding_top + lb->padding_bottom;
 }
 
+/* [D515b] 静态绝对布局的撤回判定（装载完成后对每个 EX 声明的布局盒调一次）。
+ *
+ * EX 配置声明了纵/横 ≠ 该容器应该自动排版。d550 实测反例：07 设置页的
+ * 页签框架 900000090（`配置`=纵）的 8 个页签按钮 EX 座标 (1607,119..919)
+ * 是**静态绝对坐标**，parts_do_layout 却把它们逐个堆到 (0,0..950)，
+ * 页签 hitbox 全被挪走 —— (1778,864) 只能命中全屏背景 900000088，
+ * 3D 页签点不中（用户报「3D 选项打不开」的直接原因）。
+ *
+ * 判据沿用 D250：真正依赖布局盒重排的容器（LargeSkillButton /
+ * CardApView / 3D 设置页 21 容器）子件座标**全为 (0,0)**；子件有非零
+ * 座标的是静态绝对布局，排版只会破坏它。撤回时 states[state] 与
+ * layout_box_data 副本都要改 —— 副本是 AIN 改 state 后 parts_do_layout
+ * 的数据源，只改一份会在改 state 后复发。AIN 之后显式
+ * SetLayoutBoxLayoutType 仍会覆盖，语义不冲突。 */
+void parts_layout_veto_static_children(int parts_no)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts)
+		return;
+	struct parts_layout_box *lb;
+	if (parts->states[parts->state].type == PARTS_LAYOUT_BOX)
+		lb = &parts->states[parts->state].layout_box;
+	else if (parts->has_layout_box)
+		lb = &parts->layout_box_data;
+	else
+		return;
+	if (lb->layout_type == PARTS_LAYOUT_FREE)
+		return;
+	struct parts *child;
+	PARTS_FOREACH_CHILD(child, parts) {
+		if (child->local.pos.x != 0 || child->local.pos.y != 0) {
+			lb->layout_type = PARTS_LAYOUT_FREE;
+			if (parts->has_layout_box)
+				parts->layout_box_data.layout_type = PARTS_LAYOUT_FREE;
+			return;
+		}
+	}
+}
+
 void parts_do_layout(struct parts *parts)
 {
-	if (parts->states[0].type != PARTS_LAYOUT_BOX)
+	/* [D515] 探针：`XSYS4_LAYOUT_DBG=1` 打印每个布局盒的判据。
+	 * 3D 设置页（Asra\设置／０８／３Ｄ页面）21 个容器全停在 (0,0)、
+	 * 子件互相重叠 —— 先分清「不是布局盒」「layout_type=FREE」
+	 * 「子件没挂上」三种情况。 */
+	if (getenv("XSYS4_LAYOUT_DBG")) {
+		static int n;
+		if (n++ < 400) {
+			int nc = 0;
+			struct parts *c;
+			PARTS_FOREACH_CHILD(c, parts) { nc++; }
+			NOTICE("[lay] no=%d state=%d st0=%d type=%d children=%d "
+			       "w=%d h=%d pos=(%d,%d)",
+			       parts->no, (int)parts->state,
+			       parts->states[parts->state].type,
+			       parts->has_layout_box ? (int)parts->layout_box_data.layout_type : -1, nc,
+			       parts->states[parts->state].common.w,
+			       parts->states[parts->state].common.h,
+			       parts->global.pos.x, parts->global.pos.y);
+		}
+	}
+	/* [D515] 取布局数据：当前 state 是布局盒就用它（游戏可能改过
+	 * padding/wrap），否则退回装载时存的独立副本（state 被 AIN 改成 CG
+	 * 后仍然要排版）。 */
+	struct parts_layout_box *lb;
+	if (parts->states[parts->state].type == PARTS_LAYOUT_BOX) {
+		lb = &parts->states[parts->state].layout_box;
+	} else if (parts->has_layout_box) {
+		lb = &parts->layout_box_data;
+	} else {
 		return;
-	struct parts_layout_box *lb = &parts->states[0].layout_box;
+	}
 	if (lb->layout_type == PARTS_LAYOUT_FREE)
 		return;
 
@@ -330,4 +397,17 @@ void parts_do_layout(struct parts *parts)
 				max_cross = cw;
 		}
 	}
+
+	/* [D515] 把算出的总量写回布局盒**自身尺寸**。
+	 *
+	 * 原来 total_w/total_h 算完就丢掉了，布局盒永远是 w=h=0。单层还能靠
+	 * 子件的绝对坐标蒙对，**嵌套**就全崩：外层 `parts_get_layout_size()`
+	 * 拿到 0，把内层当 0 高度，所有嵌套内容堆在同一个点上
+	 * （3D 设置页 21 个容器、文字全叠成一团的主因）。
+	 * 只在游戏没显式给过尺寸时写，避免覆盖 EX 声明的固定大小。 */
+	if (parts->states[parts->state].common.w <= 0 &&
+	    parts->states[parts->state].common.h <= 0 &&
+	    total_w > 0 && total_h > 0)
+		parts_set_dims(parts, &parts->states[parts->state].common,
+			       total_w, total_h);
 }

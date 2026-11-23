@@ -13,7 +13,7 @@
 | **阶段** | 第一章可一直点到 `Game/TurnStart`，三个按钮的点击链已完整（D397）：点 `(724,726)` → `[pev] 落在容器上 -> 1 个候选` → lambda 36647 → `FadeOut`(23464) → `SceneStack@Exit`(29658，`[fwatch]` 实测 2 次)。**场景仍未退出**，卡在 `[WAITFORCLICK]` |
 | **最大卡点** | `[WAITFORCLICK]` `SceneStack@Join` = `while(!IsFinish) WaitForClick(0)`；`WaitForClick`(8309) 唯一 break 是 `0 < GetClickNumber()`（`local1` 参数为 0，CASClick 分支整段跳过），而 `GetClickNumber` = `clicked_parts`（命中按下时写、`PE_EndInput` 清）。**`IsInputPartsActive` 不是判据**：它判 {TEXTBOX,MLTEXTBOX,SPINBOX} 且在 `NOT` 之后，恒 false 是正常的 |
 | **次级卡点** | `[BATTLE-STALL]` 技能卡点不中（`BattleCardButton.m9` 空委托页）；被上一条挡在后面 —— 场景退不出去就到不了作戦/出撃 |
-| **本轮做过的** | **D398 把「场景结束」读到底**：`Run` 末尾就是 `m_sceneStack.Join()`；`Join` = `RegisterEvent; while(!IsFinish) WaitForClick(0); Release`；`WaitForClick` 的 break 只有 `0 < GetClickNumber()`；`IsInputPartsActive` 判 {4,7,11}=文本框类且取反（推翻了上一版判断）。`Exit` 已置 `IsFinish`，但 `clicked_parts` 在自旋期是否置位未验 —— 这是下一个观测点 |
+| **本轮做过的** | **D511–D515 菜单交互五连修**：D511 输入门默认恒开（`parts_began_click` 不可信，用户「点菜单返回后失灵」根因）；D514 非 TEXT 件的 EX `文本` 走 `PE_SetPartsCaption` 叠画（07 页 41 条、02 页 33 条标签全出）；D515 3D 页排版——`parts_do_layout` 改用 `layout_box_data` 副本（state 被 AIN 改成 CG 后仍排版）+ 总量写回自身尺寸 + `EX_LAYOUT_BY_CONFIG` 默认开；**D515b 撤回判定** `parts_layout_veto_static_children()`：直接子件座标非零的布局盒是静态绝对布局（页签框架），撤回自动排版防 EX 座标被覆盖。d552/d553/d555 实测：01/07/3D 三页签全部命中并装载对应 pact（3D 页 138 parts 排版展开，18 行纵排间距 30），冒烟 quick 2 次 PASS。**下一个观测点**：其余页签（03/04/05/06）逐页自查（用户要求「每个功能都检查」）；`[WAITFORCLICK]` 仍是主线 A 组债 |
 | **判据** | 画面一律用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S，且 alt+s 前空 ≥1.5s，否则会丢帧）；层/归属看 `[ctrl] SetActive id=N -> idx=M` 与 `[ctrl] layer … parts:` 清单；HLL 进展看 `python3 tools/offline/hll_hotness.py --todo ../logs/live_<tag>.log` 的输出是否为 0 |
 
 > **卡点必须挂债标签**：§0「最大卡点」里的 `` `[TAG]` `` 必须**逐字存在**于
@@ -223,7 +223,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **279**（未标注 0）｜ HLL 源码口径 **3586 / 4652（77.1%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 142 / 46** ｜ 影响面 / 子模块补丁 **33 / 3** ｜ 默认基线 `d501`: `acts=35 / err=0 / core=0 / quest_map=0`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **280**（未标注 0）｜ HLL 源码口径 **3586 / 4652（77.1%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 144 / 46** ｜ 影响面 / 子模块补丁 **33 / 3** ｜ 默认基线 `d501`: `acts=35 / err=0 / core=0 / quest_map=0`。
 <!-- STATS:END -->
 
 最常用的：

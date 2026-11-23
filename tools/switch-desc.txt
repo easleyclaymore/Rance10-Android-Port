@@ -236,3 +236,4 @@ XSYS4_TEXT_DIM_DBG	dump 文字度量结果为 0 的部件（字号/面/行数/�
 XSYS4_RENDER_SKIP_DBG	按部件号过滤的渲染准入探针：打印可见性/消息窗口/联动/show/z/类型/尺寸/alpha/文字行数/颜色/字号。判断「这个件没进渲染 vs 进了被挡」
 XSYS4_CAPTION	=0 关掉「非 TEXT 件的 EX 文本当标签画」（单选组选项标签，D514）。某界面出现多余文字时回退
 XSYS4_EX_TEXT_DBG	名字子串：打印匹配部件的 EX 文本字段（文本(ti)/文本(src)）。查「文字为什么没显示」时先看 EX 里到底有没有
+XSYS4_LAYOUT_DBG	[诊断] parts_do_layout 逐盒打印判据（state/layout_type/子件数/尺寸/位置，前 400 条）。查「容器子件全叠 (0,0)」与排版覆盖 EX 座标问题

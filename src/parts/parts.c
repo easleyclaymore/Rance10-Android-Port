@@ -770,6 +770,18 @@ struct parts_movie *parts_get_movie(struct parts *parts, int state)
 	return &parts->states[state].movie;
 }
 
+/* [D515] 记下 EX 声明的布局参数（独立于 state，见 parts_internal.h）。 */
+void parts_remember_layout_box(int parts_no, int layout_type, int align)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts)
+		return;
+	parts->has_layout_box = true;
+	parts->layout_box_data.layout_type = layout_type;
+	parts->layout_box_data.align = align;
+	parts_engine_dirty();
+}
+
 struct parts_layout_box *parts_get_layout_box(struct parts *parts)
 {
 	if (parts->states[0].type != PARTS_LAYOUT_BOX) {
