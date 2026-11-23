@@ -754,10 +754,34 @@ static void parse_part_fields(struct ex_tree *node, struct activity_part *part)
 		/* [D498] 文本パーツ：标签文字直接烘焙在 EX 里（asra 设置页面的
 		 * 「消息速度」「ＡＵＴＯ模式」等全是这种部件）。此前一个字段
 		 * 都不读，画面上只剩装饰框没有字。 */
-		if (part->type == ACT_COMP_TEXT) {
+		/* [D514] EX 的 `文本` leaf 到底有没有值 —— 单选组选项
+		 * （SYS_画质设定一般 等）在活动树里是 flat 圆圈、不是 TEXT 件，
+		 * 也没被 AIN SetText 过。如果它们的 EX 里其实带 `文本`，
+		 * 那就得给 flat/CG 件补一个承载文字的路径（union 不能共存）。
+		 * XSYS4_EX_TEXT_DBG=<no>：只为该件打印一次。 */
+		if (getenv("XSYS4_EX_TEXT_DBG")) {
+			/* 按**名字子串**匹配：本函数运行时 parts_no 还没分配
+		 * （`part->parts_no = PE_GetFreeNumber()` 在更下面），
+		 * 用号做判据永远不成立。 */
+			const char *want = getenv("XSYS4_EX_TEXT_DBG");
+			if (want && *want && part->name && strstr(part->name, want)) {
+				char *t1 = get_string(type_info, "文本");
+				char *t2 = get_string(src, "文本");
+				NOTICE("[extx] type=%d name='%s' 文本(ti)='%s' 文本(src)='%s'",
+				       part->type, part->name,
+				       t1 ? t1 : "(null)", t2 ? t2 : "(null)");
+			}
+		}
+		/* [D514] `文本` 不是 TEXT 件专属：单选组的选项件
+		 * （`SYS_画质设定一般`，flat 圆圈）也带 `文本` = "画质优先"。
+		 * 先无条件读出来，TEXT 件走 PE_SetText，其余类型走
+		 * PE_SetPartsCaption（叠在 flat 上）。 */
+		if (!part->part_text) {
 			part->part_text = get_string(type_info, "文本");
 			if (!part->part_text)
 				part->part_text = get_string(src, "文本");
+		}
+		if (part->type == ACT_COMP_TEXT) {
 			part->text_align = 0;
 			get_int(type_info, "文本位置", &part->text_align);
 			part->font_size = 0;
@@ -969,6 +993,17 @@ static bool set_part_flat(int parts_no, const char *name, int state)
 /* ------------------------------------------------------------------ */
 /* 构建引擎部件树                                                     */
 /* ------------------------------------------------------------------ */
+
+/* [D514] 非 TEXT 件的 `文本` 标签开关（默认开）。 */
+static bool caption_enabled(void)
+{
+	static int v = -1;
+	if (v < 0) {
+		const char *e = getenv("XSYS4_CAPTION");
+		v = (e && *e && !atoi(e)) ? 0 : 1;
+	}
+	return v != 0;
+}
 
 static int build_part(struct activity_part *part, int parent_no)
 {
@@ -1210,6 +1245,13 @@ static int build_part(struct activity_part *part, int parent_no)
 		free_string(txt);
 		ACT_DEBUG("[act] %s parts_no=%d text set=%d align=%d",
 			  part->name, part->parts_no, ok, part->text_align);
+	} else if (part->type != ACT_COMP_TEXT && part->part_text && *part->part_text
+		   && caption_enabled()) {
+		/* [D514] 非 TEXT 件的 `文本` 当标签画（flat 圆圈右侧）。
+		 * 默认开；XSYS4_CAPTION=0 可整体关掉（若某界面出现多余文字）。 */
+		PE_SetPartsCaption(part->parts_no, part->part_text);
+		ACT_DEBUG("[act] %s parts_no=%d caption='%s'",
+			  part->name, part->parts_no, part->part_text);
 	}
 
 	if (part->cg_name && *part->cg_name &&

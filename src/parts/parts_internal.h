@@ -636,6 +636,16 @@ struct parts {
 	char *uc_label;
 	struct parts_text uc_text;
 	bool uc_text_valid;
+	/* [D514] flat/CG 件的 EX `文本` 标签。
+	 *
+	 * 单选组的选项就是这种件：`SYS_画质设定一般` 的 EX `文本` = "画质优先"，
+	 * 而它本身是 flat（60x60 检查图标）。`parts_state` 是 union，flat 与
+	 * text 不能共存（`PE_SetText` 会把 state 重置成 PARTS_TEXT，圆圈就没了），
+	 * 所以标签单独缓存，渲染时叠在 flat 之上。
+	 * 此前只对 `ACT_COMP_TEXT(19)` 读 `文本`，这批标签全被丢弃 ——
+	 * 表现正是「设置项只有圆圈、没有文字」。 */
+	struct parts_text caption_text;
+	bool caption_valid;
 	/* 用户组件的键值数据（EX 数据 = [k,v,k,v,...] 原样留存）。
 	 * 游戏侧通过 PartsEngine.GetUserComponentData(no,"参数") 之类读回去，
 	 * 控件真正的行为（点击、绘制）由游戏的 AIN 代码实现。 */

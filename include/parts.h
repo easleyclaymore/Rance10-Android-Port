@@ -499,6 +499,8 @@ void activity_release_all(void);
 int activity_open_count(void);
 /* [D511] 菜单类活动（CommonMenu / 配置页 .pact）是否打开。 */
 bool activity_menu_open(void);
+/* [D514] flat/CG 件的 EX `文本` 标签（单选组选项）。 */
+void PE_SetPartsCaption(int parts_no, const char *text);
 void activity_free(struct activity *act);
 bool activity_is_exist_file(const char *file);
 int activity_nr_parts(struct activity *act);

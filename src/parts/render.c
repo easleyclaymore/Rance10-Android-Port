@@ -1400,6 +1400,16 @@ void parts_render(struct parts *parts)
 		break;
 	case PARTS_FLAT:
 		parts_render_flat(parts, &state->flat);
+		/* [D514] flat 件的 EX `文本` 标签（单选组选项：圆圈 + "画质优先"）。
+		 * union 放不下，标签走 caption_text 叠在 flat 之上；
+		 * 位置 = 原点右侧 8px、垂直居中。 */
+		if (parts->caption_valid) {
+			int tw = parts_uc_text_width(&parts->caption_text);
+			int th = parts_uc_text_height(&parts->caption_text);
+			parts->caption_text.common.origin_offset.x = state->common.w + 8;
+			parts->caption_text.common.origin_offset.y = (state->common.h - th) / 2;
+			parts_render_text(parts, &parts->caption_text);
+		}
 		break;
 	case PARTS_3DLAYER:
 		parts_render_3dlayer(parts, &state->layer3d);

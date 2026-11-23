@@ -1563,6 +1563,35 @@ void parts_set_user_component(struct parts *parts, const char *object, const cha
 	parts_engine_dirty();
 }
 
+/* [D514] flat/CG 件的 EX `文本` 标签（单选组选项等）。
+ *
+ * 与 `parts_uc_text_build` 同一条字形缓存路径，只是挂在 parts 自己的
+ * caption_text 上、渲染时叠在 flat 之上。字号按部件高度取（圆圈 60x60
+ * → 22px 左右），颜色先跟用户组件一致（236,234,226）。
+ * 传空串等于清除。 */
+void PE_SetPartsCaption(int parts_no, const char *text)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts)
+		return;
+	if (parts->caption_valid) {
+		parts_text_free(&parts->caption_text);
+		parts->caption_valid = false;
+	}
+	if (!text || !*text)
+		return;
+	int h = parts->states[parts->state].common.h;
+	float size = h > 0 ? (float)h * 0.38f : 16.0f;
+	if (size < 12.0f)
+		size = 12.0f;
+	if (size > 26.0f)
+		size = 26.0f;
+	parts_uc_text_build(&parts->caption_text, text, size,
+			    (SDL_Color){ 236, 234, 226, 255 });
+	parts->caption_valid = true;
+	parts_engine_dirty();
+}
+
 /* 用户组件的键值数据。EX 的 数据 就是一个 [键,值,键,值,...] 列表，
  * 原样存下来，游戏用 GetUserComponentData(no, "参数") 之类读回去。 */
 void parts_set_user_component_data(struct parts *parts, const char *key, const char *value)
@@ -1694,6 +1723,8 @@ void parts_release(int parts_no)
 	}
 	if (parts->uc_text_valid)
 		parts_text_free(&parts->uc_text);
+	if (parts->caption_valid)
+		parts_text_free(&parts->caption_text);
 	free(parts->uc_object);
 	free(parts->uc_label);
 	free(parts->text_plain);
