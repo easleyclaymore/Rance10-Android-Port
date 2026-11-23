@@ -1386,6 +1386,31 @@ static int build_part(struct activity_part *part, int parent_no)
 			free(sep);
 			free(suffix);
 		}
+		/* [D504] HSCROLLBAR 的 flat 基准名比普通按钮多一层 `栏`：
+		 * EX 写 `设置\シス／设置／计量`，档案里是
+		 * `设置\シス／设置／计量／栏／{一般,オン,DOWN}.flat` 与
+		 * `…／计量／背景.flat`（afa_ls 实测 8 条）。
+		 * 只试「原名 / ＋一般」会全部落空 ⇒ w=0 h=0、无纹理，
+		 * 把手永远看不见也点不中。这里补第三种变体：`<base>／栏／一般`。 */
+		if (!flat_ok && part->type == ACT_COMP_HSCROLLBAR) {
+			char *sep = utf2sjis("／", strlen("／"));
+			char *bar = utf2sjis("栏", strlen("栏"));
+			char *suffix = utf2sjis("一般", strlen("一般"));
+			if (sep && bar && suffix) {
+				free(variant);
+				variant = xmalloc(strlen(part->flat_name)
+						  + strlen(sep) + strlen(bar)
+						  + strlen(sep) + strlen(suffix) + 1);
+				sprintf(variant, "%s%s%s%s%s", part->flat_name,
+					sep, bar, sep, suffix);
+				flat_ok = set_part_flat(part->parts_no, variant, 1);
+				ACT_DEBUG("[act] %s HSCROLLBAR 变体 '%s' set=%d",
+					  part->name, variant, flat_ok);
+			}
+			free(sep);
+			free(bar);
+			free(suffix);
+		}
 		/* [D498] flat 两种变体都失败、但部件带 ＣＧ名 时回退 CG 装载。
 		 * 实例：asra 设置页面的滑块 `SYS_信息速度滑块`（type=3），EX 的
 		 * フラット名 是目录名 `设置\シス／设置／计量`（档案里只有
