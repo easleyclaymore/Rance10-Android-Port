@@ -18,6 +18,7 @@
 #include "system4/cg.h"
 
 #include "asset_manager.h"
+#include "preview3d.h"
 #include "cJSON.h"
 #include "gfx/gfx.h"
 #include "json.h"
@@ -77,12 +78,25 @@ void scene_render(void)
 		gfx_render_texture(&wp, &r);
 	}
 
+	/* [D517j] 3D 设置页的预览夹在 ctrl=1（标题/背景）与 ctrl=2
+	 * （配置页控件）之间 —— 既盖住标题、又不挡选项，与原版层序一致。
+	 * parts 精灵的 z 就是 controller_no，见 parts_get_sprite_z()。 */
+	bool preview_done = false;
 	struct sprite *sp;
 	TAILQ_FOREACH(sp, &sprite_list, entry) {
+		if (!preview_done && sp->z >= 2 && preview3d_active()) {
+			preview3d_sync_params();
+			preview3d_render(config.view_width, config.view_height);
+			preview_done = true;
+		}
 		if (sp->render)
 			sp->render(sp);
 		else
 			WARNING("sprite in scene without render function");
+	}
+	if (!preview_done && preview3d_active()) {
+		preview3d_sync_params();
+		preview3d_render(config.view_width, config.view_height);
 	}
 }
 

@@ -47,6 +47,7 @@
 #include "system4/utfsjis.h"
 
 #include "xsystem4.h"
+#include "preview3d.h"
 #include "asset_manager.h"
 #include "vm/page.h"
 #include "parts.h"
@@ -1827,6 +1828,8 @@ void activity_free(struct activity *act)
 {
 	if (!act)
 		return;
+	if (act->version == 5 && act->parts_version == 30)
+		preview3d_set_active(false);
 	if (act->root)
 		free_part(act->root);
 	free(act->flat);
@@ -1943,6 +1946,27 @@ int activity_find_parts_no(struct activity *act, const char *parts_name)
 {
 	struct activity_part *p = activity_find_parts(act, parts_name);
 	return p ? p->parts_no : 0;
+}
+
+/* [D517j] 把 3D 页当前的勾选态翻译成预览参数。
+ *
+ * 部件号说明：3D 页装载后「绘制模式」三个选项固定在
+ * 900000194/195/196（`SYS_绘制模式_检查１/２/３`，对应
+ * 「软件 / 着色無 / 着色存在」）。这些号在每次装载 3D 页时都一样
+ * （前面的活动已释放，号段稳定，d670/d680 多次 dump 一致），
+ * 但**不是语义化的绑定** —— 后续应该改成按部件名查
+ * （`activity_find_parts_no(act, "SYS_绘制模式_检查１")`），
+ * 名字是 GBK 字节，当前先按号取，注释留作提醒。 */
+void preview3d_sync_params(void)
+{
+	if (!preview3d_active())
+		return;
+	int mode = 2;
+	if (PE_IsCheckBoxChecked(900000194))
+		mode = 0; /* 软件 */
+	else if (PE_IsCheckBoxChecked(900000195))
+		mode = 1; /* 着色無 */
+	preview3d_set_param(mode, 0, 0, 0);
 }
 
 int activity_part_no_at(struct activity *act, int index)
@@ -2142,6 +2166,12 @@ bool activity_read(struct string *name, struct string *file)
 
 	act->next = activity_list;
 	activity_list = act;
+
+	/* [D517j] 3D 设置页 = 本作唯一 `version 5/30` 的 pact（其余都是 6/x，
+	 * 见 D517）。它的「预览」在原版由 PartsEngine 内部渲染，引擎侧
+	 * 零实现 —— 这里打开我们自己的预览场景（src/parts/preview3d.c）。 */
+	if (act->version == 5 && act->parts_version == 30)
+		preview3d_set_active(true);
 
 	NOTICE("[act] loaded '%s' from '%s' (version %d/%d, %d parts)",
 	       act->name, file->text, act->version, act->parts_version, act->nr_parts);

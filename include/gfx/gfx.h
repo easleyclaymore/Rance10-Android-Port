@@ -97,6 +97,10 @@ void gfx_reset_view(void);
 void gfx_prepare_job(struct gfx_render_job *job);
 void gfx_run_job(struct gfx_render_job *job);
 void gfx_render(struct gfx_render_job *job);
+/* [D517j] 把单位正方形 (0,0)-(1,1) 填进 quad_vbo 并 prepare job。
+ * 调用方随后自己设 uniform（如 parts 的 mul/add/alpha），再 gfx_run_job()。
+ * 用于 3D 预览：world_transform 做 model、view_transform 传透视矩阵。 */
+void gfx_prepare_unit_quad(struct gfx_render_job *job);
 void _gfx_render_texture(struct shader *s, struct texture *t, Rectangle *r, void *data);
 void gfx_render_texture(struct texture *t, Rectangle *r);
 void gfx_render_quadrilateral(struct texture *t, struct gfx_vertex vertices[4]);

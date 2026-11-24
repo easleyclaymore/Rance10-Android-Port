@@ -592,9 +592,32 @@ void gfx_reset_view(void)
 /*
  * 设置必需的着色器参数。
  */
-void gfx_prepare_job(struct gfx_render_job *job)
+/* [D517j] 填单位正方形到 quad_vbo 并 prepare。
+ * 3D 预览用：顶点固定 (0,0)-(1,1)，几何全部由 world_transform 表达
+ * （model 矩阵），view_transform 传透视矩阵（与 draw.c 的 copy_rotate_y
+ * 同一套用法：gl_Position = view * world * vertex_pos）。
+ *
+ * **顶点顺序必须匹配 `rect_index_data = {0,1,3,2}`**（TRIANGLE_FAN）：
+ * 它要求「左上 / 右上 / 左下 / 右下」这种 Z 序，而不是环形序
+ * (0,0)(1,0)(1,1)(0,1)。用环形序会把四边形拼成蝴蝶结 ——
+ * 两个三角形交叉、对角两侧缺失，看上去就是「只画了半个」，
+ * d693 的背景板正是这个现象。 */
+void gfx_prepare_unit_quad(struct gfx_render_job *job)
 {
-	glUseProgram(job->shader->program);
+	static const struct gfx_vertex unit[4] = {
+		{ 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f }, /* v0 左上 */
+		{ 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f }, /* v1 右上 */
+		{ 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f }, /* v2 左下 */
+		{ 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f }, /* v3 右下 */
+	};
+	glBindBuffer(GL_ARRAY_BUFFER, sdl.gl.quad_vbo);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(unit), unit, GL_DYNAMIC_DRAW);
+	job->shape = GFX_QUADRILATERAL;
+	gfx_prepare_job(job);
+}
+
+void gfx_prepare_job(struct gfx_render_job *job)
+{	glUseProgram(job->shader->program);
 
 	glUniformMatrix4fv(job->shader->world_transform, 1, GL_FALSE, job->world_transform);
 	glUniformMatrix4fv(job->shader->view_transform, 1, GL_FALSE, job->view_transform);

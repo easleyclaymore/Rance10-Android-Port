@@ -24,6 +24,7 @@
 #include "system4/flat.h"
 
 #include "gfx/gfx.h"
+#include "preview3d.h"
 #include "sact.h"
 #include "scene.h"
 #include "sprite.h"
@@ -113,6 +114,51 @@ static void parts_render_texture(struct texture *texture, mat4 mw_transform, Rec
 
 static struct texture uc_white;
 static bool uc_white_ready;
+
+/* [D517j] 3D 预览的绘制原语：单位四边形 + 自定义 model/投影 + 纯色。
+ *
+ * 复用 `parts_shader` 的 `multiply_color` 给面上色（1×1 白纹理 × mul），
+ * 几何全部由 `world` 表达（与 `draw.c` 的 `copy_rotate_y` 同一套约定：
+ * `gl_Position = view * world * vertex_pos`，`view` 传透视矩阵）。
+ * 3D 设置页的预览在原版是 PartsEngine 内部渲染（见 docs/3D-SEMANTICS.md），
+ * 不经任何 HLL；这里用「一个独立绘制原语 + painter 排序」实现等价效果。 */
+void parts_draw_solid_quad(mat4 world, mat4 proj, SDL_Color mul, float alpha)
+{
+	if (!uc_white.handle)
+		return;
+	/* 混合模式必须显式复位：上一次绘制可能留下 ADDITIVE/MULTIPLY
+	 * （d692 实测：背景板没盖住标题，标题的亮部透过暗色叠加上来）。 */
+	set_draw_filter_blend_func(PARTS_DRAW_FILTER_NORMAL);
+	struct gfx_render_job job = {
+		.shader = &parts_shader.shader,
+		.texture = uc_white.handle,
+		.world_transform = world[0],
+		.view_transform = proj[0],
+		.data = NULL,
+	};
+	gfx_prepare_unit_quad(&job);
+	glUniform1f(parts_shader.blend_rate, alpha);
+	glUniform2f(parts_shader.bot_left, 0.0f, 0.0f);
+	glUniform2f(parts_shader.top_right, 1.0f, 1.0f);
+	glUniform3f(parts_shader.add_color, 0.0f, 0.0f, 0.0f);
+	glUniform3f(parts_shader.multiply_color,
+		    mul.r / 255.0f, mul.g / 255.0f, mul.b / 255.0f);
+	glUniform1i(parts_shader.draw_filter, 0);
+	glUniform1i(parts_shader.use_clipper, 0);
+	gfx_run_job(&job);
+}
+
+/* 屏幕坐标矩形（正交投影），3D 预览的背景板用。 */
+void parts_draw_screen_rect(int x, int y, int w, int h, SDL_Color c, float alpha)
+{
+	if (w <= 0 || h <= 0)
+		return;
+	mat4 mw = GLM_MAT4_IDENTITY_INIT;
+	glm_translate(mw, (vec3){ (float)x, (float)y, 0.0f });
+	glm_scale(mw, (vec3){ (float)w, (float)h, 1.0f });
+	mat4 proj = WV_TRANSFORM(config.view_width, config.view_height);
+	parts_draw_solid_quad(mw, proj, c, alpha);
+}
 
 /* [D141] 标题菜单里每个标签被画了两遍：一遍来自引擎内建 UC 控件
  * （uc_text，common.w/h 未设置），另一遍来自 EX 里独立的 PARTS_TEXT parts
