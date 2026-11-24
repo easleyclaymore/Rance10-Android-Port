@@ -28,6 +28,7 @@
 #include "parts.h"
 #include "parts_internal.h"
 #include "reign.h"
+#include "vm.h"
 
 struct parts_list parts_list = TAILQ_HEAD_INITIALIZER(parts_list);
 static struct parts_list dirty_list = TAILQ_HEAD_INITIALIZER(dirty_list);
@@ -3511,11 +3512,16 @@ bool PE_CheckBoxClick(int parts_no)
 		if (best) {
 			best->widget->checked = false;
 			cb_click_mark(best);
+			/* [D517t] 互斥清掉的兄弟同样发生勾选态变化 → 也发
+			 * OnCheckEvent（原版引擎对每个状态变化的 checkbox 都发）。 */
+			vm_request_uc_fire(best->no, false);
 			if (getenv("XSYS4_CB_DBG"))
 				NOTICE("[cb] radio-exclude clear no=%d",
 				       best->no);
 		}
 	}
+	/* [D517t] 被点的部件：翻转完成 → 登记 OnCheckEvent 派发。 */
+	vm_request_uc_fire(parts_no, w->checked ? 1 : 0);
 	if (getenv("XSYS4_CB_DBG"))
 		NOTICE("[cb] click no=%d -> checked=%d", parts_no,
 		       (int)w->checked);

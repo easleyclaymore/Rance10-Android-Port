@@ -3674,6 +3674,171 @@ void vm_pump_parts_click(void)
 	pe_click_depth--;
 }
 
+/* [D517t] 用户组件 OnCheckEvent 派发（正路：对齐原版「引擎驱动 UC」）。
+ *
+ * 考古结论（2026-11-24）：原版 C++ 引擎在 checkbox 勾选态变化时调用
+ * 该部件 FunctionSet 的 OnCheckEvent 委托；AIN 字节码全库无发射点
+ * （50338 个运行期 CALLMETHOD 亦无一在 UC 驱动链上）⇒ 发射是引擎职责。
+ * 我们的引擎此前只跑了构造器（d759 实测：8760/8761 hits=19，
+ * 16 个 vtable 方法 0 命中）⇒ m36 型 checkbox（07 网络连接等）点击
+ * 翻转后 AIN 永远收不到值。
+ *
+ * 绑定解析（D766 全堆反查实证）：
+ *   FunctionSet = STRUCT_PAGE index==struct("parts::detail::CPartsFunctionSet")
+ *   FS.m1       = 部件号（m0=using）
+ *   FS.m36      = OnCheckEvent 委托页（[obj, fno, ...] 三元组，可多条目；
+ *                 obj=SystemConfig 实例页、fno=37309.. lambda 群）
+ * 触发：`vm_request_uc_fire(部件号, 新勾选值)`（PE_CheckBoxClick 调），
+ * 帧泵 `vm_pump_uc_fire()` 消费 —— 避开输入阶段深处的 VM 重入。
+ * `XSYS4_UC_DBG=1` 打扫描/命中/派发留痕。 */
+#define UC_FIRE_MAX 16
+static struct { int parts_no; int checked; } uc_fire_pending[UC_FIRE_MAX];
+static int uc_fire_n;
+static int uc_fs_struct_no = -2;	/* -2 = 未解析（FunctionSet） */
+static int uc_cb_slot = 36;	/* D516i：m36 = OnCheckEvent 委托槽 */
+
+static bool vm_uc_resolve_struct(void)
+{
+	if (uc_fs_struct_no >= 0)
+		return true;
+	if (!ain)
+		return false;
+	for (int i = 0; i < ain->nr_structures; i++) {
+		const char *nm = ain->structures[i].name;
+		if (nm && strstr(nm, "CPartsFunctionSet")) {
+			uc_fs_struct_no = i;
+			if (getenv("XSYS4_UC_DBG"))
+				NOTICE("[uc] FunctionSet struct %d '%s' nr_members=%d",
+				       i, nm, ain->structures[i].nr_members);
+			return true;
+		}
+	}
+	return false;
+}
+
+static int vm_uc_find_delegate(int parts_no, int *out_dg_slot)
+{
+	if (!vm_uc_resolve_struct())
+		return -1;
+	bool dbg = getenv("XSYS4_UC_DBG") != NULL;
+	bool dbg2 = dbg && atoi(getenv("XSYS4_UC_DBG")) >= 2;
+	for (size_t i = 1; i < heap_size; i++) {
+		struct page *fs = heap[i].page;
+		if (!fs || fs->type != STRUCT_PAGE || fs->index != uc_fs_struct_no)
+			continue;
+		if (dbg2 && fs->nr_vars > uc_cb_slot)
+			NOTICE("[uc] FS slot=%d m0=%d m1=%d m36=%d nr=%d",
+			       (int)i, fs->values[0].i, fs->values[1].i,
+			       fs->values[uc_cb_slot].i, fs->nr_vars);
+		if (fs->nr_vars <= uc_cb_slot)
+			continue;
+		/* FS.m1 = 部件号（D516i：m0=using、m1=900000241）。 */
+		if (fs->values[1].i != parts_no)
+			continue;
+		/* FS.m36 = OnCheckEvent 委托页（[obj, fno, ...] 三元组）。 */
+		int dg = fs->values[uc_cb_slot].i;
+		struct page *dp = (dg > 0 && (size_t)dg < heap_size)
+				  ? heap[dg].page : NULL;
+		if (dbg2)
+			NOTICE("[uc]   FS slot=%d m36 -> slot=%d type=%d nr=%d "
+			       "v=[%d,%d,%d] fno1 nr_args=%d",
+			       (int)i, dg, dp ? dp->type : -1,
+			       dp ? dp->nr_vars : -1,
+			       dp && dp->nr_vars > 0 ? dp->values[0].i : -9,
+			       dp && dp->nr_vars > 1 ? dp->values[1].i : -9,
+			       dp && dp->nr_vars > 2 ? dp->values[2].i : -9,
+			       dp && dp->nr_vars > 1 && dp->values[1].i >= 0 &&
+			       dp->values[1].i < ain->nr_functions
+			       ? ain->functions[dp->values[1].i].nr_args : -9);
+		if (!dp || dp->type != DELEGATE_PAGE || dp->nr_vars < 2)
+			continue;
+		int fno = dp->values[1].i;
+		if (fno < 0 || fno >= ain->nr_functions) {
+			if (dbg)
+				NOTICE("[uc]   FS slot=%d m36 fno=%d 越界，跳过",
+				       (int)i, fno);
+			continue;
+		}
+		int na = ain->functions[fno].nr_args;
+		if (na != 1 && na != 2) {
+			if (dbg)
+				NOTICE("[uc]   FS slot=%d m36 fno=%d nr_args=%d "
+				       "不符，跳过", (int)i, fno, na);
+			continue;
+		}
+		if (dbg)
+			NOTICE("[uc] parts=%d -> FS slot=%d m36 delegate "
+			       "fno=%d obj=%d (%s)",
+			       parts_no, (int)i, fno, dp->values[0].i,
+			       ain->functions[fno].name
+			       ? display_sjis0(ain->functions[fno].name) : "?");
+		*out_dg_slot = dg;
+		return (int)i;
+	}
+	if (dbg)
+		NOTICE("[uc] parts=%d 无 FunctionSet 或 m36 无回调",
+		       parts_no);
+	return -1;
+}
+
+void vm_request_uc_fire(int parts_no, int checked)
+{
+	if (uc_fire_n >= UC_FIRE_MAX) {
+		static bool warned;
+		if (!warned) {
+			warned = true;
+			WARNING("uc_fire pending overflow");
+		}
+		return;
+	}
+	uc_fire_pending[uc_fire_n].parts_no = parts_no;
+	uc_fire_pending[uc_fire_n].checked = checked;
+	uc_fire_n++;
+}
+
+static void vm_pump_uc_fire(void)
+{
+	while (uc_fire_n > 0) {
+		int no = uc_fire_pending[0].parts_no;
+		int checked = uc_fire_pending[0].checked;
+		uc_fire_n--;
+		memmove(uc_fire_pending, uc_fire_pending + 1,
+			sizeof(uc_fire_pending[0]) * uc_fire_n);
+		int dg = -1;
+		if (vm_uc_find_delegate(no, &dg) < 0)
+			continue;
+		/* 委托页可能带多个条目（D516i：m36=3 个委托）——全部派发。 */
+		struct page *dp = (dg > 0 && (size_t)dg < heap_size)
+				  ? heap[dg].page : NULL;
+		if (!dp)
+			continue;
+		int nentry = dp->nr_vars / 3;
+		for (int k = 0; k < nentry; k++) {
+			int obj = dp->values[k * 3].i;
+			int fno = dp->values[k * 3 + 1].i;
+			if (fno < 0 || fno >= ain->nr_functions)
+				continue;
+			int na = ain->functions[fno].nr_args;
+			/* OnCheckEvent 签名：nr_args==2 → (sender, checked)；
+			 * nr_args==1 → (checked)。已知消费者（37309..37322
+			 * lambda）只用 checked，sender 传 0。 */
+			if (na == 2) {
+				stack_push(0);	/* sender */
+				stack_push(checked);
+			} else if (na == 1) {
+				stack_push(checked);
+			} else {
+				continue;
+			}
+			vm_call(fno, obj);
+			if (getenv("XSYS4_UC_DBG"))
+				NOTICE("[uc] fired parts=%d checked=%d "
+				       "entry=%d fno=%d",
+				       no, checked, k, fno);
+		}
+	}
+}
+
 void vm_call(int fno, int struct_page)
 {
 	size_t saved_ip = instr_ptr;
@@ -7048,6 +7213,7 @@ void vm_frame_pump(void)
 	/* [D337] 引擎捕获到的点击在这里派发给 AIN 侧的按钮对象
 	 * （`parts_update_mouse` 只登记，见 vm_request_parts_click）。 */
 	vm_pump_parts_click();
+	vm_pump_uc_fire();
 	vm_pump_activity_step(now);
 	vm_pump_auto_battle_end();
 	vm_pump_auto_call();

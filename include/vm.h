@@ -127,6 +127,15 @@ void vm_pump_parts_click(void);
 /* [D500-g] 活动每帧步进：每帧调 AIN 的 UpdateActivity(254)
  * （CreateActivity 打开的活动存在时；XSYS4_ACT_STEP=0 可关）。 */
 void vm_pump_activity_step(uint32_t now);
+/* [D517t] 用户组件（CCheckBoxParts）的 OnCheckEvent 派发。
+ * 原版由引擎驱动：checkbox 勾选态变化 → 引擎调 UC vtable[65] 上挂的
+ * 变更回调委托（SystemConfig@SetCheckEvent 用 DG_NEW_FROM_METHOD 注册，
+ * 例：37322 → config::Network_SetEnableConnection → postset → Save）。
+ * 我们同样引擎侧驱动：`PE_CheckBoxClick` 翻转后 `vm_request_uc_fire()`
+ * 登记（部件号, 新勾选值），帧泵扫描堆里的 UC 实例（struct
+ * parts::detail::CCheckBoxParts：m0=vtable 数组、m1=Parts 对象、
+ * Parts.m1=部件号）找到匹配项后调 vtable[65] 委托。 */
+void vm_request_uc_fire(int parts_no, int checked);
 /* [D344] 诊断后门：到点后直接调 SceneBattle@ProcessPostPlayerTurn。 */
 void vm_pump_auto_battle_end(void);
 /* [D349] 诊断后门：技能卡展开后直接派发第 N 个 LargeSkillButton。 */
