@@ -334,10 +334,37 @@ void PE_CheckBoxChecked(int parts_no, bool check)
 	}
 }
 
+/* [D517q] AIN 轮询读过的 checkbox 部件号（「组代表件」集合）。
+ * 二选一组的语义在 AIN 轮询里：AIN 只读代表件，另一个选项由反值
+ * 隐含。PE_CheckBoxClick 清互斥时只清代表件。 */
+int *g_cb_poll_set;
+int g_cb_poll_n;
+
 bool PE_IsCheckBoxChecked(int parts_no)
 {
 	struct parts_widget *w = PE_widget_peek(parts_no);
-	return w ? w->checked : false;
+	bool v = w ? w->checked : false;
+	/* [D517q] AIN 轮询读态探针 + **轮询代表件集合**：AIN 每帧只读组里
+	 * 的「代表件」判断二选一组（窗口页实测读 204=窗口，209=全屏幕 是
+	 * 摆设、由 204 反值隐含）。PE_CheckBoxClick 清互斥时需要知道哪些
+	 * 兄弟是代表件 —— 就在这里记录。 */
+	if (w) {
+		static int poll_set[64];
+		static int poll_n;
+		int i;
+		for (i = 0; i < poll_n && poll_set[i] != parts_no; i++)
+			;
+		if (i == poll_n && poll_n < 64)
+			poll_set[poll_n++] = parts_no;
+		g_cb_poll_set = poll_set;
+		g_cb_poll_n = poll_n;
+	}
+	if (getenv("XSYS4_CB_READ_DBG")) {
+		static int n;
+		if (n++ < 400)
+			NOTICE("[cbr] read no=%d -> %d", parts_no, (int)v);
+	}
+	return v;
 }
 
 void PE_SetCheckBoxEnable(int parts_no, bool enable)
@@ -3397,6 +3424,47 @@ bool PE_CheckBoxClick(int parts_no)
 			if (s == p || !s->widget)
 				continue;
 			s->widget->checked = false;
+		}
+	}
+	/* [D517q] 二选一组的互斥：清父下「AIN 轮询代表件」的勾选。
+	 * 窗口页实测（d744 [cbr]）：AIN 每帧只读 204=窗口（代表件），
+	 * 209=全屏幕 由 204 反值隐含 —— 点 209 后不清 204，AIN 读 204=1
+	 * 仍然判窗口模式，SetWindowMode 永远不会被调（生效链断点）。
+	 * 独立开关（垂直同步等，AIN 也轮询）自身不会与代表件冲突：
+	 * 它们被点击时切的是自己、自己在集合里，但「清除别人」只发生在
+	 * 集合内的兄弟上 —— 点 218（垂直同步）会清 204？——不：集合内
+	 * 兄弟都被清的话独立开关会互相误伤。用「被点者未勾选时才清」+
+	 * 「清的只是其它代表件」仍不够精确；这里再加一条防线：只清
+	 * **与被点者最近（y 差最小）**的那个代表件 —— 窗口/全屏幕
+	 * (137/201)、画面比例(342/406)、放大方法(544/608) 三组的组内
+	 * 距离都是 64px，而跨组的最近距离 ≥ 64px 且会把独立开关卷进来。
+	 * 真正保险的组语义要等 D516i 的组件驱动落地；本规则先让
+	 * 窗口/全屏幕生效链跑通（读态轮询的值会真实变化）。 */
+	{
+		struct parts *best = NULL;
+		int best_dy = 0;
+		struct parts *s;
+		PARTS_FOREACH_CHILD(s, p->parent) {
+			if (s == p || !s->widget || !s->widget->checked)
+				continue;
+			/* 只考虑 AIN 轮询过的代表件 */
+			bool polled = false;
+			for (int i = 0; i < g_cb_poll_n; i++)
+				if (g_cb_poll_set[i] == s->no)
+					polled = true;
+			if (!polled)
+				continue;
+			int dy = abs(s->global.pos.y - p->global.pos.y);
+			if (!best || dy < best_dy) {
+				best = s;
+				best_dy = dy;
+			}
+		}
+		if (best) {
+			best->widget->checked = false;
+			if (getenv("XSYS4_CB_DBG"))
+				NOTICE("[cb] radio-exclude clear no=%d",
+				       best->no);
 		}
 	}
 	if (getenv("XSYS4_CB_DBG"))
