@@ -42,7 +42,8 @@ jobs:
       - uses: actions/checkout@v4
         # [D503] libsys4 已 vendored（普通目录，源码含全部补丁），
         # 不再需要 submodules: recursive，也没有 apply 步骤。
-        with:
+        # [D517v] 注意：删键时连 `with:` 一起删——空 with: 是非法 schema，
+        # 整个 workflow 解析失败、每次 push 都 0s 假红（D503 起漏了一个月）。
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -87,8 +88,7 @@ jobs:
       - uses: actions/checkout@v4
         # [D503] libsys4 已 vendored（普通目录，源码含全部补丁），
         # 不再需要 submodules: recursive，也没有 apply 步骤。
-        with:
-
+        # [D517v] 同上：删键时连 `with:` 一起删。
 
       - name: Install build dependencies
         run: |
