@@ -543,7 +543,7 @@ if [ -n "${RANCE10_LIVE_SEQ:-}" ]; then
                 st=$SECONDS
                 while [ $(( (SECONDS - st) * 1000 )) -lt "$ms" ]; do
                     if [ -n "$pat" ] && grep -aqF "$pat" "$LOG"; then
-                        echo "skip: found '$pat', stop early"
+                        echo "skip: found '$pat', stop early at ${SECONDS}s (loaded=$(grep -ac 'act\] loaded' "$LOG"))"
                         break
                     fi
                     if [ -n "$sxy" ]; then

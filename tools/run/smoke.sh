@@ -90,7 +90,11 @@ need_re() {
 	if grep -aqE "$2" "$LOG"; then pass "$1"; else fail "$1（日志里没有匹配 /$2/）"; fi
 }
 
-need "启动链到标题"            "Game/Title/SceneTitle"
+# 标题断言只对 quick（走正常启动流）有意义；full 用 AUTO_MAP 直调
+# RunGameChapter1 绕过标题，SceneTitle 不装载是预期（D520d）。
+if [ "$MODE" = quick ]; then
+	need "启动链到标题"            "Game/Title/SceneTitle"
+fi
 need "进入第一章 ADV"          "Game/Adv/"
 
 if [ "$MODE" = quick ]; then
