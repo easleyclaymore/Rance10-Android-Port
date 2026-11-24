@@ -11,7 +11,7 @@
 | | |
 |---|---|
 | **阶段** | 第一章可一直点到 `Game/TurnStart`，三个按钮的点击链已完整（D397）：点 `(724,726)` → `[pev] 落在容器上 -> 1 个候选` → lambda 36647 → `FadeOut`(23464) → `SceneStack@Exit`(29658，`[fwatch]` 实测 2 次)。**场景仍未退出**，卡在 `[WAITFORCLICK]` |
-| **最大卡点** | `[WAITFORCLICK]` `SceneStack@Join` = `while(!IsFinish) WaitForClick(0)`；`WaitForClick`(8309) 唯一 break 是 `0 < GetClickNumber()`（`local1` 参数为 0，CASClick 分支整段跳过），而 `GetClickNumber` = `clicked_parts`（命中按下时写、`PE_EndInput` 清）。**`IsInputPartsActive` 不是判据**：它判 {TEXTBOX,MLTEXTBOX,SPINBOX} 且在 `NOT` 之后，恒 false 是正常的 |
+| **最大卡点** | `[ADVQUEST-LOOP]` skip 战斗配方（AUTO_MAP_ROUTE=12000+skip:620000:1117,907）卡在 `Game/QuestSelect/AdmiralView02` 同一实例 :0 反复装载 ×390（`ResultAdmiralViewGroup@AddDiffAdmiral` → `Activity@Load` 循环无终止）。**[D518/D519] TurnStart 场景退出链已实证全通**（AUTO_CALL 直跑 RunTurnStart → 点 (724,726) → Exit×2 → m7=1 → Join 退出 → acall 返回；[hang][scst] 层 5 IsFinish=1），D397 时代「Exit ×2 不退」为配方预算不足的误读；AUTO_CALL 直跳绕过启动流是跑测配方假象。`[WAITFORCLICK]` 作为场景接续的观察点保留。 |
 | **次级卡点** | `[BATTLE-STALL]` 技能卡点不中（`BattleCardButton.m9` 空委托页）；被上一条挡在后面 —— 场景退不出去就到不了作戦/出撃 |
 | **本轮做过的** | **D517 系列（3D 页全链 → 全屏生效链闭环）**：D517a-n 3D 设置页从黑屏到「改→存→重启读回」闭环 + 3D 预览渲染 + 配置页全部背景 + HLL 待办清偿（[ZERO-STUB]，102 死 Noop 删除）；D517o 页签重复装载泄漏修复；D517p 窗口页实测（交互/存盘全通，生效链缺失定案）。**D517q 生效链考古**：AIN 帧骨架两相序——`parts::detail::Update`(8292) = **Begin 事件**(2789，config→UI 推送 ×160/帧，写入口=7352) → `PartsEngine.UpdateComponent` → **End 事件**(2793，UI→config 轮询 ×44/帧，读入口=7353)；窗口页注册 str#1058→`config::SetWindowMode`(2523，幂等)。**D517r 死循环闭环（用户定调：不走引擎直写 GameConfig 的快路）**：根因=引擎每帧跑两次输入阶段（Begin/End 之间 + End 之后），点击翻转跟释放沿落点走，落在 End 之后时下帧 Begin 推回旧 config 值（d747 读 204 恒 1 的机理）。修复=**click_pending 保护门**（对齐滑块 `scroll.user_active` 先例）：`PE_CheckBoxClick` 置位 → `PE_CheckBoxChecked`（Begin 写入口）跳过 → 新增 `PE_PollCheckBoxChecked`（7353 专用读，读走即清门；引擎内部读不清门不登记轮询集合）。`XSYS4_CB_NO_GATE=1` 回退。**验收（d749/d750 自测）**：点全屏幕→互斥清代表件→`[gfx] set_fullscreen(1)` 铺满 1920x1080；点窗口→`set_fullscreen(0)`；冒烟 quick PASS。**下一个观测点**：① 互斥「最近代表件」启发式误清 173（组语义待 D516i 组件驱动）；② [cbr]/cbset 探针配额点击前打满，全程判据用 `[gfx]` 落痕；③ `ApplyWindowSetting`→`InitMainWindowPosAndSize` 仍是桩； ④ `[WAITFORCLICK]` 仍是主线 A 组债 |
 | **判据** | 画面一律用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S，且 alt+s 前空 ≥1.5s，否则会丢帧）；层/归属看 `[ctrl] SetActive id=N -> idx=M` 与 `[ctrl] layer … parts:` 清单；HLL 进展看 `python3 tools/offline/hll_hotness.py --todo ../logs/live_<tag>.log` 的输出是否为 0 |
@@ -223,7 +223,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **296**（未标注 0）｜ HLL 源码口径 **3586 / 4652（77.1%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 134 / 48** ｜ 影响面 / 子模块补丁 **33 / 3** ｜ 默认基线 `smoke_quick`: `acts=35 / err=0 / core=0 / quest_map=0`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **296**（未标注 0）｜ HLL 源码口径 **3586 / 4652（77.1%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 135 / 48** ｜ 影响面 / 子模块补丁 **33 / 3** ｜ 默认基线 `smoke_quick`: `acts=35 / err=0 / core=0 / quest_map=0`。
 <!-- STATS:END -->
 
 最常用的：
