@@ -1,12 +1,12 @@
-tag=d750quick
+tag=smoke_quick
 mode=quick
 rc=0
 double_free=0
 errors=0
-activities=36
+activities=35
 out_of_bounds=0
 core_dump=0
 scene_quest_map=0
-saves=savedir/d750quick（本地 logs/，不随仓库分发）
+saves=savedir/smoke_quick（本地 logs/，不随仓库分发）
 log_lines_info=0
 0

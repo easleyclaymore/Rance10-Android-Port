@@ -116,9 +116,22 @@ else fail "有 $errs 条错误行（grep VM_ERROR|*ERROR*|double free）"; fi
 # [D501] 基线落盘：把本次结果写成 docs/baseline 可提交的格式。
 # 这是「日志基线进仓库」的产出端——CI/新 clone 的 gen-doc-numbers 读它，
 # 不再依赖本地 logs/。版本前跑一次 smoke quick 并提交该文件即可。
+# [D517u] **只有规范 tag（默认 smoke_quick / smoke_full）才写进
+# docs/baseline/**；实验 tag 的基线一律写 logs/（不进仓库）——否则每跑
+# 一次实验就在 docs/baseline 丢一份文件，而 gen-doc-numbers 会挑最新
+# 的当「默认基线」注入 STATS/README，注入块跟着实验抖动、门禁间歇假红。
+# 实验基线要进仓库时显式传 SMOKE_BASELINE_OUT。
 acts=$(grep -ac "act\] loaded" "$LOG")
 mapn=$(grep -ac "scene_quest_map" "$LOG")
-BASEOUT="${SMOKE_BASELINE_OUT:-$SROOT/docs/baseline/baseline_$TAG.txt}"
+BASEOUT="${SMOKE_BASELINE_OUT:-}"
+if [ -z "$BASEOUT" ]; then
+	case "$TAG" in
+		smoke_quick|smoke_full)
+			BASEOUT="$SROOT/docs/baseline/baseline_$TAG.txt" ;;
+		*)
+			BASEOUT="$PORT/logs/baseline_$TAG.txt" ;;
+	esac
+fi
 if [ "$FAILED" -eq 0 ]; then
 	{
 		echo "tag=$TAG"

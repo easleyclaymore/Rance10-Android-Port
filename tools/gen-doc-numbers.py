@@ -121,9 +121,16 @@ def collect():
     # 5. 最新一次默认零开关基线。
     # [D501] 仓库内 docs/baseline/ 优先（干净 clone / CI 没有 PORT/logs，
     # 旧逻辑在那里永远算成 `-`，与提交进仓库的 STATS 对不上 ⇒ 门禁假红）。
-    # PORT/logs 的本地跑测基线仍是回退来源。
-    bl = sorted(glob.glob(os.path.join(DOCS, "baseline", "baseline_*.txt")),
-                key=os.path.getmtime, reverse=True)
+    # [D517u] 只认**规范名**（baseline_smoke_quick/full.txt，默认 tag 跑出来的
+    # 才会落到这两个名字）；实验 tag 的基线一律不进 docs/baseline（smoke.sh
+    # D517u 起把它们写进 logs/）——否则每跑一次实验，「默认基线」就被
+    # 翻转一次，STATS/README 注入块跟着抖动，门禁间歇假红。
+    CANON = [os.path.join(DOCS, "baseline", "baseline_smoke_full.txt"),
+             os.path.join(DOCS, "baseline", "baseline_smoke_quick.txt")]
+    bl = [p for p in CANON if os.path.exists(p)]
+    if not bl:
+        bl = sorted(glob.glob(os.path.join(DOCS, "baseline", "baseline_*.txt")),
+                    key=os.path.getmtime, reverse=True)
     if not bl:
         bl = sorted(glob.glob(os.path.join(PORT, "logs", "baseline_*.txt")),
                     key=os.path.getmtime, reverse=True)
@@ -171,7 +178,7 @@ def stats_text(m):
         ("未结技术债", m["debts"], "表格行首 `` `[标签]` `` 去重", "`TECH_DEBT.md`"),
         ("影响面清单", m["impact"], "表格行首 `I<编号>`", "`docs/IMPACT.md`"),
         ("子模块补丁", m["patches"], "`patches/*.patch`", "`patches/`"),
-        ("默认基线", f"`{m['bl_tag']}`（{m['bl_mode']} 档）: acts={m['bl_acts']} / err={m['bl_err']} / core={m['bl_core']} / quest_map={m['bl_map']} / rc={m['bl_rc']}", "最新 `baseline_*.txt`（档位决定断言面：quick 不到任务地图）", "`docs/baseline/`（本地回退 logs/）"),
+        ("默认基线", f"`{m['bl_tag']}`（{m['bl_mode']} 档）: acts={m['bl_acts']} / err={m['bl_err']} / core={m['bl_core']} / quest_map={m['bl_map']} / rc={m['bl_rc']}", "规范名 `baseline_smoke_{quick,full}.txt` 优先，否则最新 `baseline_*.txt`", "`docs/baseline/`（本地回退 logs/）"),
     ]
     for k, v, how, src in rows:
         o.append(f"| {k} | {v} | {how} | {src} |")
