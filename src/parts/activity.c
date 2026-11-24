@@ -1950,23 +1950,84 @@ int activity_find_parts_no(struct activity *act, const char *parts_name)
 
 /* [D517j] 把 3D 页当前的勾选态翻译成预览参数。
  *
- * 部件号说明：3D 页装载后「绘制模式」三个选项固定在
- * 900000194/195/196（`SYS_绘制模式_检查１/２/３`，对应
- * 「软件 / 着色無 / 着色存在」）。这些号在每次装载 3D 页时都一样
- * （前面的活动已释放，号段稳定，d670/d680 多次 dump 一致），
- * 但**不是语义化的绑定** —— 后续应该改成按部件名查
- * （`activity_find_parts_no(act, "SYS_绘制模式_检查１")`），
- * 名字是 GBK 字节，当前先按号取，注释留作提醒。 */
+ * **为什么用 GBK 字节字面量**：EX 里的部件名是 GBK（汉化版重打包），
+ * 实测 `SYS_绘制模式` = `53 59 53 5f bb e6 d6 c6 c4 a3 ca bd`；源码里的
+ * UTF-8 中文字面量与它 strcmp 永远不等。每个宏的注释写明对应中文名。
+ * 这样就把 D517j 早期「按部件号 900000194/195/196 硬取」的脆弱绑定
+ * 换成了语义绑定 —— 部件号会随活动装载顺序变化，名字不会。 */
+#define PQ_NAME_DRAW_SOFT	/* "SYS_绘制模式_检查１" 软件 */	\
+	"SYS_\xbb\xe6\xd6\xc6\xc4\xa3\xca\xbd_\xbc\xec\xb2\xe9\xa3\xb1"
+#define PQ_NAME_DRAW_FLAT	/* "SYS_绘制模式_检查２" 着色無 */	\
+	"SYS_\xbb\xe6\xd6\xc6\xc4\xa3\xca\xbd_\xbc\xec\xb2\xe9\xa3\xb2"
+#define PQ_NAME_FOG_ON		/* "SYS_雾化_检查２" 存在 */	\
+	"SYS_\xce\xed\xbb\xaf_\xbc\xec\xb2\xe9\xa3\xb2"
+#define PQ_NAME_DOF_ON		/* "SYS_景深_检查２" 存在 */	\
+	"SYS_\xbe\xb0\xc9\xee_\xbc\xec\xb2\xe9\xa3\xb2"
+#define PQ_NAME_EDGE_ON		/* "SYS_边缘_检查２" 绘制 */	\
+	"SYS_\xb1\xdf\xd4\xb5_\xbc\xec\xb2\xe9\xa3\xb2"
+#define PQ_NAME_GLOW_ON		/* "SYS_光晕_检查２" 存在 */	\
+	"SYS_\xb9\xe2\xd4\xce_\xbc\xec\xb2\xe9\xa3\xb2"
+
+static int pq_find_gbk(struct activity *act, const char *gbk_name)
+{
+	if (!act || !gbk_name)
+		return 0;
+	for (int i = 0; i < act->nr_parts; i++) {
+		struct activity_part *p = act->flat[i];
+		if (p->name && !strcmp(p->name, gbk_name))
+			return p->parts_no;
+	}
+	return 0;
+}
+
+static bool pq_on(struct activity *act, const char *gbk_name)
+{
+	int no = pq_find_gbk(act, gbk_name);
+	return no > 0 && PE_IsCheckBoxChecked(no);
+}
+
 void preview3d_sync_params(void)
 {
 	if (!preview3d_active())
 		return;
-	int mode = 2;
-	if (PE_IsCheckBoxChecked(900000194))
-		mode = 0; /* 软件 */
-	else if (PE_IsCheckBoxChecked(900000195))
-		mode = 1; /* 着色無 */
-	preview3d_set_param(mode, 0, 0, 0);
+
+	/* 从活动栈里找 3D 页（按名字，不假设它就是栈顶）。 */
+	struct activity *act = NULL;
+	for (struct activity *a = activity_list; a; a = a->next) {
+		if (pq_find_gbk(a, PQ_NAME_DRAW_SOFT) ||
+		    pq_find_gbk(a, PQ_NAME_DRAW_FLAT)) {
+			act = a;
+			break;
+		}
+	}
+	if (!act)
+		return; /* 名字还没回来（装载中），保持上一帧的参数 */
+
+	int mode = 2; /* 默认「着色存在」，与 EX 初始 选择状态 一致 */
+	if (pq_on(act, PQ_NAME_DRAW_SOFT))
+		mode = 0;
+	else if (pq_on(act, PQ_NAME_DRAW_FLAT))
+		mode = 1;
+
+	int fog = pq_on(act, PQ_NAME_FOG_ON);
+	int edge = pq_on(act, PQ_NAME_EDGE_ON);
+	int dof = pq_on(act, PQ_NAME_DOF_ON);
+	int glow = pq_on(act, PQ_NAME_GLOW_ON);
+	preview3d_set_param(mode, fog, edge, dof, glow);
+
+	/* [取证] 按名查找是否命中（部件号 0 = 名字没对上，参数会退回默认）。 */
+	if (getenv("XSYS4_PQ_DBG")) {
+		static int n;
+		if (n++ % 120 == 0)
+			NOTICE("[pq] mode=%d fog=%d edge=%d dof=%d glow=%d "
+			       "(no %d/%d/%d/%d/%d)",
+			       mode, fog, edge, dof, glow,
+			       pq_find_gbk(act, PQ_NAME_DRAW_SOFT),
+			       pq_find_gbk(act, PQ_NAME_FOG_ON),
+			       pq_find_gbk(act, PQ_NAME_EDGE_ON),
+			       pq_find_gbk(act, PQ_NAME_DOF_ON),
+			       pq_find_gbk(act, PQ_NAME_GLOW_ON));
+	}
 }
 
 int activity_part_no_at(struct activity *act, int index)

@@ -248,3 +248,4 @@ XSYS4_CB_SET_DBG	[取证] PE_CheckBoxChecked 调用（[cbset] no=N checked=V）�
 XSYS4_EXIST_SAVE_GAMEDIR	[回退] =0 禁用 ExistSaveFile 的游戏目录兜底（配置文件读回依赖它）
 XSYS4_RENDER_BACKEND	[后端] =vulkan 走 SDL_GPU 的 Vulkan 驱动（当前探测失败会自动回退 GL）；默认 GL
 XSYS4_VK_DBG	[取证] Vulkan 探测诊断：列出 SDL 可用 GPU 驱动与失败原因（[vk]）
+XSYS4_PQ_DBG	[取证] 3D 预览参数同步探针（[pq] mode/fog/edge/dof/glow + 按名查到的部件号）

@@ -52,6 +52,7 @@ static struct {
 	int fog_mode;
 	int edge;
 	int dof;
+	int glow;
 } pq;
 
 void preview3d_set_active(bool on)
@@ -75,12 +76,14 @@ void preview3d_tick(int ms)
 		pq.angle -= 6.2831853f;
 }
 
-void preview3d_set_param(int render_mode, int fog_mode, int edge, int dof)
+void preview3d_set_param(int render_mode, int fog_mode, int edge, int dof,
+			 int glow)
 {
 	pq.render_mode = render_mode;
 	pq.fog_mode = fog_mode;
 	pq.edge = edge;
 	pq.dof = dof;
+	pq.glow = glow;
 }
 
 /* 面中心的视图空间 z（越大越近）。 */
@@ -119,17 +122,24 @@ static void pq_tick(void)
 }
 
 /* 面排序 + 每面的 world 矩阵/颜色（两条渲染路径共用）。
- * 返回排序后的面序号数组。 */
-static void pq_build_faces(const mat4 rot, int order[6], mat4 world[6],
-			   float colors[6][3])
+ *
+ * 输出最多 PQ_MAX_FACES 个面：`edge=1` 时每个可见面先压一个略大的深色
+ * 轮廓面（painter 排序下轮廓只在本体边缘露出 3%，看起来就是描边），
+ * 再压本体面。返回实际面数。 */
+#define PQ_MAX_FACES 12
+static int pq_build_faces(const mat4 rot, mat4 world[PQ_MAX_FACES],
+			  float colors[PQ_MAX_FACES][3])
 {
 	static const float base[3] = { 176.0f, 184.0f, 198.0f };
 	static const float light[3] = { 0.35f, 0.62f, 0.70f };
 	static const float bgf[3] = { 20.0f, 22.0f, 28.0f };
+	/* 轮廓色：比背景略亮一点的黑边，避免与背景糊在一起。 */
+	static const float edge_rgb[3] = { 46.0f, 50.0f, 58.0f };
 
 	float depth[6];
 	for (int i = 0; i < 6; i++)
 		depth[i] = face_depth(rot, face_idx[i]);
+	int order[6];
 	for (int i = 0; i < 6; i++)
 		order[i] = i;
 	for (int i = 0; i < 6; i++) {
@@ -142,10 +152,11 @@ static void pq_build_faces(const mat4 rot, int order[6], mat4 world[6],
 		}
 	}
 
+	int n = 0;
 	for (int k = 0; k < 6; k++) {
 		const int fi = order[k];
 		const int *f = face_idx[fi];
-		const float *n = face_n[fi];
+		const float *nrm = face_n[fi];
 		const float *v0 = cube_v[f[0]];
 		const float *v1 = cube_v[f[1]];
 		const float *v3 = cube_v[f[3]];
@@ -156,42 +167,88 @@ static void pq_build_faces(const mat4 rot, int order[6], mat4 world[6],
 		m[1][0] = (v3[0] - v0[0]) * PQ_CUBE;
 		m[1][1] = (v3[1] - v0[1]) * PQ_CUBE;
 		m[1][2] = (v3[2] - v0[2]) * PQ_CUBE;
-		m[2][0] = n[0];
-		m[2][1] = n[1];
-		m[2][2] = n[2];
+		m[2][0] = nrm[0];
+		m[2][1] = nrm[1];
+		m[2][2] = nrm[2];
 		m[3][0] = v0[0] * PQ_CUBE;
 		m[3][1] = v0[1] * PQ_CUBE;
 		m[3][2] = v0[2] * PQ_CUBE;
 		m[3][3] = 1.0f;
-		glm_mat4_mul(rot, m, world[k]);
+		mat4 w;
+		glm_mat4_mul(rot, m, w);
+
+		/* [边缘] 先压轮廓：两条切向基向量放大 6%，平移沿它们各退 3%，
+		 * 使放大围绕面中心而不是围绕角点。 */
+		if (pq.edge) {
+			mat4 e = GLM_MAT4_IDENTITY_INIT;
+			glm_mat4_copy(w, e);
+			for (int r = 0; r < 3; r++) {
+				e[0][r] *= 1.06f;
+				e[1][r] *= 1.06f;
+			}
+			for (int r = 0; r < 3; r++)
+				e[3][r] = w[3][r] - 0.03f * (w[0][r] + w[1][r]);
+			glm_mat4_copy(e, world[n]);
+			colors[n][0] = edge_rgb[0] / 255.0f;
+			colors[n][1] = edge_rgb[1] / 255.0f;
+			colors[n][2] = edge_rgb[2] / 255.0f;
+			n++;
+		}
 
 		vec4 rn;
-		glm_mat4_mulv(rot, (vec4){ n[0], n[1], n[2], 0.0f }, rn);
+		glm_mat4_mulv(rot, (vec4){ nrm[0], nrm[1], nrm[2], 0.0f }, rn);
 		float ndl = rn[0] * light[0] + rn[1] * light[1] + rn[2] * light[2];
 		float shade = 1.0f;
 		if (pq.render_mode != 0) {
 			if (ndl < 0.0f)
 				ndl = 0.0f;
 			shade = 0.42f + 0.58f * ndl;
-			if (pq.render_mode >= 2)
-				shade += 0.22f * (ndl * ndl * ndl * ndl);
+			/* [光晕] 存在时高光更强（原版是 bloom 后处理，
+			 * 这里用高光增益近似）。 */
+			if (pq.render_mode >= 2) {
+				float hi = 0.22f * (ndl * ndl * ndl * ndl);
+				if (pq.glow)
+					hi *= 1.9f;
+				shade += hi;
+			}
 		}
 		float cr = base[0] * shade, cg = base[1] * shade, cb = base[2] * shade;
+		float d = depth[fi];
+		/* [雾化] 越远越往背景色混。
+		 * **方向不能反**：face_depth 的实测范围是 [4.24, 4.96]
+		 * （相机 4.6 ± 立方体半对角线 0.54），d 越大 = 越远。
+		 * D517j 初版写成 `(5.9 - d) * 0.42`，把**近面**混成背景、
+		 * 远面保留 —— 一开雾化就只剩一个大方块（d712 实证）。
+		 * 这里改成随 d 递增，并把系数放大到能看出层次。 */
 		if (pq.fog_mode) {
-			float d = face_depth(rot, f);
-			float t = (5.9f - d) * 0.42f;
+			float t = (d - 4.20f) * 0.85f;
 			if (t > 0.0f) {
-				if (t > 0.85f)
-					t = 0.85f;
+				if (t > 0.70f)
+					t = 0.70f;
 				cr = cr * (1.0f - t) + bgf[0] * t;
 				cg = cg * (1.0f - t) + bgf[1] * t;
 				cb = cb * (1.0f - t) + bgf[2] * t;
 			}
 		}
-		colors[k][0] = (cr > 255.0f ? 255.0f : cr) / 255.0f;
-		colors[k][1] = (cg > 255.0f ? 255.0f : cg) / 255.0f;
-		colors[k][2] = (cb > 255.0f ? 255.0f : cb) / 255.0f;
+		/* [景深] 远景额外降对比（向背景收）。焦平面按相机距离 4.6
+		 * 取，只有明显更远的面才虚化，避免与雾化完全重叠。 */
+		if (pq.dof && d > 4.60f) {
+			float t = (d - 4.60f) * 0.95f;
+			if (t > 0.45f)
+				t = 0.45f;
+			cr = cr * (1.0f - t) + bgf[0] * t;
+			cg = cg * (1.0f - t) + bgf[1] * t;
+			cb = cb * (1.0f - t) + bgf[2] * t;
+		}
+		glm_mat4_copy(w, world[n]);
+		colors[n][0] = (cr > 255.0f ? 255.0f : cr) / 255.0f;
+		colors[n][1] = (cg > 255.0f ? 255.0f : cg) / 255.0f;
+		colors[n][2] = (cb > 255.0f ? 255.0f : cb) / 255.0f;
+		n++;
+		if (n >= PQ_MAX_FACES)
+			break;
 	}
+	return n;
 }
 
 /* Vulkan(SDL_GPU) 路径：整帧由 gfx_vk 负责（含清屏），无 GL 调用。 */
@@ -202,19 +259,16 @@ bool preview3d_render_vk(int w, int h)
 	pq_tick();
 	mat4 proj, rot;
 	pq_camera(w, h, proj, rot);
-	int order[6];
-	mat4 world[6];
-	float colors[6][3];
-	pq_build_faces(rot, order, world, colors);
-	return gfx_vk_draw_faces((const float (*)[16])world, colors, 6,
+	mat4 world[PQ_MAX_FACES];
+	float colors[PQ_MAX_FACES][3];
+	int n = pq_build_faces(rot, world, colors);
+	return gfx_vk_draw_faces((const float (*)[16])world, colors, n,
 				 (const float *)proj);
 }
 
 void preview3d_render(int w, int h)
 {
 	static const SDL_Color bg = { 20, 22, 28, 255 };
-	static const float light[3] = { 0.35f, 0.62f, 0.70f };
-	(void)light;
 
 	if (!pq.active || w <= 0 || h <= 0)
 		return;
@@ -226,12 +280,11 @@ void preview3d_render(int w, int h)
 	mat4 proj, rot;
 	pq_camera(w, h, proj, rot);
 
-	int order[6];
-	mat4 world[6];
-	float colors[6][3];
-	pq_build_faces(rot, order, world, colors);
+	mat4 world[PQ_MAX_FACES];
+	float colors[PQ_MAX_FACES][3];
+	int n = pq_build_faces(rot, world, colors);
 
-	for (int k = 0; k < 6; k++) {
+	for (int k = 0; k < n; k++) {
 		SDL_Color c = {
 			(Uint8)(colors[k][0] * 255.0f + 0.5f),
 			(Uint8)(colors[k][1] * 255.0f + 0.5f),
@@ -240,6 +293,4 @@ void preview3d_render(int w, int h)
 		};
 		parts_draw_solid_quad(world[k], proj, c, 1.0f);
 	}
-
-	/* 抗锯齿/边缘在此版本不画描边（edge 已在 EX 里为 0 或 1，留作后续）。 */
 }

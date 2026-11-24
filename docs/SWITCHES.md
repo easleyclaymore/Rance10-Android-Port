@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **292** 个开关，其中 **1** 个没有就近注释。
+共 **293** 个开关，其中 **1** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -65,7 +65,7 @@
 | 呈现与输入 | `XSYS4_ACT_BUILD_DBG` | `src/parts/activity.c:1731` | [诊断] 打印每个 activity 部件的 `no/name/parent/type`（前 3000 条）。用来把运行时部件号对号到 XML 里的名字，例如 `900000397 = ButtonDeffence` |
 | 呈现与输入 | `XSYS4_ACT_CLICKABLE_ALL` | `src/parts/activity.c:1385` | 把所有**活动文件里声明**的部件标为可点（运行时建的 900000xxx 不受影响） |
 | 呈现与输入 | `XSYS4_ACT_DBG` | `src/parts/activity.c:957` | 活动装载与点击派发诊断 |
-| 呈现与输入 | `XSYS4_ACT_DEBUG` | `src/parts/activity.c:2150` | 活动诊断的旧开关 |
+| 呈现与输入 | `XSYS4_ACT_DEBUG` | `src/parts/activity.c:2211` | 活动诊断的旧开关 |
 | 呈现与输入 | `XSYS4_ACT_GEOM` | `src/hll/PartsEngine.c:4960` | [D360 诊断，默认关] `AFL_Activity_GetPartsNumber` 每查到一个部件号就把它的矩形/可见性打出来 —— 一次跑测即可拿到「按名字找到的部件到底在屏幕哪里」 |
 | 呈现与输入 | `XSYS4_ACT_PART_DBG` | `src/parts/parts.c:3240` | 打印活动部件的建造解析（名字/类型/尺寸/表示領域/flat 名）与 300 号段之后的 SetPos/SetZ |
 | 呈现与输入 | `XSYS4_ACT_RELEASE_DGLIST` | `src/parts/activity.c:1879` | [D270 已转正] ReleaseActivity 的 EraseNumberList 出参不再丢弃：把被释放部件的 delegate_index 写回 AIN，供 CPartsMessageManager@ReleaseFunctionSetList 销掉消息分发表里的委托（否则释放后的委托仍可命中，号复用时调到上一次活动的处理器）；默认生效，=0 回退做 A/B |
@@ -89,7 +89,7 @@
 | 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:932` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
 | 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:631` | 输入命中的候选部件表与点击状态（每 60 帧一条心跳，非沉默） |
 | 呈现与输入 | `XSYS4_INPUT_GATE` | `src/parts/input.c:43` | =1 恢复旧输入门：只有 AIN BeginInput 窗口内才处理按下沿（默认 0=等价原版，恒开）。菜单界面 AIN 不开窗口，开旧门会让点击全被吞 |
-| 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:2180` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
+| 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:2241` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
 | 呈现与输入 | `XSYS4_PARTS_DUMP_MAX` | `src/parts/parts.c:4534` | parts dump 的条数上限（默认 400）。部件太多时调小，只看前 N 个 |
 | 呈现与输入 | `XSYS4_PARTS_DUMP_MIN` | `src/parts/parts.c:4463` | [诊断] 只 dump 部件号 >= 此值的部件；部件表按插入序遍历，地图号段会吃光 PARTS_DUMP_MAX 名额，设 900000300 才能看到动态号段 |
 | 呈现与输入 | `XSYS4_PARTS_EVENT` | `src/vm.c:2087` | [D337 默认生效] 引擎捕获到点击后，把「部件号」派发给 AIN 侧的按钮对象：AIN `Parts` 实例字段 7 上的委托走 `Parts@OnClick(no,x,y)`，`TextButton` 实例走它自己在 `Init` 里生成的 lambda（自带 IsClickable 判定）；精确匹配不到时按「点在容器上」处理，取容器内的 TextButton。这是原版由引擎完成、移植时整条漏掉的一拍，是 `[TEXTBUTTON-CLICK]` 的根因；=0 关闭做 A/B |
@@ -216,7 +216,7 @@
 | 其它 | `XSYS4_LAYER_IDX` | `src/parts/parts.c:4574` | `=1` 层身份改用**栈下标**（上游语义）；默认用稳定 id（D129）。两种口径的 AddController 返回值 / SetActive / Remove / GetActive 一起切（D316） |
 | 其它 | `XSYS4_LAYER_TRACE` | `src/parts/parts.c:3298` | 图层顺序追踪 |
 | 其它 | `XSYS4_LAYOUT_DBG` | `src/parts/layoutbox.c:357` | [诊断] parts_do_layout 逐盒打印判据（state/layout_type/子件数/尺寸/位置，前 400 条）。查「容器子件全叠 (0,0)」与排版覆盖 EX 座标问题 |
-| 其它 | `XSYS4_LINK_DBG` | `src/parts/activity.c:2135` | — |
+| 其它 | `XSYS4_LINK_DBG` | `src/parts/activity.c:2196` | — |
 | 其它 | `XSYS4_LVAR_DBG` | `src/vm.c:190` | fno:var 形式：监视某个函数某个局部变量每次取值。回答「这个变量到底是不是 -1」 |
 | 其它 | `XSYS4_MC_SLOT_DBG` | `src/vm.c:1451` | 〔摘〕下面两次 stack_pop() 真正取到的东西就整体错位了。 |
 | 其它 | `XSYS4_MC_WATCH` | `src/vm.c:1254` | 〔摘〕时（callee 声明 N 槽、call site 只压了 1 槽）只能靠猜。 |
@@ -255,6 +255,7 @@
 | 其它 | `XSYS4_PE_DBG` | `src/hll/PartsEngine.c:40` | PartsEngine 调用诊断 |
 | 其它 | `XSYS4_PHANTOM_REUSE` | `src/vm.c:1562` | 幽灵槽复用诊断 |
 | 其它 | `XSYS4_POS_DBG` | `src/parts/parts.c:3244` | [取证] 记录 PE_SetPos 对 AIN 部件（>=900000100）的调用 |
+| 其它 | `XSYS4_PQ_DBG` | `src/parts/activity.c:2019` | [取证] 3D 预览参数同步探针（[pq] mode/fog/edge/dof/glow + 按名查到的部件号） |
 | 其它 | `XSYS4_PRED_BOUND` | `src/hll/Array.c:694` | =0 关闭 Array Predicate 的越界保护（回退用）；默认开启，防止 Predicate 越过数组末尾 |
 | 其它 | `XSYS4_PRED_DBG` | `src/hll/Array.c:665` | 〔摘〕以及它是否随元素变化（恒定 = 约定不对，搜索永远走同一边）。 |
 | 其它 | `XSYS4_PUMP_MASK` | `src/vm.c:6951` | 帧泵的指令间隔掩码（默认 0x3F=每 64 条指令检查一次时钟）。调小更细但更慢，A/B 帧率用 |
@@ -268,7 +269,7 @@
 | 其它 | `XSYS4_RENDER_SKIP_DBG` | `src/parts/render.c:1398` | 按部件号过滤的渲染准入探针：打印可见性/消息窗口/联动/show/z/类型/尺寸/alpha/文字行数/颜色/字号。判断「这个件没进渲染 vs 进了被挡」 |
 | 其它 | `XSYS4_ROOT_LAYOUT` | `src/parts/layoutbox.c:398` | [回退] =1 允许活动根（无父布局盒）按 EX 配置自动排布（默认关：会把整页推到 y=720） |
 | 其它 | `XSYS4_RSS_LIMIT` | `src/vm.c:4360` | 进程 RSS 上限，超了报警 |
-| 其它 | `XSYS4_RUNTIME_LAYOUT` | `src/parts/activity.c:2113` | [回退] =1 启用 D517c 运行期容器自动排布（**默认已关**：3D 页纵排是重叠假象） |
+| 其它 | `XSYS4_RUNTIME_LAYOUT` | `src/parts/activity.c:2174` | [回退] =1 启用 D517c 运行期容器自动排布（**默认已关**：3D 页纵排是重叠假象） |
 | 其它 | `XSYS4_SAVE_DBG` | `src/savedata.c:279` | 〔摘〕XSYS4_SAVE_DBG=1 时打 AIN 调用栈（每次写档一条，量很小）。 |
 | 其它 | `XSYS4_SAVE_GROUP_ANY` | `src/savedata.c:796` | 〔摘〕XSYS4_SAVE_GROUP_ANY 保留为无害兼容开关。 |
 | 其它 | `XSYS4_SHOT_DIR` | `src/screenshot.c:178` | [诊断] 指定目录后按 Alt+S 让引擎用 glReadPixels 直接 dump GL main surface 为 shot_NNN.png，绕过 zenity 文件框与 X11 合成；GL 直绘下 x11grab/import 只能拿到全黑 framebuffer，画面判据以此为准（GUIDE 1.13） |
@@ -302,7 +303,7 @@
 | 其它 | `XSYS4_UC_RENDER_DBG` | `src/text.c:274` | 用户组件（TextButton 等）渲染诊断 |
 | 其它 | `XSYS4_USERCOMP_DBG` | `src/parts/activity.c:1080` | dump 前 3 个 USER_COMPONENT 部件的解析字段（组件类型/参数），排查自定义组件装载 |
 | 其它 | `XSYS4_VIS_IDX` | `src/parts/parts.c:1896` | 〔摘〕`AddLayer` 之后 `id[i] != i` 是常态，不修就永远错位。 |
-| 其它 | `XSYS4_VK_DBG` | `src/gfx_vk.c:59` | [取证] Vulkan 探测诊断：列出 SDL 可用 GPU 驱动与失败原因（[vk]） |
+| 其它 | `XSYS4_VK_DBG` | `src/gfx_vk.c:70` | [取证] Vulkan 探测诊断：列出 SDL 可用 GPU 驱动与失败原因（[vk]） |
 | 其它 | `XSYS4_WATCH_IFACE` | `src/vm.c:369` | 〔摘〕page_set_var，所以只盯 page_set_var 会漏掉真正的写入者。 |
 | 其它 | `XSYS4_WIDGET_SELFTEST` | `src/vm.c:2701` | [D396 诊断，默认关] `=1` 启动 3 秒后跑一次控件状态自检（set→get 往返断言），打 `[wtest] RESULT: PASS/FAIL` —— 填桩的验收用，证明的是语义往返而不是「不再报未实现」 |
 | 其它 | `XSYS4_WIN_DBG` | `src/input.c:784` | 〔摘〕还是「被隐藏/移动」，只能靠 SDL 事件本身回答。 |

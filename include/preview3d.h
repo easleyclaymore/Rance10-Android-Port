@@ -27,7 +27,16 @@ bool preview3d_render_vk(int w, int h);
 /* 从当前 3D 页的勾选态刷新参数（定义在 activity.c，能按部件号读 checkbox）。 */
 void preview3d_sync_params(void);
 
-/* 设置项：直接对应 CAS3DSetting 的 Get*（见 docs/3D-SEMANTICS.md §二）。 */
-void preview3d_set_param(int render_mode, int fog_mode, int edge, int dof);
+/* 设置项：直接对应 CAS3DSetting 的 Get*（见 docs/3D-SEMANTICS.md §二）。
+ *
+ * render_mode 0=软件(不光照) 1=着色無(平坦) 2=着色存在(高光)
+ * fog_mode    0=無 1=存在        —— 远处混背景色
+ * edge        0=不绘制 1=绘制    —— 面轮廓描边
+ * dof         0=無 1=存在        —— 远景降对比（被写界深度）
+ * glow        0=無 1=存在        —— 高光增益（光晕）
+ * 抗锯齿(2x/4x/8x) 在本预览里不体现：引擎没有 MSAA 后端，
+ * 立方体面边本身是几何直线，看不出差别。 */
+void preview3d_set_param(int render_mode, int fog_mode, int edge, int dof,
+			 int glow);
 
 #endif
