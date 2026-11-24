@@ -1950,11 +1950,15 @@ static void delegate_call(int dg_no, int return_address)
 				}
 				for (size_t s2 = 1; s2 < heap_size; s2++) {
 					struct page *pp = heap[s2].page;
-					if (!pp || pp->type != STRUCT_PAGE || pp->index != fs_st ||
-					    pp->nr_vars < 8)
+					if (!pp || pp->type != STRUCT_PAGE || pp->index != fs_st)
 						continue;
-					int pn = pp->values[1].i;
-					int ev = pp->values[7].i;
+					/* [D516h] nr_vars<8 的空 FS 也打（FSALL 时）——
+					 * checkbox 的 FS 可能只建了一半。 */
+					int nvmin = getenv("XSYS4_FN_DUMP_FSALL") ? 1 : 8;
+					if (pp->nr_vars < nvmin)
+						continue;
+					int pn = pp->nr_vars > 1 ? pp->values[1].i : -1;
+					int ev = pp->nr_vars > 7 ? pp->values[7].i : 0;
 					struct page *ep = (ev > 0 && (size_t)ev < heap_size)
 					                  ? heap[ev].page : NULL;
 					int en = ep ? ep->nr_vars : 0;
