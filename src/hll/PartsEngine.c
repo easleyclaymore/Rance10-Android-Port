@@ -724,30 +724,6 @@ static void PE_Noop_Parts_SetPartsTextHighlight(int a0, int a1, int a2, int a3, 
 	(void)a6;
 }
 
-/* AIN f：void SetButtonColor。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetButtonColor(int a0, int a1, int a2, int a3)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
-}
-
-/* AIN f：void SetButtonEnable。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetButtonEnable(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetButtonSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetButtonSize(int a0, int a1, int a2)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-}
-
 /* AIN f：void SuspendTexture(int PartsNumber) / void ResumeTexture(int)。
  *
  * [D144] 这两个原来是"表里根本没有"，到 `SceneQuestMap@OpenParty`（打开部队
@@ -764,39 +740,6 @@ static void PE_Noop_SuspendTexture(int a0)
 static void PE_Noop_ResumeTexture(int a0)
 {
 	(void)a0;
-}
-
-/* AIN f：void SetCheckBoxColor。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetCheckBoxColor(int a0, int a1, int a2, int a3)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
-}
-
-/* AIN f：void SetCheckBoxSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetCheckBoxSize(int a0, int a1, int a2)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-}
-
-/* AIN f：void SetComboBoxSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetComboBoxSize(int a0, int a1, int a2)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-}
-
-/* AIN f：void SetComboBoxTextMargin。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetComboBoxTextMargin(int a0, int a1, int a2)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
 }
 
 /* AIN f：void SetComponentMipmap。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
@@ -817,252 +760,6 @@ static void PE_Noop_SetComponentTextureFilterType(int a0, int a1)
 static void PE_Noop_SetFocus(int a0)
 {
 	(void)a0;
-}
-
-/* AIN f：void SetHScrollbarLeftWidth。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetHScrollbarLeftWidth(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetHScrollbarMoveSizeByButton。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetHScrollbarMoveSizeByButton(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetHScrollbarRightWidth。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetHScrollbarRightWidth(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetHScrollbarScrollPos。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetHScrollbarScrollPos(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetHScrollbarSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetHScrollbarSize(int a0, int a1, int a2)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-}
-
-/* AIN f：void SetHScrollbarTotalSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetHScrollbarTotalSize(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetHScrollbarViewSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetHScrollbarViewSize(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetListBoxLineHeight。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetListBoxLineHeight(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetListBoxMargin。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetListBoxMargin(int a0, int a1, int a2)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-}
-
-/* AIN f：void SetListBoxScrollPos。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetListBoxScrollPos(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetListBoxSelectIndex。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetListBoxSelectIndex(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetListBoxSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetListBoxSize(int a0, int a1, int a2)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-}
-
-/* AIN f：void SetMultiTextBoxMaxTextLength。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetMultiTextBoxMaxTextLength(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetMultiTextBoxSelectColor。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetMultiTextBoxSelectColor(int a0, int a1, int a2, int a3)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
-}
-
-/* AIN f：void SetMultiTextBoxSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetMultiTextBoxSize(int a0, int a1, int a2)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-}
-
-/* AIN f：void SetVScrollbarDownHeight。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetVScrollbarDownHeight(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetVScrollbarMoveSizeByButton。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetVScrollbarMoveSizeByButton(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetVScrollbarScrollPos。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetVScrollbarScrollPos(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetVScrollbarSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetVScrollbarSize(int a0, int a1, int a2)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-}
-
-/* AIN f：void SetVScrollbarTotalSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetVScrollbarTotalSize(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetVScrollbarUpHeight。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetVScrollbarUpHeight(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetVScrollbarViewSize。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetVScrollbarViewSize(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetButtonCGName。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetButtonCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetButtonText。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetButtonText(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetCheckBoxCGName。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetCheckBoxCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetCheckBoxText。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetCheckBoxText(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetComboBoxCGName。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetComboBoxCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetComboBoxText。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetComboBoxText(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetHScrollbarCGName。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetHScrollbarCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetListBoxCGName。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetListBoxCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetListBoxItem。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetListBoxItem(int a0, int a1, struct string * a2)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-}
-
-/* AIN f：void SetMultiTextBoxCGName。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetMultiTextBoxCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetMultiTextBoxText。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetMultiTextBoxText(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN f：void SetVScrollbarCGName。[HACK-POC D85] 空实现（setter 占位），不保存状态。 */
-static void PE_Noop_SetVScrollbarCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
 }
 
 /* AIN Parts_SetAnchor：void Parts_SetAnchor。[HACK-POC D85] 空实现（setter 占位）。 */
@@ -1211,104 +908,6 @@ static void PE_Noop_Parts_SetWheelable(int a0, int a1)
  * 哪一层（`parts->controller_no = ctrl_stack.active`），空实现会让 AIN 的
  * "往低层放东西/隐藏低层"全部落空。见 parts.c 的 PE_SetActiveController。 */
 
-/* AIN SetButtonCharSpace：void SetButtonCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetButtonCharSpace(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetButtonFlatName：void SetButtonFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetButtonFlatName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetButtonLineSpace：void SetButtonLineSpace。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetButtonLineSpace(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetButtonTextOriginPosMode：void SetButtonTextOriginPosMode。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetButtonTextOriginPosMode(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetCheckBoxButtonMode：void SetCheckBoxButtonMode。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetCheckBoxButtonMode(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetCheckBoxCharSpace：void SetCheckBoxCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetCheckBoxCharSpace(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetCheckBoxEnable：void SetCheckBoxEnable。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetCheckBoxEnable(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetCheckBoxFlatName：void SetCheckBoxFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetCheckBoxFlatName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetCheckBoxLineSpace：void SetCheckBoxLineSpace。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetCheckBoxLineSpace(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetCheckBoxOverrideCGName：void SetCheckBoxOverrideCGName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetCheckBoxOverrideCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetCheckBoxOverrideCheckedCGName：void SetCheckBoxOverrideCheckedCGName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetCheckBoxOverrideCheckedCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetCheckBoxOverrideCheckedFlatName：void SetCheckBoxOverrideCheckedFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetCheckBoxOverrideCheckedFlatName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetCheckBoxOverrideFlatName：void SetCheckBoxOverrideFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetCheckBoxOverrideFlatName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetCheckBoxTextOriginPosMode：void SetCheckBoxTextOriginPosMode。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetCheckBoxTextOriginPosMode(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
 /* [D494] 全局点击 miss 音（SetClickMissSoundName/GetClickMissSoundName），
  * 转发 parts.c 的全局存储。getter 在 AIN 里静态 0 调用（ain_xref hlltop），
  * setter 1 个调用点；补 getter 只为消掉链接期告警。 */
@@ -1364,64 +963,6 @@ static void PE_ReturnChangeFlatSound_fwd(int no, struct string *old_name,
 static void PE_ClearChangeFlatSound_fwd(int no, int state)
 {
 	PE_ClearChangeFlatSound(no, state);
-}
-
-/* AIN SetComboBoxCharSpace：void SetComboBoxCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetComboBoxCharSpace(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetComboBoxListBoxCharSpace：void SetComboBoxListBoxCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetComboBoxListBoxCharSpace(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetComboBoxListBoxHeight：void SetComboBoxListBoxHeight。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetComboBoxListBoxHeight(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetComboBoxListBoxItem：void SetComboBoxListBoxItem。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetComboBoxListBoxItem(int a0, int a1, struct string * a2)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-}
-
-/* AIN SetComboBoxListBoxLineHeight：void SetComboBoxListBoxLineHeight。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetComboBoxListBoxLineHeight(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetComboBoxListBoxMargin：void SetComboBoxListBoxMargin。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetComboBoxListBoxMargin(int a0, int a1, int a2)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-}
-
-/* AIN SetComboBoxListBoxScrollPos：void SetComboBoxListBoxScrollPos。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetComboBoxListBoxScrollPos(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetComboBoxListBoxSelectIndex：void SetComboBoxListBoxSelectIndex。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetComboBoxListBoxSelectIndex(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
 }
 
 /* AIN SetComponentCheckBoxShowLinkNumber：void SetComponentCheckBoxShowLinkNumber。[HACK-POC D85] 空实现（setter 占位）。 */
@@ -1644,69 +1185,6 @@ static void PE_Noop_SetHScrollViewSizeLinkNumber(int a0, int a1)
 	(void)a1;
 }
 
-/* AIN SetHScrollbarFlatName：void SetHScrollbarFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetHScrollbarFlatName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetHScrollbarOverrideBGCGName：void SetHScrollbarOverrideBGCGName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetHScrollbarOverrideBGCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetHScrollbarOverrideBGFlatName：void SetHScrollbarOverrideBGFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetHScrollbarOverrideBGFlatName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetHScrollbarOverrideBarCGName：void SetHScrollbarOverrideBarCGName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetHScrollbarOverrideBarCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetHScrollbarOverrideBarFlatName：void SetHScrollbarOverrideBarFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetHScrollbarOverrideBarFlatName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetHScrollbarOverrideLeftCGName：void SetHScrollbarOverrideLeftCGName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetHScrollbarOverrideLeftCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetHScrollbarOverrideLeftFlatName：void SetHScrollbarOverrideLeftFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetHScrollbarOverrideLeftFlatName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetHScrollbarOverrideRightCGName：void SetHScrollbarOverrideRightCGName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetHScrollbarOverrideRightCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetHScrollbarOverrideRightFlatName：void SetHScrollbarOverrideRightFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetHScrollbarOverrideRightFlatName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
 /* [D496] 按键等待指示（キー待ち表示）一族：状态存 parts_widget
  * （见那里 [D496] 注释的调用方证据）。运行期只有 SetKeyWaitShow 被调
  * （693 次/章），CG/Flat/Pos 三个配置 setter 0 次命中——但照实存，
@@ -1754,17 +1232,10 @@ static void PE_SetKeyWaitShow(int no, int show)
 	w->keywait_show = show != 0;
 }
 
-/* AIN SetLayoutBoxPadding：void SetLayoutBoxPadding。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetLayoutBoxPadding(int a0, int a1, int a2, int a3, int a4)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
-	(void)a4;
-}
-
-/* AIN SetLayoutBoxReturnSizeForRate：void SetLayoutBoxReturnSizeForRate。[HACK-POC D85] 空实现（setter 占位）。 */
+/* AIN SetLayoutBoxReturnSizeForRate：void SetLayoutBoxReturnSizeForRate。
+ * [D517l] 仍是占位：AIN 有调用点（0x1d9d06）但运行期 0 命中（d662 全量
+ * trace 实证），语义 = wrap_size 按比率设置，比率基数（盒宽？父宽？）
+ * 未考证 —— 盲目实现有引入错误行为的风险，等真实命中再考。 */
 static void PE_Noop_SetLayoutBoxReturnSizeForRate(int a0, int a1)
 {
 	(void)a0;
@@ -3948,12 +3419,6 @@ static void PE_SetMessageWindowFlatShowWaitFrameNumber(int no, int frames)
 		w->msg_flat_wait_frame = frames;
 }
 
-static void PE_Noop_SetMessageWindowFlatShowWaitFrameNumber(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
 /* AIN SetMessageWindowInactiveMultipleColor：void SetMessageWindowInactiveMultipleColor。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_SetMessageWindowInactiveMultipleColor(int no, int r, int g, int b)
 {
@@ -3963,14 +3428,6 @@ static void PE_SetMessageWindowInactiveMultipleColor(int no, int r, int g, int b
 		w->msg_inactive_g = g;
 		w->msg_inactive_b = b;
 	}
-}
-
-static void PE_Noop_SetMessageWindowInactiveMultipleColor(int a0, int a1, int a2, int a3)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
 }
 
 /* [D142] 消息窗口正文必须落到 parts 的文本层。
@@ -4084,16 +3541,6 @@ static void PE_SetMessageWindowTextArea(int no, int x, int y, int w, int h)
 		wp->msg_area_w = w;
 		wp->msg_area_h = h;
 	}
-}
-
-static void PE_Noop_SetMessageWindowTextArea(int a0, int a1, int a2, int a3, int a4)
-{
-	MSGWIN_HIT("SetMessageWindowTextArea no=%d x=%d y=%d w=%d h=%d", a0, a1, a2, a3, a4);
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
-	(void)a4;
 }
 
 /* AIN SetMessageWindowTextOriginPosMode：void SetMessageWindowTextOriginPosMode。[HACK-POC D85] 空实现（setter 占位）。 */
@@ -4356,78 +3803,6 @@ static void PE_GetPartsConstructionProcess(int no, int state,
 	(void)c;
 }
 
-/* AIN SetMultiTextBoxBGColor：void SetMultiTextBoxBGColor。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetMultiTextBoxBGColor(int a0, int a1, int a2, int a3)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
-}
-
-/* AIN SetMultiTextBoxCharSpace：void SetMultiTextBoxCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetMultiTextBoxCharSpace(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetMultiTextBoxFrameColor：void SetMultiTextBoxFrameColor。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetMultiTextBoxFrameColor(int a0, int a1, int a2, int a3)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
-}
-
-/* AIN SetMultiTextBoxHScrollShow：void SetMultiTextBoxHScrollShow。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetMultiTextBoxHScrollShow(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetMultiTextBoxLineSpace：void SetMultiTextBoxLineSpace。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetMultiTextBoxLineSpace(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetMultiTextBoxPadding：void SetMultiTextBoxPadding。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetMultiTextBoxPadding(int a0, int a1, int a2, int a3, int a4)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
-	(void)a4;
-}
-
-/* AIN SetMultiTextBoxReadOnly：void SetMultiTextBoxReadOnly。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetMultiTextBoxReadOnly(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetMultiTextBoxReadOnlyBGColor：void SetMultiTextBoxReadOnlyBGColor。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetMultiTextBoxReadOnlyBGColor(int a0, int a1, int a2, int a3)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
-}
-
-/* AIN SetMultiTextBoxVScrollShow：void SetMultiTextBoxVScrollShow。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetMultiTextBoxVScrollShow(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
 /* AIN SetNumeralFullPitch：void SetNumeralFullPitch。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetNumeralFullPitch(int a0, int a1, int a2)
 {
@@ -4543,78 +3918,6 @@ static void PE_SetShowForBackScene(int a0, int a1)
 	PE_SetShow(a0, a1);
 }
 
-/* AIN SetSpinBoxBGColor：void SetSpinBoxBGColor。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetSpinBoxBGColor(int a0, int a1, int a2, int a3)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
-}
-
-/* AIN SetSpinBoxCGName：void SetSpinBoxCGName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetSpinBoxCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetSpinBoxCharSpace：void SetSpinBoxCharSpace。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetSpinBoxCharSpace(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetSpinBoxDecimalPlace：void SetSpinBoxDecimalPlace。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetSpinBoxDecimalPlace(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetSpinBoxFrameColor：void SetSpinBoxFrameColor。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetSpinBoxFrameColor(int a0, int a1, int a2, int a3)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
-}
-
-/* AIN SetSpinBoxReadOnly：void SetSpinBoxReadOnly。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetSpinBoxReadOnly(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetSpinBoxReadOnlyBGColor：void SetSpinBoxReadOnlyBGColor。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetSpinBoxReadOnlyBGColor(int a0, int a1, int a2, int a3)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
-}
-
-/* AIN SetSpinBoxSelectColor：void SetSpinBoxSelectColor。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetSpinBoxSelectColor(int a0, int a1, int a2, int a3)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-	(void)a3;
-}
-
-/* AIN SetSpinBoxSize：void SetSpinBoxSize。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetSpinBoxSize(int a0, int a1, int a2)
-{
-	(void)a0;
-	(void)a1;
-	(void)a2;
-}
-
 /* 用户组件 (component type 15)。引擎侧只存"名字 + 键值袋"，
  * TextButton 之类的行为与绘制由游戏的 AIN 代码实现：
  *   活动创建用户组件事件的入口（CallUserComponentCreateEventWithChild）
@@ -4663,69 +3966,6 @@ static void PE_Noop_SetVScrollTotalSizeLinkNumber(int a0, int a1)
 
 /* AIN SetVScrollViewSizeLinkNumber：void SetVScrollViewSizeLinkNumber。[HACK-POC D85] 空实现（setter 占位）。 */
 static void PE_Noop_SetVScrollViewSizeLinkNumber(int a0, int a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetVScrollbarFlatName：void SetVScrollbarFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetVScrollbarFlatName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetVScrollbarOverrideBGCGName：void SetVScrollbarOverrideBGCGName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetVScrollbarOverrideBGCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetVScrollbarOverrideBGFlatName：void SetVScrollbarOverrideBGFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetVScrollbarOverrideBGFlatName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetVScrollbarOverrideBarCGName：void SetVScrollbarOverrideBarCGName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetVScrollbarOverrideBarCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetVScrollbarOverrideBarFlatName：void SetVScrollbarOverrideBarFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetVScrollbarOverrideBarFlatName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetVScrollbarOverrideDownCGName：void SetVScrollbarOverrideDownCGName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetVScrollbarOverrideDownCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetVScrollbarOverrideDownFlatName：void SetVScrollbarOverrideDownFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetVScrollbarOverrideDownFlatName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetVScrollbarOverrideUpCGName：void SetVScrollbarOverrideUpCGName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetVScrollbarOverrideUpCGName(int a0, struct string * a1)
-{
-	(void)a0;
-	(void)a1;
-}
-
-/* AIN SetVScrollbarOverrideUpFlatName：void SetVScrollbarOverrideUpFlatName。[HACK-POC D85] 空实现（setter 占位）。 */
-static void PE_Noop_SetVScrollbarOverrideUpFlatName(int a0, struct string * a1)
 {
 	(void)a0;
 	(void)a1;
@@ -5730,7 +4970,10 @@ HLL_LIBRARY(PartsEngine,
 	     * 于是运行期一直报 `Unimplemented library function:
 	     * PartsEngine.GetLayoutBoxPaddingTop`，setter 则绑到了空实现
 	     * （`PE_Noop_SetLayoutBoxPadding`）—— 布局盒的 padding 恒为 0，
-	     * 子控件全挤在父容器原点（战况报告屏三行数字叠在左上就是这么来的）。 */
+	     * 子控件全挤在父容器原点（战况报告屏三行数字叠在左上就是这么来的）。
+	     * [D517l] 补充核实：AIN 的 padding 包装方法（0x1d9fca 一带）运行期
+	     * **零调用**（d662 全量 trace），220 个 pact 的 EX `パディング`
+	     * 也全零（编辑器默认值）—— 这条链当前没有真实消费者。 */
 	    HLL_EXPORT(SetLayoutBoxPadding, PE_set_layoutbox_padding),
 	    HLL_EXPORT(GetLayoutBoxPaddingTop, PE_get_layoutbox_padding_top),
 	    HLL_EXPORT(GetLayoutBoxPaddingBottom, PE_get_layoutbox_padding_bottom),
