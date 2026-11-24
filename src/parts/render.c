@@ -1435,30 +1435,48 @@ void parts_render(struct parts *parts)
 		parts_render_flash(parts, &state->flash);
 		break;
 	case PARTS_FLAT:
-		/* [D517] checkbox 程序化外观：AIN 调过 SetCheckBoxSize 族
-		 * （widget->is_checkbox）且 flat 空库 = 视觉全由组件代码画，
-		 * EX 里没有任何图像引用。色板底色取 widget->bg（EX 按钮の色，
-		 * SetCheckBoxColor 写入；未设回落 200,200,200）。
+		/* [D517] checkbox 程序化外观：组件类型 1（检查ＢＯＸ）/
+		 * 9（ラジオ按钮ＢＯＸ）且 flat 空库 = 视觉全由引擎内建
+		 * 组件绘制（EX 无任何图像引用，d638 实证 AIN 也不调
+		 * SetCheckBoxSize 族——原版的绘制在 parts 引擎内建层）。
+		 * 色板底色取 widget->bg（SetCheckBoxColor 写入；AIN 未调
+		 * 则回落 EX 按钮の色的典型值 200,200,200）。勾选态读
+		 * widget->checked（CheckBoxChecked 写入）。
 		 * 标签（D514 caption）在 flat 之后照旧叠加。 */
-		if (parts->widget && parts->widget->is_checkbox &&
+		if ((state->component_type == 1 || state->component_type == 9) &&
 		    !state->flat.flat) {
+			/* [D517c] 只画**叶子** checkbox：组容器
+			 * （ラジオ按钮ボックス_10000NNNN，有子件）在原版
+			 * 不画任何东西——画了就是整列宽灰板盖住页面。 */
+			bool has_children = false;
+			struct parts *cbc;
+			PARTS_FOREACH_CHILD(cbc, parts) {
+				has_children = true;
+				break;
+			}
+			if (has_children)
+				break;
 			struct parts_widget *cbw = parts->widget;
-			int bw = cbw->button_width > 0 ? cbw->button_width
-				: (state->common.w > 0 ? state->common.w : 20);
-			int bh = cbw->button_height > 0 ? cbw->button_height
-				: (state->common.h > 0 ? state->common.h : 20);
-			SDL_Color fill = cbw->bg_set
+			int bw = state->common.w > 0 ? state->common.w : 20;
+			int bh = state->common.h > 0 ? state->common.h : 20;
+			SDL_Color fill = (cbw && cbw->bg_set)
 				? (SDL_Color){ cbw->bg_r, cbw->bg_g, cbw->bg_b, 255 }
 				: (SDL_Color){ 200, 200, 200, 255 };
+			bool checked = cbw && cbw->checked;
+			bool enabled = !cbw || cbw->enabled;
 			int cx = parts->global.pos.x;
 			int cy = parts->global.pos.y;
 			set_draw_filter_blend_func(parts->draw_filter);
 			if (parts->global.show && parts->global.alpha > 0) {
+				if (!enabled)
+					fill = (SDL_Color){ fill.r / 2,
+							fill.g / 2,
+							fill.b / 2, 255 };
 				render_uc_rect(cx, cy, bw, bh,
 						(SDL_Color){ 30, 32, 38, 255 });
 				render_uc_rect(cx + 1, cy + 1, bw - 2, bh - 2,
 						(SDL_Color){ 52, 56, 64, 255 });
-				if (cbw->checked) {
+				if (checked) {
 					render_uc_rect(cx + 2, cy + 2,
 							bw - 4, bh - 4, fill);
 					render_uc_rect(cx + bw - 8, cy + bh - 8,

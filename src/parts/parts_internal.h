@@ -989,6 +989,7 @@ void parts_flat_emitter_resolve_layer(
 // layoutbox.c
 void parts_do_layout(struct parts *parts);
 void parts_layout_veto_static_children(int parts_no);
+void parts_layout_enable_runtime_children(int parts_no);
 
 // debug.c
 struct sprite;

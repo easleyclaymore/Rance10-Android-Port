@@ -1995,6 +1995,11 @@ bool activity_read(struct string *name, struct string *file)
 	 * 否则每帧 parts_do_layout 会把 EX 绝对座标覆盖掉。 */
 	for (int i = 0; i < act->nr_parts; i++)
 		parts_layout_veto_static_children(act->flat[i]->parts_no);
+	/* [D517c] 镜像规则：LAYOUT_BOX + 子件座标全 (0,0) + 当前 FREE =
+	 * 运行期排布容器（3D 设置页主容器 900000169，19 个组容器全叠
+	 * (0,0) 就是它没排），启用 VERTICAL。 */
+	for (int i = 0; i < act->nr_parts; i++)
+		parts_layout_enable_runtime_children(act->flat[i]->parts_no);
 
 	/* 建树后的权威快照：此时父链与 global 参数都已成型，
 	 * gpos 就是渲染/命中真正用的坐标。 */

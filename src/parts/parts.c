@@ -4390,13 +4390,13 @@ void PE_DebugDumpParts(const char *tag)
 		 * 靠的就是这两个标志，之前只有几何和渲染字段，找卡片坐标得靠猜。
 		 * 另外每段 400 行的硬截断实测把编队界面 73 段全切了（卡片在后面），
 		 * 上限改成可调，默认仍是 400 以免默认日志膨胀。 */
-		NOTICE("[parts] %s no=%d ctrl=%d z=%d pos=(%d,%d) %dx%d a=%d la=%d par=%d ps=%d st=%d tex=%d vis=%d ck=%d pc=%d uc=%s",
+		NOTICE("[parts] %s no=%d ctrl=%d z=%d pos=(%d,%d) %dx%d a=%d la=%d par=%d ps=%d st=%d ct=%d tex=%d vis=%d ck=%d pc=%d uc=%s",
 		       tag, p->no, p->controller_no, p->global.z,
 		       p->global.pos.x, p->global.pos.y,
 		       st->common.w, st->common.h,
 		       (int)p->global.alpha, (int)p->local.alpha,
 		       p->parent ? p->parent->no : -1,
-		       (int)p->state, (int)st->type,
+		       (int)p->state, (int)st->type, st->component_type,
 		       st->common.texture.handle != 0,
 		       parts_is_visible(p) ? 1 : 0,
 		       p->clickable ? 1 : 0, p->pass_cursor ? 1 : 0,

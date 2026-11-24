@@ -280,6 +280,52 @@ void parts_layout_veto_static_children(int parts_no)
 	}
 }
 
+/* [D517c] 与 veto 互补的另一半：EX 声明了 レイアウトＢＯＸ（容器装载成
+ * LAYOUT_BOX）但 `配置` 缺省 -> D214 默认 FREE。可 3D 设置页的主容器
+ * （900000169，st=12，19 个组容器子件全在 (0,0)，d641 [lay] 实证
+ * type=0 children=19）就是**运行期排布容器**——原版把每组选项垂直
+ * 堆叠全靠它，不排布则 10 组选项全部叠在第一组的位置。
+ * D250 判据的镜像：子件座标全 (0,0) 且当前 FREE -> 默认 VERTICAL。
+ * AIN 显式 SetLayoutBoxLayoutType 仍会覆盖；静态容器（子件有实座标）
+ * 由 veto 保持 FREE，两条规则互补。 */
+void parts_layout_enable_runtime_children(int parts_no)
+{
+	struct parts *parts = parts_try_get(parts_no);
+	if (!parts)
+		return;
+	struct parts_layout_box *lb;
+	if (parts->states[parts->state].type == PARTS_LAYOUT_BOX)
+		lb = &parts->states[parts->state].layout_box;
+	else if (parts->has_layout_box)
+		lb = &parts->layout_box_data;
+	else
+		return;
+	if (lb->layout_type != PARTS_LAYOUT_FREE)
+		return;
+	/* [D517c] 活动根（ルートパーツ，par=-1）永不翻：标题根（900000029/33，
+	 * type=8、子件 AIN 运行期定位、装载时还在 (0,0)）被翻成 VERTICAL
+	 * 会把每帧 layout 变成子件位置覆盖，标题按钮全部堆叠（冒烟实测
+	 * 第一章进不去）。运行期排布容器只会是**嵌套**容器。 */
+	if (!parts->parent)
+		return;
+	int nc = 0, at_origin = 0;
+	struct parts *child;
+	PARTS_FOREACH_CHILD(child, parts) {
+		nc++;
+		if (child->local.pos.x == 0 && child->local.pos.y == 0)
+			at_origin++;
+	}
+	/* [D517c] ≥2 个子件在 (0,0) 即视为运行期排布容器：3D 页主容器
+	 * 900000169 的 19 个子件里 18 个组容器全在 (0,0)（EX 座标未写），
+	 * 另有一个 (100,100) 的静态兄弟（900000170）——按「全零」判据会
+	 * 被它挡住。原版语义：排布容器不管子件 EX 座标，一律重排。 */
+	if (at_origin < 2)
+		return;
+	lb->layout_type = PARTS_LAYOUT_VERTICAL;
+	if (parts->has_layout_box)
+		parts->layout_box_data.layout_type = PARTS_LAYOUT_VERTICAL;
+}
+
 void parts_do_layout(struct parts *parts)
 {
 	/* [D515] 探针：`XSYS4_LAYOUT_DBG=1` 打印每个布局盒的判据。
