@@ -907,6 +907,10 @@ static int _function_call(int fno, int return_address)
 	return slot;
 }
 
+/* CALLMETHOD 用：栈布局 [obj, fno, args...]，fno 在 args 下面一层。
+ * （[D520c] 前向声明提前——call_trace_probe 里的 [adm] 探针要用。） */
+static int struct_no_from_function(int fno);
+
 /* [D111d] 每函数入口探针：XSYS4_CALL_TRACE=<函数号,函数号,...>
  * 打印前 3 次、之后每 200 次，这样「这个 AIN 函数到底跑过没有」
  * 不用开 trace 窗口就能回答。 */
@@ -919,27 +923,103 @@ static void call_trace_probe(int fno, int ret_addr)
 	 * 命中时 dump global[268]（Admiral 注册表）的规模与前几个元素的
 	 * m0（GetCountryId）。验证 [ADVQUEST-LOOP] 的根因——
 	 * 「664 个武将 countryId 全匹配」是数据未初始化还是过滤正常。 */
+	/* [D520c] XSYS4_ADMIRAL_DBG=1：fno==28892（武将登録）每次命中 dump
+	 * global[268] 尾部——验证注册写入是否真落进数组（[ADVQUEST-LOOP]
+	 * 取证：trace 显示登録被调 257 次，但任务选择时 dump 全 null，
+	 * 要分辨「写入失败」还是「写入后被清」。 */
+	if (fno == 28892 && getenv("XSYS4_ADMIRAL_DBG")) {
+		static int reg_dumped;
+		if (reg_dumped == 0) {
+			/* [D520c] global[268] 的 AIN 声明类型——若声明就是
+			 * struct 数组（data=ARRAY_STRUCT struc=Admiral 号），
+			 * 则页 a_type=AIN_ARRAY 是装载 bug；若声明是泛型
+			 * array，CALLMETHOD-on-null 的写回才是唯一缺口。 */
+			NOTICE("[adm] 声明: global[268] data=%d struc=%d rank=%d",
+			       ain->globals[268].type.data,
+			       ain->globals[268].type.struc,
+			       ain->globals[268].type.rank);
+			if (ain->globals[268].type.struc >= 0 &&
+			    ain->globals[268].type.struc < ain->nr_structures)
+				NOTICE("[adm] struct %d 名='%s' 成员=%d；"
+				       "Admiral@Init(27636) 推号=%d",
+				       ain->globals[268].type.struc,
+				       display_sjis0(ain->structures[ain->globals[268].type.struc].name),
+				       ain->structures[ain->globals[268].type.struc].nr_members,
+				       struct_no_from_function(27636));
+		}
+		if (reg_dumped++ % 40 == 0) {
+			int arr = heap[0].page->values[268].i;
+			struct page *ap = (arr > 0 && (size_t)arr < heap_size)
+					  ? heap[arr].page : NULL;
+			if (ap && ap->nr_vars > 0) {
+				int n = ap->nr_vars;
+				NOTICE("[adm-reg] call#%d nr=%d 尾3：[%d]=%d [%d]=%d [%d]=%d",
+				       reg_dumped, n,
+				       n-3, ap->values[n-3].i,
+				       n-2, ap->values[n-2].i,
+				       n-1, ap->values[n-1].i);
+			} else {
+				NOTICE("[adm-reg] call#%d global[268] slot=%d 页%s",
+				       reg_dumped, arr, ap ? "空" : "无效");
+			}
+		}
+	}
 	if (fno == 26470 && getenv("XSYS4_ADMIRAL_DBG")) {
 		static int adm_dumped;
 		if (adm_dumped < 3) {
 			adm_dumped++;
+			/* [D520c] global[268] 的 AIN 声明类型——若声明就是
+			 * struct 数组（data=ARRAY_STRUCT struc=Admiral 号），
+			 * 则页 a_type=AIN_ARRAY 是装载 bug；若声明是泛型
+			 * array，CALLMETHOD-on-null 的写回才是唯一缺口。 */
+			NOTICE("[adm] 声明: global[268] data=%d struc=%d rank=%d",
+			       ain->globals[268].type.data,
+			       ain->globals[268].type.struc,
+			       ain->globals[268].type.rank);
 			int arr = heap[0].page->values[268].i;
 			struct page *ap = (arr > 0 && (size_t)arr < heap_size)
 					  ? heap[arr].page : NULL;
 			if (ap) {
 				NOTICE("[adm] global[268] slot=%d type=%d nr=%d",
 				       arr, ap->type, ap->nr_vars);
-				for (int k = 0; k < ap->nr_vars && k < 8; k++) {
+				/* [D520b] 全表统计：null（slot=-1）/ 真对象（分结构号）
+				 * 计数 + m0(country) 分布——只看前 8 个会误判全表。 */
+				int null_n = 0, obj_n = 0, other_n = 0;
+				int country_hist[16] = {0};
+				int first_real = -1;
+				for (int k = 0; k < ap->nr_vars; k++) {
 					int el = ap->values[k].i;
-					struct page *ep = (el > 0 && (size_t)el < heap_size)
-							  ? heap[el].page : NULL;
-					NOTICE("[adm]   [%d] slot=%d type=%d idx=%d "
-					       "m0(country)=%d m1=%d",
-					       k, el, ep ? ep->type : -1,
-					       ep ? ep->index : -1,
-					       ep && ep->nr_vars > 0 ? ep->values[0].i : -9,
-					       ep && ep->nr_vars > 1 ? ep->values[1].i : -9);
+					struct page *ep =
+						(el > 0 && (size_t)el < heap_size)
+							? heap[el].page
+							: NULL;
+					if (!ep) {
+						null_n++;
+						continue;
+					}
+					if (ep->type == 2) { /* STRUCT_PAGE */
+						obj_n++;
+						if (first_real < 0)
+							first_real = k;
+						int c = ep->nr_vars > 0
+								? ep->values[0].i
+								: -9;
+						if (c >= 0 && c < 16)
+							country_hist[c]++;
+						else
+							other_n++;
+					} else {
+						other_n++;
+					}
 				}
+				NOTICE("[adm] 统计 null=%d 真对象=%d 其他=%d "
+				       "首个真对象=[%d]",
+				       null_n, obj_n, other_n, first_real);
+				for (int c = 0; c < 16; c++)
+					if (country_hist[c])
+						NOTICE("[adm]   country=%d "
+						       "n=%d",
+						       c, country_hist[c]);
 			} else {
 				NOTICE("[adm] global[268] slot=%d 页无效", arr);
 			}
@@ -1218,8 +1298,6 @@ static void method_call_fno(int fno, int return_address)
 	}
 }
 
-/* CALLMETHOD 用：栈布局 [obj, fno, args...]，fno 在 args 下面一层 */
-static int struct_no_from_function(int fno);
 
 /* [AUTO] XSYS4_AUTO_PARTY=1：把"部队编成界面"从点击里解耦出来。
  *
@@ -4897,6 +4975,30 @@ static enum opcode execute_instruction(enum opcode opcode)
 		}
 		last_ref_heap = _hidx;
 		last_ref_index = _pidx;
+		/* [D520c] struct 数组的**元素位构造**语义：对声明带结构号的
+		 * struct 数组解引用 null 元素 = 分配对象并写回。
+		 * AIN 惯用法 `arr[i].Init(...)`（武将登録 global[268] 即此）
+		 * 编译为 `REF; PUSH fno; args; CALLMETHOD`——栈上只有元素值，
+		 * CALLMETHOD 拿不到写回地址，所以分配必须在这里完成。
+		 * 此前只走 D155 幽灵补建（168 个武将复用同一幽灵页、数组
+		 * 元素永远 -1）→ findAdmiralFromId 永远查不到 → 无限重登録
+		 * → 任务选择「差异」=全员 → AdmiralView02 装载循环
+		 * （[ADVQUEST-LOOP]）。泛型数组（struc<0）不受影响。 */
+		if (_v->i == -1 && _hidx > 0 && (size_t)_hidx < heap_size &&
+		    heap[_hidx].page && heap[_hidx].page->type == ARRAY_PAGE &&
+		    heap[_hidx].page->array.struct_type >= 0 &&
+		    heap[_hidx].page->array.struct_type < ain->nr_structures &&
+		    _pidx >= 0 && _pidx < heap[_hidx].page->nr_vars) {
+			int slot = alloc_struct(heap[_hidx].page->array.struct_type);
+			_v->i = slot;
+			static int ncons;
+			if (ncons++ < 20)
+				NOTICE("[ref-alloc] ip=0x%zX 数组=%d(struct %d)"
+				       " [%d] -> 新对象 slot=%d",
+				       instr_ptr, _hidx,
+				       heap[_hidx].page->array.struct_type,
+				       _pidx, slot);
+		}
 		stack_push(_v->i);
 		break;
 	}

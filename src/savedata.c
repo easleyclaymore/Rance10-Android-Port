@@ -230,16 +230,55 @@ static int32_t add_value_to_gsave(enum ain_data_type type, union vm_value val, s
 			 * 读取端根本没法接受（它会按存档里的元素种类分配数组，
 			 * 再和拿到的类型比对）。
 			 * 「没有种类」就意味着「没法表示」
-			 * -> 记成未设置。 */
+			 * -> 记成未设置。
+			 *
+			 * [D520b] 例外：元素全是同一个结构号的对象页（允许 -1 空
+			 * 元素混入）时，按运行期事实就地定型为 AIN_ARRAY_STRUCT。
+			 * 「泛型数组由元素定型」的语义本来就成立（D44），只是赋值
+			 * 路径拿不到结构号、一直没定型；保存时刻元素页自带 index
+			 * （结构号），是可靠的定型依据。兰斯10 的 Admiral 注册表
+			 * (global[268]) 即此情形：不定型则存档丢整表、读档后全
+			 * null，任务选择的「差异武将」过滤放行全员（[ADVQUEST-LOOP]
+			 * 的 664 次装载循环）。 */
 			if (array_type(page->a_type) == AIN_VOID) {
-				static int nr_untyped;
-				if (nr_untyped++ < 3)
-					WARNING("save: array with unsettled element kind"
-						" (a_type=%d, %d elements) written as unset"
-						" at %s (root %s)", page->a_type, page->nr_vars,
-						gsave_ctx, gsave_root);
-				struct gsave_array array = { .rank = -1 };
-				return gsave_add_array(save, &array);
+				int st = -1;
+				bool settle = page->nr_vars > 0;
+				for (int k = 0; settle && k < page->nr_vars; k++) {
+					int el = page->values[k].i;
+					if (el <= 0)
+						continue; /* 空元素允许 */
+					struct page *ep =
+						(el > 0 && (size_t)el < heap_size)
+							? heap[el].page
+							: NULL;
+					if (!ep || ep->type != STRUCT_PAGE) {
+						settle = false;
+						break;
+					}
+					if (st < 0)
+						st = ep->index;
+					else if (ep->index != st)
+						settle = false;
+				}
+				if (settle && st >= 0) {
+					static int nr_settled;
+					if (nr_settled++ < 3)
+						NOTICE("[gsave] 泛型数组就地定型"
+						       " struct=%d nr=%d at %s",
+						       st, page->nr_vars,
+						       gsave_ctx);
+					page->a_type = AIN_ARRAY_STRUCT;
+					page->array.struct_type = st;
+				} else {
+					static int nr_untyped;
+					if (nr_untyped++ < 3)
+						WARNING("save: array with unsettled element kind"
+							" (a_type=%d, %d elements) written as unset"
+							" at %s (root %s)", page->a_type, page->nr_vars,
+							gsave_ctx, gsave_root);
+					struct gsave_array array = { .rank = -1 };
+					return gsave_add_array(save, &array);
+				}
 			}
 			struct gsave_array array = {
 				.rank = page->array.rank,
@@ -607,7 +646,42 @@ static struct gsave_flat_array *gsave_load_array(struct gsave *save, struct page
 			page->values[i] = variable_initval(data_type);
 			continue;
 		}
-		if (data_type != flat_array->values[i].type)
+		/* [D520b] 泛型数组（声明 `array`，页 a_type 仍 AIN_ARRAY→
+		 * variable_type 报 VOID）接受文件里记录的更精确元素类型——
+		 * 写端保存时按运行期事实就地定型（见 add_value_to_gsave）。
+		 * 元素类型为 AIN_STRUCT 时结构号从 record 的结构定义反查
+		 * （泛型声明里没有 struc）。 */
+		if (data_type == AIN_VOID) {
+			data_type = flat_array->values[i].type;
+			if (data_type == AIN_STRUCT) {
+				int32_t rv = flat_array->values[i].value;
+				if (gsave_index_ok(rv, save->nr_records)) {
+					struct gsave_record *rec =
+						&save->records[rv];
+					const char *nm = NULL;
+					if (save->version >= 7 &&
+					    rec->struct_index >= 0 &&
+					    rec->struct_index < save->nr_struct_defs)
+						nm = save->struct_defs[rec->struct_index].name;
+					if (!nm)
+						nm = rec->struct_name;
+					struct_type = -1;
+					for (int s = 0; s < ain->nr_structures; s++) {
+						if (!strcmp(ain->structures[s].name, nm)) {
+							struct_type = s;
+							break;
+						}
+					}
+					if (struct_type < 0)
+						VM_ERROR("Bad save file: generic array"
+							 " element references unknown structure"
+							 " '%s'", nm ? nm : "(null)");
+					/* 数组页也就地定型，后续访问按 struct 数组走。 */
+					page->a_type = AIN_ARRAY_STRUCT;
+					page->array.struct_type = struct_type;
+				}
+			}
+		} else if (data_type != flat_array->values[i].type)
 			VM_ERROR("Bad save file: unexpected array element type"
 				 " (element %d/%d: page says %s(%d), file says %s(%d);"
 				 " page a_type=%d rank=%d struc=%d)",
