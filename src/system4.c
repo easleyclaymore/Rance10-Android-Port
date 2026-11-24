@@ -913,6 +913,8 @@ int main(int argc, char *argv[])
 	}
 	if (!config.save_dir)
 		config.save_dir = get_save_path(ini_save_folder);
+	NOTICE("[savepath] save_dir='%s' game_name_sjis_hex=%s gbk=%d",
+	       config.save_dir, display_sjis0(config.game_name), (int)use_gbk);
 	free(ini_save_folder);
 
 	if (!(ain = ain_open(ainfile, &err))) {

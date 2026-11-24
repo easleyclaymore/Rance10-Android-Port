@@ -452,6 +452,10 @@ bool gfx_set_fullscreen(bool enable)
 	}
 
 	bool sdl_fs = (SDL_GetWindowFlags(sdl.window) & SDL_WINDOW_FULLSCREEN) != 0;
+	/* [D517p] 成功路径也要留痕：SDL 生效时是静默的，实测没法区分
+	 * 「生效了」与「压根没被调」（d731 首测的教训）。 */
+	NOTICE("[gfx] set_fullscreen(%d) -> SDL flag %s", enable,
+	       sdl_fs ? "ON" : "off");
 	if (enable && !sdl_fs) {
 		/* SDL 的全屏没生效（见上面的说明）→ 退回无边框铺满。 */
 		window_fill_display(true);
