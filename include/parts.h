@@ -108,6 +108,8 @@ void PE_SetShow(int parts_no, bool show);
 /* [D517d] 选项卡联动：可见性跟随指定复选框（EX 复选框表示連動）。 */
 void PE_SetShowLink(int parts_no, int link_no);
 bool PE_ShowLinkVisible(struct parts *p);
+/* [D517e] 复选框/单选按钮的点击行为（原版内建在组件里，AIN 无委托）。 */
+bool PE_CheckBoxClick(int parts_no);
 bool PE_GetPartsShow(int parts_no);
 void PE_SetAlpha(int parts_no, int alpha);
 int PE_GetPartsAlpha(int parts_no);

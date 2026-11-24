@@ -3357,6 +3357,46 @@ bool PE_ShowLinkVisible(struct parts *p)
 	return true;
 }
 
+/* [D517e] 复选框/单选按钮的**点击行为**（原版在 CCheckBoxParts 组件里内建）。
+ *
+ * 3D 设置页的 17 个选项卡（`绘制模式选项卡`…）在 parts dump 里是
+ * `di=-1`（无委托）：AIN 不通过按钮委托收点击，原版由 checkbox 组件
+ * 自己切换勾选态、再靠 EX `复选框表示連動` 切换页面。引擎只实现了
+ * 勾选态的存取（PE_CheckBoxChecked），点击什么都不做 —— 于是页面
+ * 永远停在初始的「绘制模式」（d675 实测：CLICKED parts=900000184
+ * 命中了「光晕选项卡」，但 checked 没变）。
+ *
+ * 互斥规则：父件是 `ラジオ按钮ＢＯＸ`（component_type 9）时同父兄弟
+ * 全部取消——`项目ラジオ按钮`(900000171) 就是这种容器。普通复选框组
+ * （父件不是 radio）保持独立多选。
+ * 返回是否真的处理了（调用方据它决定要不要继续派发给 AIN）。 */
+bool PE_CheckBoxClick(int parts_no)
+{
+	struct parts *p = parts_try_get(parts_no);
+	if (!p)
+		return false;
+	struct parts_state *st = &p->states[p->state];
+	if (st->component_type != 1 && st->component_type != 9)
+		return false;
+	struct parts_widget *w = PE_widget(parts_no);
+	if (!w)
+		return false;
+	w->checked = !w->checked;
+	if (p->parent &&
+	    p->parent->states[p->parent->state].component_type == 9) {
+		struct parts *s;
+		PARTS_FOREACH_CHILD(s, p->parent) {
+			if (s == p || !s->widget)
+				continue;
+			s->widget->checked = false;
+		}
+	}
+	if (getenv("XSYS4_CB_DBG"))
+		NOTICE("[cb] click no=%d -> checked=%d", parts_no,
+		       (int)w->checked);
+	return true;
+}
+
 void PE_SetAlpha(int parts_no, int alpha)
 {
 	/* [D187] 探针：卡片合成完是 a=255，dump 时却 a=0 —— 要回答

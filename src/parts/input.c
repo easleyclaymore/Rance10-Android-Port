@@ -1051,8 +1051,14 @@ void PE_UpdateInputState(int passed_time)
 	 * 且只驱动部件号匹配的那个 TextButton（见 vm_tick_text_buttons）。 */
 	if (g_just_clicked) {
 		g_just_clicked = false;
+		/* [D517e] 复选框/单选按钮先由引擎处理（切换勾选态 + 组内互斥）：
+		 * 3D 设置页的选项卡 di=-1（AIN 无委托），原版行为就在组件里。
+		 * 处理成功就不再派发给 AIN（避免同一击被消费两次）。 */
+		bool cb_handled = clicked_parts ?
+			PE_CheckBoxClick(clicked_parts) : false;
 		/* [D337] 把这次点击派发给 AIN 侧的按钮对象（帧泵里消费）。 */
-		vm_request_parts_click(clicked_parts, cur_pos.x, cur_pos.y);
+		if (!cb_handled)
+			vm_request_parts_click(clicked_parts, cur_pos.x, cur_pos.y);
 	}
 
 	if (parts_began_click || (prev_clicking && !cur_clicking))
