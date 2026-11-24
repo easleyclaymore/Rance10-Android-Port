@@ -319,11 +319,40 @@ void parts_cb_drop(int parts_no)
  * 序列化），既不动存档格式，也不用再在 `parts_get` 里手动清旧记录。
  *
  * 旧表保留为空壳不再写入 —— 读不到就走 widget，行为与之前一致。 */
+/* [D517r] 点击保护门的回退开关。门的本体：PE_CheckBoxClick 置位
+ * `click_pending`，Begin 侧推送（PE_CheckBoxChecked）置位期间跳过，
+ * AIN 轮询（PE_PollCheckBoxChecked）读走即清。`XSYS4_CB_NO_GATE=1`
+ * 回退到无门行为（A/B 死循环用）。 */
+static bool cb_gate_disabled(void)
+{
+	static int v = -1;
+	if (v < 0) {
+		const char *e = getenv("XSYS4_CB_NO_GATE");
+		v = (e && *e && strcmp(e, "0") != 0);
+	}
+	return v;
+}
+
+static void cb_click_mark(struct parts *p)
+{
+	if (p && p->widget && !cb_gate_disabled())
+		p->widget->click_pending = true;
+}
+
 void PE_CheckBoxChecked(int parts_no, bool check)
 {
 	struct parts_widget *w = PE_widget(parts_no);
-	if (w)
-		w->checked = check;
+	if (!w)
+		return;
+	/* [D517r] Begin 侧推送防覆盖：用户刚点过（click_pending）且 AIN
+	 * 轮询还没读走时，跳过这次写。全屏生效链死循环根因：
+	 * 点击翻转落在帧尾输入实例（End 之后），下一帧帧首 Begin 把
+	 * 旧 config 值推回来，End 永远读不到新值（d747 实锤）。
+	 * 与滑块的 `scroll.user_active` 门（D500）同构。
+	 * `XSYS4_CB_NO_GATE=1` 回退。 */
+	if (w->click_pending && !cb_gate_disabled())
+		return;
+	w->checked = check;
 	/* [D517i] AIN 每帧用 `CAS3DSetting@Get*` 的结果同步勾选态。
 	 * 要回答「重进 3D 页时勾选态是不是 3DConfig.vsf 里的值」只能看这里：
 	 * dump 的 `ck=` 是 clickable 不是 checked。 */
@@ -334,7 +363,7 @@ void PE_CheckBoxChecked(int parts_no, bool check)
 	}
 }
 
-/* [D517q] AIN 轮询读过的 checkbox 部件号（「组代表件」集合）。
+/* [D517r] AIN 轮询读过的 checkbox 部件号（「组代表件」集合）。
  * 二选一组的语义在 AIN 轮询里：AIN 只读代表件，另一个选项由反值
  * 隐含。PE_CheckBoxClick 清互斥时只清代表件。 */
 int *g_cb_poll_set;
@@ -342,13 +371,30 @@ int g_cb_poll_n;
 
 bool PE_IsCheckBoxChecked(int parts_no)
 {
+	/* [D517r] 引擎内部读（渲染画勾 / 可见性链）：**不**清 click_pending、
+	 * **不**登记轮询集合。AIN 轮询走 PE_PollCheckBoxChecked（7353）。
+	 * 读值探针随轮询一起搬走了（XSYS4_CB_READ_DBG）。 */
 	struct parts_widget *w = PE_widget_peek(parts_no);
 	bool v = w ? w->checked : false;
-	/* [D517q] AIN 轮询读态探针 + **轮询代表件集合**：AIN 每帧只读组里
-	 * 的「代表件」判断二选一组（窗口页实测读 204=窗口，209=全屏幕 是
-	 * 摆设、由 204 反值隐含）。PE_CheckBoxClick 清互斥时需要知道哪些
-	 * 兄弟是代表件 —— 就在这里记录。 */
+	return v;
+}
+
+/* [D517r] AIN 轮询专用读（Ｐ＿复选框＿选择状態取得，fno 7353）。
+ * 与引擎内部读（render/activity 的 `PE_IsCheckBoxChecked`）分开：
+ * 轮询读走即清 `click_pending` —— End 侧拿到新值、下一帧 Begin
+ * 推送恢复放行。引擎内部的读（画勾、可见性链）不清，否则一次
+ * 无关读取就把保护门放掉，Begin 照样覆盖（d747 死循环复现）。 */
+bool PE_PollCheckBoxChecked(int parts_no)
+{
+	struct parts_widget *w = PE_widget_peek(parts_no);
+	bool v = w ? w->checked : false;
 	if (w) {
+		w->click_pending = false;
+		/* [D517q] AIN 轮询读态探针 + **轮询代表件集合**：AIN 每帧只读组里
+		 * 的「代表件」判断二选一组（窗口页实测读 204=窗口，209=全屏幕 是
+		 * 摆设、由 204 反值隐含）。PE_CheckBoxClick 清互斥时需要知道哪些
+		 * 兄弟是代表件 —— 就在这里记录。（D517r：随轮询一起搬进来，
+		 * 引擎内部读不得登记，否则集合被渲染读取污染。） */
 		static int poll_set[64];
 		static int poll_n;
 		int i;
@@ -3417,6 +3463,7 @@ bool PE_CheckBoxClick(int parts_no)
 	if (!w)
 		return false;
 	w->checked = !w->checked;
+	cb_click_mark(p);
 	if (p->parent &&
 	    p->parent->states[p->parent->state].component_type == 9) {
 		struct parts *s;
@@ -3424,6 +3471,7 @@ bool PE_CheckBoxClick(int parts_no)
 			if (s == p || !s->widget)
 				continue;
 			s->widget->checked = false;
+			cb_click_mark(s);
 		}
 	}
 	/* [D517q] 二选一组的互斥：清父下「AIN 轮询代表件」的勾选。
@@ -3462,6 +3510,7 @@ bool PE_CheckBoxClick(int parts_no)
 		}
 		if (best) {
 			best->widget->checked = false;
+			cb_click_mark(best);
 			if (getenv("XSYS4_CB_DBG"))
 				NOTICE("[cb] radio-exclude clear no=%d",
 				       best->no);

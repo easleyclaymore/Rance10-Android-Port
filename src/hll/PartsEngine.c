@@ -4740,7 +4740,9 @@ HLL_LIBRARY(PartsEngine,
 	    /* [D174] 这一族原来是 TODO/空桩，`CommonMenu@SetCheckBoxState`
 	     * 一进来就撞 Unimplemented。改成旁路表实现（见 parts.c）。 */
 	    HLL_EXPORT(CheckBoxChecked, PE_CheckBoxChecked),
-	    HLL_EXPORT(IsCheckBoxChecked, PE_IsCheckBoxChecked),
+	    /* [D517r] 轮询读走即清 click_pending 保护门（引擎内部读用
+	     * PE_IsCheckBoxChecked，不清门 —— 见 PE_PollCheckBoxChecked）。 */
+	    HLL_EXPORT(IsCheckBoxChecked, PE_PollCheckBoxChecked),
 	    HLL_EXPORT(SetCheckBoxEnable, PE_SetCheckBoxEnable),
 	    HLL_EXPORT(IsCheckBoxEnable, PE_IsCheckBoxEnable),
 	    HLL_EXPORT(SetCheckBoxColor, PE_SetCheckBoxColor),

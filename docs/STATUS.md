@@ -13,7 +13,7 @@
 | **阶段** | 第一章可一直点到 `Game/TurnStart`，三个按钮的点击链已完整（D397）：点 `(724,726)` → `[pev] 落在容器上 -> 1 个候选` → lambda 36647 → `FadeOut`(23464) → `SceneStack@Exit`(29658，`[fwatch]` 实测 2 次)。**场景仍未退出**，卡在 `[WAITFORCLICK]` |
 | **最大卡点** | `[WAITFORCLICK]` `SceneStack@Join` = `while(!IsFinish) WaitForClick(0)`；`WaitForClick`(8309) 唯一 break 是 `0 < GetClickNumber()`（`local1` 参数为 0，CASClick 分支整段跳过），而 `GetClickNumber` = `clicked_parts`（命中按下时写、`PE_EndInput` 清）。**`IsInputPartsActive` 不是判据**：它判 {TEXTBOX,MLTEXTBOX,SPINBOX} 且在 `NOT` 之后，恒 false 是正常的 |
 | **次级卡点** | `[BATTLE-STALL]` 技能卡点不中（`BattleCardButton.m9` 空委托页）；被上一条挡在后面 —— 场景退不出去就到不了作戦/出撃 |
-| **本轮做过的** | **D511–D515 菜单交互五连修**：D511 输入门默认恒开（`parts_began_click` 不可信，用户「点菜单返回后失灵」根因）；D514 非 TEXT 件的 EX `文本` 走 `PE_SetPartsCaption` 叠画（07 页 41 条、02 页 33 条标签全出）；D515 3D 页排版——`parts_do_layout` 改用 `layout_box_data` 副本（state 被 AIN 改成 CG 后仍排版）+ 总量写回自身尺寸 + `EX_LAYOUT_BY_CONFIG` 默认开；**D515b 撤回判定** `parts_layout_veto_static_children()`：直接子件座标非零的布局盒是静态绝对布局（页签框架），撤回自动排版防 EX 座标被覆盖。d552/d553/d555 实测：01/07/3D 三页签全部命中并装载对应 pact（3D 页 138 parts 排版展开，18 行纵排间距 30），冒烟 quick 2 次 PASS。**D515c 页签全验 8/8**：01(68p)/02(118p)/03(56p)/04(81p)/05 输入(64p)/06 窗口(71p)/07(88p)/3D(138p) 全部命中并装载，ERROR=0（d552-d558）。**下一个观测点**：① 连点序列 04 声音页后 4s 点 05/06 无响应（单独点正常，疑似音频初始化延迟）；② 重复点击同页签重复 open 同一 pact，activity 泄漏口径待查；③ 各页内功能（选项框/初期化）实机复核；`[WAITFORCLICK]` 仍是主线 A 组债 |
+| **本轮做过的** | **D517 系列（3D 页全链 → 全屏生效链闭环）**：D517a-n 3D 设置页从黑屏到「改→存→重启读回」闭环 + 3D 预览渲染 + 配置页全部背景 + HLL 待办清偿（[ZERO-STUB]，102 死 Noop 删除）；D517o 页签重复装载泄漏修复；D517p 窗口页实测（交互/存盘全通，生效链缺失定案）。**D517q 生效链考古**：AIN 帧骨架两相序——`parts::detail::Update`(8292) = **Begin 事件**(2789，config→UI 推送 ×160/帧，写入口=7352) → `PartsEngine.UpdateComponent` → **End 事件**(2793，UI→config 轮询 ×44/帧，读入口=7353)；窗口页注册 str#1058→`config::SetWindowMode`(2523，幂等)。**D517r 死循环闭环（用户定调：不走引擎直写 GameConfig 的快路）**：根因=引擎每帧跑两次输入阶段（Begin/End 之间 + End 之后），点击翻转跟释放沿落点走，落在 End 之后时下帧 Begin 推回旧 config 值（d747 读 204 恒 1 的机理）。修复=**click_pending 保护门**（对齐滑块 `scroll.user_active` 先例）：`PE_CheckBoxClick` 置位 → `PE_CheckBoxChecked`（Begin 写入口）跳过 → 新增 `PE_PollCheckBoxChecked`（7353 专用读，读走即清门；引擎内部读不清门不登记轮询集合）。`XSYS4_CB_NO_GATE=1` 回退。**验收（d749/d750 自测）**：点全屏幕→互斥清代表件→`[gfx] set_fullscreen(1)` 铺满 1920x1080；点窗口→`set_fullscreen(0)`；冒烟 quick PASS。**下一个观测点**：① 互斥「最近代表件」启发式误清 173（组语义待 D516i 组件驱动）；② [cbr]/cbset 探针配额点击前打满，全程判据用 `[gfx]` 落痕；③ `ApplyWindowSetting`→`InitMainWindowPosAndSize` 仍是桩； ④ `[WAITFORCLICK]` 仍是主线 A 组债 |
 | **判据** | 画面一律用引擎自截图（`XSYS4_SHOT_DIR` + Alt+S，且 alt+s 前空 ≥1.5s，否则会丢帧）；层/归属看 `[ctrl] SetActive id=N -> idx=M` 与 `[ctrl] layer … parts:` 清单；HLL 进展看 `python3 tools/offline/hll_hotness.py --todo ../logs/live_<tag>.log` 的输出是否为 0 |
 
 > **卡点必须挂债标签**：§0「最大卡点」里的 `` `[TAG]` `` 必须**逐字存在**于
@@ -223,7 +223,7 @@ Rance10_Port/xsystem4/tools/offline/alice.sh ex dump -o x.x /tmp/a.pactex       
 ## 4. 诊断开关（全部默认关，门禁会检查）
 
 <!-- STATS:BEGIN 由 tools/gen-doc-numbers.py 生成，不要手改 -->
-**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **294**（未标注 1）｜ HLL 源码口径 **3586 / 4652（77.1%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 148 / 46** ｜ 影响面 / 子模块补丁 **33 / 3** ｜ 默认基线 `smoke_d517o`: `acts=36 / err=0 / core=0 / quest_map=0`。
+**自动生成数字**（禁止手写；完整口径见 `docs/STATS.md`）：诊断开关 **295**（未标注 1）｜ HLL 源码口径 **3586 / 4652（77.1%）** ｜ 假设台账 / 根因编号 / 未结债 **64 / 148 / 46** ｜ 影响面 / 子模块补丁 **33 / 3** ｜ 默认基线 `d750quick`: `acts=36 / err=0 / core=0 / quest_map=0`。
 <!-- STATS:END -->
 
 最常用的：

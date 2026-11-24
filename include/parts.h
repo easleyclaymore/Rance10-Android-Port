@@ -292,6 +292,10 @@ void PE_SetClickable(int parts_no, bool clickable);
 /* [D174] 复选框状态（旁路表，不进 struct parts / 存档） */
 void PE_CheckBoxChecked(int parts_no, bool check);
 bool PE_IsCheckBoxChecked(int parts_no);
+/* [D517r] AIN 轮询专用读（7353）：读走即清 click_pending 保护门。
+ * 引擎内部读（渲染画勾 / 可见性链）必须用 PE_IsCheckBoxChecked，
+ * 否则一次无关读取就把门放掉，Begin 推送照样覆盖点击翻转。 */
+bool PE_PollCheckBoxChecked(int parts_no);
 void PE_SetCheckBoxEnable(int parts_no, bool enable);
 bool PE_IsCheckBoxEnable(int parts_no);
 /* [D494] 部件音效名（挂 parts_widget，槽号是 AIN 侧约定，实证 2/3） */

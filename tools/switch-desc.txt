@@ -249,4 +249,6 @@ XSYS4_EXIST_SAVE_GAMEDIR	[回退] =0 禁用 ExistSaveFile 的游戏目录兜底�
 XSYS4_RENDER_BACKEND	[后端] =vulkan 走 SDL_GPU 的 Vulkan 驱动（当前探测失败会自动回退 GL）；默认 GL
 XSYS4_VK_DBG	[取证] Vulkan 探测诊断：列出 SDL 可用 GPU 驱动与失败原因（[vk]）
 XSYS4_PQ_DBG	[取证] 3D 预览参数同步探针（[pq] mode/fog/edge/dof/glow + 按名查到的部件号）
-XSYS4_CB_READ_DBG	[取证] AIN 轮询读 checkbox 状态（[cbr] read no=N -> V），定位生效链断点
+XSYS4_CB_READ_DBG	[取证] AIN 轮询读 checkbox 状态（[cbr] read no=N -> V，7353 → PE_PollCheckBoxChecked），定位生效链断点。D517r 起探针在轮询函数里；引擎内部读（渲染）不打。配额 400 条，配置页 ~1 秒打满——全程判据用 [gfx] 落痕
+XSYS4_CB_NO_GATE	[D517r A/B 回退] =1 关掉 checkbox 的 click_pending 保护门（Begin 推送不再跳过刚点过的部件），复现全屏生效链死循环用
+XSYS4_LINK_DBG	[取证] 装载期 `表示連動` 名字查号 MISS 时打一行（[link] no=N '名' -> '連動名' MISS）；查 checkbox 显隐联动没挂上的部件

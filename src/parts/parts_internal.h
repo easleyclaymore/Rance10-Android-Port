@@ -488,6 +488,14 @@ struct parts_widget {
 
 	/* --- 复选框 --- */
 	bool checked, enabled;
+	/* [D517r] 用户刚点击过、AIN 的 BeginUpdateEvent 推送（config→UI）
+	 * 还没被 EndUpdateEvent 轮询读走。置位期间 `PE_CheckBoxChecked`
+	 * （＝ Ｐ＿复选框＿选择状態設定，Begin 侧写入口）跳过写入，
+	 * 否则帧尾翻转的值会在下一帧帧首被旧 config 值冲回 —— 全屏
+	 * 生效链死循环的根因（d747：清 204 → 读 204 恒 1）。
+	 * 清除时机：AIN 轮询（7353 → `PE_PollCheckBoxChecked`）读走即清，
+	 * 与滑块 `scroll.user_active`（D500，挡 SetHScrollRate 覆盖）同构。 */
+	bool click_pending;
 	bool button_mode;
 	bool drag;              /* `SetCheckBoxDrag`：按下拖动也能切换（AIN 侧语义） */
 	int button_width, button_height;
