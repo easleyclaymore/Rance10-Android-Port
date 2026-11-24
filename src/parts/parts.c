@@ -2174,6 +2174,10 @@ bool PE_PartsCovers(int parts_no, int x, int y)
 	struct parts *p = parts_try_get(parts_no);
 	if (!p)
 		return false;
+	/* [D517d] 被选项卡联动隐藏的部件不可命中：否则 19 个页面里
+	 * 藏起来的那些还能抢走点击。 */
+	if (!PE_ShowLinkVisible(p))
+		return false;
 	Rectangle hb = p->states[PARTS_STATE_DEFAULT].common.hitbox;
 	if (p->parent) {
 		hb.x += p->parent->global.pos.x;
@@ -3227,6 +3231,13 @@ void PE_SetPos(int parts_no, int x, int y)
 	 * 返回的不是视觉主体那个部件。 */
 	if (getenv("XSYS4_ACT_PART_DBG") && parts_no >= 900000300)
 		NOTICE("[pos] SetPos no=%d (%d,%d)", parts_no, x, y);
+	/* [D517d] 3D 设置页主容器 900000169 的 EX 座標是 (0,0)，运行期却是
+	 * (0,720)，整页内容因此被推到屏幕下缘。要回答「谁把它设成 720」。 */
+	if (getenv("XSYS4_POS_DBG") && parts_no >= 900000100) {
+		static int np;
+		if (np++ < 2000)
+			NOTICE("[pos] no=%d (%d,%d)", parts_no, x, y);
+	}
 	parts_set_pos(parts_get(parts_no), (Point){ x, y });
 }
 
@@ -3313,6 +3324,37 @@ void PE_SetShow(int parts_no, bool show)
 			NOTICE("[ctrl] hide parts=... (3000 条上限已到，后续不再打印)");
 	}
 	parts_set_show(parts_get(parts_no), show);
+}
+
+/* [D517d] EX `复选框表示連動`（选项卡联动）：部件可见性跟随指定复选框的
+ * 勾选态。3D 设置页（version 5/30 的 pact）里 19 个子页面全部 表示=1、
+ * 閉じている=1，原版靠这个字段互斥：只有一个页面绑定的选项卡是勾选的。
+ * 引擎此前完全不读它 → 19 个页面同时渲染，checkbox 与标签全叠在
+ * (430,120) 一带（D517c 的「纵排假象」就是被这个重叠骗出来的）。 */
+void PE_SetShowLink(int parts_no, int link_no)
+{
+	struct parts *p = parts_try_get(parts_no);
+	if (!p)
+		return;
+	p->show_link_no = link_no;
+}
+
+/* 自身或祖先链上任一联动未满足 → 不画/不可点。
+ * 目标不存在或还没有 widget（不是复选框）时**不拦**：宁可多画一个，
+ * 也不要把整页藏空（d661 的教训）。 */
+bool PE_ShowLinkVisible(struct parts *p)
+{
+	struct parts *q;
+	for (q = p; q; q = q->parent) {
+		if (q->show_link_no <= 0)
+			continue;
+		struct parts *t = parts_try_get(q->show_link_no);
+		if (!t || !t->widget)
+			continue;
+		if (!t->widget->checked)
+			return false;
+	}
+	return true;
 }
 
 void PE_SetAlpha(int parts_no, int alpha)

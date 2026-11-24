@@ -239,3 +239,8 @@ XSYS4_EX_TEXT_DBG	名字子串：打印匹配部件的 EX 文本字段（文本(
 XSYS4_LAYOUT_DBG	[诊断] parts_do_layout 逐盒打印判据（state/layout_type/子件数/尺寸/位置，前 400 条）。查「容器子件全叠 (0,0)」与排版覆盖 EX 座标问题
 XSYS4_EX_SUBTREE	[取证] 按部件名字 ASCII 子串递归 dump 种类别情报 子树（[ext]，含 LIST 展开）。3D 页 radio box 图像字段定位用
 XSYS4_CB_DBG	[取证] SetCheckBoxSize 族调用探针（[cb]）。3D 页 checkbox 构造链定位用
+XSYS4_RUNTIME_LAYOUT	[回退] =1 启用 D517c 运行期容器自动排布（**默认已关**：3D 页纵排是重叠假象）
+XSYS4_ROOT_LAYOUT	[回退] =1 允许活动根（无父布局盒）按 EX 配置自动排布（默认关：会把整页推到 y=720）
+XSYS4_EX_CLOSED	[回退] =1 把 EX 閉じている=1 当可见性关闭（默认关：会让 3D 页整页变空）
+XSYS4_POS_DBG	[取证] 记录 PE_SetPos 对 AIN 部件（>=900000100）的调用
+XSYS4_CB_INIT_DBG	[取证] 复选框建部件时的 选择状态/实际勾选态（[cb-init]）

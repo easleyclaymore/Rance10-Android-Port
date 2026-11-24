@@ -17,6 +17,7 @@
 
 struct page;
 struct string;
+struct parts;
 
 // parts.c
 void PE_enable_multi_controller(void);
@@ -104,6 +105,9 @@ int PE_GetPartsY(int parts_no);
 void PE_SetZ(int parts_no, int z);
 int PE_GetPartsZ(int parts_no);
 void PE_SetShow(int parts_no, bool show);
+/* [D517d] 选项卡联动：可见性跟随指定复选框（EX 复选框表示連動）。 */
+void PE_SetShowLink(int parts_no, int link_no);
+bool PE_ShowLinkVisible(struct parts *p);
 bool PE_GetPartsShow(int parts_no);
 void PE_SetAlpha(int parts_no, int alpha);
 int PE_GetPartsAlpha(int parts_no);

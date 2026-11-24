@@ -159,10 +159,32 @@ static void parts_get_layout_size(struct parts *parts, int *w, int *h)
 		// 命中盒尺寸不一样。
 		*w = state->flat.flat->hdr.width;
 		*h = state->flat.flat->hdr.height;
-	} else {
-		*w = state->common.w;
-		*h = state->common.h;
+		return;
 	}
+	/* [D517c] 0x0 容器：内容范围 = max(子件 local.pos + 布局尺寸)。
+	 * 3D 设置页的组容器（checkbox 的父）全是 0x0——垂直堆叠间距
+	 * 取 0 的话整列叠回原位。 */
+	if (state->common.w <= 0 || state->common.h <= 0) {
+		int mw = 0, mh = 0;
+		struct parts *c;
+		PARTS_FOREACH_CHILD(c, parts) {
+			int cw, ch;
+			parts_get_layout_size(c, &cw, &ch);
+			int ex = c->local.pos.x + cw;
+			int ey = c->local.pos.y + ch;
+			if (ex > mw)
+				mw = ex;
+			if (ey > mh)
+				mh = ey;
+		}
+		if (mw > 0 || mh > 0) {
+			*w = mw;
+			*h = mh;
+			return;
+		}
+	}
+	*w = state->common.w;
+	*h = state->common.h;
 }
 
 static int align_offset_x(int align, int total_w)
@@ -361,6 +383,24 @@ void parts_do_layout(struct parts *parts)
 	}
 	if (lb->layout_type == PARTS_LAYOUT_FREE)
 		return;
+
+	/* [D517d] **活动根（无父布局盒）永不自动排布**。
+	 * EX 的 `配置=1` 在 `ルートパーツ` 上只是编辑器新建子件时的默认摆放
+	 * 方式，运行期子件靠各自座标。3D 设置页实测：活动根 900000154
+	 * （ルートパーツ）被子件全在 (0,0) 判成纵排，于是把 ３Ｄ页面(169)
+	 * 排到 y=720 —— 整页内容被推到屏幕下缘、标题画面盖在上半屏
+	 * （d665：19 个子页面全在 (0,720)）。同样的病灶 D517c 在标题根
+	 * （900000029/33）上已经踩过一次（按钮全堆叠、第一章进不去）。
+	 * XSYS4_ROOT_LAYOUT=1 可恢复旧行为做 A/B。 */
+	{
+		static int root_layout = -1;
+		if (root_layout < 0) {
+			const char *e = getenv("XSYS4_ROOT_LAYOUT");
+			root_layout = (e && *e == '1');
+		}
+		if (!root_layout && !parts->parent)
+			return;
+	}
 
 	int total_w, total_h;
 	if (lb->layout_type == PARTS_LAYOUT_HORIZONTAL)

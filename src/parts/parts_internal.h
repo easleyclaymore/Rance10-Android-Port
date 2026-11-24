@@ -619,6 +619,10 @@ struct parts {
 	int pending_parent;
 	int linked_to;
 	int linked_from;
+	/* [D517d] EX `复选框表示連動`：本部件的可见性跟随该部件号的复选框
+	 * 勾选态（3D 设置页的选项卡机制）。0 = 无联动。
+	 * 判定在 PE_ShowLinkVisible()：自身与祖先链上任一联动失败即隐藏。 */
+	int show_link_no;
 	bool is_hovered;
 	int hover_time;
 	int draw_filter;

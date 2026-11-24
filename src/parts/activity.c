@@ -113,6 +113,18 @@ struct activity_part {
 	 * 座標=(0,1,1) + 原点座標模式=7(bottom-left)，本意贴屏幕底边。 */
 	bool pos_as_ratio;
 	bool flip_x, flip_y, show;
+	/* [D517d] EX `閉じている`（折叠/关闭）。**不是可见性开关**：
+	 * 3D 设置页 19 个子页面全部 閉じている=1 且 表示=1，按「闭合=隐藏」
+	 * 处理会让整页变空（d661 实测只剩底图）。原版可见性由
+	 * `复选框表示連動`（选项卡联动）决定，此字段仅记录备查。 */
+	bool closed;
+	/* [D517d] EX `复选框表示連動` = 本部件的可见性跟随指定复选框的勾选态
+	 * （3D 设置页的选项卡机制：19 个页面里只有一个绑定到「已勾选」的
+	 * 选项卡，其余隐藏）。NULL/空串 = 无联动。 */
+	char *show_link_name;
+	/* [D517d] EX `选择状态`（复选框初始勾选态）。3D 设置页靠它决定
+	 * 初始显示哪一页（'绘制模式选项卡'=1，其余=0）。 */
+	int sel_state;
 	int alpha;
 	int add_rgb[3];
 	int mul_rgb[3];
@@ -738,6 +750,34 @@ static void parse_part_fields(struct ex_tree *node, struct activity_part *part)
 	b = 1;
 	part->show = get_int(node, "表示", &b) ? b != 0 : true;
 
+	/* [D517d] `閉じている`（折叠/关闭）**不是**可见性开关。
+	 * 3D 设置页的 19 个子页面（绘制模式页面/光晕页面/…）全部是
+	 * 閉じている=1 且 表示=1；如果按「闭合=隐藏」处理，整页会变空
+	 * （d661 实测：只剩底图）。原版的可见性由 `复选框表示連動`
+	 * （选项卡联动）决定，这里只记录字段值备查。
+	 * XSYS4_EX_CLOSED=1 时退回「闭合=隐藏」的旧实验行为（A/B 用）。 */
+	b = 0;
+	part->closed = get_int(node, "閉じている", &b) ? b != 0 : false;
+	{
+		static int ex_closed_hide = -1;
+		if (ex_closed_hide < 0) {
+			const char *e = getenv("XSYS4_EX_CLOSED");
+			ex_closed_hide = (e && *e != '0');
+		}
+		if (ex_closed_hide && part->closed)
+			part->show = false;
+	}
+
+	/* [D517d] `复选框表示連動`：可见性跟随指定复选框（选项卡）。
+	 * EX 里 19 个页面各写自己绑定的选项卡名（如 光晕页面 → '光晕选项卡'），
+	 * 初始只有 '绘制模式选项卡' 是 选择状态=1，原版因此只画绘制模式页面。
+	 * 名字解析成部件号在整棵树装完之后做（见 build 完成 pass）。 */
+	part->show_link_name = get_string(node, "复选框表示連動");
+	if (part->show_link_name && !*part->show_link_name) {
+		free(part->show_link_name);
+		part->show_link_name = NULL;
+	}
+
 	b = 255;
 	part->alpha = get_int(node, "アルファ", &b) ? b : 255;
 
@@ -768,6 +808,13 @@ static void parse_part_fields(struct ex_tree *node, struct activity_part *part)
 
 	/* 种类別情报: part type + type specific payload */
 	struct ex_tree *type_info = get_child(node, "种类別情报");
+	/* [D517d] 复选框初始勾选态（EX `选择状态`，在 种类別情报 里）。
+	 * 3D 设置页的选项卡组靠它决定初始显示哪一页。 */
+	{
+		int sel = 0;
+		if (get_int(type_info, "选择状态", &sel) && sel != 0)
+			part->sel_state = sel;
+	}
 	if (type_info) {
 		char *tn = get_string(type_info, "パーツ类型");
 		part->type = component_type_from_name(tn);
@@ -1144,12 +1191,17 @@ static int build_part(struct activity_part *part, int parent_no)
 		ex_layout_by_cfg = !(e && *e == '0');
 	}
 	/* [D515] 记下 EX 的布局声明，state 被 AIN 改成 CG 后仍能排版。 */
-	if (part->type == ACT_COMP_LAYOUT_BOX)
+	if (part->type == ACT_COMP_LAYOUT_BOX) {
+		if (getenv("XSYS4_LAYOUT_DBG"))
+			NOTICE("[cfg] no=%d name='%s' 配置=%d", part->parts_no,
+			       part->name ? display_sjis0(part->name) : "?",
+			       part->layout_arrangement);
 		parts_remember_layout_box(part->parts_no,
 					  part->layout_arrangement >= 0 &&
 					  part->layout_arrangement <= 2
 					  ? part->layout_arrangement
 					  : PARTS_LAYOUT_VERTICAL, 1);
+	}
 	if (ex_layout_free) {
 		if (part->type == ACT_COMP_LAYOUT_BOX && ex_layout_by_cfg &&
 		    part->layout_arrangement >= 0 && part->layout_arrangement <= 2)
@@ -1328,6 +1380,18 @@ static int build_part(struct activity_part *part, int parent_no)
 		PE_SetClickable(part->parts_no, true);
 	if (part->pass_cursor)
 		PE_SetPassCursor(part->parts_no, true);
+
+	/* [D517d] 复选框初始勾选态（EX `选择状态`）。**不能放在上面的
+	 * `!part->flat_name` 分支里**：选项卡件的 フラット名 是空串不是 NULL，
+	 * 会走 `part->w>0` 分支，勾选态就永远设不上（d663 实测 ck 全 0，
+	 * 19 个页面全被联动判掉，画面看不到任何选项组）。 */
+	if (part->type == ACT_COMP_CHECKBOX && part->sel_state)
+		PE_CheckBoxChecked(part->parts_no, true);
+	if (part->type == ACT_COMP_CHECKBOX && getenv("XSYS4_CB_INIT_DBG"))
+		NOTICE("[cb-init] no=%d sel=%d checked_now=%d name='%s'",
+		       part->parts_no, part->sel_state,
+		       (int)PE_IsCheckBoxChecked(part->parts_no),
+		       part->name ? display_sjis0(part->name) : "?");
 
 	if (part->type == ACT_COMP_LAYOUT_BOX) {
 		/* 布局盒自己决定子部件的位置 */
@@ -1996,10 +2060,48 @@ bool activity_read(struct string *name, struct string *file)
 	for (int i = 0; i < act->nr_parts; i++)
 		parts_layout_veto_static_children(act->flat[i]->parts_no);
 	/* [D517c] 镜像规则：LAYOUT_BOX + 子件座标全 (0,0) + 当前 FREE =
-	 * 运行期排布容器（3D 设置页主容器 900000169，19 个组容器全叠
-	 * (0,0) 就是它没排），启用 VERTICAL。 */
-	for (int i = 0; i < act->nr_parts; i++)
-		parts_layout_enable_runtime_children(act->flat[i]->parts_no);
+	 * 运行期排布容器，启用 VERTICAL。
+	 * **默认已关（D517d 翻案）**：3D 设置页 19 个子页面本来就在 (0,0)
+	 * 互相重叠，原版靠 `复选框表示連動`（选项卡联动）互斥显示。
+	 * D517c 的强制纵排把重叠误当成「没排」，排出来的「选项列表」是假象
+	 * （总高 6729px 溢出屏幕）。XSYS4_RUNTIME_LAYOUT=1 可重新打开做对照。 */
+	{
+		static int rl = -1;
+		if (rl < 0) {
+			const char *e = getenv("XSYS4_RUNTIME_LAYOUT");
+			rl = (e && *e == '1');
+		}
+		if (rl)
+			for (int i = 0; i < act->nr_parts; i++)
+				parts_layout_enable_runtime_children(act->flat[i]->parts_no);
+	}
+
+	/* [D517d] 选项卡联动：`复选框表示連動` 写的是**部件名**，整棵树
+	 * 装完之后才能解析成部件号。3D 设置页 19 个页面各绑一个选项卡。 */
+	{
+		int nlink = 0, nmiss = 0;
+		for (int i = 0; i < act->nr_parts; i++) {
+			struct activity_part *lp = act->flat[i];
+			if (!lp->show_link_name || !*lp->show_link_name)
+				continue;
+			int link_no = activity_find_parts_no(act, lp->show_link_name);
+			if (link_no > 0) {
+				PE_SetShowLink(lp->parts_no, link_no);
+				nlink++;
+			} else {
+				nmiss++;
+				if (getenv("XSYS4_LINK_DBG"))
+					NOTICE("[link] no=%d '%s' -> '%s' MISS",
+					       lp->parts_no,
+					       lp->name ? display_sjis0(lp->name) : "?",
+					       lp->show_link_name);
+			}
+		}
+		if (nlink || nmiss)
+			NOTICE("[link] act='%s' resolved=%d miss=%d",
+			       act->name ? display_sjis0(act->name) : "?",
+			       nlink, nmiss);
+	}
 
 	/* 建树后的权威快照：此时父链与 global 参数都已成型，
 	 * gpos 就是渲染/命中真正用的坐标。 */

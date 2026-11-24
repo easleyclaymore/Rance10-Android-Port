@@ -1385,6 +1385,10 @@ void parts_render(struct parts *parts)
 		if (!link_parts->is_hovered)
 			return;
 	}
+	/* [D517d] 选项卡联动（EX 复选框表示連動）：绑定的选项卡没勾选就不画。
+	 * 3D 设置页的 19 个子页面靠它互斥，不判就会全部同时渲染。 */
+	if (!PE_ShowLinkVisible(parts))
+		return;
 
 	// render
 	struct parts_state *state = &parts->states[parts->state];
@@ -1472,28 +1476,35 @@ void parts_render(struct parts *parts)
 					fill = (SDL_Color){ fill.r / 2,
 							fill.g / 2,
 							fill.b / 2, 255 };
+				/* [D517d] 按钮样式：外框深、内部用 EX 的 按钮の色
+				 * （200,200,200 浅灰）。勾选态在左侧加一条高亮竖条
+				 * ——原版的勾选标记是美术，程序化只做可辨识。 */
 				render_uc_rect(cx, cy, bw, bh,
 						(SDL_Color){ 30, 32, 38, 255 });
-				render_uc_rect(cx + 1, cy + 1, bw - 2, bh - 2,
-						(SDL_Color){ 52, 56, 64, 255 });
-				if (checked) {
-					render_uc_rect(cx + 2, cy + 2,
-							bw - 4, bh - 4, fill);
-					render_uc_rect(cx + bw - 8, cy + bh - 8,
-							4, 4,
-							(SDL_Color){ 30, 32, 38, 255 });
-				}
+				render_uc_rect(cx + 2, cy + 2, bw - 4, bh - 4, fill);
+				if (checked)
+					render_uc_rect(cx + 2, cy + 2, 6, bh - 4,
+							(SDL_Color){ 210, 120, 40, 255 });
 			}
 		}
 		parts_render_flat(parts, &state->flat);
 		/* [D514] flat 件的 EX `文本` 标签（单选组选项：圆圈 + "画质优先"）。
-		 * union 放不下，标签走 caption_text 叠在 flat 之上；
-		 * 位置 = 原点右侧 8px、垂直居中。 */
+		 * union 放不下，标签走 caption_text 叠在 flat 之上。
+		 * [D517d] 位置分两种：① 按钮型（300x30 的选项卡，宽度够）——
+		 * EX 的 `文本` 带全角缩进，本来就是按钮**内部**的标签，画进内部
+		 * 左侧；② 小图标型（20x20 单选圆圈）—— 画在原点右侧 8px。
+		 * 全部画右侧会把 17 行选项卡文字推到按钮外的同一列（d667 截图）。 */
 		if (parts->caption_valid) {
 			int tw = parts_uc_text_width(&parts->caption_text);
 			int th = parts_uc_text_height(&parts->caption_text);
-			parts->caption_text.common.origin_offset.x = state->common.w + 8;
-			parts->caption_text.common.origin_offset.y = (state->common.h - th) / 2;
+			if (state->common.w >= tw + 16 && state->common.h >= th) {
+				parts->caption_text.common.origin_offset.x = 10;
+			} else {
+				parts->caption_text.common.origin_offset.x =
+					state->common.w + 8;
+			}
+			parts->caption_text.common.origin_offset.y =
+				(state->common.h - th) / 2;
 			parts_render_text(parts, &parts->caption_text);
 		}
 		break;
