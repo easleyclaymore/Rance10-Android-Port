@@ -166,7 +166,12 @@ static bool SystemService_ChangeFullScreen(void)
 	return gfx_set_fullscreen(true);
 }
 
-HLL_WARN_UNIMPLEMENTED(false, bool, SystemService, InitMainWindowPosAndSize);
+/* [D517u] 窗口页「SYS_初始化窗口位置和大小」按钮（CallFunction 表
+ * str#953 → 2546 委托 → 这里）。无参；还原窗口基准尺寸并居中。 */
+static bool SystemService_InitMainWindowPosAndSize(void)
+{
+	return gfx_init_main_window_pos_size();
+}
 
 //static bool SystemService_UpdateView(void);
 HLL_QUIET_UNIMPLEMENTED(false, bool, SystemService, UpdateView);

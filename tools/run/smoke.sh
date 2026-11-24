@@ -129,6 +129,8 @@ if [ -z "$BASEOUT" ]; then
 		smoke_quick|smoke_full)
 			BASEOUT="$SROOT/docs/baseline/baseline_$TAG.txt" ;;
 		*)
+			# [D517u] PORT 未显式传入时退回 Rance10_Port（logs/ 所在地）。
+			PORT="${PORT:-$SROOT/..}"
 			BASEOUT="$PORT/logs/baseline_$TAG.txt" ;;
 	esac
 fi

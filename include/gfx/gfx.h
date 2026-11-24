@@ -76,6 +76,8 @@ void gfx_set_window_logical_size(int w, int h);
 bool gfx_set_fullscreen(bool enable);
 bool gfx_is_fullscreen(void);
 void gfx_toggle_fullscreen(void);
+/* [D517u] 窗口页「SYS_初始化窗口位置和大小」：还原基准尺寸并居中。 */
+bool gfx_init_main_window_pos_size(void);
 void gfx_update_screen_scale(void);
 void gfx_set_wait_vsync(bool wait);
 float gfx_get_frame_rate(void);

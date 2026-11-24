@@ -496,6 +496,27 @@ void gfx_toggle_fullscreen(void)
 	gfx_set_fullscreen(!gfx_is_fullscreen());
 }
 
+/* [D517u] 窗口页「SYS_初始化窗口位置和大小」：
+ * 窗口还原到基准尺寸（视图分辨率原尺寸）并居中。
+ * RECORD_POS_SIZE（SetWindowSetting type 3）决定跨会话是否记住，这里只管本次复位。
+ * 全屏中调用是无效操作（原版语义：先退出全屏才有窗口可复位），直接返回真。 */
+bool gfx_init_main_window_pos_size(void)
+{
+	if (!sdl.window)
+		return false;
+	if (fullscreen_active) {
+		NOTICE("[gfx] init_main_window_pos_size: 全屏中忽略");
+		return true;
+	}
+	SDL_SetWindowSize(sdl.window, config.view_width, config.view_height);
+	SDL_SetWindowPosition(sdl.window, SDL_WINDOWPOS_CENTERED,
+			      SDL_WINDOWPOS_CENTERED);
+	gfx_update_screen_scale();
+	NOTICE("[gfx] init_main_window_pos_size -> %dx%d centered",
+	       config.view_width, config.view_height);
+	return true;
+}
+
 void gfx_update_screen_scale(void)
 {
 	int display_w, display_h;
