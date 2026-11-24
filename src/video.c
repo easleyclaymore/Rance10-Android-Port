@@ -270,9 +270,11 @@ int gfx_init(void)
 	 * 返回 "unsupported"，而裸测试程序同环境能成功 —— 待续排查，见
 	 * docs/RENDER-BACKEND.md。） */
 	if (vk_mode) {
+		/* [D521] 实验：HIDDEN 窗口的 X visual 可能不被 Vulkan WSI
+		 * present 检查接受（裸程序无 HIDDEN 成功）——去掉试试。 */
 		SDL_Window *probe = SDL_CreateWindow("probe",
 				config.view_width, config.view_height,
-				SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN);
+				SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
 		bool ok = probe && gfx_vk_init(probe);
 		if (probe)
 			SDL_DestroyWindow(probe);

@@ -338,6 +338,22 @@ VULKAN|RESIZABLE)` + `SDL_CreateGPUDevice(SPIRV, false, NULL)` → 成功，
 3. **绕开 SDL_GPU**：直接用原生 Vulkan（`vkCreateInstance` + `SDL_Vulkan_CreateSurface`）。
    代码量 3000+ 行但不受 SDL 内部状态影响 —— 若 1/2 都卡住，走这条。
 
+### 四·五、卡点破案（D521，2026-11-25）
+
+**根因链（全部实证）**：
+1. `VK_LOADER_DEBUG=all` + gdb（`vkEnumeratePhysicalDevices`/`SDL_LogWarn`/`GetPresentationSupport` 三断点）+ 裸程序探测三路交叉：
+   - vkCreateInstance ✓、vkEnumeratePhysicalDevices ✓（Intel ADL-N 枚举成功）
+   - features 7 项全 1 ✓、VK_KHR_swapchain/maintenance1 ✓（裸程序 /tmp/vkfeat 实证）
+   - 失败在 **queue family 的 present support 全 false**（`SDL_Vulkan_GetPresentationSupport`→X11 钩子→`vkGetPhysicalDeviceXlibPresentationSupportKHR`）
+2. **present=false 的原因**：`MESA: info: vulkan: No DRI3 support detected - required for presentation`——**Xvfb 没有 DRI3 扩展**，mesa 的 WSI 检查直接拒绝 → 无 suitable queue → 「Failed to determine a suitable physical device」→ 「No supported SDL_GPU backend found」→ 回退 GL。
+3. **决定性对照**：gdb 会话未 unset `WAYLAND_DISPLAY` → SDL 选 **wayland** 驱动 → **`[vk] Vulkan 路径就绪：driver=vulkan swapchain_fmt=12`**——Vulkan 探测直接成功！代码路径完全可用，x11/Xvfb 失败纯粹是**环境限制**（Xvfb 无 DRI3）。
+4. 裸程序复跑差异的教训：手工 gdb 时 WAYLAND_DISPLAY 残留改变了 SDL 的 video 后端选择——run-headless 的 `unset` 纪律（D249）正是为了消除这种变量。
+
+**解锁路径**：
+- **用户真实桌面（wayland，WAYLAND_DISPLAY=wayland-1）**：Vulkan 应直接可用——`run-local.sh` 授权后一轮即可验证 P1（3D 预览出图）。
+- **headless 跑测**：装 `vulkan-swrast`（lavapipe，软件 Vulkan；ICD `libvulkan_lvp.so` 当前缺失）——lavapipe 的 present 不依赖 DRI3，可让 Vulkan 全链在 Xvfb 可测（性能同 llvmpipe 量级，仅验证渲染正确性）。
+- gdb 下曾见 SIGSEGV @ `VULKAN_INTERNAL_OnWindowResize`（wayland 探测成功后、GL 回退流程中）——独立小 bug，待 Vulkan 主链通后处理。
+
 ### 五、分期计划（Vulkan 跑通探测之后）
 
 | 期 | 内容 | 判据 |
