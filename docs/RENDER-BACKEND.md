@@ -310,17 +310,33 @@ D331–D337 的排障过程在 `docs/TECH_DEBT.md` / `archive/`，可复用方�
 VULKAN|RESIZABLE)` + `SDL_CreateGPUDevice(SPIRV, false, NULL)` → 成功，
 `driver=vulkan`。
 
-已排除：
+已排除（都是实测，不是猜）：
 - `SDL_GL_SetAttribute` 干扰（已放进 `if (!vk_mode)`）
-- `SDL_INIT_AUDIO` / `SDL_INIT_GAMEPAD` / 窗口尺寸 / `RESIZABLE`
-- 跑测脚本的 `SDL_VIDEODRIVER` / `LIBGL_ALWAYS_SOFTWARE` / `GALLIUM_DRIVER`
-- `src/sdl3_compat.h`（21 行，无 GPU/Vulkan 相关内容）
-- 未显式 `SDL_Vulkan_LoadLibrary`（已显式调用且不报错）
+- `SDL_INIT_AUDIO` / `SDL_INIT_GAMEPAD` / 窗口尺寸 1920×1080 / `RESIZABLE`
+  （裸程序 mode 0–4 全排列均成功）
+- 跑测脚本的 `SDL_VIDEODRIVER=x11` / `LIBGL_ALWAYS_SOFTWARE` / `GALLIUM_DRIVER`
+- `src/sdl3_compat.h`（21 行，只有标准库 include）
+- 是否显式 `SDL_Vulkan_LoadLibrary`（加与不加都失败）
+- **video driver 不是 x11**（引擎里实测 `current video driver = 'x11'`）
+- **surface 扩展缺失**（引擎里实测 `instance extensions = 2`）
+- **库冲突**（把引擎 `ldd` 的 139 个库全链接进测试程序，仍 `driver=vulkan`）
+- **Xvfb 参数不同**（在跑测**进行中**的同一个 `:96`、`1920x1080x24` 上跑
+  测试程序，仍成功）
+- **主线程状态**（`SDL_IsMainThread()` 通过，代码走到了 `SDL_CreateGPUDevice`）
 
-**下一步**：在引擎里对比 `SDL_GetCurrentVideoDriver()` 与裸程序的差异；
-必要时把 `SDL_gpu_vulkan.c` 的 `VULKAN_Init` 失败点逐条对照（SDL 源码
-或 `SDL_LOG=GPU` 详细日志）。另一个方向：引擎是否在 `gfx_init` 之前
-动过 SDL 的 main-thread 状态（`SDL_SetMainReady`、`SDL_main` 包装）。
+**因此失败点在 SDL 的 VULKAN_Init 内部、`SDL_Vulkan_GetInstanceExtensions`
+之后**（即 `vkCreateInstance` / `vkEnumeratePhysicalDevices` 一带），
+且只在引擎进程里复现。裸程序与引擎的差异收敛到「进程已运行若干秒、
+已做过配置解析与 HLL 链接」这一层。
+
+**下一步（按性价比排序）**：
+1. **gdb 断点**：`break VULKAN_Init`（SDL 内部符号，需要 debug 版 SDL 或
+   `dlopen` 后在 `SDL_gpu_vulkan.c` 的行号下断），单步看 return false 的那一行。
+   这是唯一能一次定位的办法。
+2. **二分 `main()`**：把引擎的初始化逐段注释（配置解析 → HLL 链接 → AEL 加载
+   → `gfx_init`），找出哪一步之后 `SDL_CreateGPUDevice` 开始失败。
+3. **绕开 SDL_GPU**：直接用原生 Vulkan（`vkCreateInstance` + `SDL_Vulkan_CreateSurface`）。
+   代码量 3000+ 行但不受 SDL 内部状态影响 —— 若 1/2 都卡住，走这条。
 
 ### 五、分期计划（Vulkan 跑通探测之后）
 

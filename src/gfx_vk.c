@@ -49,11 +49,22 @@ bool gfx_vk_init(SDL_Window *win)
 	if (!SDL_IsMainThread())
 		return false;
 
-	/* SDL_GPU 的 vulkan 驱动要求先用 SDL 加载 Vulkan loader。
-	 * 裸程序里 SDL_CreateGPUDevice 会自动做，但引擎里实测不会（见下），
-	 * 所以这里显式加载并保留诊断输出。 */
-	if (!SDL_Vulkan_LoadLibrary(NULL))
-		NOTICE("[vk] SDL_Vulkan_LoadLibrary 失败：%s", SDL_GetError());
+	/* 诊断：当前 video driver 是什么。SDL_GPU 的 vulkan bootstrap 需要
+	 * video 驱动提供 Vulkan surface 扩展回调 —— 若落到 dummy/offscreen，
+	 * 窗口能"创建"但没有扩展，bootstrap 直接返回 unsupported。 */
+	NOTICE("[vk] current video driver = '%s'",
+	       SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "(null)");
+
+	/* 诊断：SDL 能不能拿到 Vulkan 实例扩展（bootstrap 的第一道门）。
+	 * 返回 0 = video 驱动没提供 surface 扩展回调 → bootstrap 必然失败。 */
+	{
+		unsigned int n = 0;
+		if (SDL_Vulkan_GetInstanceExtensions(&n))
+			NOTICE("[vk] instance extensions = %u", n);
+		else
+			NOTICE("[vk] SDL_Vulkan_GetInstanceExtensions 失败：%s",
+			       SDL_GetError());
+	}
 
 	/* 诊断：先列出 SDL 认为可用的 GPU 驱动。 */
 	if (getenv("XSYS4_VK_DBG")) {
