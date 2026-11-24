@@ -225,6 +225,13 @@ static struct parts **parts_input_collect(int *out_nr)
 		if (active_idx >= 0 && p->controller_no != active_idx &&
 		    p->controller_no != PARTS_CONTROLLER_SYSTEM_OVERLAY)
 			continue;
+		/* [D517g] 被选项卡联动（EX 复选框表示連動）隐藏的部件不参与命中。
+		 * 3D 设置页 19 个子页面的 checkbox 全在 (430,123) 附近重叠，
+		 * 只靠 z 排序选候选：点到的是 z 最大的那一页（被写界深度），
+		 * 而不是当前显示页 —— d679 实测 CLICKED parts=900000289（隐藏页）、
+		 * 当前页的选项永远点不到。 */
+		if (!PE_ShowLinkVisible(p))
+			continue;
 		if (nr == input_z_cap) {
 			input_z_cap = input_z_cap ? input_z_cap * 2 : 64;
 			input_z_sorted = xrealloc_array(input_z_sorted, nr,
@@ -1053,12 +1060,11 @@ void PE_UpdateInputState(int passed_time)
 		g_just_clicked = false;
 		/* [D517e] 复选框/单选按钮先由引擎处理（切换勾选态 + 组内互斥）：
 		 * 3D 设置页的选项卡 di=-1（AIN 无委托），原版行为就在组件里。
-		 * 处理成功就不再派发给 AIN（避免同一击被消费两次）。 */
-		bool cb_handled = clicked_parts ?
-			PE_CheckBoxClick(clicked_parts) : false;
+		 * 处理成功也照旧派发 —— 选项区的检查件是有委托的（di=99 等），
+		 * AIN 需要在点击时更新设置，静默会让它收不到。 */
+		PE_CheckBoxClick(clicked_parts);
 		/* [D337] 把这次点击派发给 AIN 侧的按钮对象（帧泵里消费）。 */
-		if (!cb_handled)
-			vm_request_parts_click(clicked_parts, cur_pos.x, cur_pos.y);
+		vm_request_parts_click(clicked_parts, cur_pos.x, cur_pos.y);
 	}
 
 	if (parts_began_click || (prev_clicking && !cur_clicking))

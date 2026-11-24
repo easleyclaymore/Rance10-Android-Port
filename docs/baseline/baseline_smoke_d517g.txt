@@ -1,0 +1,12 @@
+tag=smoke_d517g
+mode=quick
+rc=0
+double_free=0
+errors=0
+activities=36
+out_of_bounds=0
+core_dump=0
+scene_quest_map=0
+saves=savedir/smoke_d517g（本地 logs/，不随仓库分发）
+log_lines_info=0
+0
