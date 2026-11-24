@@ -923,6 +923,13 @@ static void parse_part_fields(struct ex_tree *node, struct activity_part *part)
 			get_int(type_info, "字体尺寸", &part->font_size);
 			part->font_color[0] = part->font_color[1] = part->font_color[2] = 255;
 			get_int_list(type_info, "字体色", part->font_color, 3);
+			/* [D517f] 文本パーツ 也有 文字间距/行间距（EX 实测 行间距=4）。
+			 * 此前只有消息窗口分支读它们，3D 页的说明文本用默认 16px +
+			 * 默认行距，3 行挤在 48px 高里互相压字（d676 截图）。 */
+			part->char_space = 0;
+			part->line_space = 0;
+			get_int(type_info, "文字间距", &part->char_space);
+			get_int(type_info, "行间距", &part->line_space);
 			ACT_DEBUG("[act] TEXT part '%s' text='%s' align=%d size=%d",
 				   part->name,
 				   part->part_text ? part->part_text : "(null)",
@@ -1414,8 +1421,19 @@ static int build_part(struct activity_part *part, int parent_no)
 		struct string *txt = cstr_to_string(part->part_text);
 		bool ok = PE_SetText(part->parts_no, txt, 1);
 		free_string(txt);
-		ACT_DEBUG("[act] %s parts_no=%d text set=%d align=%d",
-			  part->name, part->parts_no, ok, part->text_align);
+		/* [D517f] 字号/颜色/间距沿用 EX 声明。**必须放在 PE_SetText 之后**
+		 * （它会把 state 重置成 PARTS_TEXT）。此前只有消息窗口分支设这些，
+		 * 文本パーツ 一律默认 16px：3D 页的说明文本（EX 字体尺寸=11、
+		 * 行间距=4、框高 48）被画成 3 行 × 20px 互相压字（d676 截图）。 */
+		if (part->font_size > 0)
+			PE_SetPartsFontSize(part->parts_no, part->font_size, 1);
+		PE_SetPartsFontColor(part->parts_no, part->font_color[0],
+				part->font_color[1], part->font_color[2], 1);
+		PE_SetTextCharSpace(part->parts_no, part->char_space, 1);
+		PE_SetTextLineSpace(part->parts_no, part->line_space, 1);
+		ACT_DEBUG("[act] %s parts_no=%d text set=%d align=%d size=%d",
+			  part->name, part->parts_no, ok, part->text_align,
+			  part->font_size);
 	} else if (part->type != ACT_COMP_TEXT && part->part_text && *part->part_text
 		   && caption_enabled()) {
 		/* [D514] 非 TEXT 件的 `文本` 当标签画（flat 圆圈右侧）。
