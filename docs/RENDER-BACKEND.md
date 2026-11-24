@@ -242,3 +242,92 @@ SDL3 删除了回调式音频：`SDL_LockAudioDevice` / `SDL_UnlockAudioDevice` 
 
 累计改动的文件与逐条理由见上方「改了哪 12 个文件」+ `git log --oneline origin/main..origin/sdl3`。
 D331–D337 的排障过程在 `docs/TECH_DEBT.md` / `archive/`，可复用方法论已回流 `docs/GUIDE/`。
+
+---
+
+## 决策二：Vulkan 支持（D517k）
+
+> 结论先行：**路径已搭好，但当前环境还没跑通**。代码与工具链就绪
+> （`XSYS4_RENDER_BACKEND=vulkan`），失败时安全回退 GL，不影响默认构建。
+> 卡点在 `SDL_CreateGPUDevice`：引擎里返回 `unsupported`，而**同环境
+> 同库的裸测试程序能成功** —— 待续排查。
+
+### 一、现状量化（决定为什么不能"顺手换"）
+
+| 项目 | 实测值 |
+|---|---:|
+| `gfx` 公开 API | **111 个** |
+| `src/video.c`（GL 核心） | 932 行 |
+| `src/draw.c`（混合/旋转/3D） | 1236 行 |
+| `gl*` 调用点 | 约 300 处，其中 `glBlendFuncSeparate` **87 处** |
+| 离屏渲染 | `main_surface` + `main_surface_fb`（视觉特效靠它） |
+
+**结论**：2D 渲染是裸 GL 紧耦合，全量迁 Vulkan 是 **3000+ 行新代码**，
+不是一两天的活。
+
+### 二、两条路线
+
+| | SDL_GPU（已选，先做） | 原生 Vulkan |
+|---|---|---|
+| 代码量 | 小 5–10 倍 | 3000+ 行 |
+| 覆盖 | Vulkan / Metal / D3D12（一份代码） | 只有 Vulkan |
+| 依赖 | SDL3 自带（`SDL_gpu.h`） | vulkan-loader + 手写 instance/swapchain/pipeline |
+| 风险 | 新 API，仍有 2D 迁移成本 | 巨量样板代码 |
+
+**选 SDL_GPU**：它能同时满足"支持 Vulkan"和将来 Android/Metal 的诉求，
+且已在 `SDL_CreateGPUDevice(..., "vulkan")` 上验证过驱动选择逻辑。
+
+### 三、已落地（本次）
+
+1. **SPIR-V 工具链**：`shaders/preview3d_vk.{vert,frag}` +
+   `tools/gen-spv.sh` → 生成 `src/preview3d_vk_spv.h`（嵌入字节数组，
+   运行期不依赖 shader 文件）。本机 `glslc` / `spirv-val` 均可用。
+2. **`src/gfx_vk.c`**（SDL_GPU，Vulkan 驱动）：instance/device 探测、
+   图形管线（顶点色、TRIANGLELIST/STRIP、alpha 混合）、动态顶点缓冲、
+   render pass 清屏、`gfx_vk_draw_faces()`（每面一次 push uniform）。
+3. **`src/parts/preview3d.c` 双路径**：相机/面矩阵/颜色/雾化算一次
+   （`pq_build_faces`），GL 走 `parts_draw_solid_quad`、Vulkan 走
+   `gfx_vk_draw_faces`。
+4. **`video.c` 后端切换**：`XSYS4_RENDER_BACKEND=vulkan` 时窗口用
+   `SDL_WINDOW_VULKAN`、跳过 GL context 与所有 GL 初始化；
+   **先建隐藏窗口探测**，拿不到设备就回退 GL（窗口只能属于一个 API，
+   回退必须重建）。
+5. **GL 调用的 guard**：`gfx_clear` / `gfx_swap` / `init_texture` /
+   `gfx_init_texture_with_pixels` / `gfx_fini` 在 Vulkan 模式下跳过或 no-op
+   （纹理 handle 留 0，让所有 GL 绘制 early-return）。
+
+### 四、卡点（下次接着查的第一件事）
+
+```
+[vk] SDL 可用 GPU 驱动数=1
+[vk]   driver[0]=vulkan
+[vk] SDL_CreateGPUDevice(NULL) 失败：No supported SDL_GPU backend found!
+[vk] 点名 vulkan 也失败：SDL_HINT_GPU_DRIVER vulkan unsupported!（放弃）
+```
+
+**但**：同环境（`DISPLAY=:96`，同一个 `/usr/lib/libSDL3.so.0`）下，
+裸程序 `SDL_Init(VIDEO|AUDIO|GAMEPAD)` + `SDL_CreateWindow(1920x1080,
+VULKAN|RESIZABLE)` + `SDL_CreateGPUDevice(SPIRV, false, NULL)` → 成功，
+`driver=vulkan`。
+
+已排除：
+- `SDL_GL_SetAttribute` 干扰（已放进 `if (!vk_mode)`）
+- `SDL_INIT_AUDIO` / `SDL_INIT_GAMEPAD` / 窗口尺寸 / `RESIZABLE`
+- 跑测脚本的 `SDL_VIDEODRIVER` / `LIBGL_ALWAYS_SOFTWARE` / `GALLIUM_DRIVER`
+- `src/sdl3_compat.h`（21 行，无 GPU/Vulkan 相关内容）
+- 未显式 `SDL_Vulkan_LoadLibrary`（已显式调用且不报错）
+
+**下一步**：在引擎里对比 `SDL_GetCurrentVideoDriver()` 与裸程序的差异；
+必要时把 `SDL_gpu_vulkan.c` 的 `VULKAN_Init` 失败点逐条对照（SDL 源码
+或 `SDL_LOG=GPU` 详细日志）。另一个方向：引擎是否在 `gfx_init` 之前
+动过 SDL 的 main-thread 状态（`SDL_SetMainReady`、`SDL_main` 包装）。
+
+### 五、分期计划（Vulkan 跑通探测之后）
+
+| 期 | 内容 | 判据 |
+|---|---|---|
+| P1 | 探测通 + 3D 预览在 Vulkan 下出图 | X11 截图能看到立方体 |
+| P2 | 纹理四边形 + 普通/加法混合（覆盖精灵与 CG） | 标题画面在 Vulkan 下可读 |
+| P3 | 离屏 framebuffer（`main_surface`）+ 特效混合 | 视觉特效不黑 |
+| P4 | 文字渲染（freetype 位图 → GPUTexture） | ADV 正文可见 |
+| P5 | 全量回归 + 默认后端切换 | 冒烟 quick 全绿；`XSYS4_RENDER_BACKEND` 可双向切 |

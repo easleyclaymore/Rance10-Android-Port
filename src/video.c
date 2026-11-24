@@ -26,8 +26,19 @@
 #include "gfx/private.h"
 #include "icon.h"
 #include "xsystem4.h"
+#include "preview3d_vk.h"
 
 struct sdl_private sdl;
+
+/* [D517k] 渲染后端开关：`XSYS4_RENDER_BACKEND=vulkan` 时整帧走 SDL_GPU 的
+ * Vulkan 驱动（src/gfx_vk.c），GL 的 gfx 绘制全部跳过。默认仍是 GL。
+ * 互斥原因：SDL 窗口只能属于一个图形 API（OPENGL 或 VULKAN）。 */
+static bool vk_mode;
+
+bool gfx_vk_mode(void)
+{
+	return vk_mode;
+}
 
 static const GLchar glsl_preamble[] =
 #ifdef USE_GLES
@@ -227,21 +238,66 @@ int gfx_init(void)
 	if (SDL_Init(flags) < 0)
 		ERROR("SDL_Init failed: %s", SDL_GetError());
 
+	{
+		const char *bk = getenv("XSYS4_RENDER_BACKEND");
+		vk_mode = bk && (strstr(bk, "vulkan") || strcmp(bk, "vk") == 0);
+	}
+
+	/* Vulkan 模式下**不要**设 GL 上下文属性：SDL 内部会因此偏向 GL，
+	 * `SDL_CreateGPUDevice` 直接报 "No supported SDL_GPU backend found"
+	 * （d695 实测；同样的代码在裸测试程序里能拿到 driver=vulkan）。 */
+	if (!vk_mode) {
 #ifdef USE_GLES
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
 #else
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 #endif
+	}
 
 	/* [D329] SDL3 没有 SDL_AllocFormat：格式描述由 SDL 全局持有，
 	 * 用 SDL_GetPixelFormatDetails 取只读指针，且**不得释放**。 */
 	sdl.format = SDL_GetPixelFormatDetails(SDL_PIXELFORMAT_RGBA32);
 	/* [D329] SDL3 的 SDL_CreateWindow 去掉了 x/y（6 参 -> 4 参），
 	 * 也没有 SDL_WINDOW_SHOWN（建出来就是可见的）。 */
+	/* [D517k] Vulkan 探测：**先建一个隐藏窗口试出来**，拿不到 SDL_GPU
+	 * 的 vulkan 设备就回退 GL。不能先建 VULKAN 窗口再失败——SDL 窗口
+	 * 只能属于一个图形 API，回退必须重建。
+	 * （本机实测：SDL 只报 driver[0]=vulkan，但 CreateGPUDevice 在引擎里
+	 * 返回 "unsupported"，而裸测试程序同环境能成功 —— 待续排查，见
+	 * docs/RENDER-BACKEND.md。） */
+	if (vk_mode) {
+		SDL_Window *probe = SDL_CreateWindow("probe",
+				config.view_width, config.view_height,
+				SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN);
+		bool ok = probe && gfx_vk_init(probe);
+		if (probe)
+			SDL_DestroyWindow(probe);
+		if (!ok) {
+			NOTICE("[vk] Vulkan 后端不可用，回退 GL（%s）", SDL_GetError());
+			vk_mode = false;
+		} else {
+			/* 探测成功：gfx_vk 已绑定 probe 窗口，销毁后需要重建。
+			 * 直接把 probe 留着当正式窗口更省事。 */
+			sdl.window = SDL_CreateWindow("XSystem4",
+					config.view_width, config.view_height,
+					SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+			if (!sdl.window)
+				ERROR("SDL_CreateWindow failed: %s", SDL_GetError());
+			gfx_vk_fini();
+			max_texture_size = 8192;
+			set_window_title();
+			if (!gfx_vk_init(sdl.window))
+				ERROR("Vulkan 探测通过但正式窗口初始化失败：%s",
+				      SDL_GetError());
+			gfx_initialized = true;
+			return 0;
+		}
+	}
+
 	sdl.window = SDL_CreateWindow("XSystem4",
 				      config.view_width,
 				      config.view_height,
@@ -306,6 +362,12 @@ int gfx_init(void)
 
 void gfx_fini(void)
 {
+	if (vk_mode) {
+		gfx_vk_fini();
+		SDL_DestroyWindow(sdl.window);
+		SDL_Quit();
+		return;
+	}
 	glDeleteProgram(default_shader.program);
 	SDL_DestroyWindow(sdl.window);
 	/* [D329] SDL3 的格式描述归 SDL 所有，不能释放。 */
@@ -489,6 +551,8 @@ void gfx_set_clear_color(int r, int g, int b, int a)
 
 void gfx_clear(void)
 {
+	if (vk_mode)
+		return; /* 清屏由 gfx_vk 的 render pass 完成 */
 	glClearColor(clear_color.r / 255.f, clear_color.g / 255.f, clear_color.b / 255.f, clear_color.a / 255.f);
 	glClear(GL_COLOR_BUFFER_BIT);
 }
@@ -525,6 +589,11 @@ static void gfx_update_frame_rate_counter(void)
 
 void gfx_swap(void)
 {
+	if (vk_mode) {
+		/* present 已在 gfx_vk_draw_faces 的 SubmitGPUCommandBuffer 里完成 */
+		gfx_update_frame_rate_counter();
+		return;
+	}
 	/* [D112] 首帧探针：XSYS4_SWAP_LOG=1 会记录前几次交换，
 	 * 这样启动器可以在第一帧呈现之后立刻冻结进程。 */
 	if (getenv("XSYS4_SWAP_LOG")) {
@@ -737,6 +806,14 @@ size_t gfx_texture_pixels = 0;
 
 static void init_texture(struct texture *t, int w, int h)
 {
+	if (vk_mode) {
+		/* Vulkan 路径不建 GL 纹理：handle=0 让所有 GL 绘制 early-return
+		 * （gfx_delete_texture / _gfx_render_texture 都判 handle）。 */
+		t->w = w;
+		t->h = h;
+		t->handle = 0;
+		return;
+	}
 	gfx_texture_count++;
 	gfx_texture_pixels += (size_t)(w > 0 ? w : 0) * (size_t)(h > 0 ? h : 0);
 	glGenTextures(1, &t->handle);
@@ -753,6 +830,8 @@ static void init_texture(struct texture *t, int w, int h)
 void gfx_init_texture_with_pixels(struct texture *t, int w, int h, void *pixels)
 {
 	init_texture(t, w, h);
+	if (vk_mode)
+		return;
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
 }
 

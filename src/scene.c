@@ -19,6 +19,7 @@
 
 #include "asset_manager.h"
 #include "preview3d.h"
+#include "preview3d_vk.h"
 #include "cJSON.h"
 #include "gfx/gfx.h"
 #include "json.h"
@@ -72,6 +73,16 @@ void scene_unregister_sprite(struct sprite *sp)
 
 void scene_render(void)
 {
+	/* [D517k] Vulkan 后端：整帧由 gfx_vk 负责（GL 的 gfx 绘制全部跳过，
+	 * 因为没有 GL context）。当前只画 3D 预览 + 清屏色 —— 2D 的迁移
+	 * 见 docs/RENDER-BACKEND.md 的分期。 */
+	if (gfx_vk_mode()) {
+		preview3d_sync_params();
+		if (!preview3d_render_vk(config.view_width, config.view_height))
+			gfx_vk_clear_screen();
+		return;
+	}
+
 	gfx_clear();
 	if (wp.handle) {
 		Rectangle r = RECT(0, 0, wp.w, wp.h);

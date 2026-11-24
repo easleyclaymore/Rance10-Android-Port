@@ -246,3 +246,5 @@ XSYS4_POS_DBG	[取证] 记录 PE_SetPos 对 AIN 部件（>=900000100）的调用
 XSYS4_CB_INIT_DBG	[取证] 复选框建部件时的 选择状态/实际勾选态（[cb-init]）
 XSYS4_CB_SET_DBG	[取证] PE_CheckBoxChecked 调用（[cbset] no=N checked=V），判断 AIN 同步的勾选态
 XSYS4_EXIST_SAVE_GAMEDIR	[回退] =0 禁用 ExistSaveFile 的游戏目录兜底（配置文件读回依赖它）
+XSYS4_RENDER_BACKEND	[后端] =vulkan 走 SDL_GPU 的 Vulkan 驱动（当前探测失败会自动回退 GL）；默认 GL
+XSYS4_VK_DBG	[取证] Vulkan 探测诊断：列出 SDL 可用 GPU 驱动与失败原因（[vk]）

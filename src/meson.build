@@ -73,6 +73,7 @@ xsystem4 = [version_h,
             'parts/parts.c',
             'parts/render.c',
             'parts/preview3d.c',
+            'gfx_vk.c',
             'parts/text.c',
             'parts/save.c',
 

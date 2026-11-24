@@ -21,6 +21,9 @@ bool preview3d_active(void);
 void preview3d_tick(int ms);
 /* 在 (0,0,w,h) 上绘制预览。调用方负责保证 active。 */
 void preview3d_render(int w, int h);
+/* Vulkan(SDL_GPU) 路径：整帧（含清屏）由 gfx_vk 负责，无 GL 调用。 */
+bool preview3d_render_vk(int w, int h);
+
 /* 从当前 3D 页的勾选态刷新参数（定义在 activity.c，能按部件号读 checkbox）。 */
 void preview3d_sync_params(void);
 

@@ -21,6 +21,7 @@
 
 #include "xsystem4.h"
 #include "preview3d.h"
+#include "preview3d_vk.h"
 
 #define PQ_CUBE 0.62f
 
@@ -96,39 +97,41 @@ static float face_depth(const mat4 rot, const int f[4])
 	return rc[2] + 4.6f; /* 相机距离，用于雾化归一化 */
 }
 
-void preview3d_render(int w, int h)
+/* 相机 + 旋转（两条渲染路径共用）。 */
+static void pq_camera(int w, int h, mat4 proj, mat4 rot)
 {
-	static const SDL_Color bg = { 20, 22, 28, 255 };
-	static const SDL_Color base = { 176, 184, 198, 255 };
-	static const float light[3] = { 0.35f, 0.62f, 0.70f };
-
-	if (!pq.active || w <= 0 || h <= 0)
-		return;
-
-	/* 自驱动旋转：用墙钟算 delta（不依赖 VM 帧泵，标题静置时也在转）。 */
-	Uint64 now = SDL_GetTicks();
-	if (pq.last_ms)
-		preview3d_tick((int)(now - pq.last_ms));
-	pq.last_ms = now;
-
-	/* 背景：把标题画面盖住（原版这里画的是实时 3D 场景）。 */
-	parts_draw_screen_rect(0, 0, w, h, bg, 1.0f);
-
-	/* 相机：45° 视场、后退 4.6（与 draw.c 的 copy_rotate_y 同一套）。 */
-	mat4 proj;
 	float fov = 45.0f * (float)(M_PI / 180.0);
 	glm_perspective(fov, (float)w / (float)h, 0.1f, 100.0f, proj);
 	glm_translate(proj, (vec3){ 0.0f, 0.0f, -4.6f });
 
-	mat4 rot = GLM_MAT4_IDENTITY_INIT;
+	glm_mat4_identity(rot);
 	glm_rotate_y(rot, pq.angle, rot);
 	glm_rotate_x(rot, 0.42f, rot);
+}
 
-	/* painter：按面深度从远到近。 */
-	int order[6] = { 0, 1, 2, 3, 4, 5 };
+/* 推进旋转（用墙钟，不依赖 VM 帧泵）。 */
+static void pq_tick(void)
+{
+	Uint64 now = SDL_GetTicks();
+	if (pq.last_ms)
+		preview3d_tick((int)(now - pq.last_ms));
+	pq.last_ms = now;
+}
+
+/* 面排序 + 每面的 world 矩阵/颜色（两条渲染路径共用）。
+ * 返回排序后的面序号数组。 */
+static void pq_build_faces(const mat4 rot, int order[6], mat4 world[6],
+			   float colors[6][3])
+{
+	static const float base[3] = { 176.0f, 184.0f, 198.0f };
+	static const float light[3] = { 0.35f, 0.62f, 0.70f };
+	static const float bgf[3] = { 20.0f, 22.0f, 28.0f };
+
 	float depth[6];
 	for (int i = 0; i < 6; i++)
 		depth[i] = face_depth(rot, face_idx[i]);
+	for (int i = 0; i < 6; i++)
+		order[i] = i;
 	for (int i = 0; i < 6; i++) {
 		for (int j = i + 1; j < 6; j++) {
 			if (depth[order[j]] < depth[order[i]]) {
@@ -143,8 +146,6 @@ void preview3d_render(int w, int h)
 		const int fi = order[k];
 		const int *f = face_idx[fi];
 		const float *n = face_n[fi];
-
-		/* 把单位方形映射到该面：col0=v1-v0, col1=v3-v0, col2=法线, col3=v0 */
 		const float *v0 = cube_v[f[0]];
 		const float *v1 = cube_v[f[1]];
 		const float *v3 = cube_v[f[3]];
@@ -152,25 +153,18 @@ void preview3d_render(int w, int h)
 		m[0][0] = (v1[0] - v0[0]) * PQ_CUBE;
 		m[0][1] = (v1[1] - v0[1]) * PQ_CUBE;
 		m[0][2] = (v1[2] - v0[2]) * PQ_CUBE;
-		m[0][3] = 0.0f;
 		m[1][0] = (v3[0] - v0[0]) * PQ_CUBE;
 		m[1][1] = (v3[1] - v0[1]) * PQ_CUBE;
 		m[1][2] = (v3[2] - v0[2]) * PQ_CUBE;
-		m[1][3] = 0.0f;
 		m[2][0] = n[0];
 		m[2][1] = n[1];
 		m[2][2] = n[2];
-		m[2][3] = 0.0f;
 		m[3][0] = v0[0] * PQ_CUBE;
 		m[3][1] = v0[1] * PQ_CUBE;
 		m[3][2] = v0[2] * PQ_CUBE;
 		m[3][3] = 1.0f;
+		glm_mat4_mul(rot, m, world[k]);
 
-		mat4 world;
-		glm_mat4_mul(rot, m, world);
-
-		/* 光照：法线随模型旋转，与固定方向光点积。
-		 * render_mode 0（软件）不光照；1（着色無）平坦；2（着色存在）加高光。 */
 		vec4 rn;
 		glm_mat4_mulv(rot, (vec4){ n[0], n[1], n[2], 0.0f }, rn);
 		float ndl = rn[0] * light[0] + rn[1] * light[1] + rn[2] * light[2];
@@ -179,34 +173,72 @@ void preview3d_render(int w, int h)
 			if (ndl < 0.0f)
 				ndl = 0.0f;
 			shade = 0.42f + 0.58f * ndl;
-			if (pq.render_mode >= 2) {
-				/* 简化高光：正对光源的面再亮一档 */
-				float spec = ndl * ndl * ndl * ndl;
-				shade += 0.22f * spec;
-			}
+			if (pq.render_mode >= 2)
+				shade += 0.22f * (ndl * ndl * ndl * ndl);
 		}
-
-		SDL_Color c = {
-			(Uint8)(base.r * shade > 255 ? 255 : base.r * shade),
-			(Uint8)(base.g * shade > 255 ? 255 : base.g * shade),
-			(Uint8)(base.b * shade > 255 ? 255 : base.b * shade),
-			255,
-		};
-
-		/* 雾化：远处面往背景色混。depth 4.6 约等于原点，5.6 为最远。 */
+		float cr = base[0] * shade, cg = base[1] * shade, cb = base[2] * shade;
 		if (pq.fog_mode) {
 			float d = face_depth(rot, f);
-			float t = (5.9f - d) * 0.42f; /* 越远越大 */
+			float t = (5.9f - d) * 0.42f;
 			if (t > 0.0f) {
 				if (t > 0.85f)
 					t = 0.85f;
-				c.r = (Uint8)(c.r * (1.0f - t) + bg.r * t);
-				c.g = (Uint8)(c.g * (1.0f - t) + bg.g * t);
-				c.b = (Uint8)(c.b * (1.0f - t) + bg.b * t);
+				cr = cr * (1.0f - t) + bgf[0] * t;
+				cg = cg * (1.0f - t) + bgf[1] * t;
+				cb = cb * (1.0f - t) + bgf[2] * t;
 			}
 		}
+		colors[k][0] = (cr > 255.0f ? 255.0f : cr) / 255.0f;
+		colors[k][1] = (cg > 255.0f ? 255.0f : cg) / 255.0f;
+		colors[k][2] = (cb > 255.0f ? 255.0f : cb) / 255.0f;
+	}
+}
 
-		parts_draw_solid_quad(world, proj, c, 1.0f);
+/* Vulkan(SDL_GPU) 路径：整帧由 gfx_vk 负责（含清屏），无 GL 调用。 */
+bool preview3d_render_vk(int w, int h)
+{
+	if (!pq.active || w <= 0 || h <= 0)
+		return false;
+	pq_tick();
+	mat4 proj, rot;
+	pq_camera(w, h, proj, rot);
+	int order[6];
+	mat4 world[6];
+	float colors[6][3];
+	pq_build_faces(rot, order, world, colors);
+	return gfx_vk_draw_faces((const float (*)[16])world, colors, 6,
+				 (const float *)proj);
+}
+
+void preview3d_render(int w, int h)
+{
+	static const SDL_Color bg = { 20, 22, 28, 255 };
+	static const float light[3] = { 0.35f, 0.62f, 0.70f };
+	(void)light;
+
+	if (!pq.active || w <= 0 || h <= 0)
+		return;
+	pq_tick();
+
+	/* 背景：把标题画面盖住（原版这里画的是实时 3D 场景）。 */
+	parts_draw_screen_rect(0, 0, w, h, bg, 1.0f);
+
+	mat4 proj, rot;
+	pq_camera(w, h, proj, rot);
+
+	int order[6];
+	mat4 world[6];
+	float colors[6][3];
+	pq_build_faces(rot, order, world, colors);
+
+	for (int k = 0; k < 6; k++) {
+		SDL_Color c = {
+			(Uint8)(colors[k][0] * 255.0f + 0.5f),
+			(Uint8)(colors[k][1] * 255.0f + 0.5f),
+			(Uint8)(colors[k][2] * 255.0f + 0.5f),
+			255,
+		};
+		parts_draw_solid_quad(world[k], proj, c, 1.0f);
 	}
 
 	/* 抗锯齿/边缘在此版本不画描边（edge 已在 EX 里为 0 或 1，留作后续）。 */
