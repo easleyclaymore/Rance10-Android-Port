@@ -281,6 +281,76 @@ static char *uc_param(struct ex_tree *type_info, const char *key)
 /* [D122] 把 数据 列表原样拷进 part->uc_data，供 build_part 写回引擎。
  * 键和值都是 EX 文件自带的 GBK/SJIS 字节，不做转码——AIN 侧查询时用的
  * 也是同一套字节。非字符串项跳过（游戏的用户组件 数据 全是字符串）。 */
+/* [D517] XSYS4_EX_SUBTREE=<名字 ASCII 子串>：递归 dump 命中部件的
+ * 种类別情报 子树（键名 + 叶子值）。回答「3D 页 radio box 项的状态
+ * 图像字段长什么样」——类型映射修好后画面仍黑，需要看它的图像
+ * 引用藏在哪个键里。只打前 60 行防刷屏。 */
+static void ex_dump_subtree_rec(struct ex_tree *t, int depth, int *budget)
+{
+	if (!t || *budget <= 0)
+		return;
+	(*budget)--;
+	char ind[64] = "";
+	for (int i = 0; i < depth && i < 20; i++)
+		snprintf(ind + strlen(ind), sizeof(ind) - strlen(ind), "  ");
+	const char *nm = t->name ? display_sjis0(t->name->text) : "(null)";
+	if (t->is_leaf) {
+		struct ex_value *v = &t->leaf.value;
+		switch (v->type) {
+		case EX_INT:
+			NOTICE("[ext]%s %s = %d", ind, nm, v->i);
+			break;
+		case EX_FLOAT:
+			NOTICE("[ext]%s %s = %f", ind, nm, v->f);
+			break;
+		case EX_STRING:
+			NOTICE("[ext]%s %s = '%s'", ind, nm,
+			       v->s ? display_sjis0(v->s->text) : "(null)");
+			break;
+		case EX_TABLE:
+			NOTICE("[ext]%s %s = TABLE(%u fields x %u rows)", ind,
+			       nm, v->t ? v->t->nr_fields : 0,
+			       v->t ? v->t->nr_rows : 0);
+			break;
+		case EX_LIST:
+			NOTICE("[ext]%s %s = LIST(%u items)", ind, nm,
+			       v->list ? v->list->nr_items : 0);
+			/* [D517] 列表项展开：radio box 的图像定义就在
+			 * 复选框リスト 的条目里。 */
+			if (v->list) {
+				for (uint32_t li = 0; li < v->list->nr_items;
+				     li++) {
+					struct ex_value *lv =
+						&v->list->items[li].value;
+					if (lv->type == EX_STRING)
+						NOTICE("[ext]%s   [%u] '%s'",
+						       ind, li,
+						       lv->s ? display_sjis0(
+								  lv->s->text)
+							     : "(null)");
+					else if (lv->type == EX_INT)
+						NOTICE("[ext]%s   [%u] %d", ind,
+						       li, lv->i);
+					else if (lv->type == EX_TREE)
+						ex_dump_subtree_rec(lv->tree,
+								    depth + 1,
+								    budget);
+					else
+						NOTICE("[ext]%s   [%u] type%d",
+						       ind, li, (int)lv->type);
+				}
+			}
+			break;
+		default:
+			NOTICE("[ext]%s %s = type%d", ind, nm, (int)v->type);
+		}
+		return;
+	}
+	NOTICE("[ext]%s [%s] (%u children)", ind, nm, t->nr_children);
+	for (uint32_t i = 0; i < t->nr_children; i++)
+		ex_dump_subtree_rec(&t->children[i], depth + 1, budget);
+}
+
 static void uc_read_data(struct activity_part *part, struct ex_tree *type_info)
 {
 	struct ex_tree *c = get_child(type_info, "数据");
@@ -561,7 +631,14 @@ static int component_type_from_name(const char *type_name)
 		{ "ＭＬ文本ＢＯＸ",      ACT_COMP_MLTEXTBOX },
 		{ "レイアウトＢＯＸ",     ACT_COMP_LAYOUT_BOX },
 		{ "レイアウトボックス",    ACT_COMP_LAYOUT_BOX },
-		{ "ラジオ按钮ＢＯＸ",     ACT_COMP_RADIOBUTTONBOX },
+		{ "ラジオ按钮ＢＯＸ",     ACT_COMP_CHECKBOX },
+		/* [D517] 3D 页的变体：片假名ボックス（汉化组两种写法并存）。
+		 * RADIOBUTTONBOX 枚举有值但引擎零实现（渲染/交互都不认），
+		 * 降级 CG 后查不到图 => 整页黑屏只剩 caption 白字。
+		 * 单选组在本作的渲染与交互路径与检查ＢＯＸ一致
+		 * （01 页的单选圆圈就是 flat+caption 工作的），互斥由 AIN 侧
+		 * 复选框リスト 逻辑负责，引擎层不区分。 */
+		{ "ラジオ按钮ボックス",   ACT_COMP_CHECKBOX },
 		{ "消息窗口",            ACT_COMP_MESSAGE_WINDOW },
 		{ "スピンＢＯＸ",        ACT_COMP_SPINBOX },
 		{ "面板",               ACT_COMP_PANEL },
@@ -747,6 +824,17 @@ static void parse_part_fields(struct ex_tree *node, struct activity_part *part)
 		}
 
 		struct ex_tree *src = state ? state : type_info;
+		/* [D517] 子树 dump：见 ex_dump_subtree_rec 注释。 */
+		{
+			const char *want_sub = getenv("XSYS4_EX_SUBTREE");
+			if (want_sub && *want_sub && part->name &&
+			    strstr(part->name, want_sub)) {
+				int budget = 150;
+				NOTICE("[ext] ===== '%s' =====",
+				       display_sjis0(part->name));
+				ex_dump_subtree_rec(type_info, 0, &budget);
+			}
+		}
 		/* [D217] 消息窗口的排版参数全在 种类別情报 里，此前一个都没读：
 		 * 文本エリア=(470,233,0,0) / 字体尺寸=39 / 字体色=白 /
 		 * 文字间距=-2 / 行间距=7。缺了它们，正文只剩 16px 默认字，
