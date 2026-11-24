@@ -40,6 +40,33 @@ bool gfx_vk_active(void)
 	return vk.active;
 }
 
+/* [D521] 无窗口纯设备探测：CreateGPUDevice 不需要窗口（PrepareDriver
+ * 只检查 video 驱动的钩子）。此前用 probe 窗口探测——claim 后立即销毁
+ * probe 窗口，销毁事件触发 VULKAN_INTERNAL_OnWindowResize 解引用已失效
+ * 的 swapchain 状态，核心转储（d810）。 */
+bool gfx_vk_probe(void)
+{
+	if (!SDL_IsMainThread())
+		return false;
+	SDL_SetLogPriorities(SDL_LOG_PRIORITY_VERBOSE);
+	SDL_PropertiesID vprops = SDL_CreateProperties();
+	SDL_SetBooleanProperty(vprops, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN, true);
+	SDL_SetBooleanProperty(vprops, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, false);
+	SDL_SetBooleanProperty(vprops, SDL_PROP_GPU_DEVICE_CREATE_VERBOSE_BOOLEAN, true);
+	SDL_GPUDevice *dev = SDL_CreateGPUDeviceWithProperties(vprops);
+	SDL_DestroyProperties(vprops);
+	if (!dev) {
+		NOTICE("[vk] probe 失败：%s", SDL_GetError());
+		return false;
+	}
+	const char *drv = SDL_GetGPUDeviceDriver(dev);
+	bool ok = drv && SDL_strcasecmp(drv, "vulkan") == 0;
+	NOTICE("[vk] probe: driver='%s' -> %s", drv ? drv : "?",
+	       ok ? "OK" : "非 vulkan");
+	SDL_DestroyGPUDevice(dev);
+	return ok;
+}
+
 bool gfx_vk_init(SDL_Window *win)
 {
 	if (vk.active)
@@ -49,59 +76,10 @@ bool gfx_vk_init(SDL_Window *win)
 	if (!SDL_IsMainThread())
 		return false;
 
-	/* 诊断：当前 video driver 是什么。SDL_GPU 的 vulkan bootstrap 需要
-	 * video 驱动提供 Vulkan surface 扩展回调 —— 若落到 dummy/offscreen，
-	 * 窗口能"创建"但没有扩展，bootstrap 直接返回 unsupported。 */
 	NOTICE("[vk] current video driver = '%s'",
 	       SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "(null)");
 
-	/* 诊断：SDL 能不能拿到 Vulkan 实例扩展（bootstrap 的第一道门）。
-	 * 返回 0 = video 驱动没提供 surface 扩展回调 → bootstrap 必然失败。 */
-	{
-		unsigned int n = 0;
-		if (SDL_Vulkan_GetInstanceExtensions(&n))
-			NOTICE("[vk] instance extensions = %u", n);
-		else
-			NOTICE("[vk] SDL_Vulkan_GetInstanceExtensions 失败：%s",
-			       SDL_GetError());
-	}
-
-	/* 诊断：先列出 SDL 认为可用的 GPU 驱动。 */
-	if (getenv("XSYS4_VK_DBG")) {
-		int nd = SDL_GetNumGPUDrivers();
-		NOTICE("[vk] SDL 可用 GPU 驱动数=%d", nd);
-		for (int i = 0; i < nd; i++)
-			NOTICE("[vk]   driver[%d]=%s", i, SDL_GetGPUDriver(i));
-	}
-
-	/* [D521] 分层诊断：PrepareDriver 的四个早退条件逐个验证——
-	 * ① props SHADERS_SPIRV（三参包装必设）② video 驱动
-	 * Vulkan_CreateSurface 钩子（无公开查询 API，用 LoadLibrary 间接验）
-	 * ③ SDL_Vulkan_LoadLibrary ④ INTERNAL_PrepareVulkan。 */
-	if (!SDL_Vulkan_LoadLibrary(NULL))
-		NOTICE("[vk] D521 SDL_Vulkan_LoadLibrary 失败：%s",
-		       SDL_GetError());
-	else
-		NOTICE("[vk] D521 SDL_Vulkan_LoadLibrary OK");
-
-	/* [D521] PrepareDriver 的早退②=video 驱动 Vulkan_CreateSurface==NULL。
-	 * 用公开 API 对探测窗口直接建 surface——失败会带具体错误消息，
-	 * 成功则证明钩子在（随后销毁 surface，不影响后续流程）。 */
-	{
-		Uint32 extn = 0;
-		const char *const *extv = SDL_Vulkan_GetInstanceExtensions(&extn);
-		NOTICE("[vk] D521 extensions=%u", extn);
-		if (extv && extn > 0) {
-			for (Uint32 qi = 0; qi < extn; qi++)
-				NOTICE("[vk] D521   ext[%u]=%s", qi, extv[qi]);
-		}
-	}
-
-	/* 只要 SPIR-V（Vulkan 用），不要 DXBC/MSL：本机是 Linux。 */
-	/* [D521] 强制 SDL 全级别日志（VERBOSE 属性 + LogPriorities）——
-	 * PrepareVulkan 内部失败路径有 SDL_LogWarn，此前从未出现在日志里，
-	 * 用它分辨「Prepare 没跑」还是「跑了但日志被吞」。 */
-	SDL_SetLogPriorities(SDL_LOG_PRIORITY_VERBOSE);
+	/* 只要 SPIR-V（Vulkan 用）：probe 已验证驱动可用，这里直接建。 */
 	SDL_PropertiesID vprops = SDL_CreateProperties();
 	SDL_SetBooleanProperty(vprops, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN, true);
 	SDL_SetBooleanProperty(vprops, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, false);
@@ -111,12 +89,7 @@ bool gfx_vk_init(SDL_Window *win)
 	if (!dev) {
 		NOTICE("[vk] SDL_CreateGPUDeviceWithProperties 失败：%s",
 		       SDL_GetError());
-		/* 再点名要 vulkan，区分「没有驱动」与「自动选择失败」。 */
-		dev = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, false, "vulkan");
-		if (!dev) {
-			NOTICE("[vk] 点名 vulkan 也失败：%s（放弃）", SDL_GetError());
-			return false;
-		}
+		return false;
 	}
 	const char *drv = SDL_GetGPUDeviceDriver(dev);
 	if (!drv || SDL_strcasecmp(drv, "vulkan") != 0) {

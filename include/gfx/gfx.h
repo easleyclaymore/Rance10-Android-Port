@@ -105,6 +105,8 @@ void gfx_render(struct gfx_render_job *job);
 void gfx_prepare_unit_quad(struct gfx_render_job *job);
 /* [D517k] 是否走 Vulkan(SDL_GPU) 后端（XSYS4_RENDER_BACKEND=vulkan）。 */
 bool gfx_vk_mode(void);
+/* [D521] 无窗口纯设备探测（headless 可用；不 claim 任何窗口）。 */
+bool gfx_vk_probe(void);
 void _gfx_render_texture(struct shader *s, struct texture *t, Rectangle *r, void *data);
 void gfx_render_texture(struct texture *t, Rectangle *r);
 void gfx_render_quadrilateral(struct texture *t, struct gfx_vertex vertices[4]);

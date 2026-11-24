@@ -354,6 +354,24 @@ VULKAN|RESIZABLE)` + `SDL_CreateGPUDevice(SPIRV, false, NULL)` → 成功，
 - **headless 跑测**：装 `vulkan-swrast`（lavapipe，软件 Vulkan；ICD `libvulkan_lvp.so` 当前缺失）——lavapipe 的 present 不依赖 DRI3，可让 Vulkan 全链在 Xvfb 可测（性能同 llvmpipe 量级，仅验证渲染正确性）。
 - gdb 下曾见 SIGSEGV @ `VULKAN_INTERNAL_OnWindowResize`（wayland 探测成功后、GL 回退流程中）——独立小 bug，待 Vulkan 主链通后处理。
 
+### 四·六、全链打通 + headless present 硬限制（D521b，2026-11-25 续）
+
+装 `vulkan-swrast`（lavapipe）后 headless 复跑：
+1. **`[vk] probe: driver='vulkan' -> OK`**——无窗口纯设备探测成功（d810 曾核心转储的
+   probe-claim-destroy 竞态已修：probe 与 init 分离，probe 不 claim 任何窗口；
+   SIGSEGV @ `VULKAN_INTERNAL_OnWindowResize` 就此消失）。
+2. **`[vk] Vulkan 路径就绪：driver=vulkan swapchain_fmt=12`**——主窗口 CreateGPUDevice +
+   ClaimWindowForGPUDevice 成功，swapchain 格式拿到。**渲染初始化链全部打通**。
+3. **剩余硬限制**：引擎卡死（d812 与 d811 日志一字不差）在**第一次 present**——
+   mesa 的 wsi_x11 swapchain present 走 **DRI3**（`MESA-EGL: DRI3 error: Could not get
+   DRI3 device`），Xvfb 无 DRI3 → AcquireNextImage/present 阻塞。lavapipe 只把**渲染**
+   软件化，present 仍要过 X 的 DRI3。
+4. **结论**：Xvfb（无 DRI3）下 Vulkan 窗口呈现不可行；Vulkan 渲染验证必须在**真实桌面**
+   （wayland 会话 DRI3 正常，用户桌面 WAYLAND_DISPLAY=wayland-1 即此）。
+
+**下一步**：用户授权 `run-local.sh`（真实桌面开窗）即可验证 P1（3D 预览 Vulkan 出图）；
+或研究离屏渲染路径（VK_EXT_headless_surface，SDL_GPU 不直接暴露，需绕行）。
+
 ### 五、分期计划（Vulkan 跑通探测之后）
 
 | 期 | 内容 | 判据 |

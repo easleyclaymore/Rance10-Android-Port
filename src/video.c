@@ -270,26 +270,19 @@ int gfx_init(void)
 	 * 返回 "unsupported"，而裸测试程序同环境能成功 —— 待续排查，见
 	 * docs/RENDER-BACKEND.md。） */
 	if (vk_mode) {
-		/* [D521] 实验：HIDDEN 窗口的 X visual 可能不被 Vulkan WSI
-		 * present 检查接受（裸程序无 HIDDEN 成功）——去掉试试。 */
-		SDL_Window *probe = SDL_CreateWindow("probe",
-				config.view_width, config.view_height,
-				SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
-		bool ok = probe && gfx_vk_init(probe);
-		if (probe)
-			SDL_DestroyWindow(probe);
-		if (!ok) {
+		/* [D521] 探测与正式初始化分离：probe 不建窗口不 claim——
+		 * 此前 probe 窗口 claim 后销毁，销毁事件触发
+		 * VULKAN_INTERNAL_OnWindowResize 解引用已失效 swapchain，
+		 * 核心转储（d810）。 */
+		if (!gfx_vk_probe()) {
 			NOTICE("[vk] Vulkan 后端不可用，回退 GL（%s）", SDL_GetError());
 			vk_mode = false;
 		} else {
-			/* 探测成功：gfx_vk 已绑定 probe 窗口，销毁后需要重建。
-			 * 直接把 probe 留着当正式窗口更省事。 */
 			sdl.window = SDL_CreateWindow("XSystem4",
 					config.view_width, config.view_height,
 					SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
 			if (!sdl.window)
 				ERROR("SDL_CreateWindow failed: %s", SDL_GetError());
-			gfx_vk_fini();
 			max_texture_size = 8192;
 			set_window_title();
 			if (!gfx_vk_init(sdl.window))
