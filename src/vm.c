@@ -41,6 +41,8 @@
 #include "vm/page.h"
 #include "xsystem4.h"
 
+static int vm_struct_named(const char *name);
+
 static inline int32_t lint_clamp(int64_t n)
 {
 	if (n < 0)
@@ -1128,39 +1130,9 @@ static void function_call(int fno, int return_address)
 				}
 				NOTICE("%s", line);
 			}
-			/* [D307] XSYS4_FN_DUMP_FSSCAN=1：扫描堆里所有
-			 * `CPartsFunctionSet`（struct 299），把 `<MouseLClickEvent>`
-			 * 非空的那些连 parts_no 一起打出来。
-			 *
-			 * 起因：点 `ReplayMemoDialog` 的「过后查看」(900000513) 时，
-			 * 消息确实派发到了 `CallDelegateMouseClick`，但它的
-			 * FunctionSet `m7<nr=0>` —— 一个委托都没有，于是"点了个寂寞"。
-			 * 这张表直接回答「点击委托到底注册在哪个部件号上」，
-			 * 比逐个猜 parts_no 快一个数量级。 */
-			if (getenv("XSYS4_FN_DUMP_FSSCAN")) {
-				for (size_t s2 = 1; s2 < heap_size; s2++) {
-					struct page *pp = heap[s2].page;
-					if (!pp || pp->type != STRUCT_PAGE || pp->index != 299 ||
-					    pp->nr_vars < 8)
-						continue;
-					int pn = pp->values[1].i;
-					int ev = pp->values[7].i;
-					struct page *ep = (ev > 0 && (size_t)ev < heap_size)
-					                  ? heap[ev].page : NULL;
-					int en = ep ? ep->nr_vars : 0;
-					if (en <= 0 && !getenv("XSYS4_FN_DUMP_FSALL"))
-						continue;
-					NOTICE("[fss] slot=%zu parts=%d using=%d click_ev=%d", s2,
-					       pn, pp->values[0].i, en);
-					for (int q = 0; ep && q + 1 < ep->nr_vars && q < 12; q += 2) {
-						int f2 = ep->values[q + 1].i;
-						NOTICE("[fss]   [obj=%d fun=%d %s]", ep->values[q].i, f2,
-						       (f2 > 0 && f2 < ain->nr_functions &&
-						        ain->functions[f2].name)
-						       ? ain->functions[f2].name : "?");
-					}
-				}
-			}
+			/* [D516g] FSSCAN 已搬到委托调用块（method_call 的 [fn] 分支）——
+			 * checkbox/按钮的点击委托全部走 CALLMETHOD，普通函数块的
+			 * FSSCAN 永远不会触发。 */
 			/* this 结构体成员也 dump 出来：SceneStack@IsActive 这类判据
 			 * 全靠 this[6] 之类的字段，只打印实参看不到。 */
 			int sp = lp->local.struct_ptr;
@@ -1960,6 +1932,42 @@ static void delegate_call(int dg_no, int return_address)
 						if (mp && i < 4)
 							for (int j = 0; j < mp->nr_vars && j < 8; j++)
 								NOTICE("[fn]       [%d] = %d", j, mp->values[j].i);
+					}
+				}
+			}
+			/* [D516g] FSSCAN（从普通函数调用块搬来）：checkbox/按钮的点击
+			 * 委托全部走 CALLMETHOD，普通函数块的 FSSCAN 永远不会触发。
+			 * 列出堆里全部 CPartsFunctionSet 的 parts_no 与点击委托。 */
+			if (getenv("XSYS4_FN_DUMP_FSSCAN")) {
+				static int fs_st = -2;
+				if (fs_st == -2) {
+					fs_st = vm_struct_named("parts::detail::CPartsFunctionSet");
+					if (fs_st < 0)
+						fs_st = vm_struct_named("CPartsFunctionSet");
+					if (fs_st < 0)
+						fs_st = 299;
+					NOTICE("[fss] fs_st=%d", fs_st);
+				}
+				for (size_t s2 = 1; s2 < heap_size; s2++) {
+					struct page *pp = heap[s2].page;
+					if (!pp || pp->type != STRUCT_PAGE || pp->index != fs_st ||
+					    pp->nr_vars < 8)
+						continue;
+					int pn = pp->values[1].i;
+					int ev = pp->values[7].i;
+					struct page *ep = (ev > 0 && (size_t)ev < heap_size)
+					                  ? heap[ev].page : NULL;
+					int en = ep ? ep->nr_vars : 0;
+					if (en <= 0 && !getenv("XSYS4_FN_DUMP_FSALL"))
+						continue;
+					NOTICE("[fss] slot=%zu parts=%d using=%d click_ev=%d", s2,
+					       pn, pp->values[0].i, en);
+					for (int q = 0; ep && q + 1 < ep->nr_vars && q < 12; q += 2) {
+						int f2 = ep->values[q + 1].i;
+						NOTICE("[fss]   [obj=%d fun=%d %s]", ep->values[q].i, f2,
+						       (f2 > 0 && f2 < ain->nr_functions &&
+						        ain->functions[f2].name)
+						       ? ain->functions[f2].name : "?");
 					}
 				}
 			}
