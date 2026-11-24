@@ -7237,6 +7237,28 @@ void vm_frame_pump(void)
 			NOTICE("[hang] no EndInput for %ums — AIN 主循环停摆，dump #%d",
 			       now - last_input, hang_dumps);
 			vm_stack_trace();
+			/* [D518] 卡死取证：全部 SceneStack 实例的 m7（IsFinish）。
+			 * 检验「Exit 写的实例 ≠ Join 自旋的实例」假设——
+			 * Exit(29658)=IsFinish::set(1)+EndWaitForClick，两者槽号已核对一致；
+			 * 若 dump 显示某实例 m7=1 而 Join 仍在自旋，即实例错位实锤。 */
+			{
+				int scst = vm_struct_named("SceneStack");
+				if (scst >= 0) {
+					for (size_t i = 1; i < heap_size; i++) {
+						struct page *p = heap[i].page;
+						if (!p || p->type != STRUCT_PAGE ||
+						    p->index != scst || p->nr_vars < 8)
+							continue;
+						NOTICE("[hang][scst] slot=%d "
+						       "m1=%d m2=%d m6(layer)=%d "
+						       "m7(IsFinish)=%d",
+						       (int)i, p->values[1].i,
+						       p->values[2].i,
+						       p->values[6].i,
+						       p->values[7].i);
+					}
+				}
+			}
 		}
 	}
 	/* [MEM] XSYS4_MEM_STAT=1：每约 2 秒打印一次虚拟机堆的构成。
