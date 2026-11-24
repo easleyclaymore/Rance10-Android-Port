@@ -1824,12 +1824,42 @@ static void free_part(struct activity_part *part)
 	free(part);
 }
 
+/* [D517n] 配置页判定：活动名以 "Asra\设置／０" 开头（GBK 字节，实测
+ * 装载日志 `'Asra\设置／０１／消息速度页面.pact'` =
+ * `41 73 72 61 5c c9 e8 d6 c3 a3 af a3 b0 a3 b1`）。8 个页签（０１…
+ * ０８/３Ｄ）是 8 个独立 pact，前缀共用 `Asra\设置／０`——注意**不能
+ * 写成 `／０８`**：那只能匹配 3D 页，０１-０７（…a3 b0 a3 b1..a3 b7）
+ * 全部落空（首版实测犯过）。背景的实时 3D 场景全页共用，只给 3D 页
+ * 画预览的话，其余页底下就是标题活动，标题画面会透出来（用户实测
+ * 「菜单的背景不正确」）。 */
+static bool activity_is_config_page(const struct activity *act)
+{
+	static const char prefix[] = "Asra\\"
+		"\xc9\xe8"	/* 设 */
+		"\xd6\xc3"	/* 置 */
+		"\xa3\xaf"	/* ／ */
+		"\xa3\xb0";	/* ０ */
+	return act && act->name &&
+	       strncmp(act->name, prefix, sizeof(prefix) - 1) == 0;
+}
+
 void activity_free(struct activity *act)
 {
 	if (!act)
 		return;
-	if (act->version == 5 && act->parts_version == 30)
-		preview3d_set_active(false);
+	if (activity_is_config_page(act)) {
+		/* 切页时新页先装载（head 插入）、旧页后释放——此时 act 已
+		 * 移出链表，栈里还有别的配置页就不关预览，避免闪烁。 */
+		bool still_open = false;
+		for (const struct activity *a = activity_list; a; a = a->next) {
+			if (activity_is_config_page(a)) {
+				still_open = true;
+				break;
+			}
+		}
+		if (!still_open)
+			preview3d_set_active(false);
+	}
 	if (act->root)
 		free_part(act->root);
 	free(act->flat);
@@ -2228,10 +2258,12 @@ bool activity_read(struct string *name, struct string *file)
 	act->next = activity_list;
 	activity_list = act;
 
-	/* [D517j] 3D 设置页 = 本作唯一 `version 5/30` 的 pact（其余都是 6/x，
-	 * 见 D517）。它的「预览」在原版由 PartsEngine 内部渲染，引擎侧
-	 * 零实现 —— 这里打开我们自己的预览场景（src/parts/preview3d.c）。 */
-	if (act->version == 5 && act->parts_version == 30)
+	/* [D517j/D517n] 配置页（全部 8 个页签）背景 = 实时 3D 场景（EX 里
+	 * ＣＧ名 全空），原版由 PartsEngine 内部渲染，引擎侧零实现 ——
+	 * 这里打开我们自己的预览场景（src/parts/preview3d.c）。
+	 * D517n 起**整个配置页存活期间都开**，不只 3D 页（唯一 version
+	 * 5/30 的 pact，其余页 6/x）：否则 01-07 页底下就是标题画面。 */
+	if (activity_is_config_page(act))
 		preview3d_set_active(true);
 
 	NOTICE("[act] loaded '%s' from '%s' (version %d/%d, %d parts)",
