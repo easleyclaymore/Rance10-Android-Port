@@ -915,6 +915,36 @@ static int call_trace_n = -1;
 
 static void call_trace_probe(int fno, int ret_addr)
 {
+	/* [D520] XSYS4_ADMIRAL_DBG=1：fno==26470（findAdmiralIndexesFromCountryId）
+	 * 命中时 dump global[268]（Admiral 注册表）的规模与前几个元素的
+	 * m0（GetCountryId）。验证 [ADVQUEST-LOOP] 的根因——
+	 * 「664 个武将 countryId 全匹配」是数据未初始化还是过滤正常。 */
+	if (fno == 26470 && getenv("XSYS4_ADMIRAL_DBG")) {
+		static int adm_dumped;
+		if (adm_dumped < 3) {
+			adm_dumped++;
+			int arr = heap[0].page->values[268].i;
+			struct page *ap = (arr > 0 && (size_t)arr < heap_size)
+					  ? heap[arr].page : NULL;
+			if (ap) {
+				NOTICE("[adm] global[268] slot=%d type=%d nr=%d",
+				       arr, ap->type, ap->nr_vars);
+				for (int k = 0; k < ap->nr_vars && k < 8; k++) {
+					int el = ap->values[k].i;
+					struct page *ep = (el > 0 && (size_t)el < heap_size)
+							  ? heap[el].page : NULL;
+					NOTICE("[adm]   [%d] slot=%d type=%d idx=%d "
+					       "m0(country)=%d m1=%d",
+					       k, el, ep ? ep->type : -1,
+					       ep ? ep->index : -1,
+					       ep && ep->nr_vars > 0 ? ep->values[0].i : -9,
+					       ep && ep->nr_vars > 1 ? ep->values[1].i : -9);
+				}
+			} else {
+				NOTICE("[adm] global[268] slot=%d 页无效", arr);
+			}
+		}
+	}
 	if (call_trace_n < 0) {
 		const char *env = getenv("XSYS4_CALL_TRACE");
 		call_trace_n = 0;
