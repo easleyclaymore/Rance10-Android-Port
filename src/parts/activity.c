@@ -2098,6 +2098,28 @@ bool activity_read(struct string *name, struct string *file)
 	if (!name || !name->text || !file || !file->text)
 		return false;
 
+	/* [D517o] 同名活动去重（name 或 file 任一命中）：重复点击同一页签时
+	 * AIN 会再次 LoadActivity，旧活动不释放的话部件号段翻倍（D515 遗留②）。
+	 * 实测 AIN 两次传的 name 不一致（`…页面.pact:0` / `…页面:0`），所以
+	 * 还要按 file 做 basename 包含匹配吸收差异。原版语义 = LoadActivity
+	 * 对已存在活动先 release 再装载。 */
+	{
+		struct activity *dup = find_activity(name->text);
+		if (!dup) {
+			for (struct activity *a = activity_list; a; a = a->next) {
+				if (a->name && file->text && strstr(a->name, file->text)) {
+					dup = a;
+					break;
+				}
+			}
+		}
+		if (dup) {
+			ACT_DEBUG("[act] '%s' already open, releasing before reload",
+				  dup->name);
+			activity_release_ex(dup->name, NULL);
+		}
+	}
+
 	int id = -1;
 	/* basename 匹配（见 activity_is_exist_file 注释）：扩展名与路径分隔符
 	 * 差异都由它吸收；实例号歧义由 IsExistActivity 的 ':' 守卫挡住。 */
