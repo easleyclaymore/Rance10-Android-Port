@@ -324,6 +324,14 @@ void PE_CheckBoxChecked(int parts_no, bool check)
 	struct parts_widget *w = PE_widget(parts_no);
 	if (w)
 		w->checked = check;
+	/* [D517i] AIN 每帧用 `CAS3DSetting@Get*` 的结果同步勾选态。
+	 * 要回答「重进 3D 页时勾选态是不是 3DConfig.vsf 里的值」只能看这里：
+	 * dump 的 `ck=` 是 clickable 不是 checked。 */
+	if (getenv("XSYS4_CB_SET_DBG") && parts_no >= 900000100) {
+		static int n;
+		if (n++ < 500)
+			NOTICE("[cbset] no=%d checked=%d", parts_no, (int)check);
+	}
 }
 
 bool PE_IsCheckBoxChecked(int parts_no)

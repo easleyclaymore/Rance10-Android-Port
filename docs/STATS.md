@@ -8,7 +8,7 @@
 
 | 指标 | 值 | 口径 | 来源 |
 |---|---|---|---|
-| 诊断开关 | 288 | `getenv("XSYS4_*")` 去重，与 `gen-switches.py` 同口径 | `src/**/*.c,*.h` |
+| 诊断开关 | 290 | `getenv("XSYS4_*")` 去重，与 `gen-switches.py` 同口径 | `src/**/*.c,*.h` |
 | 未标注开关 | 1 | 无人工说明且无就近注释 | `docs/SWITCHES.md` |
 | HLL 已实现 | 3586 | 4 个导出宏行首计数（含 RT/NRT 重载） | `src/hll/*.c` |
 | HLL 缺口 | 1066 | `HLL_TODO_EXPORT(` 行首计数 | `src/hll/*.c` |
@@ -18,7 +18,7 @@
 | 未结技术债 | 46 | 表格行首 `` `[标签]` `` 去重 | `TECH_DEBT.md` |
 | 影响面清单 | 33 | 表格行首 `I<编号>` | `docs/IMPACT.md` |
 | 子模块补丁 | 3 | `patches/*.patch` | `patches/` |
-| 默认基线 | `smoke_d517g`（quick 档）: acts=36 / err=0 / core=0 / quest_map=0 / rc=0 | 最新 `baseline_*.txt`（档位决定断言面：quick 不到任务地图） | `docs/baseline/`（本地回退 logs/） |
+| 默认基线 | `smoke_d517i`（quick 档）: acts=36 / err=0 / core=0 / quest_map=0 / rc=0 | 最新 `baseline_*.txt`（档位决定断言面：quick 不到任务地图） | `docs/baseline/`（本地回退 logs/） |
 
 > **HLL 口径警告**：本表是**源码宏口径**；`PROJECT-MANAGEMENT.md` 里的
 > 「2,151 / 3,351（64%）」是 **AIN 声明口径**（另一天的快照），两者不可混用。
@@ -31,7 +31,7 @@
 | `TECH_DEBT.md` | 168 |
 | `docs/HYPOTHESES.md` | 128 |
 | `docs/IMPACT.md` | 61 |
-| `docs/SWITCHES.md` | 305 |
+| `docs/SWITCHES.md` | 307 |
 | `docs/PROJECT-MANAGEMENT.md` | 503 |
 
 ## 3. 已知腐化数字（历史，勿再引用）

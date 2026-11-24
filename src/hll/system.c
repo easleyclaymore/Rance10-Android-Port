@@ -93,6 +93,32 @@ static bool System_ExistSaveFile(struct string *name)
 	if (fp)
 		fclose(fp);
 	free(path);
+	/* [D517i] **配置文件不在存档目录**。`3DConfig.vsf` 这类文件由 `VSFile`
+	 * 库经 `gamedir_path()` 写在**游戏目录**；而
+	 * `config::detail::CAS3DSetting@Load`(2745) 的第一步是
+	 * `if (!ExistReignSaveFile()) return 1;` → `ExistReignSaveFile`(2749)
+	 * = `system.ExistSaveFile(CAS3DSetting@GetSaveFileName())`。
+	 * 只查存档目录就恒 false，Load 直接早退：d690 实证「进 3D 页后
+	 * VSFile 零调用」，于是设置**能存进去、读不回来**（d686/d688 里
+	 * `GetRenderMode` 恒返回默认值 2，界面永远停在「着色存在」）。
+	 * 存档目录优先、游戏目录兜底；`XSYS4_EXIST_SAVE_GAMEDIR=0` 回退。 */
+	if (!exists) {
+		static int gamedir_fallback = -1;
+		if (gamedir_fallback < 0) {
+			const char *e = getenv("XSYS4_EXIST_SAVE_GAMEDIR");
+			gamedir_fallback = !(e && *e == '0');
+		}
+		if (gamedir_fallback) {
+			char *g = gamedir_path_icase(name->text);
+			if (g) {
+				FILE *gf = fopen(g, "rb");
+				exists = gf != NULL;
+				if (gf)
+					fclose(gf);
+				free(g);
+			}
+		}
+	}
 	return exists;
 }
 
