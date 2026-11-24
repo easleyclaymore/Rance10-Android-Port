@@ -1194,6 +1194,14 @@ static int build_part(struct activity_part *part, int parent_no)
 		for (int i = 0; i + 1 < part->uc_data_n; i += 2)
 			PE_SetUserComponentData(part->parts_no,
 					part->uc_data[i], part->uc_data[i + 1]);
+	} else if (part->type == ACT_COMP_CHECKBOX && !part->flat_name) {
+		/* [D517] 3D 页检查件：EX 无 フラット名（EX 里只有 尺寸/字体色/
+		 * 按钮の色/选择状态 这类程序化字段，视觉由 checkbox 组件
+		 * 代码绘制）。flat 装载必然为空 -> 画面全黑只剩 caption。
+		 * 不注册用户组件（会与 AIN 自己的 WrapCheckBox 冲突，
+		 * d635 实测页面循环装载）——渲染钩子在 parts.c 的
+		 * PE_SetCheckBoxSize（widget render_kind = CHECKBOX）+
+		 * render.c 的 flat 空库分支，标签沿用 D514 caption。 */
 	} else if (part->w > 0 && part->h > 0) {
 		/* [D192] 非用户组件也要用 PACT 里的「尺寸」。FLAT 部件可能是
 		 * **空 flat**（`hdr=0x0`、`nr_libraries=0`），`parts_flat_load`

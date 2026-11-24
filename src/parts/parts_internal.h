@@ -491,6 +491,9 @@ struct parts_widget {
 	bool button_mode;
 	bool drag;              /* `SetCheckBoxDrag`：按下拖动也能切换（AIN 侧语义） */
 	int button_width, button_height;
+	/* [D517] AIN 调过 SetCheckBoxSize/Color 族 = 该部件按 checkbox 组件
+	 * 程序化外观绘制（EX 无 フラット名，flat 空库）。渲染层的钩子判据。 */
+	bool is_checkbox;
 
 	/* --- 部件音效名（`Parts_SetSoundName`/`Parts_GetSoundName`，[D494]）---
 	 * 下标 = AIN 的槽号参数。反汇编实证只见过 2/3（AIN 包装 7651/7653 的

@@ -238,3 +238,4 @@ XSYS4_CAPTION	=0 关掉「非 TEXT 件的 EX 文本当标签画」（单选组�
 XSYS4_EX_TEXT_DBG	名字子串：打印匹配部件的 EX 文本字段（文本(ti)/文本(src)）。查「文字为什么没显示」时先看 EX 里到底有没有
 XSYS4_LAYOUT_DBG	[诊断] parts_do_layout 逐盒打印判据（state/layout_type/子件数/尺寸/位置，前 400 条）。查「容器子件全叠 (0,0)」与排版覆盖 EX 座标问题
 XSYS4_EX_SUBTREE	[取证] 按部件名字 ASCII 子串递归 dump 种类别情报 子树（[ext]，含 LIST 展开）。3D 页 radio box 图像字段定位用
+XSYS4_CB_DBG	[取证] SetCheckBoxSize 族调用探针（[cb]）。3D 页 checkbox 构造链定位用

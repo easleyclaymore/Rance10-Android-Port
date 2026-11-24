@@ -3465,6 +3465,14 @@ static int PE_GetButtonClickSoundNumber(int no)
  */
 static void PE_SetCheckBoxSize(int no, int w, int h)
 {
+	/* [D517] AIN 配置 checkbox 外观 = 该部件走程序化 checkbox 渲染
+	 * （EX 无 フラット名 的检查件，flat 空库）。渲染层据此画色板。 */
+	static int n;
+	if (getenv("XSYS4_CB_DBG") && n++ < 24)
+		NOTICE("[cb] SetCheckBoxSize no=%d %dx%d", no, w, h);
+	struct parts_widget *wgt = PE_widget(no);
+	if (wgt)
+		wgt->is_checkbox = true;
 	PE_SetPartsSize(no, w, h, 1);
 }
 

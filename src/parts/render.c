@@ -28,6 +28,7 @@
 #include "scene.h"
 #include "sprite.h"
 #include "xsystem4.h"
+#include "parts.h"
 
 #include "parts_internal.h"
 
@@ -505,6 +506,41 @@ static void parts_render_user_component(struct parts *parts)
 	}
 	if (ui_fix) {
 		const char *style = parts_get_user_component_data(parts, "__style");
+		/* [D517] checkbox 程序化外观（3D 页检查件）：色板 20x20，
+		 * 未勾选=空心框，勾选=实心亮块；标签画在色板右侧
+		 * （EX 文本位置=5 的「右侧对齐」语义，先按右邻实现）。
+		 * 有美术的检查件不注册成 uc（activity.c 判 flat_name），
+		 * 走不到这里。 */
+		if (style && strcmp(style, "checkbox") == 0) {
+			int bw = w > 0 ? w : 20;
+			int bh = h > 0 ? h : 20;
+			bool checked = PE_IsCheckBoxChecked(parts->no);
+			bool enabled = true;
+			render_uc_rect(x, y, bw, bh,
+					(SDL_Color){ 233, 230, 222, 255 });
+			render_uc_rect(x + 1, y + 1, bw - 2, bh - 2,
+					(SDL_Color){ 40, 44, 52, 255 });
+			if (checked) {
+				SDL_Color fill = enabled
+					? (SDL_Color){ 233, 230, 222, 255 }
+					: (SDL_Color){ 130, 130, 130, 255 };
+				render_uc_rect(x + 3, y + 3, bw - 6, bh - 6, fill);
+				/* 勾角标记：右下亮块缺角，近似对勾视觉 */
+				render_uc_rect(x + bw - 9, y + bh - 9, 5, 5,
+						(SDL_Color){ 40, 44, 52, 255 });
+			}
+			if (parts->uc_text_valid) {
+				int tw = parts_uc_text_width(&parts->uc_text);
+				int th = parts_uc_text_height(&parts->uc_text);
+				parts->uc_text.common.origin_offset.x = bw + 8;
+				parts->uc_text.common.origin_offset.y =
+					(bh - th) / 2;
+				parts_render_text(parts, &parts->uc_text);
+			}
+			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+					GL_ONE, GL_ZERO);
+			return;
+		}
 		bool round = style && strcmp(style, "round") == 0;
 		/* [D498] 宿主下已有可见 flat（按钮美术由素材 flat 提供）时，
 		 * 内建占位圆盘不再绘制，只保留 label 文字。 */
@@ -1399,6 +1435,38 @@ void parts_render(struct parts *parts)
 		parts_render_flash(parts, &state->flash);
 		break;
 	case PARTS_FLAT:
+		/* [D517] checkbox 程序化外观：AIN 调过 SetCheckBoxSize 族
+		 * （widget->is_checkbox）且 flat 空库 = 视觉全由组件代码画，
+		 * EX 里没有任何图像引用。色板底色取 widget->bg（EX 按钮の色，
+		 * SetCheckBoxColor 写入；未设回落 200,200,200）。
+		 * 标签（D514 caption）在 flat 之后照旧叠加。 */
+		if (parts->widget && parts->widget->is_checkbox &&
+		    !state->flat.flat) {
+			struct parts_widget *cbw = parts->widget;
+			int bw = cbw->button_width > 0 ? cbw->button_width
+				: (state->common.w > 0 ? state->common.w : 20);
+			int bh = cbw->button_height > 0 ? cbw->button_height
+				: (state->common.h > 0 ? state->common.h : 20);
+			SDL_Color fill = cbw->bg_set
+				? (SDL_Color){ cbw->bg_r, cbw->bg_g, cbw->bg_b, 255 }
+				: (SDL_Color){ 200, 200, 200, 255 };
+			int cx = parts->global.pos.x;
+			int cy = parts->global.pos.y;
+			set_draw_filter_blend_func(parts->draw_filter);
+			if (parts->global.show && parts->global.alpha > 0) {
+				render_uc_rect(cx, cy, bw, bh,
+						(SDL_Color){ 30, 32, 38, 255 });
+				render_uc_rect(cx + 1, cy + 1, bw - 2, bh - 2,
+						(SDL_Color){ 52, 56, 64, 255 });
+				if (cbw->checked) {
+					render_uc_rect(cx + 2, cy + 2,
+							bw - 4, bh - 4, fill);
+					render_uc_rect(cx + bw - 8, cy + bh - 8,
+							4, 4,
+							(SDL_Color){ 30, 32, 38, 255 });
+				}
+			}
+		}
 		parts_render_flat(parts, &state->flat);
 		/* [D514] flat 件的 EX `文本` 标签（单选组选项：圆圈 + "画质优先"）。
 		 * union 放不下，标签走 caption_text 叠在 flat 之上；
