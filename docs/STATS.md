@@ -31,7 +31,7 @@
 | `TECH_DEBT.md` | 170 |
 | `docs/HYPOTHESES.md` | 128 |
 | `docs/IMPACT.md` | 61 |
-| `docs/SWITCHES.md` | 313 |
+| `docs/SWITCHES.md` | 314 |
 | `docs/PROJECT-MANAGEMENT.md` | 503 |
 
 ## 3. 已知腐化数字（历史，勿再引用）
