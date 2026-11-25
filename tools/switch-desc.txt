@@ -260,3 +260,4 @@ XSYS4_SNAPSHOT_ON_CALL	[D523 检查点跑测] <fno>:<key>:<path> 第一次进入
 XSYS4_RESUME_TYPE_ANY	[D523 跨版存档/快照] =1 帧变量类型冲突限流告警放行（同 AIN 自制快照也有写端对齐偏差；默认严格）
 XSYS4_SAVE_KEY_ANY	[D523 跨版存档] =1 跳过 rsave/gsave key 校验（官方 SJIS 版 key 与 GBK 版 AIN 传参不符，与 SAVE_GROUP_ANY 同族）
 XSYS4_PARTS_NO_BASE	[parts] 部件号分配基址（默认 900000000；仅调试用，改变会破坏 AIN 部件号引用）
+XSYS4_RESUME_SHOW_ALL	[D533 检查点跑测] =0 恢复快照时忠实还原图层 show 位（默认全开：快照点战斗层 show=0，AIN 恢复后不会重开，导致全部 vis=0）

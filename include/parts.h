@@ -504,10 +504,13 @@ int PE_GetFreeNumberCursor(void);
 void PE_SetFreeNumberCursor(int n);
 int activity_collect_names(char ***out);
 int activity_collect_snapshot(char ***names, int **ctrls);
+int activity_collect_snapshot_parts(char ***names, int **ctrls, char ***part_lists);
+void PE_PushNumberHints(const int *nos, int n);
 /* [D527] 检查点恢复：图层栈（ctrl_stack）状态序列化 */
 void PE_SnapshotControllerStack(FILE *fp);
 bool PE_RestoreControllerStack(FILE *fp);
 void PE_SetActiveControllerIndex(int idx);
+int PE_GetActiveControllerIndex(void);
 bool activity_release(const char *name);
 /* [D270] 带 EraseNumberList 出参的版本：把被释放部件的委托下标写回
  * AIN，让它从消息分发表里销掉。`activity_release(name)` 等价于

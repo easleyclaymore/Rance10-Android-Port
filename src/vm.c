@@ -971,17 +971,24 @@ static void call_trace_probe(int fno, int ret_addr)
 					 * （dr12 实证：恢复后 AIN 跑到 SceneQuestMap@CreateSelection
 					 * 的刷新循环，而不是 23489 之后）。侧车自带精确 ip。 */
 					fprintf(fp, "%d %zu\n", cursor, instr_ptr);
-					char **names = NULL;
+					char **names = NULL, **plists = NULL;
 					int *ctrls = NULL;
-					nr_acts = activity_collect_snapshot(&names, &ctrls);
+					nr_acts = activity_collect_snapshot_parts(
+						&names, &ctrls, &plists);
 					for (int i = 0; i < nr_acts; i++) {
 						if (names[i]) {
-							fprintf(fp, "%s\t%d\n", names[i],
-							        ctrls[i]);
+							/* [D532] 第三列 = 该活动的部件号列表，
+							 * 恢复时按它精确分配（否则僵尸活动会
+							 * 拿到新号，AIN 的号引用全失效）。 */
+							fprintf(fp, "%s\t%d\t%s\n",
+							        names[i], ctrls[i],
+							        plists[i] ? plists[i] : "");
 							free(names[i]);
 						}
+						free(plists[i]);
 					}
 					free(names);
+					free(plists);
 					free(ctrls);
 					fclose(fp);
 					NOTICE("[snapshot] sidecar cursor=%d acts=%d -> %s",
@@ -7981,6 +7988,7 @@ int vm_execute_ain(struct ain *program)
 			 * 复位部件号游标后按序 activity_read——部件号与快照一致，
 			 * AIN 继续执行时的 global 部件号引用才有效。
 			 * 无侧车文件时保持旧行为（仅 VM 恢复）。 */
+			int snap_active = -1;
 			{
 				/* [D527] 先恢复图层栈（活动重建时部件挂 active 层，
 				 * 命中/渲染也看 show[]）。 */
@@ -7989,11 +7997,13 @@ int vm_execute_ain(struct ain *program)
 				char *cfull = savedir_path(ctrlc);
 				FILE *cfp = fopen(cfull, "r");
 				if (cfp) {
-					if (PE_RestoreControllerStack(cfp))
+					if (PE_RestoreControllerStack(cfp)) {
 						NOTICE("[boot-resume] ctrl stack restored"
 						       " (nr=%d active=%d)",
 						       /* 打印前先读一遍？直接说 restored 即可 */
 						       0, 0);
+						snap_active = PE_GetActiveControllerIndex();
+					}
 					fclose(cfp);
 				} else {
 					NOTICE("[boot-resume] 无 .ctrl 侧车 %s", ctrlc);
@@ -8039,9 +8049,15 @@ int vm_execute_ain(struct ain *program)
 						 * 设 active，再装载——部件才会挂到原来的层
 						 * （input_active_layer_only 的过滤依赖它）。 */
 						int act_ctrl = -1;
-						char *tab = strrchr(line, '\t');
+						char *part_list = NULL;
+						char *tab = strchr(line, '\t');
 						if (tab) {
 							act_ctrl = atoi(tab + 1);
+							char *tab2 = strchr(tab + 1, '\t');
+							if (tab2) {
+								*tab2 = 0;
+								part_list = tab2 + 1;
+							}
 							*tab = 0;
 							len = (size_t)(tab - line);
 						}
@@ -8053,6 +8069,19 @@ int vm_execute_ain(struct ain *program)
 						char *suf = strrchr(base, ':');
 						if (suf && suf[1] >= '0' && suf[1] <= '9')
 							*suf = 0;
+						if (part_list && *part_list) {
+							/* [D532] 按快照里的原始号分配 */
+							int nos[2048], nn = 0;
+							char *q = part_list;
+							while (*q && nn < 2048) {
+								nos[nn++] = atoi(q);
+								char *cm = strchr(q, ',');
+								if (!cm)
+									break;
+								q = cm + 1;
+							}
+							PE_PushNumberHints(nos, nn);
+						}
 						if (act_ctrl >= 0)
 							PE_SetActiveControllerIndex(act_ctrl);
 						struct string *nm =
@@ -8061,10 +8090,18 @@ int vm_execute_ain(struct ain *program)
 							make_string(base, strlen(base));
 						if (activity_read(nm, fl))
 							nr_rebuilt++;
+						/* 本活动的 hint 用完即清，避免串到下一个活动 */
+						PE_PushNumberHints(NULL, 0);
 						free_string(nm);
 						free_string(fl);
 					}
 					fclose(fp);
+					/* [D533] **不要**把 active 还原成快照时的值（实测反了）：
+					 * 快照时刻 active=6（下标，id=13）是任务地图那一层，而
+					 * AIN 恢复后装载战斗活动时**沿用当前 active**、不会新建层
+					 * —— 还原成 6 会让战斗 UI 挂到 13 层、点击无 CLICKED
+					 * （dr20）；保持最后一个重建活动的层（7）才通（dr19）。 */
+					(void)snap_active;
 					/* [D530] 重建不会跑 AIN，此处覆盖 ip 是安全的。
 					 * 覆盖后 vm_execute() 从快照那条指令继续
 					 * （与 AIN 原义「重新执行挂起的 SYS」同构）。 */

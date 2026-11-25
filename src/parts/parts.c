@@ -4336,6 +4336,13 @@ void PE_SnapshotControllerStack(FILE *fp)
 }
 
 /* [D529] 恢复侧按活动记录的层归属设 active（栈下标）。 */
+/* [D533] 读回当前 active（活动重建循环会覆盖它，结束后要还原成
+ * 快照时刻的值）。 */
+int PE_GetActiveControllerIndex(void)
+{
+	return ctrl_stack.active;
+}
+
 void PE_SetActiveControllerIndex(int idx)
 {
 	ctrl_stack.active = idx;
@@ -4363,6 +4370,22 @@ bool PE_RestoreControllerStack(FILE *fp)
 			ctrl_stack.opaque[idx] = opaque != 0;
 		}
 	}
+	/* [D533] 恢复后默认**全部层可见**。
+	 *
+	 * 依据（dr17/dr19 对照）：快照时刻战斗层（id=7）还是 show=0 ——
+	 * 那时还在任务地图，战斗层只是占位。恢复后 AIN 从快照指令继续、
+	 * 装载战斗活动，但**不会再调一次「打开该层」**（它认为层状态仍在），
+	 * 于是战斗 UI 全部 `vis=0`、点击没有 `CLICKED`（dr17：213 个候选
+	 * 全 vis=0）。强制 show 全开（dr19）后立刻 `CLICKED parts=900001000`、
+	 * `GetClickNumber #284 -> 900001000`、战斗推进到 Damage/HealView。
+	 *
+	 * 代价：恢复瞬间可能有旧场景图层叠加（视觉不完整，[RESUME-PARTS]
+	 * 本来就不保证画面）。逻辑跑测（战斗/编队/领卡）不受影响。
+	 * `XSYS4_RESUME_SHOW_ALL=0` 回退成忠实恢复快照时的 show 位。 */
+	const char *sa = getenv("XSYS4_RESUME_SHOW_ALL");
+	if (!sa || strcmp(sa, "0"))
+		for (int i = 0; i < nr; i++)
+			ctrl_stack.show[i] = true;
 	return true;
 }
 
@@ -4375,6 +4398,27 @@ int PE_GetFreeNumberCursor(void)
 void PE_SetFreeNumberCursor(int n)
 {
 	parts_free_cursor = n;
+}
+
+/* [D532] 部件号 hint 队列：检查点恢复时按**快照里的原始号**精确分配。
+ *
+ * 为什么必须精确：AIN 的 global / 局部变量里存的是部件号，恢复后 AIN
+ * 继续执行时按号引用部件。若重建时从 cursor 顺延分配，僵尸活动
+ * （SceneStartScreen 等仍在链表里的历史活动）会拿到全新号，AIN 的
+ * 引用全部对不上 —— 表现为候选表里全是陌生号、点击无 CLICKED。
+ *
+ * hint 号是历史号（< cursor），分配时**不推进** cursor，于是 AIN 之后
+ * 装载的新活动仍从快照时刻的 cursor 继续，与原始分配序列一致。 */
+#define PARTS_HINT_MAX 8192
+static int parts_hint[PARTS_HINT_MAX];
+static int parts_hint_pos, parts_hint_len;
+
+void PE_PushNumberHints(const int *nos, int n)
+{
+	parts_hint_pos = 0;
+	parts_hint_len = 0;
+	for (int i = 0; i < n && parts_hint_len < PARTS_HINT_MAX; i++)
+		parts_hint[parts_hint_len++] = nos[i];
 }
 
 int PE_GetFreeNumber(void)
@@ -4392,6 +4436,11 @@ int PE_GetFreeNumber(void)
 	 *
 	 * 注意：改基址后**旧日志里的 100000xxxx 部件号全部作废**，
 	 * 历史文档/脚本里那些号不能再拿去 grep。 */
+	while (parts_hint_pos < parts_hint_len) {
+		int n = parts_hint[parts_hint_pos++];
+		if (!PE_IsExist(n))
+			return n;
+	}
 	parts_free_init();
 	while (PE_IsExist(parts_free_cursor)) {
 		parts_free_cursor++;

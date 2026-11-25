@@ -2304,13 +2304,26 @@ bool activity_read(struct string *name, struct string *file)
  * active 再装载——否则全部活动都挂到同一个层，AIN 一切层，
  * `input_active_layer_only()` 的过滤（controller_no == active）就把
  * 所有部件滤掉（d810 实证：按下帧候选只剩 1 个）。 */
+/* [D532] 旧签名包装（不带部件号列表）：调用方不需要 hint 时用。 */
 int activity_collect_snapshot(char ***names, int **ctrls)
+{
+	char **pl = NULL;
+	int n = activity_collect_snapshot_parts(names, ctrls, &pl);
+	for (int i = 0; i < n; i++)
+		free(pl[i]);
+	free(pl);
+	return n;
+}
+
+int activity_collect_snapshot_parts(char ***names, int **ctrls,
+		char ***part_lists)
 {
 	int n = 0;
 	for (struct activity *a = activity_list; a; a = a->next)
 		n++;
 	char **nm = xcalloc(n > 0 ? n : 1, sizeof(char *));
 	int *ct = xcalloc(n > 0 ? n : 1, sizeof(int));
+	char **pl = xcalloc(n > 0 ? n : 1, sizeof(char *));
 	int i = n;
 	for (struct activity *a = activity_list; a; a = a->next) {
 		i--;
@@ -2322,8 +2335,24 @@ int activity_collect_snapshot(char ***names, int **ctrls)
 				ct[i] = pt->controller_no;
 		}
 	}
+	/* [D532] 同时导出每个活动的**部件号列表**（逗号分隔），恢复时
+	 * 用它做 PE_PushNumberHints，保证重建号与快照一致。 */
+	for (int k = 0; k < n; k++)
+		pl[k] = NULL;
+	int j = n;
+	for (struct activity *a = activity_list; a; a = a->next) {
+		j--;
+		size_t cap = (size_t)a->nr_parts * 12 + 1;
+		char *buf = xcalloc(cap, 1);
+		size_t off = 0;
+		for (int q = 0; q < a->nr_parts; q++)
+			off += snprintf(buf + off, cap - off, q ? ",%d" : "%d",
+			                 a->flat[q]->parts_no);
+		pl[j] = buf;
+	}
 	*names = nm;
 	*ctrls = ct;
+	*part_lists = pl;
 	return n;
 }
 
