@@ -107,6 +107,8 @@ void gfx_prepare_unit_quad(struct gfx_render_job *job);
 bool gfx_vk_mode(void);
 /* [D521] 无窗口纯设备探测（headless 可用；不 claim 任何窗口）。 */
 bool gfx_vk_probe(void);
+/* [D521b] 上屏一帧 GL 合成结果（RGBA8，w*h*4）。 */
+bool gfx_vk_blit_frame(const unsigned char *rgba, int w, int h);
 void _gfx_render_texture(struct shader *s, struct texture *t, Rectangle *r, void *data);
 void gfx_render_texture(struct texture *t, Rectangle *r);
 void gfx_render_quadrilateral(struct texture *t, struct gfx_vertex vertices[4]);

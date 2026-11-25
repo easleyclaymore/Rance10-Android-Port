@@ -686,6 +686,13 @@ enum {
 
 static void error_handler(const char *msg)
 {
+	/* [D521c] headless（XSYS4_NO_MSGBOX=1 或无可用显示交互）不弹模态框
+	 * —— 弹窗会永远等点击，跑测看起来像卡死（Incomplete framebuffer
+	 * 弹窗即此）。默认仍弹窗。 */
+	if (getenv("XSYS4_NO_MSGBOX")) {
+		fprintf(stderr, "[msgbox] %s\n", msg);
+		return;
+	}
 	SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "xsystem4", msg, NULL);
 }
 

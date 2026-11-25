@@ -1,24 +1,25 @@
 #!/bin/bash
-# [D517k] 把 3D 预览的 GLSL 编译成 SPIR-V 并生成 C 头文件。
-# 生成物：src/preview3d_vk_spv.h（进版本控制，运行期不依赖 shader 文件）
+# [D517k] 把 GLSL 编译成 SPIR-V 并生成 C 头文件（运行期不依赖 shader 文件）。
+# [D521b] 通用化：每组 <name> <vert> <frag> 生成 src/<name>_spv.h。
 # 用法：tools/gen-spv.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 GLSLC="${GLSLC:-glslc}"
-for t in vert frag; do
-	if ! command -v "$GLSLC" >/dev/null; then
-		echo "缺少 $GLSLC（glslang/shaderc 包），无法编译 SPIR-V" >&2
-		exit 1
-	fi
-done
+if ! command -v "$GLSLC" >/dev/null; then
+	echo "缺少 $GLSLC（glslang/shaderc 包），无法编译 SPIR-V" >&2
+	exit 1
+fi
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
-"$GLSLC" -fshader-stage=vert shaders/preview3d_vk.vert -o "$TMP/v.spv"
-"$GLSLC" -fshader-stage=frag shaders/preview3d_vk.frag -o "$TMP/f.spv"
 
-python3 - "$TMP/v.spv" "$TMP/f.spv" > src/preview3d_vk_spv.h << 'PY'
+gen() {
+	local name="$1" vert="$2" frag="$3"
+	local guard=$(echo "$name" | tr 'a-z' 'A-Z')
+	"$GLSLC" -fshader-stage=vert "shaders/$vert" -o "$TMP/v.spv"
+	"$GLSLC" -fshader-stage=frag "shaders/$frag" -o "$TMP/f.spv"
+	python3 - "$TMP/v.spv" "$TMP/f.spv" "$name" "$guard" > "src/${name}_spv.h" << 'PY'
 import sys
 
 def emit(name, path):
@@ -31,15 +32,19 @@ def emit(name, path):
     lines.append('static const unsigned long %s_size = %d;' % (name, len(data)))
     return '\n'.join(lines)
 
-print('/* 自动生成，勿手改 —— 由 tools/gen-spv.sh 从 shaders/preview3d_vk.{vert,frag} 生成 */')
-print('#ifndef SYSTEM4_PREVIEW3D_VK_SPV_H')
-print('#define SYSTEM4_PREVIEW3D_VK_SPV_H')
+vpath, fpath, name, guard = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+print('/* 自动生成，勿手改 —— 由 tools/gen-spv.sh 从 shaders/%s.{vert,frag} 生成 */' % name)
+print('#ifndef SYSTEM4_%s_SPV_H' % guard)
+print('#define SYSTEM4_%s_SPV_H' % guard)
 print()
-print(emit('preview3d_vk_vert_spv', sys.argv[1]))
+print(emit(name + '_vert_spv', vpath))
 print()
-print(emit('preview3d_vk_frag_spv', sys.argv[2]))
+print(emit(name + '_frag_spv', fpath))
 print()
 print('#endif')
 PY
+	echo "生成 src/${name}_spv.h（$(wc -c < src/${name}_spv.h) 字节）"
+}
 
-echo "生成 src/preview3d_vk_spv.h（$(wc -c < src/preview3d_vk_spv.h) 字节）"
+gen preview3d_vk preview3d_vk.vert preview3d_vk.frag
+gen blit2d_vk blit2d_vk.vert blit2d_vk.frag

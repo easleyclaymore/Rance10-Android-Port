@@ -73,6 +73,11 @@ static struct shader default_shader;
 static GLuint main_surface_fb;
 static struct texture main_surface;
 static struct texture *view = &main_surface;
+/* [D521b] Vulkan 上屏用：GL 离屏窗口/context 与回读缓冲。 */
+static SDL_Window *vk_gfx_win;
+static SDL_GLContext vk_gfx_ctx;
+static unsigned char *vk_rgb, *vk_rgba;
+static int vk_rw, vk_rh;
 static GLint max_texture_size;
 static SDL_Color clear_color = { 0, 0, 0, 255 };
 static float frame_rate;
@@ -278,12 +283,39 @@ int gfx_init(void)
 			NOTICE("[vk] Vulkan 后端不可用，回退 GL（%s）", SDL_GetError());
 			vk_mode = false;
 		} else {
+			/* [D521c] 不带 SDL_WINDOW_VULKAN：SDL3 会在带该 flag 的
+			 * 窗口创建期自动挂 GPU watcher（wayland 下
+			 * Wayland_CreateWindow 内部发 SIZE_CHANGED →
+			 * OnWindowResize → FetchWindowData 为 NULL → 崩，
+			 * d821 gdb 栈实证）。claim 不依赖此 flag。 */
 			sdl.window = SDL_CreateWindow("XSystem4",
 					config.view_width, config.view_height,
-					SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+					SDL_WINDOW_RESIZABLE);
 			if (!sdl.window)
 				ERROR("SDL_CreateWindow failed: %s", SDL_GetError());
 			max_texture_size = 8192;
+			/* [D521b] GL 离屏合成：2D 全部照旧走 GL（main_surface
+			 * FBO），Vulkan 只做上屏。隐藏 GL 窗口 + context。 */
+			SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+			SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+			SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,
+					    SDL_GL_CONTEXT_PROFILE_CORE);
+			vk_gfx_win = SDL_CreateWindow("gfx-offscreen", 8, 8,
+					SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+			vk_gfx_ctx = vk_gfx_win
+					     ? SDL_GL_CreateContext(vk_gfx_win)
+					     : NULL;
+			if (!vk_gfx_win || !vk_gfx_ctx)
+				ERROR("GL 离屏窗口创建失败：%s", SDL_GetError());
+			if (!SDL_GL_MakeCurrent(vk_gfx_win, vk_gfx_ctx))
+				ERROR("GL MakeCurrent 失败：%s", SDL_GetError());
+			{
+				const unsigned char *glv = glGetString(GL_VERSION);
+				const unsigned char *glr = glGetString(GL_RENDERER);
+				NOTICE("[vk] offscreen GL %s on %s",
+				       glv ? (const char *)glv : "(null)",
+				       glr ? (const char *)glr : "(null)");
+			}
 			set_window_title();
 			if (!gfx_vk_init(sdl.window))
 				ERROR("Vulkan 探测通过但正式窗口初始化失败：%s",
@@ -610,7 +642,36 @@ static void gfx_update_frame_rate_counter(void)
 void gfx_swap(void)
 {
 	if (vk_mode) {
-		/* present 已在 gfx_vk_draw_faces 的 SubmitGPUCommandBuffer 里完成 */
+		/* [D521b] GL 合成结果回读 → RGBA → Vulkan 上屏。
+		 * present 已在 gfx_vk_blit_frame 的 SubmitGPUCommandBuffer
+		 * 里完成。 */
+		glBindFramebuffer(GL_FRAMEBUFFER, main_surface_fb);
+		if (vk_rw != sdl.w || vk_rh != sdl.h || !vk_rgb) {
+			free(vk_rgb);
+			free(vk_rgba);
+			vk_rw = sdl.w;
+			vk_rh = sdl.h;
+			vk_rgb = malloc((size_t)vk_rw * vk_rh * 3);
+			vk_rgba = malloc((size_t)vk_rw * vk_rh * 4);
+		}
+		if (vk_rgb && vk_rgba) {
+			glReadPixels(0, 0, vk_rw, vk_rh, GL_RGB,
+				     GL_UNSIGNED_BYTE, vk_rgb);
+			/* RGB → RGBA；行序翻转（GL FBO 下原点 → 上原点） */
+			for (int y = 0; y < vk_rh; y++) {
+				const unsigned char *src =
+					vk_rgb + (size_t)(vk_rh - 1 - y) * vk_rw * 3;
+				unsigned char *dst =
+					vk_rgba + (size_t)y * vk_rw * 4;
+				for (int x = 0; x < vk_rw; x++) {
+					dst[x * 4 + 0] = src[x * 3 + 0];
+					dst[x * 4 + 1] = src[x * 3 + 1];
+					dst[x * 4 + 2] = src[x * 3 + 2];
+					dst[x * 4 + 3] = 255;
+				}
+			}
+			gfx_vk_blit_frame(vk_rgba, vk_rw, vk_rh);
+		}
 		gfx_update_frame_rate_counter();
 		return;
 	}
@@ -849,8 +910,6 @@ static void init_texture(struct texture *t, int w, int h)
 
 void gfx_init_texture_with_pixels(struct texture *t, int w, int h, void *pixels)
 {
-	if (gfx_vk_mode())
-		return; /* [D521] Vulkan 模式：GL 纹理路径 no-op（handle 留 0，绘制早退） */
 
 	init_texture(t, w, h);
 	if (vk_mode)
@@ -866,16 +925,12 @@ void gfx_update_texture_with_pixels(struct texture *t, void *pixels)
 
 void gfx_init_texture_with_cg(struct texture *t, struct cg *cg)
 {
-	if (gfx_vk_mode())
-		return; /* [D521] Vulkan 模式：GL 纹理路径 no-op（handle 留 0，绘制早退） */
 
 	gfx_init_texture_with_pixels(t, cg->metrics.w, cg->metrics.h, cg->pixels);
 }
 
 void gfx_init_texture_rgba(struct texture *t, int w, int h, SDL_Color color)
 {
-	if (gfx_vk_mode())
-		return; /* [D521] Vulkan 模式：GL 纹理路径 no-op（handle 留 0，绘制早退） */
 
 	if (w > max_texture_size) {
 		WARNING("Texture width %d exceeds maximum texture size %d", w, max_texture_size);
@@ -896,8 +951,6 @@ void gfx_init_texture_rgba(struct texture *t, int w, int h, SDL_Color color)
 
 void gfx_init_texture_rgb(struct texture *t, int w, int h, SDL_Color color)
 {
-	if (gfx_vk_mode())
-		return; /* [D521] Vulkan 模式：GL 纹理路径 no-op（handle 留 0，绘制早退） */
 
 	if (w > max_texture_size) {
 		WARNING("Texture width %d exceeds maximum texture size %d", w, max_texture_size);
@@ -919,8 +972,6 @@ void gfx_init_texture_rgb(struct texture *t, int w, int h, SDL_Color color)
 
 void gfx_init_texture_amap(struct texture *t, int w, int h, uint8_t *amap, SDL_Color color)
 {
-	if (gfx_vk_mode())
-		return; /* [D521] Vulkan 模式：GL 纹理路径 no-op（handle 留 0，绘制早退） */
 
 	uint32_t *pixels = xmalloc(sizeof(uint32_t) * w * h);
 	for (int i = 0; i < w*h; i++) {
@@ -935,8 +986,6 @@ void gfx_init_texture_amap(struct texture *t, int w, int h, uint8_t *amap, SDL_C
 
 void gfx_init_texture_rmap(struct texture *t, int w, int h, uint8_t *rmap)
 {
-	if (gfx_vk_mode())
-		return; /* [D521] Vulkan 模式：GL 纹理路径 no-op（handle 留 0，绘制早退） */
 
 	init_texture(t, w, h);
 	/* rmap 是单通道字形位图（字体用）。展开成 RGBA 再上传：parts / sprite
@@ -955,8 +1004,6 @@ void gfx_init_texture_rmap(struct texture *t, int w, int h, uint8_t *rmap)
 
 void gfx_init_texture_blank(struct texture *t, int w, int h)
 {
-	if (gfx_vk_mode())
-		return; /* [D521] Vulkan 模式：GL 纹理路径 no-op（handle 留 0，绘制早退） */
 
 	gfx_init_texture_with_pixels(t, w, h, NULL);
 }
@@ -976,8 +1023,6 @@ void gfx_delete_texture(struct texture *t)
 
 GLuint gfx_set_framebuffer(GLenum target, Texture *t, int x, int y, int w, int h)
 {
-	if (gfx_vk_mode())
-		return 0; /* [D521] Vulkan 模式：GL fbo 路径 no-op */
 
 	GLuint fbo;
 	glGenFramebuffers(1, &fbo);
@@ -985,15 +1030,20 @@ GLuint gfx_set_framebuffer(GLenum target, Texture *t, int x, int y, int w, int h
 	glFramebufferTexture2D(target, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t->handle, 0);
 	glViewport(x, y, w, h);
 
-	if (glCheckFramebufferStatus(target) != GL_FRAMEBUFFER_COMPLETE)
-		ERROR("Incomplete framebuffer");
+	GLenum st = glCheckFramebufferStatus(target);
+	if (st != GL_FRAMEBUFFER_COMPLETE) {
+		/* [D521c] 打码诊断：status + 纹理信息；不退出（继续跑，
+		 * 让后续错误流可见）。 */
+		static int nfb;
+		if (nfb++ < 10)
+			WARNING("Incomplete framebuffer: 0x%x tex=%u %dx%d",
+				st, t->handle, t->w, t->h);
+	}
 	return fbo;
 }
 
 void gfx_reset_framebuffer(GLenum target, GLuint fbo)
 {
-	if (gfx_vk_mode())
-		return; /* [D521] Vulkan 模式：GL 纹理路径 no-op（handle 留 0，绘制早退） */
 
 	glBindFramebuffer(target, main_surface_fb);
 	glDeleteFramebuffers(1, &fbo);

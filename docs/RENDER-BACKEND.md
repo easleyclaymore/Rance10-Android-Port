@@ -389,6 +389,38 @@ blank/with_pixels/with_cg/set_framebuffer/reset_framebuffer 全裸奔）。
 - lavapipe 渲染速度显著慢于 llvmpipe（120s 只推进到标题 UI），仅用于
   验证渲染正确性；性能验证需硬件（用户桌面 wayland DRI3 正常）。
 
+### 四·八、P2-min 上屏框架落地（D521c 续，2026-11-25 上午）
+
+**架构修正（重要）**：2D 合成不在 CPU——`gfx_copy_*`/`gfx_blend_*`（draw.c，87 处
+`glBlendFuncSeparate`）全部是 **GL framebuffer 绘制**（main_surface_fb 离屏 FBO），
+Texture 结构无 pixels。「上屏」= main_surface 纹理画一个全屏四边形（gfx_render）。
+因此 P2-min 选型 = **GL 离屏合成照旧 + Vulkan 只做上屏**（glReadPixels 回读 →
+RGBA 上传 → 全屏四边形），2D 绘制零迁移。
+
+**已落地**：
+1. `shaders/blit2d_vk.{vert,frag}`（全屏四边形 + 采样；v 翻转处理 GL FBO 下原点）+
+   gen-spv.sh 通用化（多组 shader 生成）→ `src/blit2d_vk_spv.h`。
+2. `gfx_vk_probe()`（无窗口纯设备探测）与 `gfx_vk_init(win)`（claim）分离——
+   修 probe-claim-destroy 竞态（d810 SIGSEGV）。
+3. `gfx_vk_blit_frame(rgba,w,h)`：每帧上传 + render pass + present（gfx.h 已声明）。
+4. video.c：vk 分支建**隐藏 GL 离屏窗口 + 3.1 core context**（MakeCurrent 验证 +
+   版本打印）+ `gfx_swap` vk 分支回读上屏。
+5. **弹窗阻塞 bug**：`error_handler` = SDL 模态弹窗——`ERROR("Incomplete framebuffer")`
+   弹窗等人点 = headless「卡死」假象。`XSYS4_NO_MSGBOX=1` 改 stderr 输出；
+   framebuffer 失败改打 status 码不退出。修复后 SDL_GPU 完整初始化日志首次可见
+   （`SDL_GPU Driver: Vulkan / Device: llvmpipe / Conformance 1.3.1.1`）。
+
+**当前卡点**（d827 gdb5 栈，素材已留）：
+- 主窗口 `SDL_CreateWindow` flags 仍含 `SDL_WINDOW_VULKAN(0x10000000)`（代码已改
+  去掉但 gdb 跑的二进制/或 SDL 内部强制——待核实二进制新鲜度）；
+- **wayland 下带 VULKAN flag 的窗口创建期**：`Wayland_CreateWindow →
+  ConfigureWindowGeometry → SIZE_CHANGED → VULKAN_INTERNAL_OnWindowResize →
+  FetchWindowData==NULL` → SIGSEGV（SDL3 3.4.20 自动 claim 竞态）；
+- x11 路径 claim 成功但 lavapipe present 依赖 DRI3（Xvfb 无）——渲染验证需
+  真实桌面（wayland）。
+- GL 纹理 guard（D521c 加的 9 个）已**撤销**——GL 离屏 context 有效后合成
+  需要它们正常工作（此前「Incomplete framebuffer」实为弹窗阻塞假象）。
+
 ### 五、分期计划（Vulkan 跑通探测之后）
 
 | 期 | 内容 | 判据 |
