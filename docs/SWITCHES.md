@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **309** 个开关，其中 **0** 个没有就近注释。
+共 **310** 个开关，其中 **0** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -87,6 +87,7 @@
 | 呈现与输入 | `XSYS4_CLICK_SKIP_NONCLICKABLE` | `src/parts/input.c:717` | [诊断] 跑测专用：`clickable=0` 的部件不参与点击捕获（回到 D113 之前的行为）。用来验证「全屏背景 flat 705 截胡技能按钮点击」这一条；默认关，开始画面这类「点击任意处继续」的场景开了会卡住 |
 | 呈现与输入 | `XSYS4_CTRL_ACTIVE_RESTORE` | `src/parts/parts.c:4936` | `=1` `EraseLayer` 后把活动层恢复到**建层前那一层**；默认回栈顶（上游语义）。D316 的 A/B，实测不改变 [BG-LAYER] 结果 |
 | 呈现与输入 | `XSYS4_CTRL_DBG` | `src/parts/parts.c:2135` | controller 栈、视觉地板（cover_layer）、hide/remove 事件 |
+| 呈现与输入 | `XSYS4_CTRL_IP` | `src/parts/parts.c:5172` | [ctrl] =1 层切换时打印 AIN 指令位置（[ctrlip] id/idx/ip），定位「谁在切层」 |
 | 呈现与输入 | `XSYS4_CTRL_PENDING` | `src/parts/parts.c:4825` | [D289] 默认开。`Activity@Load` 建出的部件归到「即将由 AddLayer 创建的那一层」，而不是当前 active。AIN 的顺序是 Load→AddLayer，旧行为让部件全落在上一层，之后按新层 ID 的 EraseLayer 必然 `released=0`（旧场景部件永久残留，标题 Logo 跟到战斗里吃点击）。设 0 回退旧行为做 A/B |
 | 呈现与输入 | `XSYS4_INPUT_ACTIVE_LAYER` | `src/parts/input.c:245` | 〔摘〕注意：`PARTS_CONTROLLER_SYSTEM_OVERLAY` 是引擎自己的覆盖层，永远参与。 |
 | 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:1021` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |

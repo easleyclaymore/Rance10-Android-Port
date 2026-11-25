@@ -5165,6 +5165,15 @@ void PE_set_active_controller(int controller_no)
 			(idx >= 0 && idx < ctrl_stack.nr_controllers)) {
 		if (getenv("XSYS4_CTRL_DBG"))
 			NOTICE("[ctrl] setactive id=%d -> idx=%d", controller_no, idx);
+		/* [D540] 带 AIN 指令位置：把「谁在切层」直接定位到调用点。
+		 * 层 id/idx 语义已核对无误（id15→idx7 战斗层、id7→idx3 技能面板
+		 * 层），但 AIN 在**同一帧内** 7→3→7 开了又关（dr59：行号 10948
+		 * → 10951，中间只 3 行）。知道 ip 就能反查是哪个函数在关面板。 */
+		if (getenv("XSYS4_CTRL_IP")) {
+			extern size_t instr_ptr;
+			NOTICE("[ctrlip] id=%d -> idx=%d ip=0x%zX",
+			       controller_no, idx, instr_ptr);
+		}
 		ctrl_stack.active = idx;
 	}
 	else if (getenv("XSYS4_CTRL_DBG"))
