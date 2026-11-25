@@ -13,6 +13,7 @@
 #ifndef SYSTEM4_PARTS_H
 #define SYSTEM4_PARTS_H
 
+#include <stdio.h>
 #include <stdbool.h>
 
 struct page;
@@ -502,6 +503,9 @@ bool activity_read(struct string *name, struct string *file);
 int PE_GetFreeNumberCursor(void);
 void PE_SetFreeNumberCursor(int n);
 int activity_collect_names(char ***out);
+/* [D527] 检查点恢复：图层栈（ctrl_stack）状态序列化 */
+void PE_SnapshotControllerStack(FILE *fp);
+bool PE_RestoreControllerStack(FILE *fp);
 bool activity_release(const char *name);
 /* [D270] 带 EraseNumberList 出参的版本：把被释放部件的委托下标写回
  * AIN，让它从消息分发表里销掉。`activity_release(name)` 等价于

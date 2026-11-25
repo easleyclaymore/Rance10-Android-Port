@@ -4316,6 +4316,50 @@ static void parts_free_init(void)
 	parts_free_cursor = (e && *e) ? atoi(e) : 900000000;
 }
 
+/* [D527] 检查点恢复：图层栈（ctrl_stack）序列化。输入命中、渲染、
+ * 新部件挂层都依赖它——`show[]` 决定层可见（不可见的部件不进候选表，
+ * 实测恢复后 [inp] 候选空、点击无 CLICKED 就是这个原因）。
+ * 格式：首行 nr active next_id，之后每层 `idx id show opaque`。 */
+void PE_SnapshotControllerStack(FILE *fp)
+{
+	if (!fp)
+		return;
+	fprintf(fp, "%d %d %d\n",
+	        ctrl_stack.nr_controllers, ctrl_stack.active,
+	        ctrl_stack.next_id);
+	for (int i = 0; i < ctrl_stack.nr_controllers &&
+	     i < PARTS_CONTROLLER_STACK_MAX; i++) {
+		fprintf(fp, "%d %d %d %d\n", i, ctrl_stack.id[i],
+		        ctrl_stack.show[i] ? 1 : 0,
+		        ctrl_stack.opaque[i] ? 1 : 0);
+	}
+}
+
+bool PE_RestoreControllerStack(FILE *fp)
+{
+	if (!fp)
+		return false;
+	int nr, active, next_id;
+	if (fscanf(fp, "%d %d %d", &nr, &active, &next_id) != 3)
+		return false;
+	if (nr < 0 || nr > PARTS_CONTROLLER_STACK_MAX)
+		return false;
+	ctrl_stack.nr_controllers = nr;
+	ctrl_stack.active = active;
+	ctrl_stack.next_id = next_id;
+	for (int i = 0; i < nr; i++) {
+		int idx, id, show, opaque;
+		if (fscanf(fp, "%d %d %d %d", &idx, &id, &show, &opaque) != 4)
+			return false;
+		if (idx >= 0 && idx < PARTS_CONTROLLER_STACK_MAX) {
+			ctrl_stack.id[idx] = id;
+			ctrl_stack.show[idx] = show != 0;
+			ctrl_stack.opaque[idx] = opaque != 0;
+		}
+	}
+	return true;
+}
+
 int PE_GetFreeNumberCursor(void)
 {
 	parts_free_init();

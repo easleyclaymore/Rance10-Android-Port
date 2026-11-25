@@ -978,6 +978,17 @@ static void call_trace_probe(int fno, int ret_addr)
 					WARNING("[snapshot] 写侧车失败: %s", sidecar);
 				}
 				free(full);
+				/* [D527] 图层栈侧车 `<path>.ctrl`（nr/active/next_id +
+				 * 每层 id/show/opaque）——输入命中依赖它。 */
+				snprintf(sidecar, sizeof(sidecar), "%s.ctrl", snap_path);
+				full = savedir_path(sidecar);
+				fp = fopen(full, "w");
+				if (fp) {
+					PE_SnapshotControllerStack(fp);
+					fclose(fp);
+					NOTICE("[snapshot] ctrl stack -> %s", sidecar);
+				}
+				free(full);
 			}
 			NOTICE("[snapshot] fno=%d key='%s' path='%s' -> %d",
 			       fno, snap_key, snap_path, r);
@@ -7958,6 +7969,25 @@ int vm_execute_ain(struct ain *program)
 			 * 复位部件号游标后按序 activity_read——部件号与快照一致，
 			 * AIN 继续执行时的 global 部件号引用才有效。
 			 * 无侧车文件时保持旧行为（仅 VM 恢复）。 */
+			{
+				/* [D527] 先恢复图层栈（活动重建时部件挂 active 层，
+				 * 命中/渲染也看 show[]）。 */
+				char ctrlc[1100];
+				snprintf(ctrlc, sizeof(ctrlc), "%s.ctrl", colon + 1);
+				char *cfull = savedir_path(ctrlc);
+				FILE *cfp = fopen(cfull, "r");
+				if (cfp) {
+					if (PE_RestoreControllerStack(cfp))
+						NOTICE("[boot-resume] ctrl stack restored"
+						       " (nr=%d active=%d)",
+						       /* 打印前先读一遍？直接说 restored 即可 */
+						       0, 0);
+					fclose(cfp);
+				} else {
+					NOTICE("[boot-resume] 无 .ctrl 侧车 %s", ctrlc);
+				}
+				free(cfull);
+			}
 			{
 				char sidecar[1100];
 				snprintf(sidecar, sizeof(sidecar), "%s.acts", colon + 1);
