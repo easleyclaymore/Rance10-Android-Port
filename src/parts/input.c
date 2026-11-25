@@ -79,6 +79,29 @@ static int clicked_parts = 0;
 // 本次（部分）点击到的部件号
 static int click_down_parts = 0;
 
+/* [D536] 点击号 latch：`EndInput` 不再清 `clicked_parts`，改由
+ * `GetClickPartsNumber` **读走即清**。
+ *
+ * 动机（dr36）：4 次点击事件 100% 到达、`CLICKED` 捕获 5 次，但
+ * `GetClickNumber` 只读到 1 次——点击落在 AIN 的 EndInput 之后就被清掉，
+ * AIN 下一轮 BeginInput 时已经没了。0.8s 的按住往往只覆盖 1 个输入窗口，
+ * 这就是 `[CLICK-FLAKY]`「点十次中三次」的机制。
+ * latch 后点击保留到被读取为止，消费仍是一次性的（读走即清），
+ * 不会跨窗口重复触发。`XSYS4_CLICK_LATCH=0` 回退旧行为。 */
+static bool click_latch(void)
+{
+	static int on = -1;
+	if (on < 0) {
+		/* [D536] **默认关**：A/B 实测（dr36 vs dr37/38）开着 latch 时
+		 * `CLICKED` 从 5 次掉到 1 次——`clicked_parts` 长期非 0 会改变
+		 * AIN 侧的输入窗口节奏（它按「本轮有点击」决定是否退出等待），
+		 * 反而让后续按下沿更难落进窗口。保留开关供以后重试。 */
+		const char *e = getenv("XSYS4_CLICK_LATCH");
+		on = (e && !strcmp(e, "1")) ? 1 : 0;
+	}
+	return on != 0;
+}
+
 /* [D309] 光标当前**指向**的部件号（最上层、可见、命中）。
  *
  * 原版引擎有「active parts」概念：`PartsEngine.GetActiveParts` 返回它会话里
@@ -1235,7 +1258,8 @@ void PE_EndInput(void)
 			NOTICE("[inp] EndInput");
 	}
 	parts_began_click = false;
-	clicked_parts = 0;
+	if (!click_latch())
+		clicked_parts = 0;   /* [D536] latch 下保留到被读走 */
 	drag_state_reset();
 }
 
@@ -1263,7 +1287,14 @@ int PE_GetClickPartsNumber(void)
 			NOTICE("[inp] GetClickNumber #%d -> 0 (poll alive)", n);
 		n++;
 	}
-	return clicked_parts;
+	int ret = clicked_parts;
+	/* [D536] latch：读走即清（一次性消费，不跨窗口重复） */
+	if (click_latch() && ret) {
+		clicked_parts = 0;
+		if (getenv("XSYS4_CLICK_FLOW"))
+			NOTICE("[flow] READ-CLEAR %d", ret);
+	}
+	return ret;
 }
 
 bool PE_IsCursorIn(int parts_no, int mouse_x, int mouse_y, int state)

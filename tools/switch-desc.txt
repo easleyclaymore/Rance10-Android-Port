@@ -262,3 +262,4 @@ XSYS4_SAVE_KEY_ANY	[D523 跨版存档] =1 跳过 rsave/gsave key 校验（官方
 XSYS4_PARTS_NO_BASE	[parts] 部件号分配基址（默认 900000000；仅调试用，改变会破坏 AIN 部件号引用）
 XSYS4_RESUME_SHOW_ALL	[D533 检查点跑测] =0 恢复快照时忠实还原图层 show 位（默认全开：快照点战斗层 show=0，AIN 恢复后不会重开，导致全部 vis=0）
 XSYS4_CAP_DEEP	[input] =1 按下沿逐候选深探针：每个命中光标的部件的 elig/cons/hov/type/z（[capd]），查「谁吃掉了 click_consumed」
+XSYS4_CLICK_LATCH	[input 实验] =1 点击号保留到被 GetClickNumber 读走（默认关：A/B 实测会让 CLICKED 从 5 掉到 1）
