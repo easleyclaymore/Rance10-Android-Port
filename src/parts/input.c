@@ -248,16 +248,68 @@ static bool input_active_layer_only(void)
 	return on;
 }
 
+/* [D543] 输入层过滤三档。默认 `visible`（按**可见性**过滤），不再只看
+ * `ctrl_stack.active`。
+ *
+ * 依据（dr64/dr66，战斗技能选择器）：
+ *   - 点大技能按钮后 `BattleSkillSelector` 连同 `BattleSkillSelectorPanel`
+ *     装载到 **ctrl=3**，而 AIN 在同一帧把 active 切回 7（战斗 UI 层）——
+ *     它不是「关面板」，而是 `SceneBattle@Run` 主循环每帧
+ *     `isActionAvailable() → selector.SetControlEnable(1)` 的正常刷新。
+ *   - 于是 D498 的 active 过滤把**整个选择器层**滤掉：`[inp]` 里 ctrl=3
+ *     永远 0 行，面板点击区 `900000344`（hb=(0,284,490,796)、`ck=1`）
+ *     一次都进不了候选。
+ *   - 关掉过滤（`XSYS4_INPUT_ACTIVE_LAYER=0`）后立刻 `CLICKED
+ *     parts=900000344`、`GetClickNumber -> 900000344`（dr66）。
+ *
+ * 为什么用 visible 而不是「完全不过滤」：`parts_is_visible()` 的判据是
+ * `global.show && ctrl_stack.show[idx] && idx >= parts_cover_layer`，
+ * 即「被上层不透明地板挡住的部件不可见」——D498 要防的「点穿到下层标题
+ * 画面」正是被 `cover_layer` 挡住的（设置菜单有全屏不透明底），所以
+ * visible 既能修战斗又保住 D498 的结论，语义也与渲染一致（同一份判据）。
+ * `XSYS4_INPUT_LAYER_FILTER=active` 回到 D498 旧行为做 A/B；
+ * `=none` 完全不过滤。 */
+enum {
+	INPUT_FILTER_NONE = 0,
+	INPUT_FILTER_ACTIVE = 1,
+	INPUT_FILTER_VISIBLE = 2,
+};
+
+static int input_layer_filter(void)
+{
+	static int mode = -1;
+	if (mode < 0) {
+		const char *e = getenv("XSYS4_INPUT_LAYER_FILTER");
+		if (e && !strcmp(e, "none"))
+			mode = INPUT_FILTER_NONE;
+		else if (e && !strcmp(e, "active"))
+			mode = INPUT_FILTER_ACTIVE;
+		else
+			mode = INPUT_FILTER_VISIBLE;
+	}
+	return mode;
+}
+
 static struct parts **parts_input_collect(int *out_nr)
 {
 	int nr = 0;
 	struct parts *p;
 	int active_idx = -1;
-	if (input_active_layer_only())
+	int filter = input_layer_filter();
+	/* 兼容旧开关：`XSYS4_INPUT_ACTIVE_LAYER=0` 现在映射到 visible
+	 * （旧语义的「不过滤」比 visible 更松，A/B 请用
+	 * `XSYS4_INPUT_LAYER_FILTER=none`）。 */
+	if (filter == INPUT_FILTER_ACTIVE && !input_active_layer_only())
+		filter = INPUT_FILTER_VISIBLE;
+	if (filter == INPUT_FILTER_ACTIVE)
 		active_idx = PE_get_active_controller_index();
 	PARTS_LIST_FOREACH(p) {
-		if (active_idx >= 0 && p->controller_no != active_idx &&
+		if (filter == INPUT_FILTER_ACTIVE && active_idx >= 0 &&
+		    p->controller_no != active_idx &&
 		    p->controller_no != PARTS_CONTROLLER_SYSTEM_OVERLAY)
+			continue;
+		/* [D543] 可见性过滤：被上层不透明地板挡住的部件不参与命中。 */
+		if (filter == INPUT_FILTER_VISIBLE && !parts_is_visible(p))
 			continue;
 		/* [D517g] 被选项卡联动（EX 复选框表示連動）隐藏的部件不参与命中。
 		 * 3D 设置页 19 个子页面的 checkbox 全在 (430,123) 附近重叠，

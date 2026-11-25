@@ -1214,6 +1214,31 @@ static void function_call(int fno, int return_address)
 		case AIN_REF_TYPE:
 			heap_ref(heap[slot].page->values[i].i);
 			break;
+		/* [D544] **string 实参也要 ref**：AIN 的传参是值语义，调用方
+		 * （数组元素 / lambda 捕获槽）仍持有自己的引用，被调用方的局部页
+		 * 释放时不能把调用方那份一起放掉。
+		 *
+		 * 实证（D542 遗留项 + D543 触发）：`UniqueArray<string>@Find`
+		 * 的参数是 `string`，`[df]` 显示同一槽先在 Find 的 lambda RETURN
+		 * （ip=0xD926BE、fno=37631）被释放，随后 `FindInsertPos`
+		 * （ip=0xD9283E、fno=37632）再释放一次 → 6 条
+		 * `double free of slot ... (VM_PAGE)`（ref=0、page=nil）。
+		 * 原来只对 `AIN_REF_TYPE` 做 heap_ref，string 按「所有权转移」
+		 * 处理，所以少了一次引用。
+		 * `XSYS4_CALL_ARG_STR_REF=0` 回退做 A/B（历史那次「放宽到
+		 * variable_owns_ref」的 A/B 把 struct/array 也一起放宽了，
+		 * 剂量不同，结论不能直接搬）。 */
+		case AIN_STRING:
+			{
+				static int on = -1;
+				if (on < 0) {
+					const char *e = getenv("XSYS4_CALL_ARG_STR_REF");
+					on = (e && !strcmp(e, "0")) ? 0 : 1;
+				}
+				if (on)
+					heap_ref(heap[slot].page->values[i].i);
+			}
+			break;
 		default:
 			break;
 		}
