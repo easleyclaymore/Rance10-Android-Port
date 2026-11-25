@@ -290,7 +290,11 @@ click() { # click <view_x> <view_y> <button>
     # [D245] 0.12s 在 llvmpipe 下只有约 1.5 帧（实测 13.5fps → 74ms/帧），
     # 按下态落在帧边界上时整帧采样不到，40 次点击只有 9 次产生 EndInput。
     # 拉到 0.2s（≈3 帧）保证至少两次 UpdateInput 能看到按下态。
-    sleep 0.2
+    # [D528] 改为可调：检查点恢复后 AIN 在纯自旋等待里，输入阶段只由
+    # 帧泵驱动（实测 ~1.7 次/秒），0.2s 的按住会被整段跳过——
+    # clicking 恒 0、捕获条件（prev_clicking && !cur_clicking）永不成立。
+    # RANCE10_CLICK_HOLD=<秒> 拉长按住，覆盖帧泵间隔。
+    sleep "${RANCE10_CLICK_HOLD:-0.2}"
     xdotool mouseup "$3" >/dev/null 2>&1 || true
 }
 
