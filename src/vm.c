@@ -948,7 +948,11 @@ static void call_trace_probe(int fno, int ret_addr)
 		}
 		if (fno == snap_fno && !snap_done) {
 			snap_done = true;
+			/* [D531] 检查点快照用完整栈（见 resume.c 的说明）。 */
+			extern bool vm_save_full_stack;
+			vm_save_full_stack = true;
 			int r = vm_save_image(snap_key, snap_path);
+			vm_save_full_stack = false;
 			/* [D526] 侧车文件 `<path>.acts`：部件号游标 + 活动装载序。
 			 * parts 是 C++ 侧状态不进 VM 快照，恢复时靠它重建部件树；
 			 * 游标复位后活动按同序装载，部件号与快照一致（AIN 的
@@ -961,7 +965,12 @@ static void call_trace_probe(int fno, int ret_addr)
 				FILE *fp = fopen(full, "w");
 				if (fp) {
 					int cursor = PE_GetFreeNumberCursor();
-					fprintf(fp, "%d\n", cursor);
+					/* [D530] 第一行 `cursor ip`：rsave 的 ip 恢复走
+					 * `instr_ptr = return_address - 6`（为「RSM 挂在 CALLSYS
+					 * 处」设计）——我们的快照点是任意函数入口，-6 会错位
+					 * （dr12 实证：恢复后 AIN 跑到 SceneQuestMap@CreateSelection
+					 * 的刷新循环，而不是 23489 之后）。侧车自带精确 ip。 */
+					fprintf(fp, "%d %zu\n", cursor, instr_ptr);
 					char **names = NULL;
 					int *ctrls = NULL;
 					nr_acts = activity_collect_snapshot(&names, &ctrls);
@@ -7999,9 +8008,14 @@ int vm_execute_ain(struct ain *program)
 				if (fp) {
 					int cursor = 0;
 					int nr_rebuilt = 0;
+					size_t snap_ip = 0;
 					char line[512];
 					if (fgets(line, sizeof(line), fp)) {
-						cursor = atoi(line);
+						unsigned long long ipv = 0;
+						if (sscanf(line, "%d %llu", &cursor, &ipv) == 2)
+							snap_ip = (size_t)ipv;
+						else
+							cursor = atoi(line);
 						if (cursor > 0) {
 							PE_SetFreeNumberCursor(cursor);
 							NOTICE("[boot-resume] parts cursor -> %d",
@@ -8051,6 +8065,14 @@ int vm_execute_ain(struct ain *program)
 						free_string(fl);
 					}
 					fclose(fp);
+					/* [D530] 重建不会跑 AIN，此处覆盖 ip 是安全的。
+					 * 覆盖后 vm_execute() 从快照那条指令继续
+					 * （与 AIN 原义「重新执行挂起的 SYS」同构）。 */
+					if (snap_ip) {
+						NOTICE("[boot-resume] ip 0x%zX -> 0x%zX"
+						       "（侧车精确值）", instr_ptr, snap_ip);
+						instr_ptr = snap_ip;
+					}
 					NOTICE("[boot-resume] parts rebuilt: %d activities",
 					       nr_rebuilt);
 				} else {

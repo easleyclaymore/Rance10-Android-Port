@@ -328,11 +328,21 @@ static void save_call_stack_to_rsave(struct rsave *rs)
 	rs->ip.local_addr = instr_ptr - prev_func->address + 6;
 }
 
+/* [D531] 完整栈模式：`-2` 那条假设只对「AIN 的 SYS_RESUME_SAVE 指令
+ * 挂起」成立（栈顶是该 SYS 的两个实参，官方档要排除它们）。
+ * 检查点快照是引擎在**任意指令点**拍的（XSYS4_SNAPSHOT_ON_CALL），
+ * 栈顶不是实参 —— 照抄 -2 会丢掉两个真实值，恢复后 CALLMETHOD 参数
+ * 错位、调用目标跑偏（dr14 实证：ip 正确落在 0x36D0B2 的
+ * `CALLMETHOD -> RunBattleEvent`，却跳去 0x36CE34 调 GetResultViewType，
+ * 23489 全 0 命中）。采集路径用完整栈，原生挂起路径保持 -2。 */
+bool vm_save_full_stack = false;
+
 static void save_stack_to_rsave(struct rsave *rs)
 {
 	// 为了和 AliceSoft 的实现兼容，把栈顶的两个值
 	// （SYS_RESUME_SAVE 的实参）排除在外。
-	rs->stack_size = stack_ptr - 2;
+	rs->stack_size = vm_save_full_stack ? stack_ptr
+		: (stack_ptr > 2 ? stack_ptr - 2 : stack_ptr);
 
 	rs->stack = xcalloc(rs->stack_size, sizeof(int32_t));
 	for (int i = 0; i < rs->stack_size; i++) {
