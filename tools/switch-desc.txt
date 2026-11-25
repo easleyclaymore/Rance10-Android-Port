@@ -267,3 +267,4 @@ XSYS4_CAP_WIRE	[input] =1 鼠标按下/抬起全链探针：DOWN（谁捕获）�
 XSYS4_PREV_ALWAYS	[input] =0 回退「prev_clicking 只在 AIN 输入窗口内更新」旧行为；默认跟随真实按下/抬起（修 WaitForClick 自旋期间释放沿丢失）
 XSYS4_CLICK_PREFER	[input] =0 回退「ck=1 优先」：默认光标下有 点击許可=1 的部件时，ck=0 的全屏接收器在 hover 与捕获上让位（战斗技能按钮被整屏件截胡）
 XSYS4_CTRL_IP	[ctrl] =1 层切换时打印 AIN 指令位置（[ctrlip] id/idx/ip），定位「谁在切层」
+XSYS4_AREF_SAFE	[vm] =0 回退「A_REF 元素槽无效时压原槽」旧行为；默认按空引用(-1)处理（修 UniqueArray<string>@Find 谓词的 double free）

@@ -6481,6 +6481,34 @@ case SR_ASSIGN: {
 			else if (heap[array].type == VM_STRING && heap[array].s)
 				slot = vm_string_ref(heap[array].s);
 		}
+		/* [D542] 元素槽**已释放/无效**时不能把原槽当引用压栈。
+		 *
+		 * 实测（smoke quick + `RANCE10_SHOT=0`，即关掉逐步截图的阻塞后
+		 * ADV 推进更深）：`UniqueArray<string>@Find` 的谓词 lambda
+		 * （fno 37631/37632）里 `A_REF` 取到 `type=-1` 的死槽时，旧代码
+		 * 把**原槽号**压栈，随后 `S_LT` 拿它做 `stack_peek_string` →
+		 * `Invalid string index 74467 (type=-1)`，再 `heap_unref` 两次 →
+		 * `double free of slot 74467 (VM_PAGE)`，一次跑测 14-16 条。
+		 * `[df]` 探针（XSYS4_DF_DBG=1）确认 ip=0xD926AA/0xD926BE、
+		 * fno=37631/37632、`ref=0 page=(nil)`。
+		 * 语义：`A_REF` 失败就该返回空引用（-1），由 `S_LT` 的比较结果
+		 * 自然为假，不该把无效槽当数据往下传。
+		 * `XSYS4_AREF_SAFE=0` 回退旧行为做 A/B。 */
+		static int aref_safe = -1;
+		if (aref_safe < 0) {
+			const char *e = getenv("XSYS4_AREF_SAFE");
+			aref_safe = (e && !strcmp(e, "0")) ? 0 : 1;
+		}
+		if (slot < 0 && aref_safe) {
+			static int aref_warned;
+			if (aref_warned++ < 8)
+				WARNING("A_REF: 槽 %d 不是有效数组/字符串"
+					"（type=%d），按空引用处理", array,
+					(array > 0 && array < heap_size)
+					? heap[array].type : -99);
+			stack_push((union vm_value){ .i = -1 });
+			break;
+		}
 		stack_push((union vm_value){ .i = slot >= 0 ? slot : array });
 		break;
 	}

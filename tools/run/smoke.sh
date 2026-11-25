@@ -75,7 +75,7 @@ export RANCE10_NO_STEP_SHOT=1
 # 74467 等，`Invalid string index ... type=-1` 后紧跟 double free）。
 # 那个 bug 要单独修；在此之前 smoke 必须保持与基线相同的时序，否则门禁
 # 会因「跑得更快」而假红。`RANCE10_SHOT=0` 可复现该 bug。
-export RANCE10_SHOT=1
+export RANCE10_SHOT="${RANCE10_SHOT:-1}"
 
 echo "== smoke $MODE（tag=$TAG, ${SECS}s）=="
 rm -f "$LOG"
