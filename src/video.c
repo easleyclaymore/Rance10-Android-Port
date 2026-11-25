@@ -849,6 +849,9 @@ static void init_texture(struct texture *t, int w, int h)
 
 void gfx_init_texture_with_pixels(struct texture *t, int w, int h, void *pixels)
 {
+	if (gfx_vk_mode())
+		return; /* [D521] Vulkan 模式：GL 纹理路径 no-op（handle 留 0，绘制早退） */
+
 	init_texture(t, w, h);
 	if (vk_mode)
 		return;
@@ -863,11 +866,17 @@ void gfx_update_texture_with_pixels(struct texture *t, void *pixels)
 
 void gfx_init_texture_with_cg(struct texture *t, struct cg *cg)
 {
+	if (gfx_vk_mode())
+		return; /* [D521] Vulkan 模式：GL 纹理路径 no-op（handle 留 0，绘制早退） */
+
 	gfx_init_texture_with_pixels(t, cg->metrics.w, cg->metrics.h, cg->pixels);
 }
 
 void gfx_init_texture_rgba(struct texture *t, int w, int h, SDL_Color color)
 {
+	if (gfx_vk_mode())
+		return; /* [D521] Vulkan 模式：GL 纹理路径 no-op（handle 留 0，绘制早退） */
+
 	if (w > max_texture_size) {
 		WARNING("Texture width %d exceeds maximum texture size %d", w, max_texture_size);
 		w = max_texture_size;
@@ -887,6 +896,9 @@ void gfx_init_texture_rgba(struct texture *t, int w, int h, SDL_Color color)
 
 void gfx_init_texture_rgb(struct texture *t, int w, int h, SDL_Color color)
 {
+	if (gfx_vk_mode())
+		return; /* [D521] Vulkan 模式：GL 纹理路径 no-op（handle 留 0，绘制早退） */
+
 	if (w > max_texture_size) {
 		WARNING("Texture width %d exceeds maximum texture size %d", w, max_texture_size);
 		w = max_texture_size;
@@ -907,6 +919,9 @@ void gfx_init_texture_rgb(struct texture *t, int w, int h, SDL_Color color)
 
 void gfx_init_texture_amap(struct texture *t, int w, int h, uint8_t *amap, SDL_Color color)
 {
+	if (gfx_vk_mode())
+		return; /* [D521] Vulkan 模式：GL 纹理路径 no-op（handle 留 0，绘制早退） */
+
 	uint32_t *pixels = xmalloc(sizeof(uint32_t) * w * h);
 	for (int i = 0; i < w*h; i++) {
 		/* [D329] SDL3 的 SDL_MapRGBA 多了 palette 参数（无调色板传 NULL）。 */
@@ -920,6 +935,9 @@ void gfx_init_texture_amap(struct texture *t, int w, int h, uint8_t *amap, SDL_C
 
 void gfx_init_texture_rmap(struct texture *t, int w, int h, uint8_t *rmap)
 {
+	if (gfx_vk_mode())
+		return; /* [D521] Vulkan 模式：GL 纹理路径 no-op（handle 留 0，绘制早退） */
+
 	init_texture(t, w, h);
 	/* rmap 是单通道字形位图（字体用）。展开成 RGBA 再上传：parts / sprite
 	 * 这类通用着色器按 vec4 采样，GL_R8 在它们眼里 rgb 恒 0、alpha 恒 1，
@@ -937,6 +955,9 @@ void gfx_init_texture_rmap(struct texture *t, int w, int h, uint8_t *rmap)
 
 void gfx_init_texture_blank(struct texture *t, int w, int h)
 {
+	if (gfx_vk_mode())
+		return; /* [D521] Vulkan 模式：GL 纹理路径 no-op（handle 留 0，绘制早退） */
+
 	gfx_init_texture_with_pixels(t, w, h, NULL);
 }
 
@@ -955,6 +976,9 @@ void gfx_delete_texture(struct texture *t)
 
 GLuint gfx_set_framebuffer(GLenum target, Texture *t, int x, int y, int w, int h)
 {
+	if (gfx_vk_mode())
+		return 0; /* [D521] Vulkan 模式：GL fbo 路径 no-op */
+
 	GLuint fbo;
 	glGenFramebuffers(1, &fbo);
 	glBindFramebuffer(target, fbo);
@@ -968,6 +992,9 @@ GLuint gfx_set_framebuffer(GLenum target, Texture *t, int x, int y, int w, int h
 
 void gfx_reset_framebuffer(GLenum target, GLuint fbo)
 {
+	if (gfx_vk_mode())
+		return; /* [D521] Vulkan 模式：GL 纹理路径 no-op（handle 留 0，绘制早退） */
+
 	glBindFramebuffer(target, main_surface_fb);
 	glDeleteFramebuffers(1, &fbo);
 	/* [L3] main_surface_fb 是按 VIEW 尺寸（config.view_width/height）建的，

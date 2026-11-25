@@ -372,6 +372,23 @@ VULKAN|RESIZABLE)` + `SDL_CreateGPUDevice(SPIRV, false, NULL)` → 成功，
 **下一步**：用户授权 `run-local.sh`（真实桌面开窗）即可验证 P1（3D 预览 Vulkan 出图）；
 或研究离屏渲染路径（VK_EXT_headless_surface，SDL_GPU 不直接暴露，需绕行）。
 
+### 四·七、引擎在 Vulkan 模式下首次完整推进（D521c，2026-11-25）
+
+attach 栈（ptrace_scope=0 后）定位 headless 卡死：`gfx_init_texture_rgba →
+gfx_set_framebuffer → sys_error` 死循环——**D517k 的 GL guard 漏了纹理函数族**
+（只有 init_texture/gfx_clear/gfx_swap 被守，init_texture_rgba/rgb/amap/rmap/
+blank/with_pixels/with_cg/set_framebuffer/reset_framebuffer 全裸奔）。
+补全 9 个 guard（vk 模式 no-op，handle 留 0 绘制早退）后：
+
+**d819 实测（lavapipe + Xvfb，120s）**：
+- `[vk] probe: driver='vulkan' -> OK` → `[vk] Vulkan 路径就绪` →
+  **13 个活动装载**（SceneStartScreen → NetworkConfirmation → NewMarkView:1）
+  ——引擎逻辑（VM/活动/输入）在 Vulkan 模式下首次完整推进；
+- 0 VM_ERROR / 0 hang / 无 SIGSEGV；截图黑屏 = **预期**（P2 精灵/文字渲染
+  未迁移，Vulkan 路径目前只有 3D 预览 + 清屏）；
+- lavapipe 渲染速度显著慢于 llvmpipe（120s 只推进到标题 UI），仅用于
+  验证渲染正确性；性能验证需硬件（用户桌面 wayland DRI3 正常）。
+
 ### 五、分期计划（Vulkan 跑通探测之后）
 
 | 期 | 内容 | 判据 |
