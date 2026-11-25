@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **304** 个开关，其中 **0** 个没有就近注释。
+共 **305** 个开关，其中 **0** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -87,7 +87,7 @@
 | 呈现与输入 | `XSYS4_CTRL_DBG` | `src/parts/parts.c:2135` | controller 栈、视觉地板（cover_layer）、hide/remove 事件 |
 | 呈现与输入 | `XSYS4_CTRL_PENDING` | `src/parts/parts.c:4825` | [D289] 默认开。`Activity@Load` 建出的部件归到「即将由 AddLayer 创建的那一层」，而不是当前 active。AIN 的顺序是 Load→AddLayer，旧行为让部件全落在上一层，之后按新层 ID 的 EraseLayer 必然 `released=0`（旧场景部件永久残留，标题 Logo 跟到战斗里吃点击）。设 0 回退旧行为做 A/B |
 | 呈现与输入 | `XSYS4_INPUT_ACTIVE_LAYER` | `src/parts/input.c:211` | 〔摘〕注意：`PARTS_CONTROLLER_SYSTEM_OVERLAY` 是引擎自己的覆盖层，永远参与。 |
-| 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:942` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
+| 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:959` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
 | 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:641` | 输入命中的候选部件表与点击状态（每 60 帧一条心跳，非沉默） |
 | 呈现与输入 | `XSYS4_INPUT_GATE` | `src/parts/input.c:43` | =1 恢复旧输入门：只有 AIN BeginInput 窗口内才处理按下沿（默认 0=等价原版，恒开）。菜单界面 AIN 不开窗口，开旧门会让点击全被吞 |
 | 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:2295` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
@@ -131,6 +131,7 @@
 | 其它 | `XSYS4_BOOT_RESUME` | `src/vm.c:7975` | [D523 检查点跑测] <key>:<path> VM 全量快照 boot 期恢复（vm_load_image 后直接进执行循环，从快照指令继续；跳过标题/剧情） |
 | 其它 | `XSYS4_CAPTION` | `src/parts/activity.c:1145` | =0 关掉「非 TEXT 件的 EX 文本当标签画」（单选组选项标签，D514）。某界面出现多余文字时回退 |
 | 其它 | `XSYS4_CAP_DBG` | `src/parts/input.c:327` | [诊断] 点击捕获归因：只在「按下那一帧、且命中盒覆盖光标」时打印每个部件的 vis/show/ck/pc/hover-consumed/began，用来判「为什么没人拿到 click_down_parts」（D332） |
+| 其它 | `XSYS4_CAP_DEEP` | `src/parts/input.c:756` | [input] =1 按下沿逐候选深探针：每个命中光标的部件的 elig/cons/hov/type/z（[capd]），查「谁吃掉了 click_consumed」 |
 | 其它 | `XSYS4_CB_DBG` | `src/parts/parts.c:3518` | [取证] SetCheckBoxSize 族调用探针（[cb]）。3D 页 checkbox 构造链定位用 |
 | 其它 | `XSYS4_CB_INIT_DBG` | `src/parts/activity.c:1398` | [取证] 复选框建部件时的 选择状态/实际勾选态（[cb-init]） |
 | 其它 | `XSYS4_CB_NO_GATE` | `src/parts/parts.c:331` | [D517r A/B 回退] =1 关掉 checkbox 的 click_pending 保护门（Begin 推送不再跳过刚点过的部件），复现全屏生效链死循环用 |

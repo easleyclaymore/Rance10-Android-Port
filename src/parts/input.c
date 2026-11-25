@@ -749,6 +749,23 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 				       parts->no, prev_cap);
 		}
 	}
+	/* [D534] 逐候选深探针：按下沿那一帧，**每个命中光标**的部件的
+	 * 最终判定（elig / 是否已被前面的件消费 / 是否 hover 到 / 类型）。
+	 * 起因：恢复后 21 次按下沿只有 1 次捕获（dr23），[cap] 只打第一候选
+	 * 候选，看不出是谁把 click_consumed 吃掉。`XSYS4_CAP_DEEP=1`。 */
+	if (getenv("XSYS4_CAP_DEEP") && cur_clicking && !prev_clicking) {
+		Rectangle dhb = parts_hitbox_at(parts, PARTS_STATE_DEFAULT);
+		if (cur_pos.x >= dhb.x && cur_pos.x < dhb.x + dhb.w &&
+		    cur_pos.y >= dhb.y && cur_pos.y < dhb.y + dhb.h)
+			NOTICE("[capd] no=%d z=%d type=%d elig=%d cons=%d hov=%d "
+			       "ctrl=%d di=%d hb=(%d,%d,%d,%d)",
+			       parts->no, parts->global.z,
+			       parts->states[parts->state].type,
+			       click_eligible ? 1 : 0, *click_consumed ? 1 : 0,
+			       is_hovered ? 1 : 0, parts->controller_no,
+			       parts->delegate_index,
+			       dhb.x, dhb.y, dhb.w, dhb.h);
+	}
 	if (!click_eligible || *click_consumed) {
 		if (!was_hovered)
 			audio_play_sound(parts->on_cursor_sound);
