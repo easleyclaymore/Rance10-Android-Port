@@ -61,7 +61,11 @@ bool gfx_vk_probe(void)
 	SDL_PropertiesID vprops = SDL_CreateProperties();
 	SDL_SetBooleanProperty(vprops, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN, true);
 	SDL_SetBooleanProperty(vprops, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, false);
+	/* [D521f] VERBOSE 属性 SDL 3.4.0 才有；CI 钉 3.2.x LTS（workflow 注释：
+	 * 发行版打包线），条件编译降级。 */
+#ifdef SDL_PROP_GPU_DEVICE_CREATE_VERBOSE_BOOLEAN
 	SDL_SetBooleanProperty(vprops, SDL_PROP_GPU_DEVICE_CREATE_VERBOSE_BOOLEAN, true);
+#endif
 	SDL_GPUDevice *dev = SDL_CreateGPUDeviceWithProperties(vprops);
 	SDL_DestroyProperties(vprops);
 	if (!dev) {
@@ -92,7 +96,9 @@ bool gfx_vk_init(SDL_Window *win)
 	SDL_PropertiesID vprops = SDL_CreateProperties();
 	SDL_SetBooleanProperty(vprops, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN, true);
 	SDL_SetBooleanProperty(vprops, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, false);
+#ifdef SDL_PROP_GPU_DEVICE_CREATE_VERBOSE_BOOLEAN
 	SDL_SetBooleanProperty(vprops, SDL_PROP_GPU_DEVICE_CREATE_VERBOSE_BOOLEAN, true);
+#endif
 	SDL_GPUDevice *dev = SDL_CreateGPUDeviceWithProperties(vprops);
 	SDL_DestroyProperties(vprops);
 	if (!dev) {
