@@ -108,9 +108,17 @@ mem_alloc void *xrealloc_array(void *dst, size_t old_nmemb, size_t new_nmemb, si
 
 _Noreturn void sys_verror(const char *fmt, va_list ap)
 {
+	/* [D521d] ap 只能消费一次：handler 分支用 va_copy 复制，
+	 * 原始 ap 留给后面的 vfprintf。此前 vsnprintf 消费完后
+	 * vfprintf 再读同一个 ap（UB），fmt 带 %s 时第二个 %s
+	 * 读到垃圾指针——wayland 下 mincho 字体缺失触发
+	 * "Failed to load %s font" 即崩（d822 gdb 栈实证）。 */
 	if (sys_error_handler) {
 		char msg[4096];
-		vsnprintf(msg, 4096, fmt, ap);
+		va_list ap_copy;
+		va_copy(ap_copy, ap);
+		vsnprintf(msg, 4096, fmt, ap_copy);
+		va_end(ap_copy);
 		sys_error_handler(msg);
 	}
 #ifdef __ANDROID__

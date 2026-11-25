@@ -611,6 +611,29 @@ static enum ain_data_type array_type_of_elem(enum ain_data_type elem)
 
 static union vm_value gsave_to_vm_value(struct gsave *save, enum ain_data_type type, int struct_type, int array_rank, int32_t value);
 
+/* [D521e] 从存档记录反查 AIN 结构号：record → struct_def/struct_name
+ * → 与 ain->structures 逐名匹配。查不到返回 -1（调用方决定报错还是回退）。
+ * D520b（元素级）与 D521e（建页前）共用。 */
+static int gsave_struct_type_from_record(struct gsave *save, int32_t record_index)
+{
+	if (!gsave_index_ok(record_index, save->nr_records))
+		return -1;
+	struct gsave_record *rec = &save->records[record_index];
+	const char *nm = NULL;
+	if (save->version >= 7 && rec->struct_index >= 0 &&
+	    rec->struct_index < save->nr_struct_defs)
+		nm = save->struct_defs[rec->struct_index].name;
+	if (!nm)
+		nm = rec->struct_name;
+	if (!nm)
+		return -1;
+	for (int s = 0; s < ain->nr_structures; s++) {
+		if (!strcmp(ain->structures[s].name, nm))
+			return s;
+	}
+	return -1;
+}
+
 static struct gsave_flat_array *gsave_load_array(struct gsave *save, struct page *page, struct gsave_flat_array *flat_array)
 {
 	assert(page->type == ARRAY_PAGE);
@@ -654,34 +677,25 @@ static struct gsave_flat_array *gsave_load_array(struct gsave *save, struct page
 		if (data_type == AIN_VOID) {
 			data_type = flat_array->values[i].type;
 			if (data_type == AIN_STRUCT) {
-				int32_t rv = flat_array->values[i].value;
-				if (gsave_index_ok(rv, save->nr_records)) {
-					struct gsave_record *rec =
-						&save->records[rv];
-					const char *nm = NULL;
-					if (save->version >= 7 &&
-					    rec->struct_index >= 0 &&
-					    rec->struct_index < save->nr_struct_defs)
-						nm = save->struct_defs[rec->struct_index].name;
-					if (!nm)
-						nm = rec->struct_name;
-					struct_type = -1;
-					for (int s = 0; s < ain->nr_structures; s++) {
-						if (!strcmp(ain->structures[s].name, nm)) {
-							struct_type = s;
-							break;
-						}
-					}
-					if (struct_type < 0)
-						VM_ERROR("Bad save file: generic array"
-							 " element references unknown structure"
-							 " '%s'", nm ? nm : "(null)");
-					/* 数组页也就地定型，后续访问按 struct 数组走。 */
-					page->a_type = AIN_ARRAY_STRUCT;
-					page->array.struct_type = struct_type;
+				if (!gsave_index_ok(flat_array->values[i].value,
+						    save->nr_records)) {
+					/* 未设置元素（写入端存 -1）：保持未设置，
+					 * 页不定型（元素类型还可能是 VOID）。 */
+					page->values[i] = vm_int(-1);
+					continue;
 				}
+				/* [D521e] 反查逻辑抽成 helper（建页前路径共用） */
+				struct_type = gsave_struct_type_from_record(
+					save, flat_array->values[i].value);
+				if (struct_type < 0)
+					VM_ERROR("Bad save file: generic array"
+						 " element references unknown structure"
+						 " (record %d)", flat_array->values[i].value);
+				/* 数组页也就地定型，后续访问按 struct 数组走。 */
+				page->a_type = AIN_ARRAY_STRUCT;
+				page->array.struct_type = struct_type;
 			}
-		} else if (data_type != flat_array->values[i].type)
+		} else if (data_type != flat_array->values[i].type) {
 			VM_ERROR("Bad save file: unexpected array element type"
 				 " (element %d/%d: page says %s(%d), file says %s(%d);"
 				 " page a_type=%d rank=%d struc=%d)",
@@ -690,6 +704,33 @@ static struct gsave_flat_array *gsave_load_array(struct gsave *save, struct page
 				 ain_strtype(ain, flat_array->values[i].type, -1),
 				 flat_array->values[i].type,
 				 page->a_type, page->array.rank, page->array.struct_type);
+		}
+		/* [D521e] 兜底：页带着 struc<0 却按 AIN_STRUCT 报元素类型
+		 * （建页路径漏定型）。从元素自己的记录反查结构号，而不是把
+		 * -1 递给 gsave_to_vm_value 去 strcmp(ain->structures[-1].name)
+		 * （d823 gdb 实证：CASConstructionProcess 读档即崩）。 */
+		if (data_type == AIN_STRUCT && struct_type < 0) {
+			if (!gsave_index_ok(flat_array->values[i].value,
+					    save->nr_records)) {
+				page->values[i] = vm_int(-1);
+				continue;
+			}
+			struct_type = gsave_struct_type_from_record(
+				save, flat_array->values[i].value);
+			if (struct_type < 0)
+				VM_ERROR("Bad save file: struct array element has no"
+					 " structure type (record %d)",
+					 flat_array->values[i].value);
+			static int nr_rescued;
+			if (nr_rescued++ < 3)
+				WARNING("save: struct array page had struc<0;"
+					" element %d typed by record as %d"
+					" (page a_type=%d rank=%d)",
+					i, struct_type,
+					page->a_type, page->array.rank);
+			page->a_type = AIN_ARRAY_STRUCT;
+			page->array.struct_type = struct_type;
+		}
 		union vm_value val = gsave_to_vm_value(save, data_type, struct_type, array_rank, flat_array->values[i].value);
 		page->values[i] = val;
 	}
@@ -797,6 +838,7 @@ static union vm_value gsave_to_vm_value(struct gsave *save, enum ain_data_type t
 			}
 			int rank = array->rank;
 			enum ain_data_type data_type = type;
+			int elem_st = -1; /* [D521e] 建页后补的结构号（不进 alloc_array） */
 			if (type == AIN_ARRAY) {
 				/* [L2] 泛型数组的声明里没有元素种类
 				 * （`array<?>` 就是这个意思），而且声明的 rank 只是个占位：
@@ -815,6 +857,35 @@ static union vm_value gsave_to_vm_value(struct gsave *save, enum ain_data_type t
 				if (array->nr_flat_arrays > 0 && array->flat_arrays)
 					elem = array->flat_arrays[0].type;
 				data_type = array_type_of_elem(elem);
+				/* [D521e] 定型成 struct 数组时先把结构号查出来，但**不传给
+				 * alloc_array**：接口结构体在 alloc_array 里会走 D136 的
+				 * 「每元素 2 槽」布局（iface_element_array 默认开），与存档
+				 * 元素数不匹配 → 类型混乱 double free（smoke quick 实证）。
+				 * 正确姿势：born struc=-1（1 槽布局），建页后补
+				 * struct_type——与 D520b 就地定型同构，但补在元素循环
+				 * 之前，绕开「元素 case 拿 AIN_STRUCT/-1 去 strcmp
+				 * ain->structures[-1].name」的崩溃（d823 gdb 实证）。 */
+				if (data_type == AIN_ARRAY_STRUCT && struct_type < 0) {
+					for (int f = 0; f < array->nr_flat_arrays && elem_st < 0; f++) {
+						struct gsave_flat_array *fa =
+							&array->flat_arrays[f];
+						for (int v = 0; v < fa->nr_values; v++) {
+							if (fa->values[v].type != AIN_STRUCT)
+								continue;
+							/* 未设置元素（-1）查不到：继续看下一个，
+							 * 第一个「设置了」的元素才是定型依据
+							 * （实测 CASConstructionProcess 存档
+							 * 元素 0/1 未设置、元素 2 才有效）。 */
+							elem_st = gsave_struct_type_from_record(
+								save, fa->values[v].value);
+							if (elem_st >= 0)
+								break;
+						}
+					}
+					/* 查不到（全是未设置元素）：保持旧行为
+					 * （struct_type=-1 建页；未设置元素在
+					 * gsave_to_vm_value 的 OOB 检查里安全还原 -1）。 */
+				}
 				if (data_type == AIN_VOID) {
 					/* 空的泛型数组：没有任何元素可以定型。
 					 * struct_type 是唯一还有效的线索。 */
@@ -830,6 +901,8 @@ static union vm_value gsave_to_vm_value(struct gsave *save, enum ain_data_type t
 			for (int i = 0; i < rank; i++)
 				dims[i].i = array->dimensions[rank - 1 - i];
 			struct page *page = alloc_array(rank, dims, data_type, struct_type, false);
+			if (elem_st >= 0)
+				page->array.struct_type = elem_st;
 			heap[slot].page = page;
 			free(dims);
 			gsave_load_array(save, page, array->flat_arrays);

@@ -253,3 +253,4 @@ XSYS4_CB_READ_DBG	[取证] AIN 轮询读 checkbox 状态（[cbr] read no=N -> V�
 XSYS4_CB_NO_GATE	[D517r A/B 回退] =1 关掉 checkbox 的 click_pending 保护门（Begin 推送不再跳过刚点过的部件），复现全屏生效链死循环用
 XSYS4_UC_DBG	[D517t 取证] UC OnCheckEvent 派发留痕（[uc]）：=1 打扫描/命中/fired；=2 追加全 FunctionSet 页 dump；=4 追加委托页反查。配 vm_request_uc_fire（PE_CheckBoxClick 登记、帧泵派发）
 XSYS4_LINK_DBG	[取证] 装载期 `表示連動` 名字查号 MISS 时打一行（[link] no=N '名' -> '連動名' MISS）；查 checkbox 显隐联动没挂上的部件
+XSYS4_VK_BLIT_LOG	[gfx] Vulkan blit 心跳日志：每 1000 帧打一行 present 计数（默认关）

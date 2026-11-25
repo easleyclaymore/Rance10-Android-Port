@@ -319,8 +319,14 @@ fail:
  * 并作为全屏四边形上屏。w/h 变化时自动重建目标纹理。 */
 bool gfx_vk_blit_frame(const unsigned char *rgba, int w, int h)
 {
-	if (!vk.active || !rgba || w <= 0 || h <= 0)
+	if (!vk.active || !rgba || w <= 0 || h <= 0) {
+		/* [D521d] 一次性失败日志：上屏链路断在哪一环 */
+		static int nr_fail0;
+		if (nr_fail0++ < 3)
+			NOTICE("[vk] blit 前置检查失败：active=%d rgba=%p %dx%d",
+			       (int)vk.active, (const void *)rgba, w, h);
 		return false;
+	}
 
 	/* 尺寸变化（或首次）时重建纹理与 transfer buffer。 */
 	if (vk.frame_w != w || vk.frame_h != h) {
@@ -375,6 +381,12 @@ bool gfx_vk_blit_frame(const unsigned char *rgba, int w, int h)
 	SDL_GPUTexture *swap = NULL;
 	Uint32 sw = 0, sh = 0;
 	if (!SDL_WaitAndAcquireGPUSwapchainTexture(cmd, vk.win, &swap, &sw, &sh) || !swap) {
+		/* [D521d] 一次性失败日志：swapchain 拿不到就要说话，
+		 * 否则「图没上屏」在日志里完全不可见 */
+		static int nr_failsw;
+		if (nr_failsw++ < 3)
+			NOTICE("[vk] WaitAndAcquireGPUSwapchainTexture 失败：%s",
+			       SDL_GetError());
 		SDL_SubmitGPUCommandBuffer(cmd);
 		return false;
 	}
@@ -394,6 +406,21 @@ bool gfx_vk_blit_frame(const unsigned char *rgba, int w, int h)
 	SDL_DrawGPUPrimitives(rp, 6, 1, 0, 0);
 	SDL_EndGPURenderPass(rp);
 	SDL_SubmitGPUCommandBuffer(cmd);
+	/* [D521d] 一次性上屏判据：首帧 present 成功只打一行，
+	 * 跑测日志可证「图真的上了屏」（此前 blit 失败全静默，
+	 * 只有纹理创建失败才有日志）。XSYS4_VK_BLIT_LOG=1 追加
+	 * 每千帧一次心跳。 */
+	{
+		static bool first_logged = false;
+		static int ok_count = 0;
+		if (!first_logged) {
+			NOTICE("[vk] first present %dx%d ok", w, h);
+			first_logged = true;
+		}
+		ok_count++;
+		if (getenv("XSYS4_VK_BLIT_LOG") && ok_count % 1000 == 0)
+			NOTICE("[vk] blit 心跳：%d 帧", ok_count);
+	}
 	return true;
 }
 

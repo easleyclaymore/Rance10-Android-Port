@@ -316,10 +316,40 @@ int gfx_init(void)
 				       glv ? (const char *)glv : "(null)",
 				       glr ? (const char *)glr : "(null)");
 			}
+#ifndef USE_GLES
+			/* [D521d] 离屏 context 也要 glew：main_surface_init 要用
+			 * glGenFramebuffers，没 init 之前是空指针。与 GL 路径同一
+			 * 容忍（GLEW_ERROR_NO_GLX_DISPLAY）。 */
+			glewExperimental = GL_TRUE;
+			GLenum gerr = glewInit();
+			if (gerr != GLEW_OK && gerr != GLEW_ERROR_NO_GLX_DISPLAY)
+				ERROR("glewInit failed (vk offscreen)");
+#endif
+			/* [D521d] GL 合成侧初始化：此前 vk 分支提前 return，
+			 * 漏掉 gl_initialize/gfx_draw_init/
+			 * gfx_set_window_logical_size —— sdl.w/h 永远 0，
+			 * main_surface FBO 没建（Incomplete framebuffer: tex=0
+			 * 的根因），blit 拿到 0x0 被前置检查拒绝，上屏链路
+			 * 整条静默断线。补齐与 GL 路径相同的尾部。 */
+			gl_initialize();
+			gfx_draw_init();
+			gfx_set_window_logical_size(config.view_width,
+						    config.view_height);
 			set_window_title();
+			bool want_fullscreen = config.fullscreen;
+			const char *fs_env = getenv("XSYS4_FULLSCREEN");
+			if (fs_env && *fs_env)
+				want_fullscreen = strcmp(fs_env, "0") != 0;
+			if (want_fullscreen)
+				gfx_set_fullscreen(true);
+			else
+				init_window_size();
+			atexit(gfx_fini);
 			if (!gfx_vk_init(sdl.window))
 				ERROR("Vulkan 探测通过但正式窗口初始化失败：%s",
 				      SDL_GetError());
+			gfx_clear();
+			icon_init();
 			gfx_initialized = true;
 			return 0;
 		}
@@ -603,8 +633,8 @@ void gfx_set_clear_color(int r, int g, int b, int a)
 
 void gfx_clear(void)
 {
-	if (vk_mode)
-		return; /* 清屏由 gfx_vk 的 render pass 完成 */
+	/* [D521d] 撤销 vk_mode return：main_surface 的清屏属于 2D 合成侧，
+	 * 在离屏 GL 上做；上屏只是把合成结果整幅 blit 到 swapchain */
 	glClearColor(clear_color.r / 255.f, clear_color.g / 255.f, clear_color.b / 255.f, clear_color.a / 255.f);
 	glClear(GL_COLOR_BUFFER_BIT);
 }
@@ -887,14 +917,9 @@ size_t gfx_texture_pixels = 0;
 
 static void init_texture(struct texture *t, int w, int h)
 {
-	if (vk_mode) {
-		/* Vulkan 路径不建 GL 纹理：handle=0 让所有 GL 绘制 early-return
-		 * （gfx_delete_texture / _gfx_render_texture 都判 handle）。 */
-		t->w = w;
-		t->h = h;
-		t->handle = 0;
-		return;
-	}
+	/* [D521d] 撤销 D521c 的 vk_mode guard：P2-min 下 2D 合成全走
+	 * 离屏 GL context，GL 纹理必须真实创建。handle=0 会让 sprite
+	 * 纹理建不出来（Incomplete framebuffer: tex=0，d822 vkway15）。 */
 	gfx_texture_count++;
 	gfx_texture_pixels += (size_t)(w > 0 ? w : 0) * (size_t)(h > 0 ? h : 0);
 	glGenTextures(1, &t->handle);
@@ -912,8 +937,7 @@ void gfx_init_texture_with_pixels(struct texture *t, int w, int h, void *pixels)
 {
 
 	init_texture(t, w, h);
-	if (vk_mode)
-		return;
+	/* [D521d] 撤销 vk_mode return：像素上传同样必须在离屏 GL 上做 */
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
 }
 

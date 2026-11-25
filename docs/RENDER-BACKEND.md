@@ -421,6 +421,40 @@ RGBA 上传 → 全屏四边形），2D 绘制零迁移。
 - GL 纹理 guard（D521c 加的 9 个）已**撤销**——GL 离屏 context 有效后合成
   需要它们正常工作（此前「Incomplete framebuffer」实为弹窗阻塞假象）。
 
+### 四·九、真实桌面打通：wayland Vulkan 完整推进 + 上屏出图（D521d/e，2026-11-25）
+
+**四·八遗留卡点清账**：
+- 「gdb5 仍见 VULKAN flag」= **二进制过旧**（11-24 15:39 构建，缺全部 D521c 续
+  字符串；`strings` 判据）。重建后 wayland CreateWindow 竞态消失——代码去 flag
+  本来就是对的。
+- 新崩溃（字体路径）：`sys_verror` 的 `va_list ap` 被 `vsnprintf` 消费后原样
+  传给 `vfprintf`（UB，fmt 带 %s 时第二个 %s 读垃圾指针）。**vendored libsys4
+  `system.c` 改 `va_copy`**（D521d）。
+- 新崩溃（存档路径）：泛型 struct 数组读档 `alloc_array(AIN_ARRAY_STRUCT, -1)`
+  → 元素 case `strcmp(ain->structures[-1].name)` 崩。savedata.c 修复（D521e）：
+  建页前从存档记录反查结构号（跳过 -1 未设置元素），**建页后**补
+  `page->array.struct_type`——不传给 alloc_array（接口结构体会在 alloc_array
+  走 D136「每元素 2 槽」布局，与存档元素数不匹配 → double free，smoke quick
+  实证）；元素循环另有兜底（页 struc<0 时按记录反查）；反查抽公共 helper
+  `gsave_struct_type_from_record`，D520b 复用。
+- 上屏链路静默断线的两个根因（blit 前置检查拒绝 0x0 + 一行日志都没有）：
+  ① vk 分支提前 return 漏掉 GL 尾部初始化（glew/gl_initialize/gfx_draw_init/
+  `gfx_set_window_logical_size`/全屏/atexit）→ `sdl.w/h` 恒 0、main_surface
+  FBO 没建；② `init_texture` 等三处 D521c guard 残留（vk 模式 handle=0）→
+  sprite 纹理建不出来（Incomplete framebuffer: tex=0）。全部撤销/补齐（D521d）。
+
+**落地判据**（vkway15/16/19）：
+- `[vk] first present 1920x1080 ok`（wayland 与 x11/XWayland 双路径；设备
+  Intel ADL-N 硬件，非 lavapipe）；0 ERROR、0 Incomplete framebuffer、
+  12 场景装载至 SceneTitle、45s 无崩溃。
+- 像素对照：同一存档同一时刻 vk 与 GL 截图字节完全一致（同为开场等待点击
+  的黑屏）——合成内容同源，链路等价。
+- blit 失败不再静默：前置检查/swapchain 获取一次性日志；
+  `XSYS4_VK_BLIT_LOG=1` 千帧心跳。
+
+**遗留**：真实画面点击推进需动真实鼠标（headless Xvfb 无 DRI3 不能 present），
+待用户授权后做「标题画面在 Vulkan 下可读」（P2 判据）。
+
 ### 五、分期计划（Vulkan 跑通探测之后）
 
 | 期 | 内容 | 判据 |
