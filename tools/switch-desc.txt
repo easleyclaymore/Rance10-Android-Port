@@ -272,3 +272,4 @@ XSYS4_INPUT_LAYER_FILTER	[input] 输入层过滤档位：visible（默认，按�
 XSYS4_CALL_ARG_STR_REF	[vm] =0 回退「string 实参按所有权转移」旧行为；默认给 string 实参加引用（修 UniqueArray<string>@Find 的重复 unref）
 XSYS4_FIND_PART	[parts] <子串> 列出所有活动里部件名含该子串的部件（act/name/no），用于按名定位 AIN 的按钮（配合 PARTS_DUMP 只打一次）
 XSYS4_CLICK_AT	[input] <ms>:<parts_no>[,<ms>:<no>...] 启动后按**部件号**注入点击（绕过命中测试/层过滤，走 AIN 委托通道）；战斗操作键 ButtonTurnEnd 等 0x0 命中盒只能这样点
+XSYS4_DGNEW_FUN	[vm 诊断] 配合 XSYS4_DGNEW_DBG，只打印该函数号的 DG_NEW_FROM_METHOD 捕获（obj/fun/ip），过滤掉早期场景噪音

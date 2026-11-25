@@ -1167,9 +1167,16 @@ static void call_trace_probe(int fno, int ret_addr)
 			 *
 			 * csp<=6 时把整条栈打出来：入口调用点必然是栈最浅的那次，
 			 * 递归自调一眼就能分辨。 */
-			NOTICE("[call] #%d %s (%d) ret=0x%zX csp=%d ip=0x%zX",
+			/* [D550] 加 `this=`（新帧的 struct_page）：排查
+			 * 「Exit 设 IsFinish 的对象 ≠ Join 查的对象」时，光有 csp
+			 * 不够——csp 是栈深，两个不同调用链的深度差 9 层也可能
+			 * 指向同一个 this。直接打 this 页号，一眼看出是不是同一个
+			 * SceneStack 实例。 */
+			NOTICE("[call] #%d %s (%d) ret=0x%zX csp=%d ip=0x%zX this=%d",
 			       n, display_sjis0(f->name), fno, ret_addr,
-			       call_stack_ptr, instr_ptr);
+			       call_stack_ptr, instr_ptr,
+			       call_stack_ptr > 0
+				       ? call_stack[call_stack_ptr - 1].struct_page : -1);
 			if (call_stack_ptr <= 6) {
 				for (int j = call_stack_ptr - 1, k = 0; j >= 0 && k < 6; j--, k++) {
 					int cf = call_stack[j].fno;
@@ -7295,8 +7302,19 @@ case SR_ASSIGN: {
 		 * 入口 —— 先确认这两次「建委托」到底发生了没有。 */
 		if (getenv("XSYS4_DGNEW_DBG")) {
 			static int n;
-			if (n++ < 400)
-				NOTICE("[dgnew] obj=%d fun=%d ip=0x%zX", obj, fun, instr_ptr);
+			/* [D550] `XSYS4_DGNEW_FUN=<fno>` 只打指定函数号的捕获：
+			 * 战斗里 DG_NEW_FROM_METHOD 前 400 次全是早期场景的，
+			 * 想看 SceneWaitTime 的 lambda（37621）/Exit 的（36946）
+			 * 必须过滤，否则日志全被噪音占满。 */
+			static int want = -2;
+			if (want == -2)
+				want = getenv("XSYS4_DGNEW_FUN")
+					? atoi(getenv("XSYS4_DGNEW_FUN")) : -1;
+			if (want < 0 || fun == want) {
+				if (n++ < 4000)
+					NOTICE("[dgnew] obj=%d fun=%d ip=0x%zX",
+					       obj, fun, instr_ptr);
+			}
 		}
                 /* [D118] 记住创建者那一帧的局部页，供 X_GETENV 使用 */
                 if (!lambda_parent_slot)
