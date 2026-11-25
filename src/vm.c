@@ -3435,6 +3435,7 @@ void vm_pump_parts_click(void)
 	static int parts_st = -2, onclick_fno = -2;
 	static int tbtn_st = -2, tbtn_lambda = -2;
 	static int lsb_st = -2, lsb_lambda = -2;
+	static int abtn_st = -2;   /* [D548] ActivityButton 结构号 */
 	static bool logged;
 	static int n_dispatch;
 
@@ -3469,6 +3470,14 @@ void vm_pump_parts_click(void)
 		 * 存在 **`this.m3`**，onclick 由 `InitParts` 生成的 lambda 37029
 		 * (`PUSHSTRUCTPAGE 3 REF / PUSHSTRUCTPAGE 0 REF / DG_CALL 1023`) 派发；
 		 * 卡片区域是 m7/m8 两个 `Parts`。 */
+		/* [D548] ActivityButton：AIN 的 `activity::detail::CActivityWrap`
+		 * 包装出来的按钮对象（`m4`=部件号、`m6`=点击委托）。
+		 * 战斗操作键 `ButtonTurnEnd`(900000690)/`ButtonDeffence`(900000692)
+		 * 就是它，由 `BattleSkillSelectorPanel@Init` 的 `GetButton(...)`
+		 * 拿到 —— 派发端原来只认 Parts/TextButton/LSB，它掉进 Parts
+		 * 分支、拿 Parts@OnClick 去调一个非 Parts 结构，点击被静默吞掉
+		 * ⇒ 「回合结束」永远触发不了。 */
+		abtn_st = vm_struct_named("ActivityButton");
 		lsb_st = vm_struct_named("LargeSkillButton");
 		lsb_lambda = vm_fno_named(
 			"LargeSkillButton@<lambda : LargeSkillButton@InitParts()(125, 51)>");
@@ -3487,7 +3496,7 @@ void vm_pump_parts_click(void)
 
 	/* 先把候选槽号抄下来：vm_call 会分配新页，heap 可能重分配。 */
 	int cand[24];
-	int nc = 0, nparts = 0, ntbtn = 0, nlsb = 0;
+	int nc = 0, nparts = 0, ntbtn = 0, nlsb = 0, nabtn = 0;
 
 	/* [D397] XSYS4_DUMP_BTN=1：每次点击派发前把堆里所有 `TextButton`
 	 * 列一遍（部件号 / 委托条数 / 命中盒）。
@@ -3698,6 +3707,26 @@ void vm_pump_parts_click(void)
 				}
 			}
 		}
+		/* B2 组 [D548]：`ActivityButton`（AIN 包装的按钮）。
+		 * 精确按部件号匹配（m4 = parts_no），不看坐标 ——
+		 * 战斗操作键的命中盒实测是 0x0，坐标判据永远不成立。 */
+		if (abtn_st >= 0) {
+			for (size_t i = 1; i < heap_size && nc < 24; i++) {
+				struct page *p = heap[i].page;
+				if (!p || p->type != STRUCT_PAGE ||
+				    p->index != abtn_st || p->nr_vars < 7)
+					continue;
+				if (p->values[4].i != no)
+					continue;
+				if (vm_delegate_count(p->values[6].i) <= 0)
+					continue;
+				cand[nc++] = (int)i;
+				nabtn++;
+			}
+			if (nabtn && getenv("XSYS4_PARTS_EVENT_DBG"))
+				NOTICE("[pev] click=%d -> %d 个 ActivityButton", no, nabtn);
+		}
+
 		/* C 组：`LargeSkillButton`（技能卡）。它不参与引擎命中
 		 * （`bt10` 快照里卡片区 `ck=0 pc=1`），所以**只能按坐标**判断
 		 * 「点在哪个卡里」：取 m7/m8 两个 `Parts` 的命中盒比对。
@@ -3840,6 +3869,7 @@ void vm_pump_parts_click(void)
 			continue;
 		const bool is_tbtn = heap[slot].page->index == tbtn_st;
 		const bool is_lsb = heap[slot].page->index == lsb_st;
+		const bool is_abtn = abtn_st >= 0 && heap[slot].page->index == abtn_st;
 		if (n_dispatch < 40 && getenv("XSYS4_PARTS_EVENT_DBG"))
 			NOTICE("[pev] #%d slot=%d %s", n_dispatch, slot,
 			       is_lsb ? "LargeSkillButton" :
@@ -3849,6 +3879,21 @@ void vm_pump_parts_click(void)
 			vm_call(lsb_lambda, slot);
 		} else if (is_tbtn) {
 			vm_call(tbtn_lambda, slot);
+		} else if (is_abtn) {
+			/* [D548] 调它自己的 m6 委托（`dg[0]`=对象、`dg[1]`=函数）。
+			 * 不 push 坐标：ActivityButton 的委托签名是 ()，由 AIN 侧
+			 * 自己读 `PartsEngine.GetClickPartsNumber` 拿点击号。 */
+			int ds = heap[slot].page->values[6].i;
+			struct page *dg = (ds > 0 && (size_t)ds < heap_size)
+					  ? heap[ds].page : NULL;
+			if (dg && dg->type == DELEGATE_PAGE && dg->nr_vars >= 3) {
+				if (n_dispatch < 40 && getenv("XSYS4_PARTS_EVENT_DBG"))
+					NOTICE("[pev] ActivityButton slot=%d -> dg obj=%d fun=%d",
+					       slot, dg->values[0].i, dg->values[1].i);
+				vm_call(dg->values[1].i, dg->values[0].i);
+			} else if (getenv("XSYS4_PARTS_EVENT_DBG")) {
+				NOTICE("[pev] ActivityButton slot=%d 无 m6 委托", slot);
+			}
 		} else {
 			/* [D346] 角色卡（`BattleCardButton`）的点击链在 AIN 侧断了一环：
 			 * `InitClickTarget` 把 lambda **37013** 注册到卡片 Parts 的 m7，
@@ -7399,6 +7444,59 @@ static unsigned long long pump_mask(void)
 	return vm_pump_mask;
 }
 
+/* [D547] `XSYS4_CLICK_AT=<ms>:<parts_no>[,<ms>:<no>...]`：启动后 <ms>
+ * 毫秒按**部件号**注入一次点击（坐标取该部件 hb 中心）。
+ *
+ * 为什么必须按号而不是按坐标：战斗操作键（`ButtonTurnEnd=900000690`、
+ * `ButtonDeffence=900000692`，由 `BattleSkillSelectorPanel@Init` 的
+ * `GetButton` 查到）在屏幕上被 z 更高的框架件/整屏接收器盖住，按坐标
+ * 点击必被截胡（`[BATTLE-FULL-RUN]` 记过同一件事）。按号派发走
+ * `vm_request_parts_click`，即 AIN 自己的 Parts 委托通道，绕过命中测试
+ * 与层过滤。
+ *
+ * 用途：验证「回合推进」这个 AIN 内部动作链（dr88 已证直接
+ * `AUTO_CALL=24886` 能让 `ProcessPostPlayerTurn`→`StartRound` 跑通，
+ * 本开关则是从**界面按钮**这一侧把同一动作触发起来）。 */
+static void auto_parts_click(void)
+{
+	static int inited, n;
+	static struct { uint32_t at; int no; bool fired; } items[8];
+	if (!inited) {
+		inited = 1;
+		const char *e = getenv("XSYS4_CLICK_AT");
+		if (e && *e) {
+			char buf[512];
+			snprintf(buf, sizeof(buf), "%s", e);
+			for (char *t = strtok(buf, ","); t && n < 8;
+			     t = strtok(NULL, ",")) {
+				char *c = strchr(t, ':');
+				if (!c)
+					continue;
+				*c = 0;
+				items[n].at = (uint32_t)strtoul(t, NULL, 10);
+				items[n].no = atoi(c + 1);
+				items[n].fired = false;
+				n++;
+			}
+		}
+		if (n)
+			NOTICE("[clickat] 装载 %d 条注入计划", n);
+	}
+	if (!n)
+		return;
+	uint32_t now = SDL_GetTicks();
+	for (int i = 0; i < n; i++) {
+		if (items[i].fired || now < items[i].at)
+			continue;
+		items[i].fired = true;
+		/* vm.c 不引 parts.h（保持 Core 层不依赖 parts 内部结构）：
+		 * AIN 的 Parts 委托只认部件号，坐标仅供它自己的日志/热区，
+		 * 传 (0,0) 即可——按号派发本来就不走命中测试。 */
+		NOTICE("[clickat] t=%u no=%d 注入点击", now, items[i].no);
+		vm_request_parts_click(items[i].no, 0, 0);
+	}
+}
+
 void vm_frame_pump(void)
 {
 	/* 动画时钟也必须在这里驱动。当 AIN 在
@@ -7410,6 +7508,7 @@ void vm_frame_pump(void)
 	 * 后者会让已经准备好的精灵失效（D113）。 */
 	static uint32_t last_tick;
 	static bool auto_map_done;
+	auto_parts_click();
 	/* [D307] XSYS4_FN_LIST=<子串>：一次性把名字里含该子串的 AIN 函数
 	 * （函数号 / 代码地址 / 名字）打到日志里。
 	 *

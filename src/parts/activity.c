@@ -1975,6 +1975,16 @@ struct activity_part *activity_find_parts(struct activity *act, const char *part
 int activity_find_parts_no(struct activity *act, const char *parts_name)
 {
 	struct activity_part *p = activity_find_parts(act, parts_name);
+	/* [D546] 底层探针：**所有**按名查部件的路径都经过这里
+	 * （`GetActivityPartsNumber` 只是其中一条，`CActivityWrap@CompParts`
+	 * 走另一条）。上层 `[pe-act]` 日志漏掉的那些查询，靠这条补全。
+	 * 用途：确认 `BattleSkillSelectorPanel@Init` 到底查了哪几个按钮名、
+	 * 结果是多少 —— 「回合结束按钮为什么不工作」的关键证据。
+	 * `XSYS4_PE_DBG=1`。 */
+	if (getenv("XSYS4_PE_DBG") && act && parts_name)
+		NOTICE("[pe-find] act='%s' name='%s' -> %d",
+		       act->name ? act->name : "?", parts_name,
+		       p ? p->parts_no : 0);
 	return p ? p->parts_no : 0;
 }
 
