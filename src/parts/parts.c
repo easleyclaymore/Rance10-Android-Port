@@ -4303,6 +4303,30 @@ bool PE_SetPartsCGDetectionSize(int parts_no, struct string *cg_name, int state)
 	return false;
 }
 
+/* [D526] 部件号游标（PE_GetFreeNumber 的单调递增游标）。快照恢复时
+ * 需要读出来随快照保存、恢复后复位，重建活动的部件号才能与快照一致
+ * （AIN 侧 global 里的部件号引用依赖号稳定）。 */
+static int parts_free_cursor = -1;
+
+static void parts_free_init(void)
+{
+	if (parts_free_cursor >= 0)
+		return;
+	const char *e = getenv("XSYS4_PARTS_NO_BASE");
+	parts_free_cursor = (e && *e) ? atoi(e) : 900000000;
+}
+
+int PE_GetFreeNumberCursor(void)
+{
+	parts_free_init();
+	return parts_free_cursor;
+}
+
+void PE_SetFreeNumberCursor(int n)
+{
+	parts_free_cursor = n;
+}
+
 int PE_GetFreeNumber(void)
 {
 	/* [D161] 起始号是**版本相关**的，不能照抄 Rance 01。
@@ -4318,16 +4342,12 @@ int PE_GetFreeNumber(void)
 	 *
 	 * 注意：改基址后**旧日志里的 100000xxxx 部件号全部作废**，
 	 * 历史文档/脚本里那些号不能再拿去 grep。 */
-	static int first_free = -1;
-	if (first_free < 0) {
-		const char *e = getenv("XSYS4_PARTS_NO_BASE");
-		first_free = (e && *e) ? atoi(e) : 900000000;
-	}
-	while (PE_IsExist(first_free)) {
-		first_free++;
+	parts_free_init();
+	while (PE_IsExist(parts_free_cursor)) {
+		parts_free_cursor++;
 	}
 	// XXX：即使部件没创建成功，这个 ID 也会自增
-	return first_free++;
+	return parts_free_cursor++;
 }
 
 bool PE_IsExist(int parts_no)

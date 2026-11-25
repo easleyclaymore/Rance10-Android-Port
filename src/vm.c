@@ -949,6 +949,36 @@ static void call_trace_probe(int fno, int ret_addr)
 		if (fno == snap_fno && !snap_done) {
 			snap_done = true;
 			int r = vm_save_image(snap_key, snap_path);
+			/* [D526] 侧车文件 `<path>.acts`：部件号游标 + 活动装载序。
+			 * parts 是 C++ 侧状态不进 VM 快照，恢复时靠它重建部件树；
+			 * 游标复位后活动按同序装载，部件号与快照一致（AIN 的
+			 * global 引用依赖号稳定）。 */
+			int nr_acts = -1;
+			char sidecar[1100];
+			if (r) {
+				snprintf(sidecar, sizeof(sidecar), "%s.acts", snap_path);
+				char *full = savedir_path(sidecar);
+				FILE *fp = fopen(full, "w");
+				if (fp) {
+					int cursor = PE_GetFreeNumberCursor();
+					fprintf(fp, "%d\n", cursor);
+					char **names = NULL;
+					nr_acts = activity_collect_names(&names);
+					for (int i = 0; i < nr_acts; i++) {
+						if (names[i]) {
+							fprintf(fp, "%s\n", names[i]);
+							free(names[i]);
+						}
+					}
+					free(names);
+					fclose(fp);
+					NOTICE("[snapshot] sidecar cursor=%d acts=%d -> %s",
+					       cursor, nr_acts, sidecar);
+				} else {
+					WARNING("[snapshot] 写侧车失败: %s", sidecar);
+				}
+				free(full);
+			}
 			NOTICE("[snapshot] fno=%d key='%s' path='%s' -> %d",
 			       fno, snap_key, snap_path, r);
 		}
@@ -7924,6 +7954,66 @@ int vm_execute_ain(struct ain *program)
 			key[klen] = 0;
 			NOTICE("[boot-resume] key='%s' path='%s'", key, colon + 1);
 			vm_load_image(key, colon + 1);
+			/* [D526] 重建 parts：读侧车 `<path>.acts`（游标 + 活动装载序），
+			 * 复位部件号游标后按序 activity_read——部件号与快照一致，
+			 * AIN 继续执行时的 global 部件号引用才有效。
+			 * 无侧车文件时保持旧行为（仅 VM 恢复）。 */
+			{
+				char sidecar[1100];
+				snprintf(sidecar, sizeof(sidecar), "%s.acts", colon + 1);
+				char *full = savedir_path(sidecar);
+				FILE *fp = fopen(full, "r");
+				if (fp) {
+					int cursor = 0;
+					int nr_rebuilt = 0;
+					char line[512];
+					if (fgets(line, sizeof(line), fp)) {
+						cursor = atoi(line);
+						if (cursor > 0) {
+							PE_SetFreeNumberCursor(cursor);
+							NOTICE("[boot-resume] parts cursor -> %d",
+							       cursor);
+						}
+					}
+					while (fgets(line, sizeof(line), fp)) {
+						size_t len = strlen(line);
+						while (len && (line[len-1] == '\n' ||
+						               line[len-1] == '\r'))
+							line[--len] = 0;
+						if (!len)
+							continue;
+						/* file 参数给 asset 查表用：`.acts` 存的是
+						 * act->name（带 `:N` 实例号），asset 名不含
+						 * 实例号，必须剥掉后缀（activity_read 内部
+						 * asset_get_by_name 直接用它查找，实测带
+						 * `:0` 时 rebuilt=0）。name 保留原样，与快照
+						 * 时的 act->name 一致。 */
+						char base[512];
+						size_t blen = len < sizeof(base) - 1
+							? len : sizeof(base) - 1;
+						memcpy(base, line, blen);
+						base[blen] = 0;
+						char *suf = strrchr(base, ':');
+						if (suf && suf[1] >= '0' && suf[1] <= '9')
+							*suf = 0;
+						struct string *nm =
+							make_string(line, len);
+						struct string *fl =
+							make_string(base, strlen(base));
+						if (activity_read(nm, fl))
+							nr_rebuilt++;
+						free_string(nm);
+						free_string(fl);
+					}
+					fclose(fp);
+					NOTICE("[boot-resume] parts rebuilt: %d activities",
+					       nr_rebuilt);
+				} else {
+					NOTICE("[boot-resume] 无侧车 %s，仅恢复 VM",
+					       sidecar);
+				}
+				free(full);
+			}
 			/* [D523] 恢复后 instr_ptr/调用栈已是快照点：直接进执行
 			 * 循环从快照指令继续。**不能**再走 vm_call(main)——
 			 * 它会把 instr_ptr 重置到 main 入口（实测 resume7：

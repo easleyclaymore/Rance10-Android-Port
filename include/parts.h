@@ -498,6 +498,10 @@ bool activity_exists(const char *name);
 struct activity *activity_get(const char *name);
 struct activity *activity_create(const char *name);
 bool activity_read(struct string *name, struct string *file);
+/* [D526] 检查点恢复：部件号游标读写 + 按装载顺序导出活动名 */
+int PE_GetFreeNumberCursor(void);
+void PE_SetFreeNumberCursor(int n);
+int activity_collect_names(char ***out);
 bool activity_release(const char *name);
 /* [D270] 带 EraseNumberList 出参的版本：把被释放部件的委托下标写回
  * AIN，让它从消息分发表里销掉。`activity_release(name)` 等价于

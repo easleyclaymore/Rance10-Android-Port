@@ -2297,6 +2297,21 @@ bool activity_read(struct string *name, struct string *file)
 	return true;
 }
 
+/* [D526] 检查点恢复：按**装载顺序**导出现有活动名（activity_list 是头插，
+ * 逆置后即装载序）。调用方负责逐个 free。返回个数。 */
+int activity_collect_names(char ***out)
+{
+	int n = 0;
+	for (struct activity *a = activity_list; a; a = a->next)
+		n++;
+	char **names = xcalloc(n > 0 ? n : 1, sizeof(char *));
+	int i = n;
+	for (struct activity *a = activity_list; a; a = a->next)
+		names[--i] = a->name ? strdup(a->name) : NULL;
+	*out = names;
+	return n;
+}
+
 struct activity *activity_create(const char *name)
 {
 	struct activity *act = find_activity(name);
