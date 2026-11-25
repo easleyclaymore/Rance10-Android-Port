@@ -19,6 +19,7 @@
 
 | ID | 位置 | 现象 | 清偿条件 |
 |---|---|---|---|
+| `[QUEST-SELECT-PARTY]` | `SceneQuestSelect@OnClickParty`(23929) 一族 | **用户实测原版指认的缺口**：剧情→战斗之间有「多个角色登场」+「领取参与战斗的角色卡」交互，而现有全部跑测配方（AUTO_MAP 直调 + skip 快进 + chain1/2）从未走过 `OnClickParty`——SceneParty/领卡在真实流程下 0 次触发，战斗一直用初始默认编队在验证。历史 D154/D180 时代仅用后门配方验证过编队界面可进、卡片可两击编入 | **debut1 实证（d830，CALL_TRACE 16 函数宽网）**：AUTO_MAP+skip 配方下 `OnClickParty`(23929)/`SceneQuestSelect@Run`(23923)/`OnRClick`(24290)/`OnClickCard`(24300)/`AddCard`(24317)/`RemoveCard`(24315)/`PartyCardGroup@Init`(24236)/`OrganizationCardView@Init`(24156) **全部 0 命中**，而武将登録链在跑（28892=6、27687=4、26470=3）——整条编队/领卡链从未触发，战斗用初始默认编队在验证。**下一步**：真实流程（无 AUTO_MAP）到 SceneQuestSelect，PARTS_DUMP 找 Party 入口坐标 → 点入编队验证领卡链。判据：真实流程下 `OnClickParty` 命中、卡片编入后 `Party._Leaders` 变化、战斗技能列表反映编队 |
 | `[VM-ERROR-HANG]` | boot 期 `vm_stack_trace()` | boot 期 VM_ERROR **既不打印也不退出**（D498：group 失配假死 >240s 即此机制），任何 boot 期新路径踩到 VM_ERROR 都是无声卡死 | 复现后 gdb 抓 `vm_stack_trace()` 对空调用栈的行为，改成「boot 期也打印并 exit」。判据：boot 期 VM_ERROR 可见且进程退出 |
 | `[STRUCT-LAYOUT]` | `method_call` + `alloc_struct` | D135/D145/D154 修完后 `this=1` 与委托帧漂移不再出现；`XSYS4_STRICT_REF=1` 尚未做整体回归 | 编队路径稳定后跑一次 `XSYS4_STRICT_REF=1` 全量回归，再清账 |
 | `[BAD-SLOT-REF]` | `Array.Find` 谓词族 → `heap_unref` | 垃圾槽号 `821768443 = 0x30FB30FB`（两个 UTF-16 `・`）= **字符串内容被当槽号**（类型混淆）。D313 消除了一个来源（Find 按槽遍历接口数组），原复现场景未重跑，债不结 | `XSYS4_DF_FREE_DBG=1 XSYS4_ARR_DBG=1` 抓写入点；判据：能复现该值被写入的指令地址/槽号 |
