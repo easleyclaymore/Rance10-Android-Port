@@ -10,7 +10,8 @@
 # 这两个参数是**每条子命令都要带**的全局选项，且必须跟在子命令后面，
 # 所以这层包装负责把它插到 "<组> <动作>" 之后。
 #
-# 安装（不在本仓库内，只在开发机上）：
+# 安装（不在本仓库内、不进 git：放在工作区 `<workspace>/tools-ext/alice-tools`，
+# 与工作区一起备份迁移；旧位置 $HOME/tools 仍兼容）：
 #   git clone --recurse-submodules https://github.com/nunuhara/alice-tools
 #   env -u PYTHONPATH -u PYTHONHOME meson setup build && ninja -C build
 # 依赖：bison flex meson libpng libjpeg-turbo libwebp zlib（Arch 上全部现成）。
@@ -25,8 +26,25 @@
 # 与自家 tools/bin/* 的分工见同目录 README.md。
 set -u
 
-# [D171] 原来写死 /home/easley/... —— 换台机器就找不到。用 $HOME，并允许 ALICE_BIN 覆盖。
-ALICE="${ALICE_BIN:-$HOME/tools/alice-tools/build/src/alice}"
+# [D171] 原来写死 /home/easley/... —— 换台机器就找不到。改为按候选列表探测，
+#        并允许 ALICE_BIN 覆盖。
+# [D524] 候选 1 = 工作区 `<workspace>/tools-ext/alice-tools`（本机现行布局：
+#        alice-tools 与工作区一起备份/迁移，不进任何 git 仓库）；
+#        候选 2 = 旧的 `$HOME/tools/alice-tools`（兼容其它机器/旧文档）。
+_default_alice() {
+    local here ws cand
+    here="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+    # offline -> tools -> xsystem4-sdl3 -> Rance10_Port -> 工作区根
+    ws="$(cd "$here/../../../.." 2>/dev/null && pwd)"
+    for cand in \
+        "$ws/tools-ext/alice-tools/build/src/alice" \
+        "$HOME/tools/alice-tools/build/src/alice"
+    do
+        [ -n "$cand" ] && [ -x "$cand" ] && { printf '%s\n' "$cand"; return; }
+    done
+    printf '%s\n' "$HOME/tools/alice-tools/build/src/alice"
+}
+ALICE="${ALICE_BIN:-$(_default_alice)}"
 if [ ! -x "$ALICE" ]; then
     echo "找不到 alice：$ALICE" >&2
     echo "用 ALICE_BIN=<path> 指定，或按本脚本头部注释构建 alice-tools" >&2

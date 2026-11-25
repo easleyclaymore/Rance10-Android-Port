@@ -39,7 +39,7 @@ tools/
 ├── offline/             ← 离线辅助（不在构建链里）
 │   ├── afa_ls.py            列 .afa 压缩包条目（GBK 感知）
 │   ├── pactex_dump.py       dump .pactex 全字段
-│   └── alice.sh             包装外部 alice-tools，固定 GBK 编码参数
+│   └── alice.sh             包装外部 alice-tools（<工作区>/tools-ext/，不进 git），固定 GBK 编码参数
 ├── bin/                 ← 离线工具产物（已 gitignore）
 ├── dev/                 ← 开发辅助（不参与构建/跑测）
 │   ├── ain_arity_check.py    批量校验 AIN 函数 arity
