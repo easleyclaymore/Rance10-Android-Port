@@ -263,3 +263,6 @@ XSYS4_PARTS_NO_BASE	[parts] 部件号分配基址（默认 900000000；仅调试
 XSYS4_RESUME_SHOW_ALL	[D533 检查点跑测] =0 恢复快照时忠实还原图层 show 位（默认全开：快照点战斗层 show=0，AIN 恢复后不会重开，导致全部 vis=0）
 XSYS4_CAP_DEEP	[input] =1 按下沿逐候选深探针：每个命中光标的部件的 elig/cons/hov/type/z（[capd]），查「谁吃掉了 click_consumed」
 XSYS4_CLICK_LATCH	[input 实验] =1 点击号保留到被 GetClickNumber 读走（默认关：A/B 实测会让 CLICKED 从 5 掉到 1）
+XSYS4_CAP_WIRE	[input] =1 鼠标按下/抬起全链探针：DOWN（谁捕获）、UP（me/down/match/hov）、RESET（释放清零）
+XSYS4_PREV_ALWAYS	[input] =0 回退「prev_clicking 只在 AIN 输入窗口内更新」旧行为；默认跟随真实按下/抬起（修 WaitForClick 自旋期间释放沿丢失）
+XSYS4_CLICK_PREFER	[input] =0 回退「ck=1 优先」：默认光标下有 点击許可=1 的部件时，ck=0 的全屏接收器在 hover 与捕获上让位（战斗技能按钮被整屏件截胡）

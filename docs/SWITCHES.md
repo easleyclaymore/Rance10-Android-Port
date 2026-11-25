@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **306** 个开关，其中 **0** 个没有就近注释。
+共 **309** 个开关，其中 **0** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -46,7 +46,7 @@
 | 容器与内存 | `XSYS4_DGNEW_DBG` | `src/vm.c:7198` | [诊断] 打印每次 `DG_NEW_FROM_METHOD` 的 (obj, fun, ip)。判「某个事件委托到底有没有被建出来」（D325） |
 | 容器与内存 | `XSYS4_DGPLUSA_DBG` | `src/vm.c:7110` | 〔摘〕[D119 探针] 看看到底是哪张委托页收到了 OK/Cancel 两段 lambda |
 | 容器与内存 | `XSYS4_DGPLUSA_MAX` | `src/vm.c:7114` | 〔摘〕前 400 条会被 startup 的 CParts@Attach 占满。 |
-| 容器与内存 | `XSYS4_DG_ALPHA_NO_GATE` | `src/parts/input.c:640` | [D522e A/B 回退] =1 恢复 D498 无条件 delegate 捕获（默认：挂回调且 alpha>0 才捕获，修 a=0 隐形窗吃点击） |
+| 容器与内存 | `XSYS4_DG_ALPHA_NO_GATE` | `src/parts/input.c:673` | [D522e A/B 回退] =1 恢复 D498 无条件 delegate 捕获（默认：挂回调且 alpha>0 才捕获，修 a=0 隐形窗吃点击） |
 | 容器与内存 | `XSYS4_DG_APPEND_DBG` | `src/page.c:1087` | [诊断] 委托追加/丢弃各打一条（obj/fun/dst_nr）。用来分辨「没注册」和「注册被静默丢掉」 |
 | 容器与内存 | `XSYS4_DG_ASSIGN_DBG` | `src/vm.c:7038` | 委托赋值诊断 |
 | 容器与内存 | `XSYS4_DG_ASSIGN_NULLALLOC` | `src/vm.c:7079` | `=1` 让 `DG_ASSIGN` 在目标为空槽时分配新页并写回成员（D324 的 A/B，**已证伪**，默认关） |
@@ -62,7 +62,7 @@
 | 容器与内存 | `XSYS4_DG_PAGE_DBG` | `src/vm.c:1965` | 委托页生命周期诊断 |
 | 容器与内存 | `XSYS4_MEM_STAT` | `src/vm.c:7494` | 堆内存与 RSS 实时统计 |
 | 呈现与输入 | `XSYS4_ACTIVE_CTRL_SET` | `src/parts/parts.c:4883` | `=0` 把 `PartsEngine.SetActiveController` 退回空实现（D312 前行为）。默认真设置活动层 |
-| 呈现与输入 | `XSYS4_ACTIVE_PARTS` | `src/parts/input.c:123` | [诊断] `PartsEngine.GetActiveParts` 返回光标指向的部件（默认开，D309）。`=0` 回退到旧桩（恒 0） |
+| 呈现与输入 | `XSYS4_ACTIVE_PARTS` | `src/parts/input.c:134` | [诊断] `PartsEngine.GetActiveParts` 返回光标指向的部件（默认开，D309）。`=0` 回退到旧桩（恒 0） |
 | 呈现与输入 | `XSYS4_ACT_BUILD_DBG` | `src/parts/activity.c:1731` | [诊断] 打印每个 activity 部件的 `no/name/parent/type`（前 3000 条）。用来把运行时部件号对号到 XML 里的名字，例如 `900000397 = ButtonDeffence` |
 | 呈现与输入 | `XSYS4_ACT_CLICKABLE_ALL` | `src/parts/activity.c:1385` | 把所有**活动文件里声明**的部件标为可点（运行时建的 900000xxx 不受影响） |
 | 呈现与输入 | `XSYS4_ACT_DBG` | `src/parts/activity.c:957` | 活动装载与点击派发诊断 |
@@ -72,24 +72,25 @@
 | 呈现与输入 | `XSYS4_ACT_RELEASE_DGLIST` | `src/parts/activity.c:1909` | [D270 已转正] ReleaseActivity 的 EraseNumberList 出参不再丢弃：把被释放部件的 delegate_index 写回 AIN，供 CPartsMessageManager@ReleaseFunctionSetList 销掉消息分发表里的委托（否则释放后的委托仍可命中，号复用时调到上一次活动的处理器）；默认生效，=0 回退做 A/B |
 | 呈现与输入 | `XSYS4_ACT_RELEASE_DGLIST_DBG` | `src/parts/activity.c:1898` | [诊断] 打印每次 ReleaseActivity 释放的活动名、部件数与实际写回 EraseNumberList 的委托下标个数；用来证明 D270 的修复不是死代码（个数恒 0 就说明出参本来没被 AIN 用） |
 | 呈现与输入 | `XSYS4_ACT_STEP` | `src/vm.c:1389` | 〔摘〕十几个，TextButton 等也是「活动」）。 |
-| 呈现与输入 | `XSYS4_CLICK_ANY` | `src/parts/input.c:706` | [诊断/已证否] 点击捕获改为「非 flat 一律可捕获」。实测 EndInput 直接变 0（无效部件先消费点击）——保留仅作反例 |
-| 呈现与输入 | `XSYS4_CLICK_BUBBLE` | `src/parts/input.c:609` | [诊断/已证否] 子部件被点时向父链再发一份 CLICK。s98 实测对面板关闭无效（12 次点击仍只 1 次捕获），说明断点是捕获而非冒泡 |
-| 呈现与输入 | `XSYS4_CLICK_FLOW` | `src/parts/input.c:573` | 〔摘〕「点击号被读到之前是不是已经被 EndInput 清掉了」。 |
-| 呈现与输入 | `XSYS4_CLICK_LATCH` | `src/parts/input.c:99` | [input 实验] =1 点击号保留到被 GetClickNumber 读走（默认关：A/B 实测会让 CLICKED 从 5 掉到 1） |
-| 呈现与输入 | `XSYS4_CLICK_NEEDS_SHAPE` | `src/parts/input.c:420` | [D338 默认生效，=0 关闭] 让「画不出像素」的部件退出 hover 拦截与点击捕获（w/h<=0 / PARTS_UNINITIALIZED / 铺满全屏的 PARTS_LAYOUT_BOX）。转正依据：bt30/bt31 下第一章照常到战斗，点角色卡能落到真正按钮件上，AIN 随即弹出技能选择列表。注意只排除**全屏**布局盒——一刀切排除布局盒会让选项按钮失效（bt23 进不了战斗） |
-| 呈现与输入 | `XSYS4_CLICK_ONLY_CLICKABLE` | `src/parts/input.c:454` | [诊断] 点击捕获与 hover 消费都只认「点击許可=1」。这是唯一让 EndInput 恢复正常的判据（点到整屏点击层 700/701） |
-| 呈现与输入 | `XSYS4_CLICK_PASS` | `src/parts/input.c:458` | [诊断/已证否] 把「光标选中透過=1」当正向判据。实测 314(1920x693) 抢在技能按钮前，EndInput 变 0 |
+| 呈现与输入 | `XSYS4_CLICK_ANY` | `src/parts/input.c:739` | [诊断/已证否] 点击捕获改为「非 flat 一律可捕获」。实测 EndInput 直接变 0（无效部件先消费点击）——保留仅作反例 |
+| 呈现与输入 | `XSYS4_CLICK_BUBBLE` | `src/parts/input.c:642` | [诊断/已证否] 子部件被点时向父链再发一份 CLICK。s98 实测对面板关闭无效（12 次点击仍只 1 次捕获），说明断点是捕获而非冒泡 |
+| 呈现与输入 | `XSYS4_CLICK_FLOW` | `src/parts/input.c:606` | 〔摘〕「点击号被读到之前是不是已经被 EndInput 清掉了」。 |
+| 呈现与输入 | `XSYS4_CLICK_LATCH` | `src/parts/input.c:110` | [input 实验] =1 点击号保留到被 GetClickNumber 读走（默认关：A/B 实测会让 CLICKED 从 5 掉到 1） |
+| 呈现与输入 | `XSYS4_CLICK_NEEDS_SHAPE` | `src/parts/input.c:432` | [D338 默认生效，=0 关闭] 让「画不出像素」的部件退出 hover 拦截与点击捕获（w/h<=0 / PARTS_UNINITIALIZED / 铺满全屏的 PARTS_LAYOUT_BOX）。转正依据：bt30/bt31 下第一章照常到战斗，点角色卡能落到真正按钮件上，AIN 随即弹出技能选择列表。注意只排除**全屏**布局盒——一刀切排除布局盒会让选项按钮失效（bt23 进不了战斗） |
+| 呈现与输入 | `XSYS4_CLICK_ONLY_CLICKABLE` | `src/parts/input.c:466` | [诊断] 点击捕获与 hover 消费都只认「点击許可=1」。这是唯一让 EndInput 恢复正常的判据（点到整屏点击层 700/701） |
+| 呈现与输入 | `XSYS4_CLICK_PASS` | `src/parts/input.c:470` | [诊断/已证否] 把「光标选中透過=1」当正向判据。实测 314(1920x693) 抢在技能按钮前，EndInput 变 0 |
+| 呈现与输入 | `XSYS4_CLICK_PREFER` | `src/parts/input.c:96` | [input] =0 回退「ck=1 优先」：默认光标下有 点击許可=1 的部件时，ck=0 的全屏接收器在 hover 与捕获上让位（战斗技能按钮被整屏件截胡） |
 | 呈现与输入 | `XSYS4_CLICK_RETARGET` | `src/parts/message.c:86` | 点击被遮挡后重定向到下层部件 |
-| 呈现与输入 | `XSYS4_CLICK_SKIP_FLAT` | `src/parts/input.c:464` | [诊断] flat 类型部件不参与点击捕获。战斗里全屏背景 flat 705 的 hb 覆盖整屏、gz 置顶、pass=0，会把技能按钮的点击全部截胡；flat 在原版是「平面图形/演出层」，按钮是 按钮(0) 或 CG |
-| 呈现与输入 | `XSYS4_CLICK_SKIP_FULLSCREEN` | `src/parts/input.c:469` | [诊断] 把「hb 覆盖整个视图」的部件排除出点击捕获与 hover 消费。依据：真按钮不会铺满整屏，而演出/背景/整屏点击层会；s93 实测能让点击落到 `ButtonDeffence`(900000397) |
-| 呈现与输入 | `XSYS4_CLICK_SKIP_INVISIBLE` | `src/parts/input.c:489` | [诊断] 把 `global.alpha<=0`（完全透明、一个像素不画）的部件排除出 hover 消费与点击捕获。依据是 `parts_is_visible()` 不检查 alpha，导致全屏 flat `900000705`（a=0、z 比接收器还高）总先吞点击；d301 实测三次点击全落它 | |
-| 呈现与输入 | `XSYS4_CLICK_SKIP_NONCLICKABLE` | `src/parts/input.c:684` | [诊断] 跑测专用：`clickable=0` 的部件不参与点击捕获（回到 D113 之前的行为）。用来验证「全屏背景 flat 705 截胡技能按钮点击」这一条；默认关，开始画面这类「点击任意处继续」的场景开了会卡住 |
+| 呈现与输入 | `XSYS4_CLICK_SKIP_FLAT` | `src/parts/input.c:476` | [诊断] flat 类型部件不参与点击捕获。战斗里全屏背景 flat 705 的 hb 覆盖整屏、gz 置顶、pass=0，会把技能按钮的点击全部截胡；flat 在原版是「平面图形/演出层」，按钮是 按钮(0) 或 CG |
+| 呈现与输入 | `XSYS4_CLICK_SKIP_FULLSCREEN` | `src/parts/input.c:481` | [诊断] 把「hb 覆盖整个视图」的部件排除出点击捕获与 hover 消费。依据：真按钮不会铺满整屏，而演出/背景/整屏点击层会；s93 实测能让点击落到 `ButtonDeffence`(900000397) |
+| 呈现与输入 | `XSYS4_CLICK_SKIP_INVISIBLE` | `src/parts/input.c:501` | [诊断] 把 `global.alpha<=0`（完全透明、一个像素不画）的部件排除出 hover 消费与点击捕获。依据是 `parts_is_visible()` 不检查 alpha，导致全屏 flat `900000705`（a=0、z 比接收器还高）总先吞点击；d301 实测三次点击全落它 | |
+| 呈现与输入 | `XSYS4_CLICK_SKIP_NONCLICKABLE` | `src/parts/input.c:717` | [诊断] 跑测专用：`clickable=0` 的部件不参与点击捕获（回到 D113 之前的行为）。用来验证「全屏背景 flat 705 截胡技能按钮点击」这一条；默认关，开始画面这类「点击任意处继续」的场景开了会卡住 |
 | 呈现与输入 | `XSYS4_CTRL_ACTIVE_RESTORE` | `src/parts/parts.c:4936` | `=1` `EraseLayer` 后把活动层恢复到**建层前那一层**；默认回栈顶（上游语义）。D316 的 A/B，实测不改变 [BG-LAYER] 结果 |
 | 呈现与输入 | `XSYS4_CTRL_DBG` | `src/parts/parts.c:2135` | controller 栈、视觉地板（cover_layer）、hide/remove 事件 |
 | 呈现与输入 | `XSYS4_CTRL_PENDING` | `src/parts/parts.c:4825` | [D289] 默认开。`Activity@Load` 建出的部件归到「即将由 AddLayer 创建的那一层」，而不是当前 active。AIN 的顺序是 Load→AddLayer，旧行为让部件全落在上一层，之后按新层 ID 的 EraseLayer 必然 `released=0`（旧场景部件永久残留，标题 Logo 跟到战斗里吃点击）。设 0 回退旧行为做 A/B |
-| 呈现与输入 | `XSYS4_INPUT_ACTIVE_LAYER` | `src/parts/input.c:234` | 〔摘〕注意：`PARTS_CONTROLLER_SYSTEM_OVERLAY` 是引擎自己的覆盖层，永远参与。 |
-| 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:982` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
-| 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:664` | 输入命中的候选部件表与点击状态（每 60 帧一条心跳，非沉默） |
+| 呈现与输入 | `XSYS4_INPUT_ACTIVE_LAYER` | `src/parts/input.c:245` | 〔摘〕注意：`PARTS_CONTROLLER_SYSTEM_OVERLAY` 是引擎自己的覆盖层，永远参与。 |
+| 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:1021` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
+| 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:697` | 输入命中的候选部件表与点击状态（每 60 帧一条心跳，非沉默） |
 | 呈现与输入 | `XSYS4_INPUT_GATE` | `src/parts/input.c:43` | =1 恢复旧输入门：只有 AIN BeginInput 窗口内才处理按下沿（默认 0=等价原版，恒开）。菜单界面 AIN 不开窗口，开旧门会让点击全被吞 |
 | 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:2295` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
 | 呈现与输入 | `XSYS4_PARTS_DUMP_MAX` | `src/parts/parts.c:4776` | parts dump 的条数上限（默认 400）。部件太多时调小，只看前 N 个 |
@@ -131,8 +132,9 @@
 | 其它 | `XSYS4_BG_SWEEP_MAP` | `src/parts/parts.c:2594` | `=0` 关闭「根级 `背景／*` 换图时收起同层 `地图／*` 覆盖件的根」。默认开（D317，[BG-LAYER] 的收敛） |
 | 其它 | `XSYS4_BOOT_RESUME` | `src/vm.c:7975` | [D523 检查点跑测] <key>:<path> VM 全量快照 boot 期恢复（vm_load_image 后直接进执行循环，从快照指令继续；跳过标题/剧情） |
 | 其它 | `XSYS4_CAPTION` | `src/parts/activity.c:1145` | =0 关掉「非 TEXT 件的 EX 文本当标签画」（单选组选项标签，D514）。某界面出现多余文字时回退 |
-| 其它 | `XSYS4_CAP_DBG` | `src/parts/input.c:350` | [诊断] 点击捕获归因：只在「按下那一帧、且命中盒覆盖光标」时打印每个部件的 vis/show/ck/pc/hover-consumed/began，用来判「为什么没人拿到 click_down_parts」（D332） |
-| 其它 | `XSYS4_CAP_DEEP` | `src/parts/input.c:779` | [input] =1 按下沿逐候选深探针：每个命中光标的部件的 elig/cons/hov/type/z（[capd]），查「谁吃掉了 click_consumed」 |
+| 其它 | `XSYS4_CAP_DBG` | `src/parts/input.c:362` | [诊断] 点击捕获归因：只在「按下那一帧、且命中盒覆盖光标」时打印每个部件的 vis/show/ck/pc/hover-consumed/began，用来判「为什么没人拿到 click_down_parts」（D332） |
+| 其它 | `XSYS4_CAP_DEEP` | `src/parts/input.c:815` | [input] =1 按下沿逐候选深探针：每个命中光标的部件的 elig/cons/hov/type/z（[capd]），查「谁吃掉了 click_consumed」 |
+| 其它 | `XSYS4_CAP_WIRE` | `src/parts/input.c:592` | [input] =1 鼠标按下/抬起全链探针：DOWN（谁捕获）、UP（me/down/match/hov）、RESET（释放清零） |
 | 其它 | `XSYS4_CB_DBG` | `src/parts/parts.c:3518` | [取证] SetCheckBoxSize 族调用探针（[cb]）。3D 页 checkbox 构造链定位用 |
 | 其它 | `XSYS4_CB_INIT_DBG` | `src/parts/activity.c:1398` | [取证] 复选框建部件时的 选择状态/实际勾选态（[cb-init]） |
 | 其它 | `XSYS4_CB_NO_GATE` | `src/parts/parts.c:331` | [D517r A/B 回退] =1 关掉 checkbox 的 click_pending 保护门（Begin 推送不再跳过刚点过的部件），复现全屏生效链死循环用 |
@@ -159,7 +161,7 @@
 | 其它 | `XSYS4_DUMP_FRAME` | `src/video.c:720` | 指定帧的完整快照（配合 DUMP_AT 的扩展模式） |
 | 其它 | `XSYS4_DUMP_GLYPH` | `src/parts/render.c:300` | [诊断] 把指定文本部件的字形纹理逐个转存成 /tmp/glyph_<no>_<i>.png（最多 6 个）。判断「字被裁」是位图层还是绘制层的唯一硬证据 |
 | 其它 | `XSYS4_DUMP_TOPS` | `src/vm.c:4766` | 〔摘〕「条件是真是假」，而这类「条件永远为假」正是最难查的一类。 |
-| 其它 | `XSYS4_EIP_GATE` | `src/parts/input.c:206` | SetEnableInputProcess 门控总闸；=0 回退到"输入组件不门控"（D496） |
+| 其它 | `XSYS4_EIP_GATE` | `src/parts/input.c:217` | SetEnableInputProcess 门控总闸；=0 回退到"输入组件不门控"（D496） |
 | 其它 | `XSYS4_ENV_DBG` | `src/vm.c:5349` | 〔摘〕同一边（实测 `KeyValueMap@Find` 的 lambda 恒返回 -1）。 |
 | 其它 | `XSYS4_EXIST_SAVE_GAMEDIR` | `src/hll/system.c:108` | [回退] =0 禁用 ExistSaveFile 的游戏目录兜底（配置文件读回依赖它） |
 | 其它 | `XSYS4_EXIT_DBG` | `src/vm.c:8178` | 〔摘〕走完了。 |
@@ -217,7 +219,7 @@
 | 其它 | `XSYS4_IFACE_PUSH_DBG` | `src/hll/Array.c:1165` | 〔摘〕若这里从不出现，说明该数组不是 Array.PushBack 建的。 |
 | 其它 | `XSYS4_IFACE_REALLOC_FIX` | `src/page.c:635` | 〔摘〕XSYS4_IFACE_REALLOC_FIX=1 可打开对称布局做实验。 |
 | 其它 | `XSYS4_IP_WATCH` | `src/vm.c:5202` | 监视指令指针，抓"跑到不该跑的地方" |
-| 其它 | `XSYS4_KEYCODE_PROBE` | `src/parts/input.c:137` | 打印收到的原始键码 |
+| 其它 | `XSYS4_KEYCODE_PROBE` | `src/parts/input.c:148` | 打印收到的原始键码 |
 | 其它 | `XSYS4_KEY_DBG` | `src/hll/SACT2.c:852` | 〔摘〕key_state 就永远是 false，游戏会一直等下去。 |
 | 其它 | `XSYS4_LAYER_DBG` | `src/vm.c:3369` | 〔摘〕而不是「派发成功那一刻」（菜单打开那次点击的采样点会落在建层之前）。 |
 | 其它 | `XSYS4_LAYER_IDX` | `src/parts/parts.c:4816` | `=1` 层身份改用**栈下标**（上游语义）；默认用稳定 id（D129）。两种口径的 AddController 返回值 / SetActive / Remove / GetActive 一起切（D316） |
@@ -266,6 +268,7 @@
 | 其它 | `XSYS4_PQ_DBG` | `src/parts/activity.c:2049` | [取证] 3D 预览参数同步探针（[pq] mode/fog/edge/dof/glow + 按名查到的部件号） |
 | 其它 | `XSYS4_PRED_BOUND` | `src/hll/Array.c:694` | =0 关闭 Array Predicate 的越界保护（回退用）；默认开启，防止 Predicate 越过数组末尾 |
 | 其它 | `XSYS4_PRED_DBG` | `src/hll/Array.c:665` | 〔摘〕以及它是否随元素变化（恒定 = 约定不对，搜索永远走同一边）。 |
+| 其它 | `XSYS4_PREV_ALWAYS` | `src/parts/input.c:1204` | [input] =0 回退「prev_clicking 只在 AIN 输入窗口内更新」旧行为；默认跟随真实按下/抬起（修 WaitForClick 自旋期间释放沿丢失） |
 | 其它 | `XSYS4_PUMP_MASK` | `src/vm.c:7342` | 帧泵的指令间隔掩码（默认 0x3F=每 64 条指令检查一次时钟）。调小更细但更慢，A/B 帧率用 |
 | 其它 | `XSYS4_RA_DBG` | `src/vm.c:5518` | 定点探针：在 ip 0x408f00-0x408f40 打印 R_ASSIGN 的源/目标页现场（D 系列调查残留） |
 | 其它 | `XSYS4_RECYCLE_SLOTS` | `src/heap.c:199` | 复用已释放的堆槽（默认关） |

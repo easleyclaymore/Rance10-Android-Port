@@ -88,6 +88,17 @@ static int click_down_parts = 0;
  * 这就是 `[CLICK-FLAKY]`「点十次中三次」的机制。
  * latch 后点击保留到被读取为止，消费仍是一次性的（读走即清），
  * 不会跨窗口重复触发。`XSYS4_CLICK_LATCH=0` 回退旧行为。 */
+/* [D538] ck=1 优先让位的开关（`XSYS4_CLICK_PREFER=0` 回退）。 */
+static bool prefer_enabled(void)
+{
+	static int on = -1;
+	if (on < 0) {
+		const char *e = getenv("XSYS4_CLICK_PREFER");
+		on = (e && !strcmp(e, "0")) ? 0 : 1;
+	}
+	return on != 0;
+}
+
 static bool click_latch(void)
 {
 	static int on = -1;
@@ -338,7 +349,8 @@ static int d500_parent_no(const struct parts *p)
 }
 
 static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clicking,
-		int passed_time, bool *hover_consumed, bool *click_consumed)
+		int passed_time, bool *hover_consumed, bool *click_consumed,
+		int prefer_no)
 {
 	/* [D331] 点击捕获归因探针（`XSYS4_CAP_DBG=1`）。
 	 *
@@ -489,6 +501,18 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	if (getenv("XSYS4_CLICK_SKIP_INVISIBLE") && parts->global.alpha <= 0) {
 		hover_blocking = false;
 	}
+	/* [D538] **ck=1 的按钮命中光标时，ck=0 的件在 hover 上让位**。
+	 *
+	 * 依据（dr49/dr50，战斗）：置顶整屏接收器 `900001000`
+	 * （`gz=1<<30+1125`、`ck=0`、`pc=0`、`di=818`）在玩家回合仍在最上层，
+	 * 点击全被它吃掉（21/21），下方 `LargeSkillButton 900000799`（`ck=1`）
+	 * 一次都拿不到；跳过全屏件后点击立刻落到 799、AIN 打开技能面板
+	 * （`SmallSkillButtonAtk`/`SkillPanelButton` 装载）。
+	 * 原版语义：`点击許可=1` 才是按钮，`ck=0` 的整屏件不该抢按钮的点击。
+	 * hover 与捕获必须成对让位（D261 的教训），否则 ck=0 的件先吃
+	 * `hover_consumed`，后面的按钮连 `is_hovered` 都拿不到。 */
+	if (prefer_no > 0 && !parts->clickable && parts->no != prefer_no)
+		hover_blocking = false;
 	/* [D496] 输入组件被 AIN 关掉输入处理时不拦光标（与 click_eligible
 	 * 的门控成对——D261 的教训：判据必须成对改）。 */
 	if (parts_input_disabled(parts))
@@ -565,6 +589,15 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	 *
 	 * 只对「自己就是被按下的那个部件」生效（`click_down_parts == parts->no`），
 	 * 其余部件调用它一律直接返回，所以放在最前面是安全的。 */
+	if (getenv("XSYS4_CAP_WIRE") && prev_clicking && !cur_clicking) {
+		Rectangle whb = parts_hitbox_at(parts, PARTS_STATE_DEFAULT);
+		if (cur_pos.x >= whb.x && cur_pos.x < whb.x + whb.w &&
+		    cur_pos.y >= whb.y && cur_pos.y < whb.y + whb.h)
+			NOTICE("[capw] UP me=%d down=%d match=%d hov=%d",
+			       parts->no, click_down_parts,
+			       click_down_parts == parts->no ? 1 : 0,
+			       is_hovered ? 1 : 0);
+	}
 	if (prev_clicking && !cur_clicking && click_down_parts == parts->no) {
 		clicked_parts = parts->no;
 		g_just_clicked = true;
@@ -741,6 +774,9 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	/* [D285 同上] hover 与 click 必须用同一判据（D261/D262 同型坑，已踩四次）。 */
 	if (getenv("XSYS4_CLICK_SKIP_INVISIBLE") && parts->global.alpha <= 0)
 		click_eligible = false;
+	/* [D538] 与上面的 hover 让位成对（同判据）。 */
+	if (prefer_no > 0 && !parts->clickable && parts->no != prefer_no)
+		click_eligible = false;
 	/* [D499] 捕获转移：本帧点击已被捕获、而本部件（同样有资格）在
 	 * 视觉上更靠上 ⇒ 转移捕获。两种「更靠上」：
 	 *  ① 后代：本部件是已捕获者的后代（父子重叠，深处优先，D337 同源）；
@@ -798,6 +834,9 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 
 	// 按下：第一个有资格的部件捕获这次点击
 	if (cur_clicking && !prev_clicking) {
+		if (getenv("XSYS4_CAP_WIRE"))
+			NOTICE("[capw] DOWN no=%d (prev=%d cur=%d)", parts->no,
+			       prev_clicking, cur_clicking);
 		click_down_parts = parts->no;
 		*click_consumed = true;
 
@@ -1009,11 +1048,34 @@ void PE_UpdateInputState(int passed_time)
 	if (getenv("XSYS4_CAP_DBG") && cur_clicking && !prev_clicking)
 		NOTICE("[cap] 按下帧 sorted_nr=%d began=%d pos=(%d,%d)",
 		       sorted_nr, parts_began_click, cur_pos.x, cur_pos.y);
+	/* [D538] 本帧「优先点击目标」：z 序第一个 `ck=1` 且可见、命中光标的
+	 * 部件。存在时 `ck=0` 的件在 hover/捕获上都让位（见 parts_update_mouse）。 */
+	int prefer_no = 0;
+	if (prefer_enabled()) {
+		for (int si = 0; si < sorted_nr; si++) {
+			struct parts *p2 = sorted[si];
+			if (!p2->clickable || !parts_is_visible(p2))
+				continue;
+			if (!parts_hittest(p2, PARTS_STATE_DEFAULT, cur_pos))
+				continue;
+			prefer_no = p2->no;
+			break;
+		}
+		if (prefer_no) {
+			/* 限流打印，便于跑测归因 */
+			static int pn;
+			if (getenv("XSYS4_INPUT_DBG") &&
+			    (pn++ < 20 || pn % 300 == 0))
+				NOTICE("[inp] prefer ck=1 parts=%d（ck=0 让位）",
+				       prefer_no);
+		}
+	}
+
 	// z 最高的排前面：排序后的列表是从前到后。
 	for (int si = 0; si < sorted_nr; si++) {
 		parts = sorted[si];
 		parts_update_mouse(parts, cur_pos, cur_clicking, passed_time,
-				&hover_consumed, &click_consumed);
+				&hover_consumed, &click_consumed, prefer_no);
 	}
 
 	/* [D191] 右键。AIN 的 CPartsMessageManager@CallDelegateMouseClick 用第三个
@@ -1091,6 +1153,9 @@ void PE_UpdateInputState(int passed_time)
 		if (!click_down_parts) {
 			// TODO：播一下点空的音效
 		}
+		if (getenv("XSYS4_CAP_WIRE") && click_down_parts)
+			NOTICE("[capw] RESET down=%d (clicked=%d)", click_down_parts,
+			       clicked_parts);
 		click_down_parts = 0;
 	}
 
@@ -1117,8 +1182,35 @@ void PE_UpdateInputState(int passed_time)
 		vm_request_parts_click(clicked_parts, cur_pos.x, cur_pos.y);
 	}
 
-	if (parts_began_click || (prev_clicking && !cur_clicking))
-		prev_clicking = cur_clicking;
+	/* [D537] `prev_clicking` 必须跟随**真实的按下/抬起**，不能只在
+	 * AIN 打开输入窗口（`parts_began_click`）时更新。
+	 *
+	 * 实测（dr44，检查点恢复 + 战斗 `SceneBattleInformation@Run` 里的
+	 * `WaitForClick`）：AIN 在该自旋里**不开输入窗口**（70 秒只 6 次
+	 * EndInput），于是 `parts_began_click` 长期为 false → 按下帧
+	 * `(prev=0, cur=1)` 不满足旧条件 → `prev` 冻结在 0 → 抬起帧
+	 * `(prev=0, cur=0)` 的释放沿判定 `prev_clicking && !cur_clicking`
+	 * **永远不成立** → `clicked_parts` 不置位。表现：6 次点击只有
+	 * 第一次（窗口恰好开着那次）生效，之后全静默。
+	 *
+	 * 现在的条件：窗口开着、或本帧有按下、或上一帧是按下 —— 三者覆盖
+	 * 所有真实的状态变化；只有在「窗口关 + 完全没按下」时冻结，那种
+	 * 情况下 cur 与 prev 都是 0，冻结无副作用（D120 的「跨窗口抬起」
+	 * 顾虑仍然成立）。
+	 * `XSYS4_PREV_ALWAYS=0` 回退旧行为做 A/B。 */
+	{
+		static int always = -1;
+		if (always < 0) {
+			const char *e = getenv("XSYS4_PREV_ALWAYS");
+			always = (e && !strcmp(e, "0")) ? 0 : 1;
+		}
+		if (!always) {
+			if (parts_began_click || (prev_clicking && !cur_clicking))
+				prev_clicking = cur_clicking;
+		} else if (parts_began_click || cur_clicking || prev_clicking) {
+			prev_clicking = cur_clicking;
+		}
+	}
 	parts_prev_pos = cur_pos;
 }
 
