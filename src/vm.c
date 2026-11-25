@@ -919,6 +919,40 @@ static int call_trace_n = -1;
 
 static void call_trace_probe(int fno, int ret_addr)
 {
+	/* [D523] 检查点跑测：XSYS4_SNAPSHOT_ON_CALL=<fno>:<key>:<path>
+	 * 第一次进入指定函数时拍 VM 全量快照（vm_save_image，明文 rsave）。
+	 * 与 XSYS4_BOOT_RESUME=<key>:<path> 配对：采集→恢复，跑测从检查点
+	 * 启动，成本与章节进度解耦。诊断开关，默认无行为。 */
+	{
+		static int snap_fno = -1;
+		static char snap_key[256], snap_path[1024];
+		static bool snap_parsed, snap_done;
+		if (!snap_parsed) {
+			snap_parsed = true;
+			const char *e = getenv("XSYS4_SNAPSHOT_ON_CALL");
+			if (e) {
+				const char *c1 = strchr(e, ':');
+				if (c1) {
+					const char *c2 = strchr(c1 + 1, ':');
+					if (c2) {
+						snap_fno = atoi(e);
+						size_t klen = c2 - c1 - 1;
+						if (klen >= sizeof(snap_key))
+							klen = sizeof(snap_key) - 1;
+						memcpy(snap_key, c1 + 1, klen);
+						snap_key[klen] = 0;
+						snprintf(snap_path, sizeof(snap_path), "%s", c2 + 1);
+					}
+				}
+			}
+		}
+		if (fno == snap_fno && !snap_done) {
+			snap_done = true;
+			int r = vm_save_image(snap_key, snap_path);
+			NOTICE("[snapshot] fno=%d key='%s' path='%s' -> %d",
+			       fno, snap_key, snap_path, r);
+		}
+	}
 	/* [D520] XSYS4_ADMIRAL_DBG=1：fno==26470（findAdmiralIndexesFromCountryId）
 	 * 命中时 dump global[268]（Admiral 注册表）的规模与前几个元素的
 	 * m0（GetCountryId）。验证 [ADVQUEST-LOOP] 的根因——
@@ -7870,6 +7904,35 @@ int vm_execute_ain(struct ain *program)
 		}
 		if (gt->data == AIN_STRUCT && slot > 0)
 			init_struct(gt->struc, slot);
+	}
+
+	/* [D523] 检查点跑测：XSYS4_BOOT_RESUME=<key>:<path> 在 AIN main
+	 * 执行前恢复 VM 全量快照（堆+调用栈+instr_ptr）。语义 =
+	 * SYS_RESUME_LOAD 的 boot 期等价物（vm_load_image 恢复后
+	 * instr_ptr 直接落在快照指令位置，见 resume.c
+	 * load_rsave_call_stack 尾部）。用途：跑测从检查点启动，
+	 * 成本与章节进度解耦；0 诊断开销、无快照文件时零行为差异。 */
+	const char *boot_resume = getenv("XSYS4_BOOT_RESUME");
+	if (boot_resume) {
+		const char *colon = strchr(boot_resume, ':');
+		if (colon) {
+			char key[256];
+			size_t klen = colon - boot_resume;
+			if (klen >= sizeof(key))
+				klen = sizeof(key) - 1;
+			memcpy(key, boot_resume, klen);
+			key[klen] = 0;
+			NOTICE("[boot-resume] key='%s' path='%s'", key, colon + 1);
+			vm_load_image(key, colon + 1);
+			/* [D523] 恢复后 instr_ptr/调用栈已是快照点：直接进执行
+			 * 循环从快照指令继续。**不能**再走 vm_call(main)——
+			 * 它会把 instr_ptr 重置到 main 入口（实测 resume7：
+			 * 恢复后仍从标题流程开始跑）。 */
+			vm_execute();
+			return stack_ptr > 0 ? stack_pop().i : 0;
+		} else {
+			WARNING("XSYS4_BOOT_RESUME 缺 ':' 分隔：<key>:<path>");
+		}
 	}
 
 	vm_call(ain->main, -1);

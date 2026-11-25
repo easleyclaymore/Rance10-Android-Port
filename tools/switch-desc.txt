@@ -255,3 +255,7 @@ XSYS4_UC_DBG	[D517t 取证] UC OnCheckEvent 派发留痕（[uc]）：=1 打扫�
 XSYS4_LINK_DBG	[取证] 装载期 `表示連動` 名字查号 MISS 时打一行（[link] no=N '名' -> '連動名' MISS）；查 checkbox 显隐联动没挂上的部件
 XSYS4_VK_BLIT_LOG	[gfx] Vulkan blit 心跳日志：每 1000 帧打一行 present 计数（默认关）
 XSYS4_DG_ALPHA_NO_GATE	[D522e A/B 回退] =1 恢复 D498 无条件 delegate 捕获（默认：挂回调且 alpha>0 才捕获，修 a=0 隐形窗吃点击）
+XSYS4_BOOT_RESUME	[D523 检查点跑测] <key>:<path> VM 全量快照 boot 期恢复（vm_load_image 后直接进执行循环，从快照指令继续；跳过标题/剧情）
+XSYS4_SNAPSHOT_ON_CALL	[D523 检查点跑测] <fno>:<key>:<path> 第一次进入该函数时拍 VM 全量快照（明文 rsave，路径相对 save-folder）
+XSYS4_RESUME_TYPE_ANY	[D523 跨版存档/快照] =1 帧变量类型冲突限流告警放行（同 AIN 自制快照也有写端对齐偏差；默认严格）
+XSYS4_SAVE_KEY_ANY	[D523 跨版存档] =1 跳过 rsave/gsave key 校验（官方 SJIS 版 key 与 GBK 版 AIN 传参不符，与 SAVE_GROUP_ANY 同族）
