@@ -385,6 +385,16 @@ drag() {
 # [D222] import -window 在 GL 直绘下会拿到过期的空 backing pixmap，产出
 # 390 字节的 1-bit 全黑图：它看起来像「画面全黑」，实际是截图失败。
 # H035 就是被这张空图骗出来的假象（H031 之后第二次）。小于 2KB 一律判失败。
+# [D541] 截图**默认全关**。
+#
+# 依据：本项目的判据一律是日志（`[inp] CLICKED` / `GetClickNumber` /
+# `[act] loaded` / `[ctrl] setactive` / `CALL_TRACE`），截图对
+# 「AIN 走到哪一步 / 层是否正确 / 点击落在谁身上」不提供任何信息；
+# 而且 `shot()` 里的 `ffmpeg -f x11grab` 在 GL 繁忙时会挂住，6s 超时
+# 被 SIGTERM 后 X server 留在异常状态、后续点击全丢（D535 实证）。
+# 需要人工对照画面时设 `RANCE10_SHOT=1`。
+shot_enabled() { [ "${RANCE10_SHOT:-0}" = "1" ]; }
+
 shot_valid() {
     [ -s "$1" ] || return 1
     [ "$(stat -c%s "$1" 2>/dev/null || echo 0)" -ge 2048 ] || return 1
@@ -428,7 +438,7 @@ for _ in $(seq 1 6); do
 done
 
 sleep 2
-shot "${SHOT%.png}_dialog.png"
+shot_enabled && shot "${SHOT%.png}_dialog.png"
 
 # 3) 右键推进到标题
 # [D182] XSYS4_AUTO_MAP 会自动调 Rance10@RunGameChapter1 直接进第一章地图，
@@ -443,7 +453,7 @@ if [ -z "${XSYS4_AUTO_MAP:-}" ]; then
 fi
 
 sleep 2
-shot "$SHOT"
+shot_enabled && shot "$SHOT"
 echo "TITLE_LOADED=$(grep -ac 'SceneTitle' "$LOG") loaded=$(loaded_count)"
 echo "MID=${SHOT%.png}_dialog.png"
 
@@ -616,7 +626,8 @@ fi
 # [D182] AUTO_MAP 路径下前置流程变短，前面那张主截图会拍在场景切换的
 # clear color 阶段（纯黑，实测 390 字节）。序列跑完后补拍一次，保证 SHOT
 # 指向真实画面；默认路径（无 AUTO_MAP）逐字不变。
-if [ -n "${XSYS4_AUTO_MAP:-}" ] && [ "${RANCE10_STEP_SHOT:-0}" != "1" ]; then
+if shot_enabled && [ -n "${XSYS4_AUTO_MAP:-}" ] && \
+   [ "${RANCE10_STEP_SHOT:-0}" != "1" ]; then
     shot "$SHOT"
 fi
 echo "SHOT=$SHOT"

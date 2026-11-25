@@ -67,6 +67,15 @@ else
 	export RANCE10_LIVE_SEQ="wait:16000;skip:620000:1117,907"
 fi
 export RANCE10_NO_STEP_SHOT=1
+# [D541] 显式保留**主**截图（`shot "$SHOT"` 那两处）。
+#
+# 不是为了看图，而是为了**时序**：`ffmpeg x11grab` 每处要阻塞 2-6 秒，
+# 这段时间正好让 ADV 的粒子/文字动画跑到下一句。关掉后 smoke 跑得更快、
+# 推进更深，会踩到既有的 `[ARRAY-COPY]` double free（14-16 条，slot
+# 74467 等，`Invalid string index ... type=-1` 后紧跟 double free）。
+# 那个 bug 要单独修；在此之前 smoke 必须保持与基线相同的时序，否则门禁
+# 会因「跑得更快」而假红。`RANCE10_SHOT=0` 可复现该 bug。
+export RANCE10_SHOT=1
 
 echo "== smoke $MODE（tag=$TAG, ${SECS}s）=="
 rm -f "$LOG"
