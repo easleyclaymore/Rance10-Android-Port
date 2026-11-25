@@ -4661,6 +4661,14 @@ void PE_DebugDumpParts(const char *tag)
 {
 	struct parts *p;
 	int n = 0;
+	/* [D545] 按名字找部件（只打一次）。 */
+	{
+		static int done;
+		if (!done) {
+			done = 1;
+			activity_debug_find_part(getenv("XSYS4_FIND_PART"));
+		}
+	}
 	/* [D175] 先打一行图层状态：`vis=` 的两个非部件条件都在这里。
 	 * 没有这一行，"部件全正常但一个都不画"就只能靠猜。 */
 	{

@@ -1978,6 +1978,33 @@ int activity_find_parts_no(struct activity *act, const char *parts_name)
 	return p ? p->parts_no : 0;
 }
 
+/* [D545] 诊断：列出**所有活动**里名字含子串的部件（活动名/部件名/部件号）。
+ * 用途：AIN 侧按名字找按钮（`Activity@GetButton("ButtonTurnEnd")`），
+ * 而我们的 PARTS_DUMP 只打活动名不打部件名——没有这个探针就只能靠猜号。
+ * `XSYS4_FIND_PART=<substr>`，由 PE_DebugDumpParts 调用（只打一次）。 */
+void activity_debug_find_part(const char *sub)
+{
+	if (!sub || !*sub)
+		return;
+	int hits = 0;
+	for (struct activity *a = activity_list; a; a = a->next) {
+		for (int i = 0; i < a->nr_parts; i++) {
+			struct activity_part *ap = a->flat[i];
+			if (!ap || !ap->name)
+				continue;
+			if (!strstr(ap->name, sub))
+				continue;
+			NOTICE("[findpart] act='%s' name='%s' no=%d",
+			       a->name ? a->name : "?", ap->name, ap->parts_no);
+			if (++hits >= 60) {
+				NOTICE("[findpart] ... 截断（>=60 条）");
+				return;
+			}
+		}
+	}
+	NOTICE("[findpart] '%s' 命中 %d 个", sub, hits);
+}
+
 /* [D517j] 把 3D 页当前的勾选态翻译成预览参数。
  *
  * **为什么用 GBK 字节字面量**：EX 里的部件名是 GBK（汉化版重打包），

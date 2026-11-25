@@ -531,6 +531,7 @@ bool activity_is_exist_file(const char *file);
 int activity_nr_parts(struct activity *act);
 struct activity_part *activity_find_parts(struct activity *act, const char *parts_name);
 int activity_find_parts_no(struct activity *act, const char *parts_name);
+void activity_debug_find_part(const char *sub);
 int activity_part_no_at(struct activity *act, int index);
 const char *activity_part_name_at(struct activity *act, int index);
 int activity_part_cg_name_at(struct activity *act, int index, const char **out);
