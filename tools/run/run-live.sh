@@ -153,14 +153,20 @@ for _ in $(seq 1 20); do
 done
 find_wid() {
     local w p
-    for w in $(xwininfo -root -children 2>/dev/null | awk '/"xsystem4"/{print $1}'); do
+    # [D535] 用 `xwininfo -root -tree` 而不是 `-children`：`-children` 只列
+    # **mapped** 的直接子窗口，而引擎窗口在恢复场景里会被 **unmap**
+    # （dr32 实证：第 1 次点击后 `-children` 显示 0 children，指针下变成
+    # root(927)，但进程仍活着、日志仍增长）。`-tree` 连 unmapped 一起列，
+    # 找到后 `windowfocus` 能把输入焦点还给窗口，`mousemove --window`
+    # 仍可投递（dr30 用 `xdotool search` 就是这条路，3/3 全中）。
+    for w in $(xwininfo -root -tree 2>/dev/null | awk '/"xsystem4"/{print $1}'); do
         p=$(xdotool getwindowpid "$w" 2>/dev/null)
         if [ -n "$GAMEPID" ] && [ "$p" = "$GAMEPID" ]; then
             echo "$w"
             return
         fi
     done
-    xwininfo -root -children 2>/dev/null | awk '/"xsystem4"/{w=$1} END{print w}'
+    xwininfo -root -tree 2>/dev/null | awk '/"xsystem4"/{w=$1} END{print w}'
 }
 # [D498] 每次要与窗口交互前都**重新解析** WID（带重试）。
 # 引擎在无 WM 的 Xvfb 里会间歇性地把窗口从 root 的子窗口表里挪走/重建
@@ -255,23 +261,41 @@ click() { # click <view_x> <view_y> <button>
             gh=$(echo "$geom" | awk -F= '/^HEIGHT=/{print $2}')
         fi
     fi
-    read -r wx wy <<< "$(awk -v x="$1" -v y="$2" -v ww="$gw" -v wh="$gh" \
+    read -r rx ry wx wy <<< "$(awk -v x="$1" -v y="$2" -v ww="$gw" -v wh="$gh" \
         -v vw="$VIEW_W" -v vh="$VIEW_H" -v gx="$gx" -v gy="$gy" 'BEGIN{
             s = ww/vw < wh/vh ? ww/vw : wh/vh;
             ox = (ww-vw*s)/2; oy = (wh-vh*s)/2;
-            printf "%d %d", gx+ox+x*s, gy+oy+y*s
+            printf "%d %d %d %d", ox+x*s, oy+y*s, gx+ox+x*s, gy+oy+y*s
         }')"
     if [ -n "$curwid" ]; then
         # [D246] 无 WM 时 `windowfocus --sync` 可能永久阻塞：s41/s42 的
         # `click:1845,818` 一次都没执行，日志里 `pos=(1845` 出现 0 次，
         # 而进程还活着、日志还在涨 —— 脚本卡在这一行直到跑测超时。
         # engineshot 分支早就加了 timeout，这里同样必须有。
+        # [D535] 窗口可能是 **unmapped**（dr32/dr33：第 1 次点击后
+        # `xwininfo -root -children` 0 children，指针落回 root）。未映射的
+        # 窗口收不到指针事件，`mousemove --window` 只改指针不改目标。
+        # 先 `windowmap` 把它映射回来，再聚焦/抬起。
+        timeout -k 1 2 xdotool windowmap "$curwid" >/dev/null 2>&1 || true
         timeout -k 1 2 xdotool windowfocus --sync "$curwid" >/dev/null 2>&1 || true
         timeout -k 1 2 xdotool windowraise "$curwid" >/dev/null 2>&1 || true
     fi
-    timeout -k 1 2 xdotool mousemove "$wx" "$wy" >/dev/null 2>&1 || true
+    # [D535] 用**窗口相对坐标**投递（`mousemove --window`），而不是绝对坐标。
+    #
+    # 依据（dr30）：恢复后的检查点场景里，绝对坐标 mousemove 3 次点击只有
+    # 1 次的 down/up 到达 SDL（`[mouse]` 只 1 对），改为
+    # `windowfocus --sync` + `mousemove --window` 后 **3/3 全部到达**
+    # （`[mouse]` 3 对、`[capd]` 按下沿采样 34 帧）。
+    # 原因：无 WM 时绝对坐标移动不保证指针真的落在该窗口上（xdotool 把
+    # 坐标交给 root），按下事件就进了别的窗口。相对坐标由窗口自己解释。
+    if [ -n "$curwid" ]; then
+        timeout -k 1 2 xdotool mousemove --window "$curwid" "$rx" "$ry" \
+            >/dev/null 2>&1 || true
+    else
+        timeout -k 1 2 xdotool mousemove "$wx" "$wy" >/dev/null 2>&1 || true
+    fi
     if [ -n "${XSYS4_CLICK_DBG:-}" ]; then
-        echo "CLICK view=$1,$2 win=$wx,$wy btn=$3 geom=${gx},${gy},${gw}x${gh} wid=$curwid boot_wid=$WID ptr=$(xdotool getmouselocation 2>/dev/null | tr '\n' ' ')" >&2
+        echo "CLICK view=$1,$2 rel=$rx,$ry win=$wx,$wy btn=$3 geom=${gx},${gy},${gw}x${gh} wid=$curwid boot_wid=$WID ptr=$(xdotool getmouselocation 2>/dev/null | tr '\n' ' ')" >&2
         # [D178] 注意重定向顺序：`2>/dev/null >&2` 会让 stdout 也进 /dev/null
         # （fd2 已指向 /dev/null，随后 stdout 再指向它）—— 之前正是这样误判成
         # 「窗口树为空」。要先把 stdout 指到 stderr，再丢掉命令自己的 stderr。
@@ -568,12 +592,24 @@ if [ -n "${RANCE10_LIVE_SEQ:-}" ]; then
         # 起因：x11grab 在 GL 繁忙时单次要等满 6 秒超时，40 步的连点序列光截图
         # 就能吃掉 4 分钟，把「跑到战斗」这件事拖成十几分钟。上面 D182 已经为
         # AUTO_MAP 路径做过同样的取舍，这里补一个对普通路径的闸。
-        if [ "${RANCE10_NO_STEP_SHOT:-0}" != "1" ] && \
-           { [ "${RANCE10_STEP_SHOT:-0}" = "1" ] || [ -z "${XSYS4_AUTO_MAP:-}" ]; }; then
+        # [D535] **默认不再逐步截图**（原条件是「非 AUTO_MAP 就截」）。
+        #
+        # 依据（dr32→dr35 对照，检查点恢复 + 战斗界面）：开着逐步截图时
+        # 3 次点击只有 1 对的 down/up 到达 SDL，`[mouse]`=2、且第 2 次点击
+        # 时 `xwininfo -root -children` 变成 0 children、指针落回 root(927)；
+        # `RANCE10_NO_STEP_SHOT=1` 后同样配方 **3/3 全部到达**（`[mouse]`=6、
+        # 三次 ptr 都在游戏窗口 2097204）。
+        # 元凶是 `shot()` 里的 `ffmpeg -f x11grab`：GL 画面繁忙时它会挂住，
+        # 6 秒超时被 SIGTERM 后 X server 留在异常状态（窗口收不到指针）。
+        # 逐步截图本来就慢（D182/D319 已为此减过两次），且判据一律用日志
+        # （见 AGENTS.md §3），所以默认关；要人工对照时设
+        # `RANCE10_STEP_SHOT=1` 显式开。
+        if [ "${RANCE10_STEP_SHOT:-0}" = "1" ] && \
+           [ "${RANCE10_NO_STEP_SHOT:-0}" != "1" ]; then
             shot "$(printf '%s_%02d_%s.png' "${SHOT%.png}" "$IDX" "$act")"
         fi
     done
-    if [ "${RANCE10_STEP_SHOT:-0}" = "1" ] || [ -z "${XSYS4_AUTO_MAP:-}" ]; then
+    if [ "${RANCE10_STEP_SHOT:-0}" = "1" ]; then
         echo "SEQ_LAST=$(printf '%s_%02d_%s.png' "${SHOT%.png}" "$IDX" "${act:-none}")"
     fi
 fi
