@@ -963,14 +963,17 @@ static void call_trace_probe(int fno, int ret_addr)
 					int cursor = PE_GetFreeNumberCursor();
 					fprintf(fp, "%d\n", cursor);
 					char **names = NULL;
-					nr_acts = activity_collect_names(&names);
+					int *ctrls = NULL;
+					nr_acts = activity_collect_snapshot(&names, &ctrls);
 					for (int i = 0; i < nr_acts; i++) {
 						if (names[i]) {
-							fprintf(fp, "%s\n", names[i]);
+							fprintf(fp, "%s\t%d\n", names[i],
+							        ctrls[i]);
 							free(names[i]);
 						}
 					}
 					free(names);
+					free(ctrls);
 					fclose(fp);
 					NOTICE("[snapshot] sidecar cursor=%d acts=%d -> %s",
 					       cursor, nr_acts, sidecar);
@@ -8018,6 +8021,16 @@ int vm_execute_ain(struct ain *program)
 						 * asset_get_by_name 直接用它查找，实测带
 						 * `:0` 时 rebuilt=0）。name 保留原样，与快照
 						 * 时的 act->name 一致。 */
+						/* [D529] `name<TAB>ctrl`：先按记录的层归属
+						 * 设 active，再装载——部件才会挂到原来的层
+						 * （input_active_layer_only 的过滤依赖它）。 */
+						int act_ctrl = -1;
+						char *tab = strrchr(line, '\t');
+						if (tab) {
+							act_ctrl = atoi(tab + 1);
+							*tab = 0;
+							len = (size_t)(tab - line);
+						}
 						char base[512];
 						size_t blen = len < sizeof(base) - 1
 							? len : sizeof(base) - 1;
@@ -8026,6 +8039,8 @@ int vm_execute_ain(struct ain *program)
 						char *suf = strrchr(base, ':');
 						if (suf && suf[1] >= '0' && suf[1] <= '9')
 							*suf = 0;
+						if (act_ctrl >= 0)
+							PE_SetActiveControllerIndex(act_ctrl);
 						struct string *nm =
 							make_string(line, len);
 						struct string *fl =

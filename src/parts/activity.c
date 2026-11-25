@@ -2299,6 +2299,34 @@ bool activity_read(struct string *name, struct string *file)
 
 /* [D526] 检查点恢复：按**装载顺序**导出现有活动名（activity_list 是头插，
  * 逆置后即装载序）。调用方负责逐个 free。返回个数。 */
+/* [D529] 同 activity_collect_names，但附带**层归属**（活动第一个部件的
+ * controller_no，即装载时的 active 栈下标）。恢复侧必须逐活动先设
+ * active 再装载——否则全部活动都挂到同一个层，AIN 一切层，
+ * `input_active_layer_only()` 的过滤（controller_no == active）就把
+ * 所有部件滤掉（d810 实证：按下帧候选只剩 1 个）。 */
+int activity_collect_snapshot(char ***names, int **ctrls)
+{
+	int n = 0;
+	for (struct activity *a = activity_list; a; a = a->next)
+		n++;
+	char **nm = xcalloc(n > 0 ? n : 1, sizeof(char *));
+	int *ct = xcalloc(n > 0 ? n : 1, sizeof(int));
+	int i = n;
+	for (struct activity *a = activity_list; a; a = a->next) {
+		i--;
+		nm[i] = a->name ? strdup(a->name) : NULL;
+		ct[i] = -1;
+		if (a->nr_parts > 0) {
+			struct parts *pt = parts_try_get(a->flat[0]->parts_no);
+			if (pt)
+				ct[i] = pt->controller_no;
+		}
+	}
+	*names = nm;
+	*ctrls = ct;
+	return n;
+}
+
 int activity_collect_names(char ***out)
 {
 	int n = 0;

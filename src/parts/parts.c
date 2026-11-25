@@ -4335,6 +4335,12 @@ void PE_SnapshotControllerStack(FILE *fp)
 	}
 }
 
+/* [D529] 恢复侧按活动记录的层归属设 active（栈下标）。 */
+void PE_SetActiveControllerIndex(int idx)
+{
+	ctrl_stack.active = idx;
+}
+
 bool PE_RestoreControllerStack(FILE *fp)
 {
 	if (!fp)
