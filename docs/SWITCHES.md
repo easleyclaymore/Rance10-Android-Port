@@ -6,7 +6,7 @@
 新增开关必须带一行用途说明，否则本表会显示 `—`，
 它同时是一个可量化的债：`tools/gen-switches.py --check` 的返回值就是未标注数量。
 
-共 **298** 个开关，其中 **0** 个没有就近注释。
+共 **299** 个开关，其中 **0** 个没有就近注释。
 
 **用途一栏的两种来源**：
 
@@ -46,6 +46,7 @@
 | 容器与内存 | `XSYS4_DGNEW_DBG` | `src/vm.c:7104` | [诊断] 打印每次 `DG_NEW_FROM_METHOD` 的 (obj, fun, ip)。判「某个事件委托到底有没有被建出来」（D325） |
 | 容器与内存 | `XSYS4_DGPLUSA_DBG` | `src/vm.c:7016` | 〔摘〕[D119 探针] 看看到底是哪张委托页收到了 OK/Cancel 两段 lambda |
 | 容器与内存 | `XSYS4_DGPLUSA_MAX` | `src/vm.c:7020` | 〔摘〕前 400 条会被 startup 的 CParts@Attach 占满。 |
+| 容器与内存 | `XSYS4_DG_ALPHA_NO_GATE` | `src/parts/input.c:617` | [D522e A/B 回退] =1 恢复 D498 无条件 delegate 捕获（默认：挂回调且 alpha>0 才捕获，修 a=0 隐形窗吃点击） |
 | 容器与内存 | `XSYS4_DG_APPEND_DBG` | `src/page.c:1087` | [诊断] 委托追加/丢弃各打一条（obj/fun/dst_nr）。用来分辨「没注册」和「注册被静默丢掉」 |
 | 容器与内存 | `XSYS4_DG_ASSIGN_DBG` | `src/vm.c:6944` | 委托赋值诊断 |
 | 容器与内存 | `XSYS4_DG_ASSIGN_NULLALLOC` | `src/vm.c:6985` | `=1` 让 `DG_ASSIGN` 在目标为空槽时分配新页并写回成员（D324 的 A/B，**已证伪**，默认关） |
@@ -71,7 +72,7 @@
 | 呈现与输入 | `XSYS4_ACT_RELEASE_DGLIST` | `src/parts/activity.c:1909` | [D270 已转正] ReleaseActivity 的 EraseNumberList 出参不再丢弃：把被释放部件的 delegate_index 写回 AIN，供 CPartsMessageManager@ReleaseFunctionSetList 销掉消息分发表里的委托（否则释放后的委托仍可命中，号复用时调到上一次活动的处理器）；默认生效，=0 回退做 A/B |
 | 呈现与输入 | `XSYS4_ACT_RELEASE_DGLIST_DBG` | `src/parts/activity.c:1898` | [诊断] 打印每次 ReleaseActivity 释放的活动名、部件数与实际写回 EraseNumberList 的委托下标个数；用来证明 D270 的修复不是死代码（个数恒 0 就说明出参本来没被 AIN 用） |
 | 呈现与输入 | `XSYS4_ACT_STEP` | `src/vm.c:1295` | 〔摘〕十几个，TextButton 等也是「活动」）。 |
-| 呈现与输入 | `XSYS4_CLICK_ANY` | `src/parts/input.c:673` | [诊断/已证否] 点击捕获改为「非 flat 一律可捕获」。实测 EndInput 直接变 0（无效部件先消费点击）——保留仅作反例 |
+| 呈现与输入 | `XSYS4_CLICK_ANY` | `src/parts/input.c:683` | [诊断/已证否] 点击捕获改为「非 flat 一律可捕获」。实测 EndInput 直接变 0（无效部件先消费点击）——保留仅作反例 |
 | 呈现与输入 | `XSYS4_CLICK_BUBBLE` | `src/parts/input.c:586` | [诊断/已证否] 子部件被点时向父链再发一份 CLICK。s98 实测对面板关闭无效（12 次点击仍只 1 次捕获），说明断点是捕获而非冒泡 |
 | 呈现与输入 | `XSYS4_CLICK_FLOW` | `src/parts/input.c:550` | 〔摘〕「点击号被读到之前是不是已经被 EndInput 清掉了」。 |
 | 呈现与输入 | `XSYS4_CLICK_NEEDS_SHAPE` | `src/parts/input.c:397` | [D338 默认生效，=0 关闭] 让「画不出像素」的部件退出 hover 拦截与点击捕获（w/h<=0 / PARTS_UNINITIALIZED / 铺满全屏的 PARTS_LAYOUT_BOX）。转正依据：bt30/bt31 下第一章照常到战斗，点角色卡能落到真正按钮件上，AIN 随即弹出技能选择列表。注意只排除**全屏**布局盒——一刀切排除布局盒会让选项按钮失效（bt23 进不了战斗） |
@@ -81,13 +82,13 @@
 | 呈现与输入 | `XSYS4_CLICK_SKIP_FLAT` | `src/parts/input.c:441` | [诊断] flat 类型部件不参与点击捕获。战斗里全屏背景 flat 705 的 hb 覆盖整屏、gz 置顶、pass=0，会把技能按钮的点击全部截胡；flat 在原版是「平面图形/演出层」，按钮是 按钮(0) 或 CG |
 | 呈现与输入 | `XSYS4_CLICK_SKIP_FULLSCREEN` | `src/parts/input.c:446` | [诊断] 把「hb 覆盖整个视图」的部件排除出点击捕获与 hover 消费。依据：真按钮不会铺满整屏，而演出/背景/整屏点击层会；s93 实测能让点击落到 `ButtonDeffence`(900000397) |
 | 呈现与输入 | `XSYS4_CLICK_SKIP_INVISIBLE` | `src/parts/input.c:466` | [诊断] 把 `global.alpha<=0`（完全透明、一个像素不画）的部件排除出 hover 消费与点击捕获。依据是 `parts_is_visible()` 不检查 alpha，导致全屏 flat `900000705`（a=0、z 比接收器还高）总先吞点击；d301 实测三次点击全落它 | |
-| 呈现与输入 | `XSYS4_CLICK_SKIP_NONCLICKABLE` | `src/parts/input.c:651` | [诊断] 跑测专用：`clickable=0` 的部件不参与点击捕获（回到 D113 之前的行为）。用来验证「全屏背景 flat 705 截胡技能按钮点击」这一条；默认关，开始画面这类「点击任意处继续」的场景开了会卡住 |
+| 呈现与输入 | `XSYS4_CLICK_SKIP_NONCLICKABLE` | `src/parts/input.c:661` | [诊断] 跑测专用：`clickable=0` 的部件不参与点击捕获（回到 D113 之前的行为）。用来验证「全屏背景 flat 705 截胡技能按钮点击」这一条；默认关，开始画面这类「点击任意处继续」的场景开了会卡住 |
 | 呈现与输入 | `XSYS4_CTRL_ACTIVE_RESTORE` | `src/parts/parts.c:4817` | `=1` `EraseLayer` 后把活动层恢复到**建层前那一层**；默认回栈顶（上游语义）。D316 的 A/B，实测不改变 [BG-LAYER] 结果 |
 | 呈现与输入 | `XSYS4_CTRL_DBG` | `src/parts/parts.c:2135` | controller 栈、视觉地板（cover_layer）、hide/remove 事件 |
 | 呈现与输入 | `XSYS4_CTRL_PENDING` | `src/parts/parts.c:4706` | [D289] 默认开。`Activity@Load` 建出的部件归到「即将由 AddLayer 创建的那一层」，而不是当前 active。AIN 的顺序是 Load→AddLayer，旧行为让部件全落在上一层，之后按新层 ID 的 EraseLayer 必然 `released=0`（旧场景部件永久残留，标题 Logo 跟到战斗里吃点击）。设 0 回退旧行为做 A/B |
 | 呈现与输入 | `XSYS4_INPUT_ACTIVE_LAYER` | `src/parts/input.c:211` | 〔摘〕注意：`PARTS_CONTROLLER_SYSTEM_OVERLAY` 是引擎自己的覆盖层，永远参与。 |
-| 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:932` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
-| 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:631` | 输入命中的候选部件表与点击状态（每 60 帧一条心跳，非沉默） |
+| 呈现与输入 | `XSYS4_INPUT_ALL` | `src/parts/input.c:942` | [诊断] 配合 INPUT_DBG 连"没覆盖光标"的部件也打印（带 cover= 标记）；避免把几何算错的按钮误读成"部件不存在" |
+| 呈现与输入 | `XSYS4_INPUT_DBG` | `src/parts/input.c:641` | 输入命中的候选部件表与点击状态（每 60 帧一条心跳，非沉默） |
 | 呈现与输入 | `XSYS4_INPUT_GATE` | `src/parts/input.c:43` | =1 恢复旧输入门：只有 AIN BeginInput 窗口内才处理按下沿（默认 0=等价原版，恒开）。菜单界面 AIN 不开窗口，开旧门会让点击全被吞 |
 | 呈现与输入 | `XSYS4_PARTS_DUMP` | `src/parts/activity.c:2295` | 活动装载后快照所有显示中的部件（no/ctrl/z/pos/尺寸/a/ps/st/tex/uc） |
 | 呈现与输入 | `XSYS4_PARTS_DUMP_MAX` | `src/parts/parts.c:4657` | parts dump 的条数上限（默认 400）。部件太多时调小，只看前 N 个 |
@@ -308,7 +309,7 @@
 | 其它 | `XSYS4_UC_RENDER_DBG` | `src/text.c:274` | 用户组件（TextButton 等）渲染诊断 |
 | 其它 | `XSYS4_USERCOMP_DBG` | `src/parts/activity.c:1080` | dump 前 3 个 USER_COMPONENT 部件的解析字段（组件类型/参数），排查自定义组件装载 |
 | 其它 | `XSYS4_VIS_IDX` | `src/parts/parts.c:1970` | 〔摘〕`AddLayer` 之后 `id[i] != i` 是常态，不修就永远错位。 |
-| 其它 | `XSYS4_VK_BLIT_LOG` | `src/gfx_vk.c:421` | [gfx] Vulkan blit 心跳日志：每 1000 帧打一行 present 计数（默认关） |
+| 其它 | `XSYS4_VK_BLIT_LOG` | `src/gfx_vk.c:427` | [gfx] Vulkan blit 心跳日志：每 1000 帧打一行 present 计数（默认关） |
 | 其它 | `XSYS4_WATCH_IFACE` | `src/vm.c:369` | 〔摘〕page_set_var，所以只盯 page_set_var 会漏掉真正的写入者。 |
 | 其它 | `XSYS4_WIDGET_SELFTEST` | `src/vm.c:2809` | [D396 诊断，默认关] `=1` 启动 3 秒后跑一次控件状态自检（set→get 往返断言），打 `[wtest] RESULT: PASS/FAIL` —— 填桩的验收用，证明的是语义往返而不是「不再报未实现」 |
 | 其它 | `XSYS4_WIN_DBG` | `src/input.c:784` | 〔摘〕还是「被隐藏/移动」，只能靠 SDL 事件本身回答。 |

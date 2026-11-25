@@ -605,8 +605,18 @@ static void parts_update_mouse(struct parts *parts, Point cur_pos, bool cur_clic
 	 * 这类部件的 EX `点击許可` 全是 0（`ck=0`），默认判据把它排除 ⇒
 	 * 回调永远收不到点击（实测点把手三次全被下层 CG 313 吃掉）。
 	 * `delegate_index >= 0` 是「AIN 明确在这个部件上注册过回调」的
-	 * 直接证据，比任何 EX 字段都权威。 */
-	if (parts->delegate_index >= 0)
+	 * 直接证据，比任何 EX 字段都权威。
+	 *
+	 * [D522e] **alpha 门槛**：D498 原来无条件覆盖 D490 的
+	 * `global.alpha>0` 判据——AIN 用 alpha=0 隐藏的窗（ReplayMemoDialog
+	 * 的图鉴窗 900000572 a=0 di=402，剧情后期常驻）委托残留照样捕获
+	 * 点击，skip 点击被隐形窗吃掉、剧情卡死（d834 debut7 实证）。
+	 * 挂了回调**且可见**（alpha>0）才强制捕获；`XSYS4_DG_ALPHA_NO_GATE=1`
+	 * 回退：恢复 D498 无条件捕获。 */
+	bool dg_alpha_ok = parts->global.alpha > 0;
+	if (getenv("XSYS4_DG_ALPHA_NO_GATE"))
+		dg_alpha_ok = true; /* 回退：恢复 D498 无条件捕获 */
+	if (parts->delegate_index >= 0 && dg_alpha_ok)
 		click_eligible = true;
 	/* [D496] 输入组件被 AIN 关掉输入处理时不捕获点击（与上面的
 	 * hover_blocking 门控成对）。 */
